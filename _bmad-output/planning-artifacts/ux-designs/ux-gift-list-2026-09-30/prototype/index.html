@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gift List — прототип R1</title>
+<style>
+:root{
+  --primary:#2F5D3A;--primary-fg:#F7FAF7;--accent:#D4A017;--accent-fg:#1E241F;
+  --bg:#F4F1EA;--fg:#1E241F;--muted:#E8E4DA;--muted-fg:#5C6358;--border:#D9D3C6;
+  --reserved:#9A7609;--reserved-bg:#F5E6B8;--destructive:#B42318;
+  --r-sm:6px;--r-md:10px;--r-lg:14px;
+  --font-ui:"DM Sans","Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  --font-display:Fraunces,Georgia,"Times New Roman",serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 var(--font-ui)}
+h1,h2,h3,p{margin:0}
+.display{font-family:var(--font-display);font-weight:600;font-size:36px;line-height:1.15;letter-spacing:-.02em;color:var(--primary)}
+.display-sm{font-family:var(--font-display);font-weight:600;font-size:24px;line-height:1.2;letter-spacing:-.01em}
+.label{font-size:14px;font-weight:500;line-height:1.4}
+.caption{font-size:12px;color:var(--muted-fg)}
+.muted{color:var(--muted-fg)}
+
+/* demo switcher (not part of product UI) */
+.demo-bar{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--border);padding:8px 16px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.demo-bar b{font-size:12px;color:var(--muted-fg);margin-right:6px;text-transform:uppercase;letter-spacing:.04em}
+.demo-bar button{font:inherit;font-size:13px;padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:var(--r-sm);cursor:pointer;color:var(--fg)}
+.demo-bar button[aria-pressed=true]{background:var(--primary);color:var(--primary-fg);border-color:var(--primary)}
+.demo-bar .sp{flex:1}
+
+/* app chrome */
+.topbar{background:#fff;border-bottom:1px solid var(--border)}
+.topbar-in{max-width:960px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:16px}
+.logo{font-family:var(--font-display);font-weight:600;font-size:20px;color:var(--primary);text-decoration:none;margin-right:auto}
+.nav-i{display:flex;align-items:center;gap:6px;color:var(--muted-fg);font-size:14px;position:relative;padding:6px 8px;border-radius:var(--r-md)}
+.nav-i.active{color:var(--primary);background:var(--muted)}
+.badge{background:var(--primary);color:#fff;border-radius:9999px;font-size:11px;min-width:18px;height:18px;display:inline-grid;place-items:center;padding:0 5px}
+.avatar{width:32px;height:32px;border-radius:9999px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:600}
+.tabbar{display:none;position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--border);justify-content:space-around;padding:8px 4px;z-index:40}
+.tabbar span{font-size:12px;color:var(--muted-fg);text-align:center;flex:1}
+.tabbar span.active{color:var(--primary);font-weight:600}
+
+main{max-width:720px;margin:0 auto;padding:32px 16px 96px;display:flex;flex-direction:column;gap:32px}
+@media(min-width:768px){main{padding-inline:24px}}
+.wide{max-width:960px}
+
+/* buttons */
+.btn{font:inherit;font-size:14px;font-weight:500;border-radius:var(--r-md);padding:8px 14px;border:1px solid transparent;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.btn:focus-visible,input:focus-visible{outline:3px solid rgba(47,93,58,.35);outline-offset:1px}
+.btn-primary{background:var(--primary);color:var(--primary-fg)}
+.btn-reserve{background:var(--accent);color:var(--accent-fg)}
+.btn-outline{background:#fff;border-color:var(--border);color:var(--fg)}
+.btn-ghost{background:transparent;color:var(--muted-fg)}
+.btn-danger{background:#fff;border-color:#E8B4AE;color:var(--destructive)}
+.btn-lg{padding:11px 18px;font-size:15px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+/* cards, pills, chips */
+.card{background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);padding:16px}
+.gift{display:flex;gap:12px;align-items:flex-start;transition:border-color .15s}
+.gift:hover{border-color:rgba(47,93,58,.4)}
+.gift .t{font-weight:500}
+.pill{border-radius:9999px;font-size:12px;font-weight:500;padding:2px 10px;white-space:nowrap}
+.pill.open{background:var(--muted);color:var(--primary)}
+.pill.reserved{background:var(--reserved-bg);color:var(--reserved)}
+.pill.closed{background:var(--muted);color:var(--muted-fg)}
+.chip{border:1px solid var(--border);color:var(--muted-fg);border-radius:var(--r-sm);font-size:12px;padding:2px 8px}
+.price{font-variant-numeric:tabular-nums lining-nums}
+.grid2{display:grid;gap:24px}
+@media(min-width:900px){.grid2.lg{grid-template-columns:1fr 1fr}}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.row.sb{justify-content:space-between}
+.stack{display:flex;flex-direction:column;gap:12px}
+.gate{max-width:480px;margin:24px auto 0;text-align:center;padding:32px;display:flex;flex-direction:column;gap:16px;align-items:center}
+.empty{text-align:center;padding:32px 16px;display:flex;flex-direction:column;gap:8px;align-items:center}
+
+/* forms */
+.field{display:flex;flex-direction:column;gap:6px}
+input{font:inherit;font-size:15px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:#fff;color:var(--fg);width:100%}
+input[aria-invalid=true]{border-color:var(--destructive)}
+.err{color:var(--destructive);font-size:13px}
+.auth{max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:24px;padding-top:24px}
+
+/* toast + dialog */
+.toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);background:var(--fg);color:#fff;padding:10px 16px;border-radius:var(--r-md);font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:80}
+.toast.show{opacity:1}
+.overlay{position:fixed;inset:0;background:rgba(30,36,31,.45);display:none;place-items:center;z-index:70;padding:16px}
+.overlay.show{display:grid}
+.dialog{background:#fff;border-radius:var(--r-lg);padding:24px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:16px}
+.stickycta{display:none}
+.screen{display:none}.screen.on{display:block}
+
+@media(max-width:767px){
+  .nav-i span.t{display:none}.topbar-in{gap:10px}
+  .tabbar{display:flex}.nav-desktop{display:none!important}
+  .display{font-size:30px}
+  .stickycta{display:block;position:fixed;left:0;right:0;bottom:56px;background:#fff;border-top:1px solid var(--border);padding:10px 16px;z-index:35}
+}
+</style>
+</head>
+<body>
+
+<div class="demo-bar" role="toolbar" aria-label="Экраны прототипа">
+  <b>Прототип R1</b>
+  <button data-s="register" aria-pressed="true">Регистрация</button>
+  <button data-s="lists">Мои списки</button>
+  <button data-s="empty">Пустой список</button>
+  <button data-s="public">Список друга</button>
+  <button data-s="gift">Деталь подарка</button>
+  <button data-s="gate">Friends-only gate</button>
+  <button data-s="anon">Anon gate</button>
+  <button data-s="friends">Друзья</button>
+  <button data-s="reservations">Мои брони</button>
+</div>
+
+<div id="stage">
+
+<!-- ============ REGISTER ============ -->
+<section class="screen on" id="s-register">
+  <main><div class="auth">
+    <div class="stack" style="gap:8px">
+      <h1 class="display">Создать аккаунт</h1>
+      <p class="muted">Два списка подарков — открытый и для друзей — появятся сразу.</p>
+    </div>
+    <form class="stack" style="gap:20px" onsubmit="return false">
+      <div class="field"><label class="label" for="r1">Имя</label><input id="r1" value="Марина"></div>
+      <div class="field"><label class="label" for="r2">Ник</label><input id="r2" value="marina_k" oninput="document.getElementById('prev').textContent='@'+this.value.toLowerCase()">
+        <p class="caption" style="font-size:14px">Вас найдут как <b id="prev">@marina_k</b>. От 3 до 24 символов: строчные латинские буквы, цифры и «_»</p></div>
+      <div class="field"><label class="label" for="r3">Email</label><input id="r3" type="email" value="marina@example.com"></div>
+      <div class="field"><label class="label" for="r4">Пароль</label><input id="r4" type="password" value="password123"><p class="caption" style="font-size:14px">Не короче 8 символов</p></div>
+      <button class="btn btn-primary btn-lg" type="button" onclick="go('lists')">Создать аккаунт</button>
+      <p class="caption" style="text-align:center;font-size:14px">Уже есть аккаунт? <a href="#" style="color:var(--primary)" onclick="return false">Войти</a></p>
+    </form>
+  </div></main>
+</section>
+
+<!-- ============ MY LISTS ============ -->
+<section class="screen" id="s-lists">
+  <div data-chrome="lists"></div>
+  <main class="wide">
+    <h1 class="display">Мои списки</h1>
+    <div class="grid2 lg">
+      <div class="stack" style="gap:16px">
+        <div class="row sb"><div class="row"><h2 class="display-sm" style="font-size:20px">Открытый</h2><span class="chip">Открытый</span></div>
+          <button class="btn btn-outline" onclick="toast('Ссылка скопирована')">Скопировать ссылку</button></div>
+        <article class="card gift"><div style="flex:1"><div class="t">Наушники Sony WH-1000XM5</div><div class="caption price">8 000 ₽</div></div><span class="pill open">Открыт</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
+        <article class="card gift"><div style="flex:1"><div class="t">Книга «Соль, жир, кислота, тепло»</div><div class="caption">Цена не указана</div></div><span class="pill reserved">Забронирован</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
+        <article class="card gift"><div style="flex:1"><div class="t">Плед шерстяной</div><div class="caption price">3 200 ₽</div></div><span class="pill closed">Закрыт</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
+        <button class="btn btn-primary" style="align-self:flex-start">+ Добавить подарок</button>
+      </div>
+      <div class="stack" style="gap:16px">
+        <div class="row sb"><div class="row"><h2 class="display-sm" style="font-size:20px">Для друзей</h2><span class="chip">Только друзья</span></div>
+          <button class="btn btn-outline" onclick="toast('Ссылка скопирована')">Скопировать ссылку</button></div>
+        <article class="card gift"><div style="flex:1"><div class="t">Кофемашина De'Longhi</div><div class="caption price">24 500 ₽</div></div><span class="pill open">Открыт</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
+        <button class="btn btn-primary" style="align-self:flex-start">+ Добавить подарок</button>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- ============ EMPTY ============ -->
+<section class="screen" id="s-empty">
+  <div data-chrome="lists"></div>
+  <main class="wide">
+    <h1 class="display">Мои списки</h1>
+    <div class="grid2 lg">
+      <div class="stack" style="gap:16px">
+        <div class="row"><h2 class="display-sm" style="font-size:20px">Открытый</h2><span class="chip">Открытый</span></div>
+        <div class="card empty"><h3 class="display-sm">Пока пусто</h3><p class="muted">Добавьте первый подарок — название и, по желанию, цену-ориентир.</p><button class="btn btn-primary" style="margin-top:8px">Добавить подарок</button></div>
+      </div>
+      <div class="stack" style="gap:16px">
+        <div class="row"><h2 class="display-sm" style="font-size:20px">Для друзей</h2><span class="chip">Только друзья</span></div>
+        <div class="card empty"><h3 class="display-sm">Пока пусто</h3><p class="muted">Добавьте первый подарок — название и, по желанию, цену-ориентир.</p><button class="btn btn-primary" style="margin-top:8px">Добавить подарок</button></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- ============ PUBLIC LIST (friend) ============ -->
+<section class="screen" id="s-public">
+  <div data-chrome="friends"></div>
+  <main>
+    <div class="stack" style="gap:8px">
+      <p class="caption">Список</p>
+      <h1 class="display">Анна Белова</h1>
+      <div class="row"><span class="muted">@anna_b</span><span class="chip">Только друзья</span><span class="pill open" style="background:#fff;border:1px solid var(--border)">Вы друзья</span></div>
+    </div>
+    <div class="stack" style="gap:16px">
+      <article class="card gift" style="cursor:pointer" onclick="go('gift')"><div style="flex:1"><div class="t">Кофемашина De'Longhi</div><div class="caption price">24 500 ₽</div></div><span class="pill open">Открыт</span></article>
+      <article class="card gift"><div style="flex:1"><div class="t">Настольная игра «Каркассон»</div><div class="caption price">2 800 ₽</div></div><span class="pill reserved">Забронирован</span></article>
+      <p class="caption" style="margin-top:-8px">Берёт Игорь — у карточки «Каркассон» видно, кто берёт</p>
+      <article class="card gift"><div style="flex:1"><div class="t">Набор акварели</div><div class="caption">Цена не указана</div></div><span class="pill open">Открыт</span></article>
+    </div>
+  </main>
+</section>
+
+<!-- ============ GIFT DETAIL ============ -->
+<section class="screen" id="s-gift">
+  <div data-chrome="friends"></div>
+  <main>
+    <a href="#" class="muted" onclick="go('public');return false" style="font-size:14px">← Список Анны Беловой</a>
+    <div class="stack" style="gap:16px">
+      <div class="row"><span class="chip">Только друзья</span><span class="pill open">Открыт</span></div>
+      <h1 class="display-sm" style="font-size:28px">Кофемашина De'Longhi</h1>
+      <p class="price" style="font-size:20px;font-weight:500">24 500 ₽</p>
+      <p class="muted">Автоматическая, с капучинатором. Цена — ориентир, можно искать дешевле.</p>
+      <a href="#" style="color:var(--primary);font-size:14px" onclick="return false">Ссылка на товар ↗</a>
+    </div>
+    <div class="row nav-desktop"><button class="btn btn-reserve btn-lg" onclick="openDlg()">Куплю сам</button></div>
+  </main>
+  <div class="stickycta"><button class="btn btn-reserve btn-lg" style="width:100%;justify-content:center" onclick="openDlg()">Куплю сам</button></div>
+</section>
+
+<!-- ============ FO GATE ============ -->
+<section class="screen" id="s-gate">
+  <div data-chrome="friends"></div>
+  <main>
+    <div class="card gate">
+      <h1 class="display-sm">Список только для друзей</h1>
+      <p class="muted">Подарки из этого списка видят только люди из списка друзей Анны Беловой. Станьте друзьями в Gift List, чтобы открыть их.</p>
+      <button class="btn btn-primary">Открыть профиль Анны Беловой</button>
+      <button class="btn btn-ghost">Найти в поиске</button>
+    </div>
+  </main>
+</section>
+
+<!-- ============ ANON GATE ============ -->
+<section class="screen" id="s-anon">
+  <div data-chrome="anon"></div>
+  <main>
+    <div class="card gate">
+      <h1 class="display-sm">Войдите, чтобы увидеть подарки</h1>
+      <p class="muted">Чтобы посмотреть этот список, войдите или зарегистрируйтесь.</p>
+      <div class="row" style="justify-content:center"><button class="btn btn-primary">Войти</button><button class="btn btn-outline" onclick="go('register')">Создать аккаунт</button></div>
+    </div>
+  </main>
+</section>
+
+<!-- ============ FRIENDS ============ -->
+<section class="screen" id="s-friends">
+  <div data-chrome="friends-tab"></div>
+  <main>
+    <h1 class="display">Друзья</h1>
+    <section class="stack"><h2 class="label muted">Входящие <span class="badge">2</span></h2>
+      <div class="card row sb"><div class="row"><span class="avatar">ИП</span><div><div class="t" style="font-weight:500">Игорь Петров</div><div class="caption">@igor_p</div></div></div><div class="row"><button class="btn btn-primary" onclick="toast('Игорь теперь в друзьях')">Принять</button><button class="btn btn-ghost">Отклонить</button></div></div>
+      <div class="card row sb"><div class="row"><span class="avatar" style="background:var(--reserved)">ОК</span><div><div style="font-weight:500">Ольга Кузнецова</div><div class="caption">@olga_k</div></div></div><div class="row"><button class="btn btn-primary">Принять</button><button class="btn btn-ghost">Отклонить</button></div></div>
+    </section>
+    <section class="stack"><h2 class="label muted">Друзья · 2</h2>
+      <div class="card row sb"><div class="row"><span class="avatar">АБ</span><div><div style="font-weight:500">Анна Белова</div><div class="caption">@anna_b</div></div></div><button class="btn btn-outline" onclick="go('public')">Списки</button></div>
+      <div class="card row sb"><div class="row"><span class="avatar">СМ</span><div><div style="font-weight:500">Сергей Морозов</div><div class="caption">@sergey_m</div></div></div><button class="btn btn-outline">Списки</button></div>
+    </section>
+    <section class="stack"><h2 class="label muted">Исходящие</h2>
+      <div class="card row sb"><div class="row"><span class="avatar" style="background:var(--muted-fg)">ТЛ</span><div><div style="font-weight:500">Татьяна Лебедева</div><div class="caption">@tanya_l</div></div></div><span class="chip">Ожидает ответа</span></div>
+    </section>
+  </main>
+</section>
+
+<!-- ============ RESERVATIONS ============ -->
+<section class="screen" id="s-reservations">
+  <div data-chrome="res-tab"></div>
+  <main>
+    <h1 class="display">Мои брони</h1>
+    <div class="stack">
+      <article class="card gift"><div style="flex:1"><div class="t">Настольная игра «Каркассон»</div><div class="caption">Список Анны Беловой · @anna_b · Только друзья</div></div><span class="pill reserved">Забронирован</span><button class="btn btn-outline" onclick="toast('Бронь снята')">Снять бронь</button></article>
+      <article class="card gift"><div style="flex:1"><div class="t">Термокружка Stanley</div><div class="caption">Список Сергея Морозова · @sergey_m · Открытый</div><div class="caption" style="margin-top:4px">Бронь снимется автоматически через 9 дн.</div></div><span class="pill reserved">Забронирован</span><button class="btn btn-outline">Снять бронь</button></article>
+    </div>
+  </main>
+</section>
+
+</div>
+
+<div class="overlay" id="dlg" role="dialog" aria-modal="true" aria-labelledby="dt">
+  <div class="dialog">
+    <h2 class="display-sm" id="dt" style="font-size:20px">Забронировать «Кофемашина De'Longhi»?</h2>
+    <p class="muted">Другие увидят, что подарок берёте вы.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn btn-ghost" onclick="closeDlg()">Отмена</button><button class="btn btn-reserve" onclick="closeDlg();toast('Готово — вы берёте этот подарок');go('reservations')">Подтвердить</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const chromes={
+  lists:{active:'lists'},friends:{active:''},'friends-tab':{active:'friends'},'res-tab':{active:'res'},anon:{anon:true}
+};
+function chrome(kind){
+  const c=chromes[kind];
+  if(c.anon) return `<header class="topbar"><div class="topbar-in"><a class="logo">Gift List</a><button class="btn btn-ghost">Войти</button><button class="btn btn-primary">Создать аккаунт</button></div></header>`;
+  const i=(k,t,ic,b)=>`<span class="nav-i ${c.active===k?'active':''}">${ic}<span class="t">${t}</span>${b?`<span class="badge">${b}</span>`:''}</span>`;
+  return `<header class="topbar"><div class="topbar-in"><a class="logo">Gift List</a>
+    <span class="nav-desktop" style="display:contents">${i('search','Поиск','⌕')}${i('friends','Друзья','☺',2)}${i('res','Мои брони','✓')}${i('notif','','◔',1)}</span>
+    <span class="avatar">МК</span></div></header>
+    <nav class="tabbar" aria-label="Основная навигация"><span class="${c.active==='lists'?'active':''}">Списки</span><span>Поиск</span><span class="${c.active==='friends'?'active':''}">Друзья</span><span class="${c.active==='res'?'active':''}">Брони</span><span>Ещё</span></nav>`;
+}
+document.querySelectorAll('[data-chrome]').forEach(el=>el.innerHTML=chrome(el.dataset.chrome));
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id==='s-'+id));
+  document.querySelectorAll('.demo-bar button[data-s]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.s===id));
+  scrollTo(0,0);
+}
+document.querySelectorAll('.demo-bar button[data-s]').forEach(b=>b.onclick=()=>go(b.dataset.s));
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2200)}
+function openDlg(){document.getElementById('dlg').classList.add('show')}
+function closeDlg(){document.getElementById('dlg').classList.remove('show')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDlg()});
+</script>
+</body>
+</html>

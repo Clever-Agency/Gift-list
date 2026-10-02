@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gift List — палитры (выбор)</title>
+<style>
+  /* Variation A — Calm Teal (current DESIGN.md assumption UX-A3)
+     primary:#0E5C5C accent:#B8860B bg:#F5F7F6 fg:#1A1F1E muted:#E6EBE9 */
+  /* Variation B — Ink & Berry
+     primary:#1F2A44 accent:#C45C7A bg:#F7F6F4 fg:#1C1B1A muted:#EBE8E4 */
+  /* Variation C — Forest Paper
+     primary:#2F5D3A accent:#D4A017 bg:#F4F1EA fg:#1E241F muted:#E8E4DA */
+  /* Variation D — Slate Coral
+     primary:#334155 accent:#E07A5F bg:#F8FAFC fg:#0F172A muted:#E2E8F0 */
+  /* Variation E — Night Olive (light surface, darker brand)
+     primary:#3D4F3F accent:#C4A574 bg:#FAFAF8 fg:#222820 muted:#EEEEE8 */
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: #e8eaed;
+    color: #1a1a1a;
+    line-height: 1.45;
+  }
+  header.page {
+    padding: 28px 24px 12px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  header.page h1 { margin: 0 0 8px; font-size: 1.5rem; }
+  header.page p { margin: 0; color: #555; max-width: 60ch; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    padding: 16px 24px 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .theme {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid #cfd4da;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .theme.current { outline: 3px solid #2F5D3A; outline-offset: 2px; }
+  .theme-head {
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .theme-head .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #2F5D3A;
+    margin-bottom: 6px;
+  }
+  .theme-head h2 { margin: 0 0 4px; font-size: 1.15rem; }
+  .theme-head .reg { margin: 0; font-size: 13px; color: #666; }
+  .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 14px 16px;
+  }
+  .swatch {
+    width: 56px;
+    text-align: center;
+  }
+  .swatch .chip {
+    width: 56px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,.12);
+  }
+  .swatch code {
+    display: block;
+    font-size: 9px;
+    margin-top: 4px;
+    color: #555;
+    word-break: break-all;
+  }
+  .swatch .role {
+    font-size: 10px;
+    font-weight: 600;
+    color: #333;
+  }
+  .preview {
+    margin: 0 16px 16px;
+    border-radius: 14px;
+    padding: 16px;
+    border: 1px solid transparent;
+  }
+  .preview .brand {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .preview .sub { font-size: 13px; margin: 0 0 14px; opacity: .75; }
+  .card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 14px;
+    border: 1px solid #ddd;
+    margin-bottom: 10px;
+  }
+  .card .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .card .title { font-weight: 600; font-size: 15px; }
+  .pill {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+  .card .who { font-size: 12px; margin-top: 6px; opacity: .7; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .btn {
+    border: none;
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: default;
+  }
+  .btn.ghost {
+    background: transparent;
+    border: 1px solid currentColor;
+    opacity: .85;
+  }
+  .gate {
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px;
+    border: 1px solid #ddd;
+    text-align: center;
+  }
+  .gate h3 {
+    font-family: Georgia, "Times New Roman", serif;
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+  }
+  .gate p { margin: 0; font-size: 13px; opacity: .8; }
+  footer.page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 24px 40px;
+    font-size: 13px;
+    color: #555;
+  }
+  footer.page code { background: #fff; padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <header class="page">
+    <h1>Gift List — варианты палитры</h1>
+    <p>Свотчи + фрагмент UI. <strong>Выбрано: C — Forest Paper</strong> (зафиксировано в DESIGN.md). Остальные — для сравнения.</p>
+  </header>
+
+  <div class="grid">
+
+    <!-- A -->
+    <article class="theme">
+      <div class="theme-head">
+        <div class="tag">A · отклонено</div>
+        <h2>Calm Teal</h2>
+        <p class="reg">Спокойная координация, «мы видим одно и то же»</p>
+      </div>
+      <div class="swatches">
+        <div class="swatch"><div class="chip" style="background:#0E5C5C"></div><span class="role">primary</span><code>#0E5C5C</code></div>
+        <div class="swatch"><div class="chip" style="background:#B8860B"></div><span class="role">accent</span><code>#B8860B</code></div>
+        <div class="swatch"><div class="chip" style="background:#F5F7F6"></div><span class="role">bg</span><code>#F5F7F6</code></div>
+        <div class="swatch"><div class="chip" style="background:#1A1F1E"></div><span class="role">fg</span><code>#1A1F1E</code></div>
+        <div class="swatch"><div class="chip" style="background:#E6EBE9"></div><span class="role">muted</span><code>#E6EBE9</code></div>
+      </div>
+      <div class="preview" style="background:#F5F7F6;color:#1A1F1E;border-color:#D2DBD8">
+        <p class="brand">Gift List</p>
+        <p class="sub">Список Сергея · Только друзья</p>
+        <div class="card" style="border-color:#D2DBD8">
+          <div class="row">
+            <span class="title">Механическая клавиатура</span>
+            <span class="pill" style="background:#F5E8C7;color:#B8860B">Забронирован</span>
+          </div>
+          <div class="who">Берёт Марина · ориентир 12&nbsp;000&nbsp;₽</div>
+          <div class="actions">
+            <span class="btn" style="background:#0E5C5C;color:#F7FAF9">Скопировать ссылку</span>
+            <span class="btn" style="background:#B8860B;color:#1A1F1E">Куплю сам</span>
+          </div>
+        </div>
+        <div class="gate" style="border-color:#D2DBD8">
+          <h3>Список только для друзей</h3>
+          <p>Подарки видят только люди из списка друзей Сергея.</p>
+        </div>
+      </div>
+    </article>
+
+    <!-- B -->
+    <article class="theme">
+      <div class="theme-head">
+        <div class="tag" style="color:#1F2A44">B</div>
+        <h2>Ink &amp; Berry</h2>
+        <p class="reg">Личный, чуть теплее; бронь — ягодный акцент</p>
+      </div>
+      <div class="swatches">
+        <div class="swatch"><div class="chip" style="background:#1F2A44"></div><span class="role">primary</span><code>#1F2A44</code></div>
+        <div class="swatch"><div class="chip" style="background:#C45C7A"></div><span class="role">accent</span><code>#C45C7A</code></div>
+        <div class="swatch"><div class="chip" style="background:#F7F6F4"></div><span class="role">bg</span><code>#F7F6F4</code></div>
+        <div class="swatch"><div class="chip" style="background:#1C1B1A"></div><span class="role">fg</span><code>#1C1B1A</code></div>
+        <div class="swatch"><div class="chip" style="background:#EBE8E4"></div><span class="role">muted</span><code>#EBE8E4</code></div>
+      </div>
+      <div class="preview" style="background:#F7F6F4;color:#1C1B1A;border-color:#DDD8D2">
+        <p class="brand">Gift List</p>
+        <p class="sub">Список Сергея · Только друзья</p>
+        <div class="card" style="border-color:#DDD8D2">
+          <div class="row">
+            <span class="title">Механическая клавиатура</span>
+            <span class="pill" style="background:#F8DDE5;color:#C45C7A">Забронирован</span>
+          </div>
+          <div class="who">Берёт Марина · ориентир 12&nbsp;000&nbsp;₽</div>
+          <div class="actions">
+            <span class="btn" style="background:#1F2A44;color:#F7F6F4">Скопировать ссылку</span>
+            <span class="btn" style="background:#C45C7A;color:#fff">Куплю сам</span>
+          </div>
+        </div>
+        <div class="gate" style="border-color:#DDD8D2">
+          <h3>Список только для друзей</h3>
+          <p>Подарки видят только люди из списка друзей Сергея.</p>
+        </div>
+      </div>
+    </article>
+
+    <!-- C -->
+    <article class="theme current">
+      <div class="theme-head">
+        <div class="tag" style="color:#2F5D3A">C · выбрано · в DESIGN.md</div>
+        <h2>Forest Paper</h2>
+        <p class="reg">Бумажный фон, «домашний» вишлист — подтверждено Sergey</p>
+      </div>
+      <div class="swatches">
+        <div class="swatch"><div class="chip" style="background:#2F5D3A"></div><span class="role">primary</span><code>#2F5D3A</code></div>
+        <div class="swatch"><div class="chip" style="background:#D4A017"></div><span class="role">accent</span><code>#D4A017</code></div>
+        <div class="swatch"><div class="chip" style="background:#F4F1EA"></div><span class="role">bg</span><code>#F4F1EA</code></div>
+        <div class="swatch"><div class="chip" style="background:#1E241F"></div><span class="role">fg</span><code>#1E241F</code></div>
+        <div class="swatch"><div class="chip" style="background:#E8E4DA"></div><span class="role">muted</span><code>#E8E4DA</code></div>
+      </div>
+      <div class="preview" style="background:#F4F1EA;color:#1E241F;border-color:#D9D3C6">
+        <p class="brand">Gift List</p>
+        <p class="sub">Список Сергея · Только друзья</p>
+        <div class="card" style="border-color:#D9D3C6">
+          <div class="row">
+            <span class="title">Механическая клавиатура</span>
+            <span class="pill" style="background:#F5E6B8;color:#9A7609">Забронирован</span>
+          </div>
+          <div class="who">Берёт Марина · ориентир 12&nbsp;000&nbsp;₽</div>
+          <div class="actions">
+            <span class="btn" style="background:#2F5D3A;color:#F7FAF7">Скопировать ссылку</span>
+            <span class="btn" style="background:#D4A017;color:#1E241F">Куплю сам</span>
+          </div>
+        </div>
+        <div class="gate" style="border-color:#D9D3C6">
+          <h3>Список только для друзей</h3>
+          <p>Подарки видят только люди из списка друзей Сергея.</p>
+        </div>
+      </div>
+    </article>
+
+    <!-- D -->
+    <article class="theme">
+      <div class="theme-head">
+        <div class="tag" style="color:#334155">D</div>
+        <h2>Slate Coral</h2>
+        <p class="reg">Более «продуктовый» SaaS; акцент на действии брони</p>
+      </div>
+      <div class="swatches">
+        <div class="swatch"><div class="chip" style="background:#334155"></div><span class="role">primary</span><code>#334155</code></div>
+        <div class="swatch"><div class="chip" style="background:#E07A5F"></div><span class="role">accent</span><code>#E07A5F</code></div>
+        <div class="swatch"><div class="chip" style="background:#F8FAFC"></div><span class="role">bg</span><code>#F8FAFC</code></div>
+        <div class="swatch"><div class="chip" style="background:#0F172A"></div><span class="role">fg</span><code>#0F172A</code></div>
+        <div class="swatch"><div class="chip" style="background:#E2E8F0"></div><span class="role">muted</span><code>#E2E8F0</code></div>
+      </div>
+      <div class="preview" style="background:#F8FAFC;color:#0F172A;border-color:#E2E8F0">
+        <p class="brand">Gift List</p>
+        <p class="sub">Список Сергея · Только друзья</p>
+        <div class="card" style="border-color:#E2E8F0">
+          <div class="row">
+            <span class="title">Механическая клавиатура</span>
+            <span class="pill" style="background:#FDE8E1;color:#C45C3E">Забронирован</span>
+          </div>
+          <div class="who">Берёт Марина · ориентир 12&nbsp;000&nbsp;₽</div>
+          <div class="actions">
+            <span class="btn" style="background:#334155;color:#F8FAFC">Скопировать ссылку</span>
+            <span class="btn" style="background:#E07A5F;color:#fff">Куплю сам</span>
+          </div>
+        </div>
+        <div class="gate" style="border-color:#E2E8F0">
+          <h3>Список только для друзей</h3>
+          <p>Подарки видят только люди из списка друзей Сергея.</p>
+        </div>
+      </div>
+    </article>
+
+    <!-- E -->
+    <article class="theme">
+      <div class="theme-head">
+        <div class="tag" style="color:#3D4F3F">E</div>
+        <h2>Night Olive</h2>
+        <p class="reg">Сдержанный оливковый, почти без «праздника»</p>
+      </div>
+      <div class="swatches">
+        <div class="swatch"><div class="chip" style="background:#3D4F3F"></div><span class="role">primary</span><code>#3D4F3F</code></div>
+        <div class="swatch"><div class="chip" style="background:#C4A574"></div><span class="role">accent</span><code>#C4A574</code></div>
+        <div class="swatch"><div class="chip" style="background:#FAFAF8"></div><span class="role">bg</span><code>#FAFAF8</code></div>
+        <div class="swatch"><div class="chip" style="background:#222820"></div><span class="role">fg</span><code>#222820</code></div>
+        <div class="swatch"><div class="chip" style="background:#EEEEE8"></div><span class="role">muted</span><code>#EEEEE8</code></div>
+      </div>
+      <div class="preview" style="background:#FAFAF8;color:#222820;border-color:#E2E2DA">
+        <p class="brand">Gift List</p>
+        <p class="sub">Список Сергея · Только друзья</p>
+        <div class="card" style="border-color:#E2E2DA">
+          <div class="row">
+            <span class="title">Механическая клавиатура</span>
+            <span class="pill" style="background:#F0E6D4;color:#8A7349">Забронирован</span>
+          </div>
+          <div class="who">Берёт Марина · ориентир 12&nbsp;000&nbsp;₽</div>
+          <div class="actions">
+            <span class="btn" style="background:#3D4F3F;color:#FAFAF8">Скопировать ссылку</span>
+            <span class="btn" style="background:#C4A574;color:#222820">Куплю сам</span>
+          </div>
+        </div>
+        <div class="gate" style="border-color:#E2E2DA">
+          <h3>Список только для друзей</h3>
+          <p>Подарки видят только люди из списка друзей Сергея.</p>
+        </div>
+      </div>
+    </article>
+
+  </div>
+
+  <footer class="page">
+    <p>Как подтвердить: напишите букву (<code>A</code>–<code>E</code>), «A с другим accent», или «ни один — хочу …». После выбора обновлю <code>DESIGN.md</code> / store <code>docs/design.md</code>.</p>
+  </footer>
+</body>
+</html>

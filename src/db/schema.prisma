@@ -1,0 +1,93 @@
+// Gift List — Prisma schema (AD-4).
+// Models (User, List, Gift, …) arrive in stories 1.2+. R1 forbids payment tables (AD-11).
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ListType {
+  DISCOVERABLE
+  FRIENDS_ONLY
+}
+
+// Better Auth core tables (AD-3). Field names follow Better Auth defaults.
+model User {
+  id             String   @id @default(cuid(2))
+  name           String // displayName
+  email          String   @unique
+  emailVerified  Boolean  @default(false)
+  image          String?
+  nick           String
+  nickNormalized String   @unique
+  hideFromSearch Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  sessions Session[]
+  accounts Account[]
+  lists    List[]
+}
+
+model Session {
+  id        String   @id @default(cuid(2))
+  expiresAt DateTime @db.Timestamptz(3)
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id @default(cuid(2))
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid(2))
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+}
+
+// Exactly two lists per user (AD-6). `publicToken` is immutable after insert.
+model List {
+  id          String   @id @default(cuid(2))
+  ownerId     String
+  type        ListType
+  publicToken String   @unique
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, type])
+}

@@ -1,0 +1,82 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 09-30-2026 20:37
+last_updated: 10-01-2026 19:46
+project: Gift List
+project_key: NOKEY
+tracking_system: file-system
+story_location: /workspace/_bmad-output/implementation-artifacts
+development_status:
+  epic-1: in-progress
+  1-1-scaffold-проекта-из-starter-next-js-shadcn-forest-paper: done
+  1-2-регистрация-и-создание-двух-списков: review
+  1-3-вход-и-выход: backlog
+  1-4-сброс-пароля-по-email: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-экран-мои-списки-с-gift-card-и-status-pill: backlog
+  2-2-создание-и-редактирование-подарка: backlog
+  2-3-перенос-и-удаление-подарка-open: backlog
+  2-4-копирование-ссылки-на-список: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-смена-ника-в-настройках: backlog
+  3-2-visibilitypolicy-и-wire-dto-доступа: backlog
+  3-3-маршрут-l-publictoken-d-11: backlog
+  3-4-профиль-u-nick: backlog
+  3-5-поиск-пользователей-и-скрыть-из-поиска: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-отправка-приглашения: backlog
+  4-2-принятие-и-отклонение-приглашения: backlog
+  4-3-списки-друзей-и-заявок: backlog
+  4-4-удаление-из-друзей: backlog
+  4-5-блокировка-и-разблокировка: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-giftstatusservice-бронь-cas: backlog
+  5-2-снятие-брони-держателем-и-владельцем: backlog
+  5-3-закрытие-подарка-владельцем-и-удаление-reserved: backlog
+  5-4-мои-брони-и-reservation-card-после-unfriend: backlog
+  5-5-cron-ttl-снятия-брони-14-суток: backlog
+  5-6-обязательные-автотесты-гонки-и-privacy-ad-15: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-in-app-уведомления-r1: backlog
+  6-2-app-chrome-и-мобильная-навигация: backlog
+  6-3-настройки-контакт-и-удаление-аккаунта-копирайт: backlog
+  6-4-a11y-ключевых-потоков: backlog
+  epic-6-retrospective: optional

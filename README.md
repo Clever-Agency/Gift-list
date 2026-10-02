@@ -26,6 +26,14 @@ npm run dev
 
 Откройте [http://localhost:3000](http://localhost:3000) — должна открыться страница **Gift List** с темой Forest Paper.
 
+### Проверки
+
+```bash
+npm run typecheck   # next typegen + tsc
+npm run lint
+npm test            # Vitest (src/**/*.test.ts)
+```
+
 ### Миграции БД
 
 Модели User, Session, Account, Verification и List уже в схеме (story 1.2), стартовая миграция — `src/db/migrations/20261002000000_init_auth_lists`. При изменении `src/db/schema.prisma`:
@@ -47,7 +55,7 @@ PIN: `prisma` и `@prisma/client` — **7.10.0** (не ставьте bare `pris
 
 ## BMAD в репозитории
 
-- Установка: BMAD Core + модуль **BMM** (v6.12.0), инструмент **Cursor** — каталог `_bmad/`, навыки в `.agents/skills/`.
+- Установка: BMAD Core + модуль **BMM** (v6.12.0), инструменты **Claude Code**, **Cursor**, **Codex** — каталог `_bmad/`, навыки в `.claude/skills/` (Claude Code) и `.agents/skills/` (Cursor, Codex).
 - Артефакты планирования: `_bmad-output/planning-artifacts/`.
 - Первый артефакт: [продуктовый бриф (RU)](_bmad-output/planning-artifacts/briefs/brief-gift-list-2026-09-29/brief.md).
 - PRD: [Gift List PRD (RU)](_bmad-output/planning-artifacts/prds/prd-gift-list-2026-09-30/prd.md) · [addendum](_bmad-output/planning-artifacts/prds/prd-gift-list-2026-09-30/addendum.md) — Раунд 1 без оплаты; платежи в Раунде 2.
@@ -60,7 +68,7 @@ PIN: `prisma` и `@prisma/client` — **7.10.0** (не ставьте bare `pris
 npx bmad-method@latest install \
   --directory . \
   --modules bmm \
-  --tools cursor \
+  --tools claude-code,cursor,codex \
   --user-name "Sergey" \
   --communication-language Russian \
   --document-output-language Russian \

@@ -10,6 +10,7 @@ import { Prisma } from "@/db/generated/client";
 import { LIST_TYPES, NICK_RULES_TEXT, isValidNick, normalizeNick } from "@/domain";
 import type { ActionResult } from "@/lib/contracts";
 import { auth } from "@/lib/auth";
+import { REGISTER_LIMIT, consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export type RegisterState = Extract<ActionResult<never>, { ok: false }> | null;
 
@@ -65,6 +66,19 @@ export async function register(
     return validation(fieldErrors);
   }
   const { email, password, displayName, nick } = parsed.data;
+
+  // Counted after validation so typos don't burn attempts; duplicate probing does.
+  const allowed = await consumeRateLimit(
+    `register:${await getClientIp()}`,
+    REGISTER_LIMIT,
+  );
+  if (!allowed) {
+    return {
+      ok: false,
+      code: "RATE_LIMITED",
+      message: "Слишком много попыток регистрации. Попробуйте позже.",
+    };
+  }
 
   const existing = await prisma.user.findFirst({
     where: { OR: [{ email }, { nickNormalized: nick }] },

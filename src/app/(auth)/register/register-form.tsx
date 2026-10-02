@@ -27,6 +27,11 @@ export function RegisterForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-5" noValidate>
+      {state?.code === "RATE_LIMITED" ? (
+        <p role="alert" className="text-sm text-destructive">
+          {state.message}
+        </p>
+      ) : null}
       <div className="flex flex-col gap-2">
         <Label htmlFor="displayName">Имя</Label>
         <Input

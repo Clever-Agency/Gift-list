@@ -91,3 +91,10 @@ model List {
 
   @@unique([ownerId, type])
 }
+
+// Fixed-window request counters (soft rate limit, R1). One row per `key`.
+model RateLimit {
+  key         String   @id
+  count       Int
+  windowStart DateTime @db.Timestamptz(3)
+}

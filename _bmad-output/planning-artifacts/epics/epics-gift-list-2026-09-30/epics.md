@@ -102,7 +102,7 @@ decisions_locked:
 - UX-DR1: Theme Forest Paper — CSS variables primary `#2F5D3A`, accent `#D4A017`, background `#F4F1EA` и связанные токены из DESIGN.md; light only (UX-A8)
 - UX-DR2: Typography — Fraunces (display) + DM Sans (body/label/caption); один display на экран
 - UX-DR3: Brand components — Gift card, Status pill (open/reserved/closed), Friends-only gate panel, List type chip, button-reserve «Куплю сам»
-- UX-DR4: App chrome — desktop top nav; mobile bottom tab-bar (Списки · Поиск · Друзья · Брони · Ещё)
+- UX-DR4: App chrome — левый sidebar (Мои списки · Поиск · Друзья · Мои брони · Уведомления, «Недавние списки», карточка пользователя с меню); `< 900px` — drawer по ☰; верхней полосы и нижней tab-bar нет
 - UX-DR5: Copy/voice — канон Friends-only gate и Anon gate из EXPERIENCE.md; без CTA оплаты в R1
 - UX-DR6: Empty/loading/error — skeleton; empty gifts/friends; сеть → toast; гонка брони → toast «Кто-то только что забрал…»
 - UX-DR7: Forms — nick rules UX-A6; price optional UX-A5; focus rings primary
@@ -467,7 +467,10 @@ So that управляю кругом доступа к Friends-only (FR-15).
 **When** открывает раздел
 **Then** видит друзей, входящие, исходящие pending (FR-15)
 **And** empty states «Пока нет друзей…» / нет заявок (UX-DR6, FR-15)
-**And** входящая строка: Принять (primary) / Отклонить (ghost) (EXPERIENCE)
+**And** вкладки «Друзья» и «Запросы» (badge входящих); в «Запросах» входящие выше исходящих; исходящая строка — «Ожидает ответа» + «Отменить» (EXPERIENCE)
+**And** вкладка «Друзья»: закреплённая строка поиска по имени и @нику (без учёта регистра, `@` необязателен), счётчик «N из M», empty-результат «Никого не нашли по «…»» (EXPERIENCE)
+**And** список друзей открыт сразу; серверная пагинация по курсору порциями по 15, подгрузка при прокрутке; поиск работает по всему списку, а не по загруженной части (EXPERIENCE, AD-13)
+**And** статус загрузки объявляется через `aria-live="polite"` («Загружаем…», «Показаны все (N)»)
 
 ### Story 4.4: Удаление из друзей
 
@@ -624,7 +627,7 @@ So that не пропускаю приглашения и статусы (FR-26,
 **And** нет push/SMS (A-22)
 **And** UI `/notifications` или sheet по EXPERIENCE IA
 
-### Story 6.2: App chrome и мобильная навигация
+### Story 6.2: App chrome (sidebar) и мобильная навигация
 
 As a пользователь на вебе (в т.ч. mobile),
 I want устойчивую навигацию по ключевым разделам,
@@ -634,8 +637,10 @@ So that UJ-1…UJ-5 достижимы без тупиков (UX-DR4).
 
 **Given** auth сессия
 **When** пользуется приложением
-**Then** desktop: top nav — логотип Gift List, Поиск, Друзья (badge), Уведомления (badge), Мои брони, Avatar→settings (UX-DR4)
-**And** `< md`: bottom tab-bar Списки · Поиск · Друзья · Брони · Ещё (UX-DR4)
+**Then** `≥ 900px`: постоянный левый sidebar 264 px — логотип → Мои списки; пункты Мои списки, Поиск, Друзья (badge входящих), Мои брони, Уведомления (badge); блок «Недавние списки» (2–5 друзей, без ссылки «Все друзья»); активный пункт `aria-current="page"` (UX-DR4)
+**And** внизу sidebar карточка пользователя (Avatar, имя, @ник) → меню: Настройки, Мой профиль, Связаться с нами, Выйти; закрывается кликом вне и `Esc` (UX-DR4)
+**And** `< 900px`: верхняя sticky-полоса (☰, логотип, Avatar); ☰ открывает sidebar как drawer со scrim, закрытие — scrim / `Esc` / переход по пункту, фокус возвращается на ☰ (UX-DR4)
+**And** нижней tab-bar и верхней навигации нет; anon-экраны без sidebar (логотип, Войти, Создать аккаунт)
 **And** нет пунктов оплаты / «Мои взносы» / dark toggle (A-24, UX-A8)
 
 ### Story 6.3: Настройки — контакт и удаление аккаунта (копирайт)

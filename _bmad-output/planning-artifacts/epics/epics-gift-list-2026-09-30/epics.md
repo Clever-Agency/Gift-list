@@ -627,7 +627,7 @@ So that не пропускаю приглашения и статусы (FR-26,
 **And** нет push/SMS (A-22)
 **And** UI `/notifications` или sheet по EXPERIENCE IA
 
-### Story 6.2: App chrome (sidebar) и мобильная навигация
+### Story 6.2: App chrome и мобильная навигация
 
 As a пользователь на вебе (в т.ч. mobile),
 I want устойчивую навигацию по ключевым разделам,

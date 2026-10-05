@@ -3,7 +3,7 @@ name: Gift List
 description: "Веб-вишлист с двумя списками видимости и бронью «куплю сам». shadcn/ui + Next.js + Tailwind; этот DESIGN.md — brand-layer delta для Раунда 1."
 status: final
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-05
 language: ru
 workflow: bmad-ux
 round: 1
@@ -70,7 +70,23 @@ spacing:
   section-gap: 32px
   card-padding: 16px
   max-content: 720px
+  sidebar: 264px
 components:
+  sidebar:
+    background: '#FFFFFF'
+    border-right: '1px solid {colors.border}'
+    width: '{spacing.sidebar}'
+    padding: '16px 12px'
+  nav-item:
+    foreground: '{colors.foreground}'
+    radius: '{rounded.md}'
+    padding: '9px 10px'
+    active-background: '{colors.muted}'
+    active-foreground: '{colors.primary}'
+  user-menu:
+    background: '#FFFFFF'
+    border: '1px solid {colors.border}'
+    radius: '{rounded.lg}'
   button-primary:
     background: '{colors.primary}'
     foreground: '{colors.primary-foreground}'
@@ -137,11 +153,12 @@ Gift List — тихий координатор подарков для узко
 
 ## Layout & Spacing
 
+- **App shell:** от 900px — постоянный левый sidebar шириной `{spacing.sidebar}` (264px), контент сдвинут вправо; ниже 900px sidebar — drawer (см. Components → Sidebar).
 - Максимальная ширина контента: `{spacing.max-content}` (720px). Gift List — не wide dashboard.
 - Gutter: `{spacing.page-gutter}` на mobile, `{spacing.page-gutter-lg}` от `md`.
 - Вертикальный ритм секций: `{spacing.section-gap}`.
 - Список подарков — одна колонка карточек; на `lg` допускаются две колонки **только** на экране владельца «Мои списки» (две панели Discoverable / Friends-only рядом). На mobile — Tabs или stacked секции.
-- Нижний sticky bar на mobile для primary CTA карточки подарка («Куплю сам»), если экран — деталь подарка.
+- Нижний sticky bar на mobile для primary CTA карточки подарка («Куплю сам»), если экран — деталь подарка; прижат к низу экрана (нижней tab-bar нет).
 
 ## Elevation & Depth
 
@@ -163,6 +180,9 @@ Brand-layer:
 | **Button reserve** | `{colors.accent}` / `{colors.accent-foreground}` | Единственный CTA «Куплю сам» |
 | **Gift card** | Белый fill, border, `{rounded.lg}`, padding `{spacing.card-padding}` | Строка/карточка подарка: название, опц. цена, status pill, имя бронировавшего если `забронирован` |
 | **Status pill** | `open` / `reserved` / `closed` токены выше | Всегда рядом с названием подарка; одинаков для владельца и дарителя |
+| **Sidebar** | Белый fill, `border-right`, 264px; логотип (Fraunces 22px), основные пункты `nav-item` (иконка 22px + label 15px, badge справа), секция «Недавние списки» (заголовок caption uppercase, строки с Avatar 28px + имя + @ник), низ — карточка пользователя | App shell для auth-экранов ≥900px; на меньших — drawer с scrim; активный пункт — фон `muted`, текст/иконка `primary`, без accent |
+| **User menu** | Popover вверх от карточки пользователя, `{components.user-menu}`; email (caption), Настройки, Мой профиль, Связаться с нами, разделитель, Выйти (`destructive`) | Клик по карточке пользователя в sidebar |
+| **Tabs (Друзья)** | shadcn Tabs, подчёркивание `primary` у активной, счётчик (`caption`) или badge у «Запросы» | Страница Друзья: «Друзья» / «Запросы» |
 | **Friends-only gate** | Центрированная панель `{components.friends-only-gate}` | Валидная Friends-only-ссылка для не-друга / после входа не-друга — **не** blank, **не** «не найдено» |
 | **List type chip** | Outline muted: «Открытый» / «Только друзья» | Метка типа списка на владельческом экране и на Ссылке на список |
 
@@ -171,7 +191,7 @@ Brand-layer:
 | Do | Don't |
 |----|-------|
 | Один primary action на экран | Стек CTA «оплатить / скинуться / куплю» в R1 |
-| Accent только для брони | Accent на навбаре, логотипе, пустых состояниях |
+| Accent только для брони | Accent на sidebar, логотипе, пустых состояниях |
 | Fraunces — точечно | Body в serif «для уюта» |
 | Объяснение Friends-only на gate-панели | Маскировать отказ под 404 / пустой список |
 | Копирование ссылки + toast «Ссылка скопирована» | Share-sheet, QR, per-gift links |

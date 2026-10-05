@@ -29,6 +29,14 @@ h1,h2,h3,p{margin:0}
 .demo-bar button[aria-pressed=true]{background:var(--primary);color:var(--primary-fg);border-color:var(--primary)}
 @media(max-width:899px){.demo-bar{z-index:50;right:8px;bottom:8px;width:190px;max-height:35vh}}
 
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:-8px}
+.tabs button{font:inherit;font-size:15px;font-weight:500;background:none;border:0;border-bottom:2px solid transparent;padding:10px 14px;margin-bottom:-1px;cursor:pointer;color:var(--muted-fg);display:inline-flex;align-items:center}
+.tabs button[aria-selected=true]{color:var(--primary);border-bottom-color:var(--primary)}
+.tabs .cnt{font-size:12px;color:var(--muted-fg);margin-left:6px}
+.searchbar{position:sticky;top:0;z-index:20;background:var(--bg);padding:8px 0;display:flex;align-items:center;gap:8px}
+.searchbar span{position:absolute;left:12px;color:var(--muted-fg);pointer-events:none}
+.searchbar input{padding-left:34px}
+@media(max-width:899px){.searchbar{top:49px}}
 /* app chrome: left sidebar (desktop) / drawer (mobile) */
 .topbar{background:#fff;border-bottom:1px solid var(--border)}
 .topbar-in{max-width:960px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px}
@@ -268,17 +276,27 @@ input[aria-invalid=true]{border-color:var(--destructive)}
   <div data-chrome="friends-tab"></div>
   <main>
     <h1 class="display">Друзья</h1>
-    <section class="stack"><h2 class="label muted">Входящие <span class="badge">2</span></h2>
-      <div class="card row sb"><div class="row"><span class="avatar">ИП</span><div><div class="t" style="font-weight:500">Игорь Петров</div><div class="caption">@igor_p</div></div></div><div class="row"><button class="btn btn-primary" onclick="toast('Игорь теперь в друзьях')">Принять</button><button class="btn btn-ghost">Отклонить</button></div></div>
-      <div class="card row sb"><div class="row"><span class="avatar" style="background:var(--reserved)">ОК</span><div><div style="font-weight:500">Ольга Кузнецова</div><div class="caption">@olga_k</div></div></div><div class="row"><button class="btn btn-primary">Принять</button><button class="btn btn-ghost">Отклонить</button></div></div>
-    </section>
-    <section class="stack"><h2 class="label muted">Друзья · 2</h2>
-      <div class="card row sb"><div class="row"><span class="avatar">АБ</span><div><div style="font-weight:500">Анна Белова</div><div class="caption">@anna_b</div></div></div><button class="btn btn-outline" onclick="go('public')">Списки</button></div>
-      <div class="card row sb"><div class="row"><span class="avatar">СМ</span><div><div style="font-weight:500">Сергей Морозов</div><div class="caption">@sergey_m</div></div></div><button class="btn btn-outline">Списки</button></div>
-    </section>
-    <section class="stack"><h2 class="label muted">Исходящие</h2>
-      <div class="card row sb"><div class="row"><span class="avatar" style="background:var(--muted-fg)">ТЛ</span><div><div style="font-weight:500">Татьяна Лебедева</div><div class="caption">@tanya_l</div></div></div><span class="chip">Ожидает ответа</span></div>
-    </section>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-f" aria-selected="true" onclick="friendsTab('f')">Друзья <span class="cnt" id="fcount">120</span></button>
+      <button role="tab" id="tab-r" aria-selected="false" onclick="friendsTab('r')">Запросы <span class="badge" style="margin-left:6px">2</span></button>
+    </div>
+
+    <div id="panel-f" class="stack" style="gap:16px">
+      <div class="searchbar"><span aria-hidden="true">⌕</span><input id="fsearch" type="search" placeholder="Найти друга по имени или нику" aria-label="Поиск среди друзей" oninput="friendsFilter(this.value)"></div>
+      <div id="flist" class="stack" style="gap:8px"></div>
+      <p class="caption" id="fstatus" style="text-align:center" aria-live="polite"></p>
+      <div id="fsentinel" style="height:1px"></div>
+    </div>
+
+    <div id="panel-r" class="stack" style="gap:32px;display:none">
+      <section class="stack"><h2 class="label muted">Входящие · 2</h2>
+        <div class="card row sb"><div class="row"><span class="avatar">ИП</span><div><div style="font-weight:500">Игорь Петров</div><div class="caption">@igor_p</div></div></div><div class="row"><button class="btn btn-primary" onclick="toast('Игорь теперь в друзьях')">Принять</button><button class="btn btn-ghost">Отклонить</button></div></div>
+        <div class="card row sb"><div class="row"><span class="avatar" style="background:var(--reserved)">ОК</span><div><div style="font-weight:500">Ольга Кузнецова</div><div class="caption">@olga_k</div></div></div><div class="row"><button class="btn btn-primary">Принять</button><button class="btn btn-ghost">Отклонить</button></div></div>
+      </section>
+      <section class="stack"><h2 class="label muted">Исходящие · 1</h2>
+        <div class="card row sb"><div class="row"><span class="avatar" style="background:var(--muted-fg)">ТЛ</span><div><div style="font-weight:500">Татьяна Лебедева</div><div class="caption">@tanya_l</div></div></div><div class="row"><span class="chip">Ожидает ответа</span><button class="btn btn-ghost" onclick="toast('Приглашение отменено')">Отменить</button></div></div>
+      </section>
+    </div>
   </main>
 </section>
 
@@ -321,9 +339,10 @@ function chrome(kind){
     ${item('friends','Друзья','☺',2)}
     ${item('res','Мои брони','✓')}
     ${item('notif','Уведомления','◔',1)}
-    <h4>Списки друзей</h4>
+    <h4>Недавние списки</h4>
     ${friend('friend-anna','Анна Белова','@anna_b','АБ')}
     ${friend('friend-sergey','Сергей Морозов','@sergey_m','СМ')}
+    <a class="nav-i friend" style="color:var(--primary)" onclick="go('friends')"><span class="ic" style="font-size:14px">→</span>Все друзья</a>
     <div class="grow"></div>
     <div class="usermenu">
       <div class="pop" role="menu">
@@ -351,6 +370,46 @@ function toast(t){const e=document.getElementById('toast');e.textContent=t;e.cla
 function openDlg(){document.getElementById('dlg').classList.add('show')}
 function closeDlg(){document.getElementById('dlg').classList.remove('show')}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDlg()});
+
+/* ---------- friends: search + infinite scroll (mock data) ---------- */
+const FN=['Анна','Игорь','Ольга','Сергей','Татьяна','Дмитрий','Мария','Алексей','Елена','Павел','Наталья','Андрей','Юлия','Максим','Ксения'];
+const LN=['Белова','Петров','Кузнецова','Морозов','Лебедева','Смирнов','Волкова','Попов','Соколова','Орлов','Фёдорова','Ильин'];
+const tr={А:'a',Б:'b',В:'v',Г:'g',Д:'d',Е:'e',Ж:'zh',З:'z',И:'i',К:'k',Л:'l',М:'m',Н:'n',О:'o',П:'p',Р:'r',С:'s',Т:'t',У:'u',Ф:'f',Х:'h',Ц:'c',Ч:'ch',Ш:'sh',Ю:'yu',Я:'ya',Ё:'e'};
+const slug=w=>[...w].map((c,i)=>{const u=c.toUpperCase();return tr[u]!==undefined?(i?tr[u]:tr[u]).toLowerCase():c}).join('').replace(/[ьъйы]/g,'');
+const FRIENDS=Array.from({length:120},(_,i)=>{const f=FN[i%FN.length],l=LN[(i*7+Math.floor(i/15))%LN.length];return{name:f+' '+l,nick:slug(f)+'_'+slug(l).slice(0,1)+(i>14?i:''),ini:f[0]+l[0]}}).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+const PAGE=15;let fFiltered=FRIENDS,fShown=0,fLoading=false;
+function friendRow(f){return `<div class="card row sb"><div class="row"><span class="avatar" style="background:var(--muted-fg)">${f.ini}</span><div><div style="font-weight:500">${f.name}</div><div class="caption">@${f.nick}</div></div></div><button class="btn btn-outline" onclick="go('public')">Списки</button></div>`}
+function friendsMore(){
+  if(fLoading||fShown>=fFiltered.length)return;
+  fLoading=true;document.getElementById('fstatus').textContent='Загружаем…';
+  setTimeout(()=>{ // simulated network latency
+    const chunk=fFiltered.slice(fShown,fShown+PAGE);fShown+=chunk.length;
+    document.getElementById('flist').insertAdjacentHTML('beforeend',chunk.map(friendRow).join(''));
+    fLoading=false;friendsStatus();
+    io.unobserve(sent);io.observe(sent); // re-check if sentinel still visible
+  },250);
+}
+function friendsStatus(){
+  const st=document.getElementById('fstatus');
+  if(!fFiltered.length){const q=document.getElementById('fsearch').value;st.innerHTML='Никого не нашли по «'+q.replace(/</g,'&lt;')+'». Проверьте имя или ник.';}
+  else st.textContent=fShown>=fFiltered.length?`Показаны все (${fFiltered.length})`:'';
+}
+function friendsFilter(q){
+  q=q.trim().toLowerCase().replace(/^@/,'');
+  fFiltered=q?FRIENDS.filter(f=>f.name.toLowerCase().includes(q)||f.nick.includes(q)):FRIENDS;
+  fShown=0;document.getElementById('flist').innerHTML='';
+  document.getElementById('fcount').textContent=q?fFiltered.length+' из '+FRIENDS.length:FRIENDS.length;
+  fLoading=false;friendsStatus();friendsMore();
+}
+function friendsTab(t){
+  document.getElementById('panel-f').style.display=t==='f'?'':'none';
+  document.getElementById('panel-r').style.display=t==='r'?'':'none';
+  document.getElementById('tab-f').setAttribute('aria-selected',t==='f');
+  document.getElementById('tab-r').setAttribute('aria-selected',t==='r');
+}
+const sent=document.getElementById('fsentinel');
+const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting))friendsMore()},{rootMargin:'200px'});
+io.observe(sent);friendsMore();
 </script>
 </body>
 </html>

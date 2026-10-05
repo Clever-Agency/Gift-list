@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
-const databaseUrl = process.env.DATABASE_URL?.trim();
+const databaseUrl = (process.env.DIRECT_URL ?? process.env.DATABASE_URL)?.trim();
 const offlineCommands = new Set(["format", "generate", "validate"]);
 const prismaCommand = process.argv[2] ?? "";
 

@@ -18,7 +18,7 @@ workflow: bmad-create-epics-and-stories
 working_mode: coordinator-autonomous
 status: final
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-10
 decisions_locked:
   - mutual-friendship-D-10
   - list-share-links-D-11
@@ -48,19 +48,23 @@ decisions_locked:
 - FR-7: Профиль `/u/{ник}` — Discoverable виден auth; Friends-only только Другу; несуществующий ник → не найден
 - FR-8: Опция «не показывать в поиске»; прямые `/u/` и `/l/` работают по правилам
 - FR-9: Ровно два Списка (Discoverable + Friends-only) при регистрации; у каждого Ссылка на список; нельзя создать третий
-- FR-10: CRUD Подарка (название, описание, опц. цена ≥ 0, опц. URL); перенос между списками только при `открыт`; удаление `забронирован` с confirm + снятие брони + notify
+- FR-10: CRUD Подарка (название, описание, опц. цена ≥ 0, опц. URL); перенос между списками только при `открыт`; удаление `забронирован` с confirm (+ предупреждения «Купил» / «Подарил») + снятие брони + notify ✉︎; правка забронированного → notify держателя ✉︎
 - FR-11: Просмотр по VisibilityPolicy (Профиль / дружба / Ссылка); не-друг не видит FO-подарки; FO-ссылка → объяснение (не 404)
-- FR-12: Статусы `открыт` / `забронирован` / `закрыт` одинаковы для всех зрителей Подарка; прогресса сбора нет
+- FR-12: Статусы `открыт` / `забронирован` / `закрыт` одинаковы для всех зрителей Подарка; прогресса сбора нет; имя держателя и подписи — по D-13 (FR-31)
 - FR-13: Отправка Приглашения; до accept FO скрыт; no duplicate pending; при дружбе — no-op
 - FR-14: Принятие/отклонение; после accept оба видят FO; повтор после reject ≥ 24ч (A-16)
 - FR-15: Список друзей, исходящие pending, входящие; empty states
-- FR-17: Бронь «куплю сам» OPEN→RESERVED; снятие держателем; владелец снимает; TTL 14 суток (A-9); закрытие владельцем; имя держателя видно (A-23); гонка — один успех
+- FR-17: Бронь «куплю сам» OPEN→RESERVED со Сроком (по умолчанию +7, ≤ +30) и переключателями видимости; снятие держателем и владельцем (с предупреждениями); гонка — один успех (D-12)
 - FR-23: Unfriend → FO сразу недоступен; FO-ссылка → объяснение FR-27; активные брони по A-14
 - FR-24: Block/unblock → взаимная невидимость профилей; дружба рвётся; pending отменяются; инвайты через блок запрещены
-- FR-25: «Мои брони» — активные брони и снятие после потери видимости списка
-- FR-26: In-app: входящий инвайт; accept/reject; новая бронь владельцу; снятие/TTL; запрос закрыть; badge; без утечки FO titles
+- FR-25: «Мои брони» — активные брони, Срок, фаза, «Купил», переключатели; продлить / Купил / Подарил / снять; reservation card после потери видимости
+- FR-26: In-app: инвайты, accept/reject, новая бронь, снятие; in-app + email: события брони (перечень FR-26 PRD); badge; без утечки FO titles и идентичности держателя
 - FR-27: Открытие `/l/{token}` — только этот Список; Discoverable/FO/anon/не-друг/invalid по D-11
 - FR-28: Владелец копирует разные URL для двух Списков; без share-sheet
+- FR-29: Срок брони и цикл истечения: уведомление держателю ✉︎ → 72 ч → запрос владельцу ✉︎ → 168 ч → авто-снятие только без «Купил»; продления без лимита; пояс дарителя (A-27)
+- FR-30: Отметки «Купил» / «Подарил»; подтверждение владельцем «Получил» / «Не получал»; без автозакрытия
+- FR-31: Видимость держателя: «видим владельцу» (выкл.) / «видим другим» (вкл.); скрытие на уровне API/уведомлений/email; «Купил» скрыт от владельца
+- FR-32: Закрытие владельцем из открыт/забронирован; отмена 10 с; секция «Получено»; «Хочу ещё такой» с выбором Списка
 
 **Вне Раунда 1 (не покрывать stories R1; зафиксировано для трассировки):**
 
@@ -70,9 +74,9 @@ decisions_locked:
 
 ### NonFunctional Requirements
 
-- NFR-1 (Корректность состояний): ≤ 1 активная бронь на Подарок при конкуренции; цель пилота — 0 двойных «куплю сам» (SM-2)
+- NFR-1 (Корректность состояний): ≤ 1 активная бронь на Подарок при конкуренции; цель пилота — 0 двойных «куплю сам» (SM-2); брони с «Купил» / «Подарил» не снимаются автоматически
 - NFR-2 (Безопасность): защищённые сессии; авторизация на уровне объекта Список/Подарок
-- NFR-3 (Приватность): Friends-only не утекает через API, поиск, уведомления; FO-ссылка для не-друга — объяснение без gift fields (не маскировка под 404)
+- NFR-3 (Приватность): Friends-only не утекает через API, поиск, уведомления; FO-ссылка для не-друга — объяснение без gift fields (не маскировка под 404); идентичность держателя не уходит владельцу без согласия (FR-31)
 - NFR-4 (Производительность): открытие Профиля/Списка < 2 с на 4G при ≤ 100 Подарках (ориентир)
 - NFR-5 (Доступность): клавиатура на ключевых потоках; контраст; labels; WCAG 2.2 AA (UX-A10)
 - NFR-6 (Наблюдаемость): аудит смены Gift.status (actor, from→to, at)
@@ -84,27 +88,27 @@ decisions_locked:
 - ARCH-R1: Starter AD-2 — `create-next-app@latest` (Next.js 16 App Router + TS + Tailwind + ESLint) → `shadcn init`; pin next ^16.3.8; Prisma 7.10.0; Better Auth 1.7.6; PostgreSQL; Zod 4; cuid2; Resend
 - ARCH-R2: Слои AD-1 — `app` → `actions` → `domain` → `db`; клиент без Prisma
 - ARCH-R3: Auth AD-3 — Better Auth email+password, database sessions; OAuth вне R1
-- ARCH-R4: Hosting AD-5 — Vercel + managed Postgres (Neon preferred) + Resend; cron TTL → Route Handler → GiftStatusService
+- ARCH-R4: Hosting AD-5 — Vercel + managed Postgres (Neon preferred) + Resend; таймеры брони — Route Handler, вызываемый внешним планировщиком, не Vercel Cron (AD-5) → GiftStatusService
 - ARCH-R5: AD-6 — path `/l/:publicToken`; token CUID2 immutable UNIQUE; ровно два списка UNIQUE(ownerId, type); профиль `/u/:nick`
 - ARCH-R6: AD-7 — VisibilityPolicy.resolve → `gifts | friends_only_gate | anon_gate | not_found`; Block→not_found; FO gate DTO без gift fields; reservation-card матрица после unfriend
-- ARCH-R7: AD-8 — GiftStatusService sole writer; enum OPEN|RESERVED|CLOSED; нет self-reserve; нет CLOSED→OPEN в R1 [ASSUMPTION ARCH-A5]
-- ARCH-R8: AD-9 — CAS на все переходы статуса; бронь на колонках Gift; CONFLICT при rowCount≠1
+- ARCH-R7: AD-8 — GiftStatusService sole writer; enum OPEN|RESERVED|CLOSED; нет self-reserve; нет reopen CLOSED в R1, кроме отмены владельцем 10 с [ASSUMPTION ARCH-A5]
+- ARCH-R8: AD-9 — CAS на все переходы статуса; бронь на колонках Gift (dueAt, timeZone, phase, bought, toggles, closedAt/closedFromStatus); CONFLICT при rowCount≠1
 - ARCH-R9: AD-10 — Friendship undirected после accept; auto-accept встречного pending [ASSUMPTION ARCH-A12]; Block protocol
 - ARCH-R10: AD-11 — запрет платёжных таблиц/UI-заглушек оплаты в R1; `priceCents` nullable
-- ARCH-R11: AD-12 — wire `{ok,data}|{ok:false,code,message}`; gift card с `reservedBy` non-null при RESERVED
+- ARCH-R11: AD-12 — wire `{ok,data}|{ok:false,code,message}`; gift card с `reservedBy` по матрице AD-7 / D-13 (может быть null при RESERVED)
 - ARCH-R12: AD-13 — nick 3–24 `[a-z0-9_]`; hideFromSearch; PK cuid2
-- ARCH-R13: AD-14 — in-app Notification; payload без FO titles без доступа
-- ARCH-R14: AD-15 — обязательные тесты: (1) parallel reserve → 1 success; (2) FO+non-friend → gate без gifts; (3) Block+valid discoverable token → not_found; (4) unfriend+бронь → reservation card без siblings
-- ARCH-A1..A5, A12: [ASSUMPTION] нет self-serve репорта; имя Gift List; ручное удаление аккаунта; цена опциональна; нет reopen CLOSED; auto-accept
+- ARCH-R13: AD-14 — in-app Notification + email по событиям брони; `deliverAfter`; payload без FO titles без доступа и без идентичности держателя для владельца
+- ARCH-R14: AD-15 — обязательные тесты: (1) parallel reserve → 1 success; (2) FO+non-friend → gate без gifts; (3) Block+valid discoverable token → not_found; (4) unfriend+бронь → reservation card без siblings; (5) анонимность держателя; (6) cron не снимает «Купил»/GIVEN; (7) гонка cron и пользователя; (8) отмена после 10 с → CONFLICT
+- ARCH-A1..A5, A12, A14, A15: [ASSUMPTION] нет self-serve репорта; имя Gift List; ручное удаление аккаунта; цена опциональна; нет reopen CLOSED (кроме отмены 10 с); auto-accept; Срок в поясе дарителя; таймеры брони — внешний планировщик раз в час
 
 ### UX Design Requirements
 
 - UX-DR1: Theme Forest Paper — CSS variables primary `#2F5D3A`, accent `#D4A017`, background `#F4F1EA` и связанные токены из DESIGN.md; light only (UX-A8)
 - UX-DR2: Typography — Fraunces (display) + DM Sans (body/label/caption); один display на экран
-- UX-DR3: Brand components — Gift card, Status pill (open/reserved/closed), Friends-only gate panel, List type chip, button-reserve «Куплю сам»
+- UX-DR3: Brand components — Gift card, Status pill (open/reserved/closed), Friends-only gate panel, List type chip, button-reserve «Куплю сам», Reservation confirm (дата + два переключателя), Reservation phase labels, Owner action marker, Undo toast, секция «Получено»
 - UX-DR4: App chrome — левый sidebar (Мои списки · Поиск · Друзья · Мои брони · Уведомления, «Недавние списки», карточка пользователя с меню); `< 900px` — drawer по ☰; верхней полосы и нижней tab-bar нет
 - UX-DR5: Copy/voice — канон Friends-only gate и Anon gate из EXPERIENCE.md; без CTA оплаты в R1
-- UX-DR6: Empty/loading/error — skeleton; empty gifts/friends; сеть → toast; гонка брони → toast «Кто-то только что забрал…»
+- UX-DR6: Empty/loading/error — skeleton; empty gifts/friends; сеть → toast; гонка брони → toast «Кто-то только что забрал…»; закрытие → toast «Отменить» 10 с
 - UX-DR7: Forms — nick rules UX-A6; price optional UX-A5; focus rings primary
 - UX-DR8: A11y — WCAG 2.2 AA на регистрация, бронь, FO gate, копирование ссылки
 - UX-DR9: Settings copy — «Написать автору» (ARCH-A1); ручной запрос удаления (ARCH-A3); без self-serve delete/report
@@ -126,13 +130,17 @@ decisions_locked:
 - FR-13: Epic 4 — приглашение
 - FR-14: Epic 4 — accept/reject
 - FR-15: Epic 4 — списки дружбы
-- FR-17: Epic 5 — бронь/снятие/закрытие/TTL
+- FR-17: Epic 5 — бронь со Сроком и видимостью, снятие
 - FR-23: Epic 4 — unfriend
 - FR-24: Epic 4 — block
 - FR-25: Epic 5 — мои брони
-- FR-26: Epic 6 — уведомления
+- FR-26: Epic 6 — уведомления in-app + email
 - FR-27: Epic 3 — ссылка на список
 - FR-28: Epic 2 — копирование ссылок
+- FR-29: Epic 5 — цикл истечения Срока
+- FR-30: Epic 5 — «Купил» / «Подарил» и подтверждение
+- FR-31: Epic 3 (матрица полей) + Epic 5 — видимость держателя
+- FR-32: Epic 5 — закрытие, отмена, «Хочу ещё такой»
 - FR-4, FR-16, FR-18–FR-22: **deferred R2** (не в epics R1)
 
 ## Epic List
@@ -163,13 +171,13 @@ decisions_locked:
 
 ### Epic 5: Бронь «куплю сам» и закрытие
 
-Дарители бронируют без двойной покупки; владелец закрывает; «Мои брони» и TTL; sole writer + CAS (AD-8/9); обязательные тесты AD-15.
+Дарители бронируют со Сроком и выбором видимости без двойной покупки; цикл истечения Срока; «Купил» / «Подарил» и подтверждение владельцем; закрытие с отменой; «Мои брони»; sole writer + CAS (AD-8/9); обязательные тесты AD-15.
 
-**FRs covered:** FR-17, FR-25, FR-12 (gifters), FR-19-R1 (concurrency via AD-9)
+**FRs covered:** FR-17, FR-25, FR-29, FR-30, FR-31, FR-32, FR-12 (gifters), FR-19-R1 (concurrency via AD-9)
 
 ### Epic 6: Уведомления и оболочка пилота
 
-In-app события без утечки FO; chrome/навигация; настройки контакта/удаления; a11y ключевых потоков.
+In-app и email события без утечки FO и идентичности держателя; chrome/навигация; настройки контакта/удаления; a11y ключевых потоков.
 
 **FRs covered:** FR-26 (+ UX-DR4/8/9, NFR-5)
 
@@ -300,7 +308,7 @@ So that Discoverable и Friends-only отражают нужную видимо�
 **Given** Подарок `OPEN`
 **When** владелец удаляет
 **Then** Подарок удаляется
-**And** удаление `RESERVED` (confirm + release через GiftStatusService + notify) закрывается в Story 5.3 — до появления броней в R1 путь RESERVED ещё не достижим из UI Epic 2
+**And** удаление `RESERVED` (confirm + release через GiftStatusService + notify) закрывается в Story 5.4 — до появления броней в R1 путь RESERVED ещё не достижим из UI Epic 2
 
 ### Story 2.4: Копирование Ссылки на список
 
@@ -352,6 +360,7 @@ So that все read-пути списков/подарков не утекают
 **And** порядок: missing→not_found; Block any direction→not_found; owner→gifts; anon→anon_gate; FO+friendship→gifts; FO+auth non-friend→friends_only_gate; Discoverable+auth→gifts (AD-7)
 **And** `friends_only_gate` DTO содержит только owner `{id,nick,displayName}` + `list.type=FRIENDS_ONLY` + copy key; **запрещены** gift ids/titles/counts/prices/reserved* (AD-7, FR-27, NFR-3)
 **And** сырой `findMany` по listId без policy запрещён (AD-7)
+**And** поля брони в gift card отдаются по роли зрителя (держатель / владелец / другие) по матрице AD-7 D-13; `reservedBy` может быть `null` при `RESERVED` (FR-31, AD-12) — колонки брони появятся в Epic 5, policy готова принять их без смены контракта
 **And** action/read envelope соответствует AD-12
 
 ### Story 3.3: Маршрут `/l/:publicToken` (D-11)
@@ -485,7 +494,7 @@ So that Friends-only сразу закрывается с обеих сторо�
 **Then** Friendship (+ инвайты пары) удаляются; FO сразу `friends_only_gate` по валидной FO-ссылке — **не** «не найдено» (FR-23, FR-27, AD-7, AD-10)
 **And** Discoverable остаётся по правилам AD-7
 **And** повторная дружба только через новое принятое Приглашение (FR-23)
-**And** если у бывшего друга была активная бронь на FO-подарок — бронь сохраняется для FR-25 / AD-7 reservation-card (полный UI в Epic 5); policy уже отдаёт reservation-card поля держателю (AD-7 матрица)
+**And** если у бывшего друга была активная бронь на FO-подарок — бронь сохраняется со всем циклом FR-29/FR-30 для FR-25 / AD-7 reservation-card (полный UI в Epic 5); блок владельцем бронь не снимает (A-14); policy уже отдаёт reservation-card поля держателю (AD-7 матрица)
 
 ### Story 4.5: Блокировка и разблокировка
 
@@ -506,21 +515,25 @@ So that профили взаимно невидимы и инвайты нев�
 
 ## Epic 5: Бронь «куплю сам» и закрытие
 
-Координация подарков без оплаты: единственная бронь, CAS, «Мои брони», TTL, обязательные privacy/race тесты.
+Координация подарков без оплаты: единственная бронь со Сроком и выбором видимости, цикл истечения Срока, отметки «Купил» / «Подарил», закрытие владельцем, «Мои брони», обязательные privacy/race тесты.
 
-### Story 5.1: GiftStatusService — бронь CAS
+### Story 5.1: GiftStatusService — бронь CAS со Сроком и видимостью
 
 As a даритель,
-I want нажать «Куплю сам» на открытом Подарке,
-So that статус станет однозначным для всех и двойной брони не будет (FR-17, AD-8, AD-9, NFR-1).
+I want нажать «Куплю сам», указать, к какой дате подарю, и выбрать, кто увидит моё имя,
+So that статус станет однозначным для всех, двойной брони не будет, а сюрприз сохранится (FR-17, FR-31, D-12, D-13, AD-8, AD-9, NFR-1).
 
 **Acceptance Criteria:**
 
 **Given** auth даритель ≠ владелец; Подарок `OPEN`; viewer имеет `access=gifts`
-**When** вызывает reserve через Server Action → **только** `GiftStatusService` (AD-8)
-**Then** CAS: `UPDATE ... WHERE id=? AND status=OPEN` → `RESERVED`, set `reservedById`, `reservedAt`, `titleSnapshot` (AD-9, ARCH-A13)
-**And** gift card wire: `status=RESERVED`, `reservedBy` non-null `{id,nick,displayName}` для всех с `access=gifts` (FR-17, A-23, AD-12, FR-12)
-**And** UI CTA «Куплю сам» (button-reserve); optimistic + откат; при CONFLICT toast «Кто-то только что забрал этот подарок» (UX-DR5/6)
+**When** жмёт «Куплю сам»
+**Then** confirm-dialog: дата «Подарю до» (по умолчанию сегодня + 7; допустимо сегодня…сегодня + 30 в поясе браузера), чекбоксы «Показать владельцу, что это я» (выкл.) и «Показать другим, кто берёт» (вкл.), подсказка «Если купите заранее, отметьте «Купил» — бронь не снимется сама» (FR-17, FR-31, EXPERIENCE)
+**When** подтверждает → Server Action → **только** `GiftStatusService` (AD-8)
+**Then** CAS `WHERE id=? AND status=OPEN` → `RESERVED`; set `reservedById`, `reservedAt`, `titleSnapshotOnReserve`, `reservationDueAt` (конец даты в IANA-поясе), `reservationTimeZone`, `reservationPhase=ACTIVE`, `reservationPhaseAt`, toggles (AD-9, ARCH-A13, ARCH-A14)
+**And** сервер отклоняет дату вне диапазона с VALIDATION
+**And** gift card: владелец видит `RESERVED` с `reservedBy=null`, если «видим владельцу» выкл.; другие — `reservedBy` по «видим другим» (AD-7, AD-12, FR-31)
+**And** владельцу событие «Кто-то забронировал «Y»» (имя — по toggle; доставка Epic 6)
+**And** optimistic + откат; при CONFLICT toast «Кто-то только что забрал этот подарок» (UX-DR5/6)
 **Given** владелец своего Подарка
 **When** пытается reserve
 **Then** FORBIDDEN — no self-reserve (AD-8)
@@ -533,68 +546,117 @@ So that статус станет однозначным для всех и дв
 
 As a держатель брони или владелец,
 I want снять бронь,
-So that Подарок снова `открыт` (FR-17, A-9).
+So that Подарок снова `открыт` (FR-17).
 
 **Acceptance Criteria:**
 
-**Given** Подарок `RESERVED`
-**When** `reservedById` снимает бронь
-**Then** CAS RESERVED→OPEN с предикатом holder; clear reserved* (AD-9); статус `OPEN` (FR-17)
+**Given** Подарок `RESERVED` в любой фазе
+**When** `reservedById` снимает бронь (confirm «Снять бронь? Подарок снова станет открытым.»)
+**Then** CAS RESERVED→OPEN с предикатом holder; clear reserved* (AD-9); статус `OPEN`; событие владельцу (FR-17)
 **When** владелец снимает чужую бронь
-**Then** CAS RESERVED→OPEN (owner predicate); держатель получает путь к уведомлению (FR-17, A-9; доставка в Epic 6)
+**Then** preflight возвращает `warning` (`BOUGHT` | `GIVEN` | null) без иных полей брони (AD-7); confirm показывает: при BOUGHT — «Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё»; при GIVEN — «Даритель отметил, что уже вручил» и основными действиями «Получил» / «Не получал» (Story 5.7)
+**And** CAS RESERVED→OPEN (owner predicate); событие держателю in-app + email (FR-17, FR-26; доставка Epic 6)
 **And** все переходы только через GiftStatusService (AD-8)
 
-### Story 5.3: Закрытие Подарка владельцем и удаление RESERVED
+### Story 5.3: Закрытие Подарка владельцем, отмена и «Хочу ещё такой»
 
 As a владелец,
-I want подтвердить получение и закрыть забронированный Подарок,
-So that желание снято с координации (FR-17, ARCH-A5).
+I want отметить подарок полученным в любой момент, отменить промах и при желании добавить такой же снова,
+So that список отражает реальность, даже если подарок пришёл не через сервис (FR-32, ARCH-A5).
 
 **Acceptance Criteria:**
 
-**Given** Подарок `RESERVED`
-**When** владелец подтверждает закрытие (confirm copy UX-A11)
-**Then** CAS RESERVED→CLOSED; `reservedById` сохраняется для аудита (AD-8, AD-9); UI «закрыт»
-**And** [ASSUMPTION ARCH-A5 / UX-A11] CLOSED→OPEN в R1 **запрещён** — нет reopen
-**Given** Подарок `RESERVED`
-**When** владелец удаляет с подтверждением
-**Then** release через GiftStatusService + notify держателя + удаление (FR-10, AD-8) — закрывает путь из Story 2.3
+**Given** Подарок `OPEN` или `RESERVED` (любая фаза)
+**When** владелец жмёт «Отметить полученным» и подтверждает (confirm «Подарок «Y» получен?» + при брони «Бронь будет закрыта, бронировавший получит уведомление»)
+**Then** CAS → `CLOSED`; reserved* сохраняются; пишутся `closedAt`, `closedFromStatus` (AD-8, AD-9)
+**And** toast «Отмечено полученным · Отменить», фиксированные 10 с
+**When** владелец жмёт «Отменить» в течение 10 с
+**Then** CAS восстанавливает прежнее состояние полностью (бронь, фаза, bought, dueAt); событие держателю не доставляется — недоставленная запись удаляется (AD-14)
+**When** окно отмены прошло
+**Then** держателю (если был) событие in-app + email: «Владелец отметил «Y» полученным. Если вы его ещё не вручали — подарок пришёл от кого-то другого» (из фазы GIVEN — «Владелец подтвердил получение «Y»»)
+**And** попытка отмены после 10 с → CONFLICT (AD-15-8)
+**And** закрытые Подарки — в конце Списка в свёрнутой секции «Получено (N)» у владельца и «Уже подарено» у зрителей, без действий; имя держателя владельцу не раскрывается без toggle (FR-31)
+**When** владелец выбирает «Хочу ещё такой» на закрытом Подарке
+**Then** диалог «В какой список добавить?» (по умолчанию список оригинала) → создаётся копия `OPEN` (title, description, priceCents, linkUrl)
+**And** удаление закрытого Подарка — confirm
 **And** audit log смены статуса (NFR-6)
 
-### Story 5.4: «Мои брони» и reservation-card после unfriend
+### Story 5.4: Удаление и правка забронированного Подарка
+
+As a владелец,
+I want удалить или поправить подарок, на котором есть бронь,
+So that держатель узнаёт об этом сразу и может, например, вернуть покупку (FR-10, D-12).
+
+**Acceptance Criteria:**
+
+**Given** Подарок `RESERVED`
+**When** владелец удаляет
+**Then** сильный confirm; при `warning=BOUGHT` — предупреждение «уже куплен»; при `GIVEN` основное действие — «Отметить полученным» (Story 5.3), удаление вторично
+**And** release через GiftStatusService + удаление; держателю in-app + email «Владелец удалил «Y» из списка» (FR-10, AD-8) — закрывает путь из Story 2.3
+**When** владелец редактирует title / description / linkUrl / priceCents
+**Then** в форме подсказка «Подарок забронирован — бронировавший получит уведомление»; после сохранения держателю in-app + email «Владелец изменил «Y»» со списком изменённых полей (FR-10)
+**And** перенос между Списками по-прежнему только из `OPEN` (FR-10)
+
+### Story 5.5: «Мои брони»: продление, «Купил», видимость, reservation card
 
 As a даритель,
-I want видеть и снимать свои активные брони даже после потери видимости Списка,
-So that UJ-5 / A-14 выполняются без утечки siblings FO (FR-25, AD-7).
+I want в одном месте видеть свои брони, продлевать их, отмечать покупку и вручение и менять видимость,
+So that бронь соответствует моим планам, даже если я потерял доступ к списку (FR-25, FR-29, FR-30, FR-31, A-14, AD-7).
 
 **Acceptance Criteria:**
 
-**Given** у пользователя есть Подарки `RESERVED` где он `reservedById`
+**Given** у пользователя есть Подарки `RESERVED`, где он `reservedById`
 **When** открывает `/reservations`
-**Then** видит активные брони и может снять (FR-25)
-**Given** unfriend при активной FO-брони
+**Then** видит по каждой: titleSnapshot, ownerNick, Срок (в своём поясе), фазу (метка «Срок истёк» для AWAITING_*; «Ждёт подтверждения» для GIVEN), «Купил», переключатели (FR-25)
+**And** действия: «Продлить до…» (≤ сегодня + 30, пересчёт dueAt и timeZone, phase → ACTIVE), «Купил» / снять отметку, «Подарил» (Story 5.7), смена переключателей (подсказка при включении «видим владельцу»), «Снять бронь» (Story 5.2) — те же действия в карточке Подарка
+**And** продление из AWAITING_OWNER делает запрос владельцу неактуальным (`ownerAction=null`; уведомление владельца помечается «Даритель уже ответил»)
+**And** снятие «Купил» в фазе AWAITING_OWNER не сбрасывает `phaseAt`
+**Given** unfriend или блок при активной FO-брони
 **When** бывший друг открывает FO `/l/:token`
-**Then** `friends_only_gate` без gift rows; в «Мои брони» — **reservation card**: `giftId`, `titleSnapshot`, `status`, `listType`, `ownerNick`, CTA снять — **без** siblings FO и browse списка (FR-25, FR-23, AD-7, AD-15-4)
+**Then** `friends_only_gate` без gift rows; в «Мои брони» — reservation card с полями AD-7 (+ dueAt, phase, bought, toggles) и всеми действиями — **без** siblings FO и browse списка (FR-25, FR-23, AD-7, AD-15-4)
 
-### Story 5.5: Cron TTL снятия брони (14 суток)
+### Story 5.6: Цикл истечения Срока брони (cron)
 
 As a система,
-I want автоматически снимать просроченные брони,
-So that «забытые» брони не блокируют Подарок навсегда (FR-17, A-9, AD-5).
+I want по наступлении Срока по шагам выяснять судьбу брони,
+So that «мёртвые» брони освобождаются, а купленные подарки не открываются снова (FR-29, D-12, AD-5).
 
 **Acceptance Criteria:**
 
-**Given** `RESERVED` с `reservedAt <= now()-14d`
-**When** Vercel Cron бьёт Route Handler expire-reservations
-**Then** Handler вызывает **только** `GiftStatusService.releaseExpired()` с CAS (AD-5, AD-8, AD-9)
-**And** статус → OPEN; путь уведомления держателю (доставка Epic 6)
-**And** endpoint защищён от публичного вызова (секрет cron / NFR-2)
+**Given** внешний планировщик (не Vercel Cron — правило переносимости; например, GitHub Actions schedule) раз в час вызывает Route Handler `api/cron/reservation-timers`; endpoint защищён секретом (NFR-2, AD-5, ARCH-A15)
+**When** Handler вызывает **только** `GiftStatusService.processReservationTimers()` (AD-5, AD-8)
+**Then** CAS ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; событие держателю in-app + email с действиями «Подарил» / «Купил, ещё не вручил» / «Продлить до…» / «Снять бронь»
+**And** CAS AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h`; событие владельцу in-app + email «Срок брони «Y» истёк, даритель пока не ответил. Подарок уже у вас?» с действиями «Получил» (Story 5.3) / «Не получал, оставить бронь» / «Снять бронь» (Story 5.2); имя — по FR-31; без `bought`
+**And** «Не получал, оставить бронь» → CAS phase=ACTIVE, dueAt = сегодня + 7 в `reservationTimeZone`; держателю in-app «Владелец продлил вашу бронь «Y» до DD.MM»
+**And** CAS AWAITING_OWNER→OPEN при `phaseAt ≤ now−168h AND bought=false`; держателю и владельцу in-app + email «Бронь «Y» снята: срок истёк, ответа не было»
+**And** брони с `bought=true` в AWAITING_OWNER не меняются; новых событий нет; у владельца `ownerAction=EXPIRED_NO_REPLY` (метка «Срок брони истёк»)
+**And** каждое событие создаётся ровно один раз (идемпотентность при повторном запуске cron)
+**And** гонка таймера с действием пользователя → ровно один переход (AD-15-7)
 
-### Story 5.6: Обязательные автотесты гонки и privacy (AD-15)
+### Story 5.7: «Подарил» и подтверждение получения владельцем
+
+As a даритель и владелец,
+I want отметить вручение и подтвердить или опровергнуть его,
+So that подарок закрывается только с подтверждения владельца и не открывается заново после покупки (FR-30, D-12).
+
+**Acceptance Criteria:**
+
+**Given** держатель брони в фазе ACTIVE / AWAITING_GIVER / AWAITING_OWNER
+**When** жмёт «Подарил» (карточка, «Мои брони», уведомление)
+**Then** CAS phase → GIVEN; уведомления об истечении Срока для этой брони больше не создаются; зрители видят label «Подарен»
+**And** владельцу in-app + email «Даритель отметил, что вручил «Y». Подарок у вас?» с действиями «Получил» / «Не получал»; имя — по FR-31
+**When** владелец жмёт «Получил»
+**Then** переход как в Story 5.3 (с окном отмены); держателю «Владелец подтвердил получение «Y»»
+**When** владелец жмёт «Не получал»
+**Then** CAS phase → ACTIVE, bought=true, dueAt = сегодня + 7; держателю in-app «Владелец пока не отметил получение «Y». Бронь снова активна до DD.MM»; Подарок остаётся `RESERVED`
+**Given** владелец не отвечает
+**Then** автозакрытия нет, повторов нет; на карточке владельца `ownerAction=CONFIRM_GIVEN` — метка «Ждёт вашего подтверждения» с кнопками
+
+### Story 5.8: Обязательные автотесты гонки, privacy и анонимности (AD-15)
 
 As a команда пилота,
-I want автотесты инвариантов брони и видимости,
-So that SM-2 и NFR-3 не регрессируют (AD-15).
+I want автотесты инвариантов брони, видимости и анонимности,
+So that SM-2, NFR-3 и FR-31 не регрессируют (AD-15).
 
 **Acceptance Criteria:**
 
@@ -604,6 +666,10 @@ So that SM-2 и NFR-3 не регрессируют (AD-15).
 **And** (2) FO token + non-friend → gate DTO **без** gift fields
 **And** (3) Block + valid discoverable token → `not_found`
 **And** (4) unfriend + активная бронь → reservation card без siblings
+**And** (5) владелец при `holderVisibleToOwner=false` не получает идентичность держателя в gift card, Notification и письме; `bought` владельцу не отдаётся
+**And** (6) cron не переводит в OPEN брони с `bought=true` и в фазе GIVEN
+**And** (7) гонка cron-таймера и действия пользователя → ровно один переход
+**And** (8) отмена закрытия после 10 с → CONFLICT
 **And** suite обязателен в CI/локальном gate перед merge историй Epic 5
 
 ---
@@ -612,19 +678,22 @@ So that SM-2 и NFR-3 не регрессируют (AD-15).
 
 События R1, навигация, настройки контакта, a11y.
 
-### Story 6.1: In-app уведомления R1
+### Story 6.1: Уведомления R1: in-app и email
 
 As a пользователь,
-I want видеть in-app события дружбы и брони,
-So that не пропускаю приглашения и статусы (FR-26, AD-14).
+I want видеть события дружбы и брони в приложении, а важные события брони — ещё и на почте,
+So that не пропускаю приглашения и не теряю бронь из-за того, что давно не заходил (FR-26, AD-14).
 
 **Acceptance Criteria:**
 
-**Given** события R1: входящий инвайт; accept/reject; новая бронь владельцу; снятие/TTL брони; запрос владельцу закрыть
+**Given** события R1 из FR-26 (инвайты; accept/reject; новая бронь; снятие; события цикла брони, отметок, закрытия, удаления и правки)
 **When** событие происходит
-**Then** создаётся `Notification`; badge непрочитанных (FR-26)
-**And** payload **не** содержит FO titles для получателя без FO access (FR-26, AD-14, NFR-3); держателю брони допустим `titleSnapshot`
-**And** нет push/SMS (A-22)
+**Then** создаётся ровно одна `Notification`; badge непрочитанных (FR-26)
+**And** для событий email-перечня FR-26 отправляется одно письмо через Resend с тем же текстом и ссылкой на действие в приложении (вход по сессии; действия в письме не выполняются без входа)
+**And** in-app уведомления об истечении Срока и запросы владельцу содержат кнопки действий; устаревший запрос показывает «Даритель уже ответил» без кнопок
+**And** `deliverAfter` соблюдается: событие закрытия не видно и письмо не уходит до конца окна отмены; отмена удаляет недоставленное событие (AD-14)
+**And** payload и письма **не** содержат FO titles для получателя без FO access; держателю — `titleSnapshot`; владельцу — без идентичности держателя без toggle и без `bought` (FR-26, FR-31, AD-14, NFR-3)
+**And** нет push/SMS, нет напоминаний до Срока и повторов (A-22, SM-C1)
 **And** UI `/notifications` или sheet по EXPERIENCE IA
 
 ### Story 6.2: App chrome и мобильная навигация
@@ -656,16 +725,17 @@ So that Q-1/Q-3 закрыты без self-serve moderation (UX-DR9).
 **Then** есть «Написать автору» (контакт Sergey) — **нет** self-serve репорта [ASSUMPTION ARCH-A1] (UX-DR9)
 **And** копирайт удаления аккаунта — ручной запрос, без hard-delete flow [ASSUMPTION ARCH-A3] (UX-DR9)
 **And** доступны смена имени/ника (уже Epic 3), hideFromSearch, выход
+**And** процедура ручного удаления аккаунта (ARCH-A3) описывает брони: удаляемый держатель → его брони снимаются с уведомлением владельцам; удаляемый владелец → держателям «Подарок «Y» больше недоступен»
 
 ### Story 6.4: A11y ключевых потоков
 
 As a пользователь с клавиатурой / AT,
-I want пройти регистрацию, бронь, FO gate и копирование ссылки,
+I want пройти регистрацию, бронь, закрытие подарка, FO gate и копирование ссылки,
 So that пилот соответствует WCAG 2.2 AA на ключевых потоках (NFR-5, UX-DR8).
 
 **Acceptance Criteria:**
 
-**Given** ключевые потоки: регистрация, «Куплю сам», Friends-only gate, копирование ссылки
+**Given** ключевые потоки: регистрация, «Куплю сам» (confirm с датой и двумя переключателями), «Отметить полученным» + toast отмены (объявляется `aria-live`, «Отменить» достижима с клавиатуры; основная защита — confirm), Friends-only gate, копирование ссылки
 **When** проверяются клавиатура, labels, фокус-кольцо `{colors.ring}`, контраст токенов
 **Then** потоки соответствуют WCAG 2.2 AA floor (UX-A10, UX-DR8)
 **And** FO gate и anon gate доступны без потери смысла copy (UX-DR5)
@@ -676,7 +746,7 @@ So that пилот соответствует WCAG 2.2 AA на ключевых 
 
 | Check | Result |
 |-------|--------|
-| Все FR R1 покрыты stories | ✅ FR-1..3,5..15,17,23..28 |
+| Все FR R1 покрыты stories | ✅ FR-1..3,5..15,17,23..32 |
 | FR R2 явно deferred | ✅ FR-4,16,18–22 |
 | Epic 1 Story 1 = starter AD-2 | ✅ Story 1.1 |
 | Сущности/таблицы по мере нужды | ✅ User/List в E1; Gift E2; Friendship E4; Notification E6; статусные поля Gift E5 |
@@ -685,6 +755,7 @@ So that пилот соответствует WCAG 2.2 AA на ключевых 
 | AD-7/8/9/10/12/15 в AC | ✅ |
 | A-24 / нет оплаты в stories | ✅ |
 | UX-DR покрыты | ✅ токены E1; cards E2; gates E3; chrome/a11y/settings E6 |
+| Correct course 2026-10-10 | ✅ D-12/D-13: Epic 5 → 8 историй; Story 6.1 + email (sprint-change-proposal-2026-10-10) |
 | File churn | Принято: VisibilityPolicy/GiftStatusService наращиваются по эпикам — осознанно (policy до friendship; status service до reserve) |
 
 **Workflow complete.** Следующий BMAD шаг: `bmad-sprint-planning` / implementation readiness.

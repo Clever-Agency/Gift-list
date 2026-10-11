@@ -7,7 +7,7 @@ paradigm: modular-monolith-layered
 scope: "Gift List Раунд 1 — веб: аккаунт, два списка, дружба, бронь «куплю сам», ссылки на списки. Без оплаты."
 status: final
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-10
 language: ru
 workflow: bmad-architecture
 round: 1
@@ -16,8 +16,11 @@ binds:
   - FR-1..FR-15
   - FR-17
   - FR-23..FR-28
+  - FR-29..FR-32
   - D-10
   - D-11
+  - D-12
+  - D-13
   - A-24
 sources:
   - _bmad-output/planning-artifacts/prds/prd-gift-list-2026-09-30/prd.md
@@ -49,7 +52,7 @@ decisions_locked:
 ```mermaid
 flowchart TB
   UI["app/ UI + RSC"] --> ACT["actions/ use-cases"]
-  RH["app/api cron"] --> ACT
+  RH["app/api cron (внешний планировщик)"] --> ACT
   ACT --> DOM["domain/"]
   ACT --> DB["db/ Prisma"]
   DOM -->|"GiftStatusService пишет статус"| DB
@@ -87,7 +90,7 @@ flowchart TB
 
 - **Binds:** ops envelope R1
 - **Prevents:** разные хосты без явного решения
-- **Rule:** Web → Vercel; DB → managed Postgres; email → Resend; секреты — env Vercel. Job TTL брони (A-9, 14 суток) — Vercel Cron → Route Handler → **только** `GiftStatusService.releaseExpired()`. Staging = preview + отдельная DB.
+- **Rule:** Web → Vercel; DB → managed Postgres; email → Resend; секреты — env Vercel. Таймеры брони (D-12) — обычный Route Handler `api/cron/reservation-timers` (защищён секретом), который вызывает **любой внешний планировщик** (не Vercel Cron — правило переносимости; сейчас, например, GitHub Actions schedule, после переезда — cron хоста; раз в час, ARCH-A15) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h`; AWAITING_OWNER→OPEN при `phaseAt ≤ now−168h AND bought=false`. Email — Resend. Staging = preview + отдельная DB.
 
 ### AD-6 — Списки, токены, профиль (A-25 / A-26) `[ASSUMPTION]`
 
@@ -101,7 +104,7 @@ flowchart TB
 
 ### AD-7 — Модель видимости (единый gate)
 
-- **Binds:** FR-7, FR-8, FR-11, FR-27, D-11, A-11, A-12, A-14, NFR privacy
+- **Binds:** FR-7, FR-8, FR-11, FR-27, FR-31, D-11, D-13, A-11, A-12, A-14, NFR privacy
 - **Prevents:** 404 как soft-deny для не-друга; Block-bypass через ссылку; утечка FO; второй read-owner для подарков
 - **Rule:** Единственная `VisibilityPolicy.resolve(viewer, list)` → discriminant JSON `access`: `gifts | friends_only_gate | anon_gate | not_found`.
 
@@ -127,38 +130,66 @@ flowchart TB
   | gate / not_found | Нет gift-полей |
   | Owner своих списков | Полные карточки |
 
+  **Поля брони по роли зрителя (D-13):**
+  | Поле | Держатель | Владелец | Другие с `access=gifts` |
+  |------|-----------|----------|--------------------------|
+  | status | да | да | да |
+  | reservedBy | да | только `holderVisibleToOwner` | только `holderVisibleToOthers` |
+  | bought | да | **нет** | да |
+  | phase | да | только `AWAITING_OWNER` / `GIVEN` (как `ownerAction`) | только `GIVEN` (как label) |
+  | dueAt | да | нет | нет |
+  | visibility toggles | да | нет | нет |
+
+  Исключение для Владельца: preflight снятия брони / удаления подарка возвращает `warning: "BOUGHT" | "GIVEN" | null` — только в ответ на это действие.
+  Reservation card держателя (A-14) дополняется полями `dueAt`, `phase`, `bought`, `holderVisibleToOwner`, `holderVisibleToOthers`.
+
   Любой list/gift read API (включая профиль) вызывает тот же `resolve`; сырой `findMany` по `listId` без policy запрещён. FR-25 — исключение только через reservation-card матрицу выше.
 
 ### AD-8 — Статусы подарка; единственный writer
 
-- **Binds:** FR-10, FR-12, FR-17, A-9, A-23, UX-A11
-- **Prevents:** dual mutation paths; self-reserve; reopen без решения
-- **Rule:** Enum DB: `OPEN | RESERVED | CLOSED`. **Только** `GiftStatusService` выполняет Prisma/SQL, меняющий `status` / `reservedById` / `reservedAt`. Actions и cron — тонкие вызовы сервиса.
+- **Binds:** FR-10, FR-12, FR-17, FR-29..FR-32, D-12, D-13, UX-A11
+- **Prevents:** dual mutation paths; self-reserve; reopen без решения; авто-снятие купленной брони
+- **Rule:** Enum DB: `OPEN | RESERVED | CLOSED`. **Только** `GiftStatusService` выполняет Prisma/SQL, меняющий `status` и любые колонки брони / закрытия (AD-9). Actions и cron — тонкие вызовы сервиса.
 
   Переходы R1:
-  - `OPEN → RESERVED` — даритель ≠ владелец
-  - `RESERVED → OPEN` — держатель | владелец | cron TTL
-  - `RESERVED → CLOSED` — владелец; `reservedById` **сохраняется** для аудита; FR-25 активные = `status=RESERVED`
-  - `CLOSED → *` запрещены `[ASSUMPTION ARCH-A5]`
+  - `OPEN → RESERVED` — даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны
+  - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, toggles); владелец (T6 «оставить», T10 «не получал»); cron (таймеры)
+  - `RESERVED → OPEN` — держатель | владелец | cron (только `phase=AWAITING_OWNER AND bought=false`)
+  - `OPEN | RESERVED → CLOSED` — владелец; reserved* **сохраняются** для аудита; пишутся `closedAt`, `closedFromStatus`; FR-25 активные = `status=RESERVED`
+  - `CLOSED → closedFromStatus` — только владелец, только при `closedAt > now()-10s` (отмена) `[ARCH-A5]`
+  - Остальные `CLOSED → *` запрещены
   - Владелец **не** может `OPEN → RESERVED` на своём подарке → `FORBIDDEN`
   - `COLLECTION` не используется в R1
 
-  Gift CRUD: поля `title`, `description?`, `priceCents?`, `linkUrl?`; перенос между списками только при `OPEN`; удаление `RESERVED` снимает бронь + notify держателя.
+  Gift CRUD: поля `title`, `description?`, `priceCents?`, `linkUrl?`; перенос между списками только при `OPEN`; правка полей при `RESERVED` разрешена и порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в выбранном списке.
 
 ### AD-9 — Сериализация всех переходов статуса
 
-- **Binds:** FR-17, FR-19 (R1), SM-2, A-9
+- **Binds:** FR-17, FR-19 (R1), FR-29..FR-32, SM-2, D-12
 - **Prevents:** двойная бронь; гонки release/close/cron; fork схемы брони
-- **Rule:** R1 хранит бронь **на `Gift`**: `status`, `reservedById`, `reservedAt`. Таблицы `Reservation` в R1 **нет**.
+- **Rule:** R1 хранит бронь **на `Gift`** (таблицы `Reservation` в R1 **нет**):
+  `status`, `reservedById`, `reservedAt`, `reservationDueAt timestamptz`, `reservationTimeZone text` (IANA),
+  `reservationPhase enum(ACTIVE|AWAITING_GIVER|AWAITING_OWNER|GIVEN)`, `reservationPhaseAt timestamptz`,
+  `reservationBought bool default false`, `holderVisibleToOwner bool default false`, `holderVisibleToOthers bool default true`,
+  `titleSnapshotOnReserve`, `closedAt timestamptz`, `closedFromStatus enum(OPEN|RESERVED)`.
+  Индексы для cron: `(status, reservationPhase, reservationDueAt)`, `(status, reservationPhase, reservationPhaseAt)`.
 
   Каждый переход — одна транзакция с CAS на ожидаемый статус (+ предикат актора):
 
   | Transition | Predicate |
   |------------|-----------|
-  | OPEN→RESERVED | `status=OPEN`; set reserved* |
+  | OPEN→RESERVED | `status=OPEN`; set reserved*, `phase=ACTIVE` |
+  | holder: extend / bought / given / toggles | `status=RESERVED AND reservedById=actor` (+ `phase<>GIVEN` для given) |
+  | owner: keep (T6) / not received (T10) | `status=RESERVED AND phase=AWAITING_OWNER` / `phase=GIVEN` |
+  | cron: ACTIVE→AWAITING_GIVER | `status=RESERVED AND phase=ACTIVE AND dueAt<=now()` |
+  | cron: AWAITING_GIVER→AWAITING_OWNER | `phase=AWAITING_GIVER AND phaseAt<=now()-72h` |
+  | cron: AWAITING_OWNER→OPEN | `phase=AWAITING_OWNER AND phaseAt<=now()-168h AND bought=false`; clear reserved* |
   | RESERVED→OPEN (holder) | `status=RESERVED AND reservedById=actor`; clear reserved* |
-  | RESERVED→OPEN (owner/cron) | `status=RESERVED` (+ cron: `reservedAt <= now()-14d`); clear reserved* |
-  | RESERVED→CLOSED | `status=RESERVED`; set CLOSED; keep `reservedById` |
+  | RESERVED→OPEN (owner) | `status=RESERVED`; clear reserved* |
+  | OPEN/RESERVED→CLOSED | `status = expected`; set CLOSED, `closedAt`, `closedFromStatus`; keep reserved* |
+  | CLOSED→undo | `status=CLOSED AND closedAt>now()-10s AND owner=actor`; restore `closedFromStatus` |
+
+  `dueAt` = конец выбранной даты в `reservationTimeZone`, вычисляется на сервере; валидация `today ≤ date ≤ today+30` в том же поясе (ARCH-A14).
 
   `rowCount ≠ 1` → `CONFLICT`. Клиентский optimistic UI не авторитетен.
 
@@ -180,13 +211,13 @@ flowchart TB
 
 ### AD-12 — Wire-контракт мутаций и карточек
 
-- **Binds:** all write/read DTOs, A-23, UJ-2
-- **Prevents:** разнобой shapes; FO gate как NOT_FOUND; скрытое имя брони
+- **Binds:** all write/read DTOs, D-13, FR-31, UJ-2
+- **Prevents:** разнобой shapes; FO gate как NOT_FOUND; утечка имени держателя владельцу
 - **Rule:** Action result: `{ ok: true, data } | { ok: false, code, message }`. Коды **закрытый** набор: `UNAUTHENTICATED | FORBIDDEN | NOT_FOUND | CONFLICT | VALIDATION | RATE_LIMITED`. Gate-ответы — `ok: true` с `access`.
 
   Gift card при `access=gifts`:
-  `{ id, title, description, priceCents: number|null, linkUrl, status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservedAt }`.
-  При `RESERVED` поле `reservedBy` **обязательно non-null** для зрителей с `gifts` (A-23). Деньги только `priceCents` integer|null — без money-object.
+  `{ id, title, description, priceCents: number|null, linkUrl, status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservationLabel: null | "BOUGHT" | "GIVEN", ownerAction: null | "CONFIRM_GIVEN" | "EXPIRED_NO_REPLY" }`.
+  `reservedBy` заполняется по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. `reservationLabel` — только не-владельцу; `ownerAction` — только владельцу. Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOwner, holderVisibleToOthers }`. Деньги только `priceCents` integer|null — без money-object.
 
 ### AD-13 — Идентификаторы, ник, поиск
 
@@ -196,15 +227,17 @@ flowchart TB
 
 ### AD-14 — Уведомления `[ASSUMPTION A-22]`
 
-- **Binds:** FR-26, NFR privacy
-- **Prevents:** push-scope; FO leak в нотификациях
-- **Rule:** R1 — in-app `Notification` (+ email auth). События: входящий инвайт; accept/reject; новая бронь владельцу; снятие/TTL брони; запрос владельцу закрыть. Payload не содержит FO titles для получателя без FO; держателю брони можно слать по `titleSnapshot`.
+- **Binds:** FR-26, FR-31, SM-C1, NFR privacy
+- **Prevents:** push-scope; FO leak в нотификациях; утечка держателя владельцу; повторные «пинги»
+- **Rule:** R1 — in-app `Notification` + email (Resend) по событиям брони из FR-26 (+ email auth). Одно событие → одна запись `Notification` (+ одно письмо, если событие в email-перечне).
+  `Notification.deliverAfter timestamptz` — для закрытия (= `closedAt + 10 s`); отмена удаляет недоставленную запись. Доставка отложенных писем — механизм на выбор dev (after-response task или cron), допустимая задержка ≤ 1 ч.
+  Payload и письма: не содержат FO titles для получателя без FO; держателю — `titleSnapshot`; владельцу — без идентичности держателя без `holderVisibleToOwner` и без `bought`.
 
 ### AD-15 — Тестирование инвариантов `[ASSUMPTION]`
 
-- **Binds:** AD-7, AD-9, SM-2
+- **Binds:** AD-7, AD-9, AD-14, SM-2, FR-31
 - **Prevents:** «забытые» гонки и privacy в epics
-- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони → ровно одна success; (2) FO token + non-friend → gate без gift fields; (3) Block + valid discoverable token → `not_found`; (4) unfriend + активная бронь → reservation card без siblings. Остальной test pyramid — на epics.
+- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони → ровно одна success; (2) FO token + non-friend → gate без gift fields; (3) Block + valid discoverable token → `not_found`; (4) unfriend + активная бронь → reservation card без siblings; (5) владелец при `holderVisibleToOwner=false` не получает идентичность держателя ни в gift card, ни в Notification, ни в письме; `bought` владельцу не отдаётся; (6) cron не переводит в OPEN брони с `bought=true` и в фазе GIVEN; (7) гонка cron-таймера и действия держателя/владельца → ровно один переход; (8) отмена закрытия после 10 s → `CONFLICT`. Остальной test pyramid — на epics.
 
 ## Consistency Conventions
 
@@ -249,7 +282,7 @@ src/
     (app)/                    # lists, search, friends, reservations, settings, notifications
     u/[nick]/
     l/[token]/
-    api/cron/expire-reservations/
+    api/cron/reservation-timers/
   actions/
   domain/
     visibility.ts
@@ -288,16 +321,39 @@ erDiagram
     int priceCents
     string reservedById
     datetime reservedAt
+    datetime reservationDueAt
+    string reservationTimeZone
+    enum reservationPhase
+    datetime reservationPhaseAt
+    bool reservationBought
+    bool holderVisibleToOwner
+    bool holderVisibleToOthers
     string titleSnapshotOnReserve
+    datetime closedAt
+    enum closedFromStatus
   }
 ```
 
 ```mermaid
 stateDiagram-v2
   [*] --> OPEN
-  OPEN --> RESERVED: reserve CAS
-  RESERVED --> OPEN: release / owner / TTL CAS
-  RESERVED --> CLOSED: owner CAS
+  OPEN --> RESERVED: reserve CAS (dueAt, toggles)
+  state RESERVED {
+    [*] --> ACTIVE
+    ACTIVE --> AWAITING_GIVER: cron dueAt
+    AWAITING_GIVER --> AWAITING_OWNER: cron +72h
+    AWAITING_GIVER --> ACTIVE: holder extend / bought
+    AWAITING_OWNER --> ACTIVE: holder extend / owner keep
+    ACTIVE --> GIVEN: holder given
+    AWAITING_GIVER --> GIVEN: holder given
+    AWAITING_OWNER --> GIVEN: holder given
+    GIVEN --> ACTIVE: owner not received (bought=true)
+  }
+  RESERVED --> OPEN: holder / owner release; cron +168h if !bought
+  OPEN --> CLOSED: owner received
+  RESERVED --> CLOSED: owner received
+  CLOSED --> OPEN: undo ≤10s (closedFromStatus)
+  CLOSED --> RESERVED: undo ≤10s (closedFromStatus)
   CLOSED --> [*]
 ```
 
@@ -312,11 +368,12 @@ stateDiagram-v2
 | FR-27..28 List links | `l/[token]`, `publicToken` | AD-6, AD-7 |
 | FR-13..15,23..24 Friendship / block | `domain/friendship` | AD-10, AD-7 |
 | FR-17 Reserve / release / close | `GiftStatusService` | AD-8, AD-9, AD-12 |
+| FR-29..FR-32 Срок, отметки, видимость, закрытие | `GiftStatusService`, cron `reservation-timers` | AD-5, AD-7, AD-8, AD-9, AD-12, AD-14 |
 | FR-25 My reservations | reservation card queries | AD-7 matrix, AD-9 |
 | FR-26 Notifications | Notification + UI | AD-14 |
 | A-24 / R2 payments | deferred | AD-11 |
 | Race/privacy tests | test suite | AD-15 |
-| Ops cron TTL | cron → GiftStatusService | AD-5, AD-9 |
+| Ops cron таймеры брони | cron → GiftStatusService | AD-5, AD-9 |
 
 ## Deferred
 
@@ -341,7 +398,9 @@ stateDiagram-v2
 | ARCH-A2 | Имя Gift List; домен открыт | Q-2 |
 | ARCH-A3 | Удаление аккаунта — ручной запрос | Q-3 / UX-A4 |
 | ARCH-A4 | Цена опциональна | Q-6 / UX-A5 |
-| ARCH-A5 | Нет reopen CLOSED→OPEN в R1 | UX-A11 |
+| ARCH-A5 | Нет reopen CLOSED в R1, кроме отмены владельцем в течение 10 s | UX-A11, D-12 |
 | ARCH-A6..A11 | Ник UX-A6; RU; light; cron; soft RL; Vercel+Neon+Resend | UX + ops |
 | ARCH-A12 | Auto-accept при встречном pending инвайте | AD-10 |
-| ARCH-A13 | `titleSnapshot` на бронь для A-14 path | AD-7 |
+| ARCH-A13 | `titleSnapshot` на бронь для A-14 path и писем держателю | AD-7, AD-14 |
+| ARCH-A14 | Срок брони = конец даты в IANA-поясе дарителя (из браузера, fallback UTC); хранится как `reservationDueAt timestamptz` | A-27 |
+| ARCH-A15 | Таймеры брони вызываются внешним планировщиком раз в час (не Vercel Cron); вызов идемпотентен, пропуск запуска только сдвигает переходы | D-12, переносимость |

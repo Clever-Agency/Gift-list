@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: 10-11-2026 12:00
+last_updated: '2026-10-11'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -66,13 +66,13 @@ development_status:
   epic-4-retrospective: optional
 
   epic-5: backlog
-  5-1-giftstatusservice-бронь-cas-срок-и-видимость: backlog
+  5-1-giftstatusservice-бронь-cas-со-сроком-и-видимостью: backlog
   5-2-снятие-брони-держателем-и-владельцем: backlog
-  5-3-закрытие-подарка-владельцем-отмена-и-копия: backlog
+  5-3-закрытие-подарка-владельцем-отмена-и-хочу-ещё-такой: backlog
   5-4-удаление-и-правка-забронированного-подарка: backlog
-  5-5-мои-брони-продление-купил-видимость: backlog
+  5-5-мои-брони-продление-купил-видимость-reservation-card: backlog
   5-6-цикл-истечения-срока-брони-cron: backlog
-  5-7-подарил-и-подтверждение-владельцем: backlog
+  5-7-подарил-и-подтверждение-получения-владельцем: backlog
   5-8-обязательные-автотесты-гонки-privacy-и-анонимности-ad-15: backlog
   epic-5-retrospective: optional
 

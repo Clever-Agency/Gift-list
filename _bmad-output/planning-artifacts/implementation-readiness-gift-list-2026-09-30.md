@@ -4,6 +4,7 @@ round: 1
 language: ru
 workflow: bmad-sprint-planning
 gate: PASS
+superseded_by: implementation-readiness-gift-list-2026-10-11.md
 date: 2026-09-30
 epics_source: _bmad-output/planning-artifacts/epics/epics-gift-list-2026-09-30/epics.md
 status_file: _bmad-output/implementation-artifacts/sprint-status.yaml

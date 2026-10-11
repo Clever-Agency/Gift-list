@@ -33,7 +33,7 @@
 - Маршруты auth: `(auth)/login|register|forgot|reset/`; home после входа — «Мои списки» (или заглушка до Epic 2).
 - Списки: `UNIQUE(ownerId, type)`; path шаринга `/l/:publicToken` (token не ротируется; смена ника позже не ломает ссылки).
 - Мутации: envelope `{ ok: true, data } | { ok: false, code, message }` с закрытым набором кодов; PK сущностей — CUID2.
-- Hosting envelope: Vercel + managed Postgres + Resend (для пилота).
+- Hosting envelope: Vercel (Hobby) + managed Postgres + Resend — только на этапе разработки; к пилоту — Docker-образ на собственном хостинге (AD-5, D-15). Платформенные сервисы Vercel не использовать (AD-16); секреты не коммитить — репозиторий публичный (D-17).
 
 ## UX & Interaction Patterns
 

@@ -7,7 +7,7 @@ paradigm: modular-monolith-layered
 scope: "Gift List Раунд 1 — веб: аккаунт, два списка, дружба, бронь «куплю сам», ссылки на списки. Без оплаты."
 status: final
 created: 2026-09-30
-updated: 2026-10-10
+updated: 2026-10-11
 language: ru
 workflow: bmad-architecture
 round: 1
@@ -21,6 +21,9 @@ binds:
   - D-11
   - D-12
   - D-13
+  - D-15
+  - D-16
+  - D-17
   - A-24
 sources:
   - _bmad-output/planning-artifacts/prds/prd-gift-list-2026-09-30/prd.md
@@ -88,9 +91,12 @@ flowchart TB
 
 ### AD-5 — Деплой и окружения `[ASSUMPTION]`
 
-- **Binds:** ops envelope R1
-- **Prevents:** разные хосты без явного решения
-- **Rule:** Web → Vercel; DB → managed Postgres; email → Resend; секреты — env Vercel. Таймеры брони (D-12) — обычный Route Handler `api/cron/reservation-timers` (защищён секретом), который вызывает **любой внешний планировщик** (не Vercel Cron — правило переносимости; сейчас, например, GitHub Actions schedule, после переезда — cron хоста; раз в час, ARCH-A15) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h`; AWAITING_OWNER→OPEN при `phaseAt ≤ now−168h AND bought=false`. Email — Resend. Staging = preview + отдельная DB.
+- **Binds:** ops envelope R1, D-15, D-17
+- **Prevents:** разные хосты без явного решения; Vercel как де-факто целевой хост
+- **Rule:** **Этап разработки:** Web → Vercel (Hobby) — хостинг разработки, **не целевой**; DB → managed Postgres; email → Resend; секреты — env хостинга.
+  **Триггеры переезда** (первый из): решены юрлицо и место хостинга; приближается пилот с реальными пользователями; нужно закрыть репозиторий или появилась монетизация (Hobby — только некоммерческое использование).
+  **Целевая схема:** Docker-образ (`output: 'standalone'`) → сборка в GitHub Actions → деплой на собственный сервер в РБ или РФ. Провайдер и место хостинга не выбраны (Deferred). После переезда репозиторий становится приватным (D-17).
+  Таймеры брони (D-12) — обычный Route Handler `api/cron/reservation-timers` (защищён секретом), который вызывает **любой внешний планировщик** (AD-16; сейчас, например, GitHub Actions schedule, после переезда — cron хоста; раз в час, ARCH-A15) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h`; AWAITING_OWNER→OPEN при `phaseAt ≤ now−168h AND bought=false`. Email — Resend. Staging = preview + отдельная DB.
 
 ### AD-6 — Списки, токены, профиль (A-25 / A-26) `[ASSUMPTION]`
 
@@ -239,6 +245,12 @@ flowchart TB
 - **Prevents:** «забытые» гонки и privacy в epics
 - **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони → ровно одна success; (2) FO token + non-friend → gate без gift fields; (3) Block + valid discoverable token → `not_found`; (4) unfriend + активная бронь → reservation card без siblings; (5) владелец при `holderVisibleToOwner=false` не получает идентичность держателя ни в gift card, ни в Notification, ни в письме; `bought` владельцу не отдаётся; (6) cron не переводит в OPEN брони с `bought=true` и в фазе GIVEN; (7) гонка cron-таймера и действия держателя/владельца → ровно один переход; (8) отмена закрытия после 10 s → `CONFLICT`. Остальной test pyramid — на epics.
 
+### AD-16 — Переносимость `[ADOPTED D-16]`
+
+- **Binds:** весь серверный код, AD-5, D-16, D-17
+- **Prevents:** код, который работает только на Vercel; блокировка переезда на Docker; утечка секретов из публичного репозитория
+- **Rule:** Запрещены платформенные сервисы Vercel (Cron, Blob, KV, Edge Config) и иные API, доступные только на одной платформе. Сборка обязана работать как `output: 'standalone'` в Docker-образе. Задачи по расписанию — Route Handler под `app/api/cron/*`, защищённый секретом и вызываемый любым внешним cron; cron таймеров брони — **только** через `GiftStatusService.processReservationTimers()` (AD-1, AD-8). Конфигурация — только через `env.ts`; секретов в репозитории нет (он публичный до переезда).
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -269,7 +281,7 @@ flowchart TB
 | Zod | 4.6.5 |
 | `@paralleldrive/cuid2` | 3.3.0 |
 | Resend | 6.31.0 |
-| Hosting | Vercel + Neon (preferred) + Resend |
+| Hosting | Разработка: Vercel (Hobby) + Neon (preferred) + Resend; цель: Docker-образ (`standalone`) на собственном сервере РБ/РФ (AD-5) |
 
 Проверено npm view / Next security release 2026-09-30.
 
@@ -373,7 +385,8 @@ stateDiagram-v2
 | FR-26 Notifications | Notification + UI | AD-14 |
 | A-24 / R2 payments | deferred | AD-11 |
 | Race/privacy tests | test suite | AD-15 |
-| Ops cron таймеры брони | cron → GiftStatusService | AD-5, AD-9 |
+| Ops cron таймеры брони | cron → GiftStatusService | AD-5, AD-9, AD-16 |
+| Деплой, переезд, Docker | Dockerfile / GitHub Actions (после триггера) | AD-5, AD-16 |
 
 ## Deferred
 
@@ -388,6 +401,9 @@ stateDiagram-v2
 | Redis rate-limit prod hardening | пилот; soft |
 | Prisma 8 | RC; revisit after GA |
 | Финальный бренд/домен | Q-2 открыт |
+| Место хостинга и провайдер (РБ или РФ, managed Postgres), юрлицо | PRD Q-7; чат 1 `discussion-backlog-2026-10-11.md`; фиксируется в AD-5 при переезде |
+| Мультирегиональная модель (домашний регион + общий каталог ников; `homeRegion`) | PRD Q-8; чат 1 `discussion-backlog-2026-10-11.md`; сейчас не строим |
+| Внешний планировщик для `api/cron/reservation-timers` | к Story 5.6; при переезде — cron хоста |
 | Полная test pyramid / e2e tooling | epics; AD-15 задаёт минимум |
 
 ## Open assumptions (не блокеры)
@@ -399,7 +415,7 @@ stateDiagram-v2
 | ARCH-A3 | Удаление аккаунта — ручной запрос | Q-3 / UX-A4 |
 | ARCH-A4 | Цена опциональна | Q-6 / UX-A5 |
 | ARCH-A5 | Нет reopen CLOSED в R1, кроме отмены владельцем в течение 10 s | UX-A11, D-12 |
-| ARCH-A6..A11 | Ник UX-A6; RU; light; cron; soft RL; Vercel+Neon+Resend | UX + ops |
+| ARCH-A6..A11 | Ник UX-A6; RU; light; cron; soft RL; Vercel+Neon+Resend только на этапе разработки (AD-5) | UX + ops |
 | ARCH-A12 | Auto-accept при встречном pending инвайте | AD-10 |
 | ARCH-A13 | `titleSnapshot` на бронь для A-14 path и писем держателю | AD-7, AD-14 |
 | ARCH-A14 | Срок брони = конец даты в IANA-поясе дарителя (из браузера, fallback UTC); хранится как `reservationDueAt timestamptz` | A-27 |

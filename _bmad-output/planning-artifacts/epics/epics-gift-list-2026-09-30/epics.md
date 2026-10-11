@@ -88,7 +88,7 @@ decisions_locked:
 - ARCH-R1: Starter AD-2 — `create-next-app@latest` (Next.js 16 App Router + TS + Tailwind + ESLint) → `shadcn init`; pin next ^16.3.8; Prisma 7.10.0; Better Auth 1.7.6; PostgreSQL; Zod 4; cuid2; Resend
 - ARCH-R2: Слои AD-1 — `app` → `actions` → `domain` → `db`; клиент без Prisma
 - ARCH-R3: Auth AD-3 — Better Auth email+password, database sessions; OAuth вне R1
-- ARCH-R4: Hosting AD-5 — Vercel + managed Postgres (Neon preferred) + Resend; таймеры брони — Route Handler, вызываемый внешним планировщиком, не Vercel Cron (AD-5) → GiftStatusService
+- ARCH-R4: Hosting AD-5 — Vercel (Hobby) только на этапе разработки, целевая схема — Docker-образ на собственном сервере в РБ или РФ (D-15); managed Postgres (Neon preferred) + Resend; платформенные сервисы Vercel запрещены (AD-16, D-16); таймеры брони — Route Handler, вызываемый внешним cron → GiftStatusService
 - ARCH-R5: AD-6 — path `/l/:publicToken`; token CUID2 immutable UNIQUE; ровно два списка UNIQUE(ownerId, type); профиль `/u/:nick`
 - ARCH-R6: AD-7 — VisibilityPolicy.resolve → `gifts | friends_only_gate | anon_gate | not_found`; Block→not_found; FO gate DTO без gift fields; reservation-card матрица после unfriend
 - ARCH-R7: AD-8 — GiftStatusService sole writer; enum OPEN|RESERVED|CLOSED; нет self-reserve; нет reopen CLOSED в R1, кроме отмены владельцем 10 с [ASSUMPTION ARCH-A5]

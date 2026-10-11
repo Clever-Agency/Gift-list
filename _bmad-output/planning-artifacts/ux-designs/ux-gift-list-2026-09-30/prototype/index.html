@@ -131,6 +131,27 @@ input[aria-invalid=true]{border-color:var(--destructive)}
   .stickycta{display:block;position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--border);padding:10px 16px;z-index:35}
 }
 @media(max-width:767px){.reserve-desk{display:none}}
+
+/* reservation model D-12 / D-13 */
+.tag{display:inline-block;border-radius:var(--r-sm);font-size:12px;font-weight:500;padding:1px 8px;background:var(--muted);color:var(--muted-fg)}
+.tag.warn{background:#FBE9E7;color:var(--destructive)}
+.tag.ok{background:var(--muted);color:var(--primary)}
+.gift.has-marker{flex-wrap:wrap}
+.marker{flex-basis:100%;border:1px solid var(--reserved-bg);background:#FFFBEF;border-radius:var(--r-md);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.gift .body{flex:1;min-width:0}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.acts .btn{padding:6px 10px;font-size:13px}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer}
+.check input{width:18px;height:18px;margin-top:2px;flex:none;accent-color:var(--primary)}
+details.received{border-top:1px dashed var(--border);padding-top:12px}
+details.received summary{cursor:pointer;font-size:14px;font-weight:500;color:var(--muted-fg)}
+details.received[open] summary{margin-bottom:12px}
+.undo{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:#fff;padding:8px 8px 8px 16px;border-radius:var(--r-md);font-size:14px;display:none;align-items:center;gap:12px;z-index:121}
+.undo.show{display:flex}
+.undo button{font:inherit;font-size:14px;font-weight:600;background:none;border:0;color:var(--accent);cursor:pointer;padding:4px 8px}
+.notif{display:flex;gap:12px;align-items:flex-start}
+.notif .dot{width:8px;height:8px;border-radius:9999px;background:var(--primary);margin-top:8px;flex:none}
+.notif .dot.read{background:transparent}
 </style>
 </head>
 <body>
@@ -146,6 +167,7 @@ input[aria-invalid=true]{border-color:var(--destructive)}
   <button data-s="anon">Anon gate</button>
   <button data-s="friends">Друзья</button>
   <button data-s="reservations">Мои брони</button>
+  <button data-s="notifications">Уведомления</button>
 </div>
 
 <div id="stage">
@@ -178,15 +200,27 @@ input[aria-invalid=true]{border-color:var(--destructive)}
       <div class="stack" style="gap:16px">
         <div class="row sb"><div class="row"><h2 class="display-sm" style="font-size:20px">Открытый</h2><span class="chip">Открытый</span></div>
           <button class="btn btn-outline" onclick="toast('Ссылка скопирована')">Скопировать ссылку</button></div>
-        <article class="card gift"><div style="flex:1"><div class="t">Наушники Sony WH-1000XM5</div><div class="caption price">8 000 ₽</div></div><span class="pill open">Открыт</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
-        <article class="card gift"><div style="flex:1"><div class="t">Книга «Соль, жир, кислота, тепло»</div><div class="caption">Цена не указана</div></div><span class="pill reserved">Забронирован</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
-        <article class="card gift"><div style="flex:1"><div class="t">Плед шерстяной</div><div class="caption price">3 200 ₽</div></div><span class="pill closed">Закрыт</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
+        <article class="card gift" id="g-headphones"><div class="body"><div class="t">Наушники Sony WH-1000XM5</div><div class="caption price">8 000 ₽</div>
+          <div class="acts"><button class="btn btn-outline" onclick="received('g-headphones','Наушники Sony WH-1000XM5')">Отметить полученным</button></div></div><span class="pill open">Открыт</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
+        <article class="card gift has-marker"><div class="body"><div class="t">Книга «Соль, жир, кислота, тепло»</div><div class="caption">Цена не указана</div></div>
+          <span class="pill reserved">Забронирован</span><button class="btn btn-ghost" aria-label="Меню">⋯</button>
+          <div class="marker"><span class="label">Срок брони истёк, даритель пока не ответил. Подарок уже у вас?</span>
+            <div class="row" style="gap:6px"><button class="btn btn-primary" onclick="toast('Отмечено полученным')">Получил</button><button class="btn btn-outline" onclick="toast('Бронь продлена на 7 дней')">Не получал, оставить бронь</button><button class="btn btn-ghost" onclick="toast('Бронь снята')">Снять бронь</button></div></div></article>
         <button class="btn btn-primary" style="align-self:flex-start">+ Добавить подарок</button>
+        <details class="received"><summary>Получено (1)</summary>
+          <article class="card gift"><div class="body"><div class="t">Плед шерстяной</div><div class="caption price">3 200 ₽</div>
+            <div class="acts"><button class="btn btn-outline" onclick="openDup()">Хочу ещё такой</button></div></div><span class="pill closed">Получен</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
+        </details>
       </div>
       <div class="stack" style="gap:16px">
         <div class="row sb"><div class="row"><h2 class="display-sm" style="font-size:20px">Для друзей</h2><span class="chip">Только друзья</span></div>
           <button class="btn btn-outline" onclick="toast('Ссылка скопирована')">Скопировать ссылку</button></div>
         <article class="card gift"><div style="flex:1"><div class="t">Кофемашина De'Longhi</div><div class="caption price">24 500 ₽</div></div><span class="pill open">Открыт</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
+        <article class="card gift has-marker"><div class="body"><div class="t">Механическая клавиатура</div><div class="caption price">12 000 ₽</div></div>
+          <span class="pill reserved">Забронирован</span><button class="btn btn-ghost" aria-label="Меню">⋯</button>
+          <div class="marker"><span class="label">Ждёт вашего подтверждения: даритель отметил, что вручил подарок. Подарок у вас?</span>
+            <div class="row" style="gap:6px"><button class="btn btn-primary" onclick="toast('Отмечено полученным')">Получил</button><button class="btn btn-outline" onclick="toast('Бронь снова активна на 7 дней')">Не получал</button></div></div></article>
+        <article class="card gift"><div class="body"><div class="t">Ужин в любимом месте</div><div class="caption">Цена не указана</div><div class="caption" style="margin-top:4px">Берёт Дмитрий — он решил показать вам имя</div></div><span class="pill reserved">Забронирован</span><button class="btn btn-ghost" aria-label="Меню">⋯</button></article>
         <button class="btn btn-primary" style="align-self:flex-start">+ Добавить подарок</button>
       </div>
     </div>
@@ -222,9 +256,13 @@ input[aria-invalid=true]{border-color:var(--destructive)}
     </div>
     <div class="stack" style="gap:16px">
       <article class="card gift" style="cursor:pointer" onclick="go('gift')"><div style="flex:1"><div class="t">Кофемашина De'Longhi</div><div class="caption price">24 500 ₽</div></div><span class="pill open">Открыт</span></article>
-      <article class="card gift"><div style="flex:1"><div class="t">Настольная игра «Каркассон»</div><div class="caption price">2 800 ₽</div></div><span class="pill reserved">Забронирован</span></article>
-      <p class="caption" style="margin-top:-8px">Берёт Игорь</p>
+      <article class="card gift"><div class="body"><div class="t">Настольная игра «Каркассон»</div><div class="caption price">2 800 ₽</div><div class="row" style="gap:6px;margin-top:6px"><span class="caption">Вы берёте · до 18.10</span><span class="tag ok">Куплен</span></div></div><span class="pill reserved">Забронирован</span></article>
+      <article class="card gift"><div class="body"><div class="t">Шарф кашемировый</div><div class="caption price">5 400 ₽</div><div class="row" style="gap:6px;margin-top:6px"><span class="caption">Берёт Игорь</span><span class="tag">Подарен</span></div></div><span class="pill reserved">Забронирован</span></article>
+      <article class="card gift"><div class="body"><div class="t">Термос для чая</div><div class="caption price">1 900 ₽</div><div class="caption" style="margin-top:6px">Даритель скрыл имя</div></div><span class="pill reserved">Забронирован</span></article>
       <article class="card gift"><div style="flex:1"><div class="t">Набор акварели</div><div class="caption">Цена не указана</div></div><span class="pill open">Открыт</span></article>
+      <details class="received"><summary>Уже подарено (1)</summary>
+        <article class="card gift"><div style="flex:1"><div class="t">Книга «Тихий Дон»</div><div class="caption">Цена не указана</div></div><span class="pill closed">Получен</span></article>
+      </details>
     </div>
   </main>
 </section>
@@ -306,8 +344,31 @@ input[aria-invalid=true]{border-color:var(--destructive)}
   <main>
     <h1 class="display">Мои брони</h1>
     <div class="stack">
-      <article class="card gift"><div style="flex:1"><div class="t">Настольная игра «Каркассон»</div><div class="caption">Список Анны Беловой · @anna_b · Только друзья</div></div><span class="pill reserved">Забронирован</span><button class="btn btn-outline" onclick="toast('Бронь снята')">Снять бронь</button></article>
-      <article class="card gift"><div style="flex:1"><div class="t">Термокружка Stanley</div><div class="caption">Список Сергея Морозова · @sergey_m · Открытый</div><div class="caption" style="margin-top:4px">Бронь снимется автоматически через 9 дн.</div></div><span class="pill reserved">Забронирован</span><button class="btn btn-outline">Снять бронь</button></article>
+      <article class="card gift"><div class="body"><div class="t">Настольная игра «Каркассон»</div><div class="caption">Список Анны Беловой · @anna_b · Только друзья</div>
+        <div class="row" style="gap:6px;margin-top:6px"><span class="caption">Подарю до 18.10</span><span class="tag ok">Куплен</span><span class="caption">· Анна не видит ваше имя · другие видят</span></div>
+        <div class="acts"><button class="btn btn-primary" onclick="toast('Анна получит вопрос «Подарок у вас?»')">Подарил</button><button class="btn btn-outline" onclick="toast('Выбор новой даты — не дальше 30 дней')">Продлить до…</button><button class="btn btn-outline" aria-pressed="true" onclick="toggleBought(this)">✓ Купил</button><button class="btn btn-outline" onclick="toast('Переключатели видимости: владельцу / другим')">Видимость</button><button class="btn btn-ghost" onclick="toast('Бронь снята')">Снять бронь</button></div></div>
+        <span class="pill reserved">Забронирован</span></article>
+      <article class="card gift"><div class="body"><div class="t">Термокружка Stanley</div><div class="caption">Список Сергея Морозова · @sergey_m · Открытый</div>
+        <div class="row" style="gap:6px;margin-top:6px"><span class="tag warn">Срок истёк 09.10</span><span class="caption">· Сергей не видит ваше имя · другие видят</span></div>
+        <div class="acts"><button class="btn btn-primary" onclick="toast('Сергей получит вопрос «Подарок у вас?»')">Подарил</button><button class="btn btn-outline" onclick="toast('Отмечено «Купил» — выберите новую дату')">Купил, ещё не вручил</button><button class="btn btn-outline" onclick="toast('Выбор новой даты — не дальше 30 дней')">Продлить до…</button><button class="btn btn-ghost" onclick="toast('Бронь снята')">Снять бронь</button></div></div>
+        <span class="pill reserved">Забронирован</span></article>
+    </div>
+  </main>
+</section>
+
+<!-- ============ NOTIFICATIONS ============ -->
+<section class="screen app" id="s-notifications">
+  <div data-chrome="notif-tab"></div>
+  <main>
+    <h1 class="display">Уведомления</h1>
+    <div class="stack">
+      <article class="card notif"><span class="dot"></span><div class="body" style="flex:1"><div class="label">Срок брони «Термокружка Stanley» истёк</div><div class="caption">Список Сергея Морозова · 09.10 · также отправлено на почту</div>
+        <div class="acts"><button class="btn btn-primary" onclick="toast('Сергей получит вопрос «Подарок у вас?»')">Подарил</button><button class="btn btn-outline" onclick="toast('Отмечено «Купил» — выберите новую дату')">Купил, ещё не вручил</button><button class="btn btn-outline" onclick="toast('Выбор новой даты — не дальше 30 дней')">Продлить до…</button><button class="btn btn-ghost" onclick="toast('Бронь снята')">Снять бронь</button></div></div></article>
+      <article class="card notif"><span class="dot"></span><div class="body" style="flex:1"><div class="label">Срок брони «Книга «Соль, жир, кислота, тепло»» истёк, даритель пока не ответил. Подарок уже у вас?</div><div class="caption">Ваш открытый список · также отправлено на почту</div>
+        <div class="acts"><button class="btn btn-primary" onclick="toast('Отмечено полученным')">Получил</button><button class="btn btn-outline" onclick="toast('Бронь продлена на 7 дней')">Не получал, оставить бронь</button><button class="btn btn-ghost" onclick="toast('Бронь снята')">Снять бронь</button></div></div></article>
+      <article class="card notif"><span class="dot read"></span><div class="body" style="flex:1"><div class="label muted">Срок брони «Набор кистей» истёк, даритель пока не ответил. Подарок уже у вас?</div><div class="caption">Даритель уже ответил</div></div></article>
+      <article class="card notif"><span class="dot read"></span><div class="body" style="flex:1"><div class="label">Владелец изменил «Настольная игра «Каркассон»»: цена</div><div class="caption">Список Анны Беловой · также отправлено на почту</div></div></article>
+      <article class="card notif"><span class="dot read"></span><div class="body" style="flex:1"><div class="label">Кто-то забронировал «Книга «Соль, жир, кислота, тепло»»</div><div class="caption">Ваш открытый список</div></div></article>
     </div>
   </main>
 </section>
@@ -317,17 +378,29 @@ input[aria-invalid=true]{border-color:var(--destructive)}
 <div class="overlay" id="dlg" role="dialog" aria-modal="true" aria-labelledby="dt">
   <div class="dialog">
     <h2 class="display-sm" id="dt" style="font-size:20px">Забронировать «Кофемашина De'Longhi»?</h2>
-    <p class="muted">Другие увидят, что подарок берёте вы.</p>
-    <div class="row" style="justify-content:flex-end"><button class="btn btn-ghost" onclick="closeDlg()">Отмена</button><button class="btn btn-reserve" onclick="closeDlg();toast('Готово — вы берёте этот подарок');go('reservations')">Подтвердить</button></div>
+    <div class="field"><label class="label" for="due">Подарю до</label><input id="due" type="date"><p class="caption" style="font-size:13px">Не дальше 30 дней. Продлить можно в любой момент.</p></div>
+    <label class="check"><input type="checkbox" id="vOwner"> <span>Показать Анне, что это я<br><span class="caption" style="font-size:13px">По умолчанию владелец видит только «Забронирован»</span></span></label>
+    <label class="check"><input type="checkbox" id="vOthers" checked> <span>Показать другим, кто берёт</span></label>
+    <p class="caption" style="font-size:13px">Если купите заранее, отметьте «Купил» — бронь не снимется сама.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn btn-ghost" onclick="closeDlg()">Отмена</button><button class="btn btn-reserve" onclick="confirmReserve()">Подтвердить</button></div>
+  </div>
+</div>
+<div class="overlay" id="dlg2" role="dialog" aria-modal="true" aria-labelledby="dt2">
+  <div class="dialog">
+    <h2 class="display-sm" id="dt2" style="font-size:20px">В какой список добавить?</h2>
+    <label class="check"><input type="radio" name="dup" checked> <span>Открытый</span></label>
+    <label class="check"><input type="radio" name="dup"> <span>Только друзья</span></label>
+    <div class="row" style="justify-content:flex-end"><button class="btn btn-ghost" onclick="closeDup()">Отмена</button><button class="btn btn-primary" onclick="closeDup();toast('Добавлен «Плед шерстяной» — открыт')">Добавить</button></div>
   </div>
 </div>
 <div class="toast" id="toast" role="status"></div>
+<div class="undo" id="undo" role="status" aria-live="polite"><span id="undoText">Отмечено полученным</span><button onclick="undoReceived()">Отменить</button></div>
 
 <script>
 function chrome(kind){
   if(kind==='anon') return `<header class="topbar"><div class="topbar-in"><a class="logo">Gift List</a><button class="btn btn-ghost">Войти</button><button class="btn btn-primary">Создать аккаунт</button></div></header>`;
   const A=kind;
-  const act={lists:"go('lists')",friends:"go('friends')",res:"go('reservations')"};
+  const act={lists:"go('lists')",friends:"go('friends')",res:"go('reservations')",notif:"go('notifications')"};
   const item=(k,t,ic,b)=>`<a class="nav-i ${A===k?'active':''}" onclick="${act[k]||"toast('Экран не в прототипе')"}"><span class="ic">${ic}</span>${t}${b?`<span class="badge">${b}</span>`:''}</a>`;
   const friend=(k,n,nick,ini)=>`<a class="nav-i friend ${A===k?'active':''}" onclick="go('public')"><span class="avatar sm" style="background:var(--muted-fg)">${ini}</span><span>${n}<small>${nick}</small></span></a>`;
   return `<div class="mtop"><button aria-label="Меню" onclick="document.body.classList.add('drawer')">☰</button><a class="logo">Gift List</a><span class="avatar sm">МК</span></div>
@@ -356,7 +429,7 @@ function chrome(kind){
     </div>
   </aside>`;
 }
-const keyMap={lists:'lists',empty:'lists',public:'friend-anna',gift:'friend-anna',gate:'friend-anna',friends:'friends',reservations:'res'};
+const keyMap={lists:'lists',empty:'lists',public:'friend-anna',gift:'friend-anna',gate:'friend-anna',friends:'friends',reservations:'res',notifications:'notif'};
 document.querySelectorAll('[data-chrome]').forEach(el=>{const id=el.closest('.screen').id.slice(2);el.innerHTML=chrome(el.dataset.chrome==='anon'?'anon':keyMap[id])});
 document.addEventListener('click',e=>{if(!e.target.closest('.usermenu'))document.querySelectorAll('.pop.show').forEach(p=>p.classList.remove('show'))});
 function go(id){
@@ -366,9 +439,31 @@ function go(id){
 }
 document.querySelectorAll('.demo-bar button[data-s]').forEach(b=>b.onclick=()=>go(b.dataset.s));
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2200)}
-function openDlg(){document.getElementById('dlg').classList.add('show')}
+const iso=d=>d.toISOString().slice(0,10), dm=s=>s.slice(8,10)+'.'+s.slice(5,7);
+function openDlg(){
+  const t=new Date(),d7=new Date(t),d30=new Date(t);d7.setDate(t.getDate()+7);d30.setDate(t.getDate()+30);
+  const due=document.getElementById('due');due.min=iso(t);due.max=iso(d30);due.value=iso(d7);
+  document.getElementById('dlg').classList.add('show');
+}
 function closeDlg(){document.getElementById('dlg').classList.remove('show')}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDlg()});
+function confirmReserve(){
+  const due=document.getElementById('due');
+  if(!due.value||due.value<due.min||due.value>due.max){toast('Выберите дату в пределах 30 дней');return}
+  closeDlg();toast('Готово — вы берёте этот подарок до '+dm(due.value));go('reservations');
+}
+function openDup(){document.getElementById('dlg2').classList.add('show')}
+function closeDup(){document.getElementById('dlg2').classList.remove('show')}
+function toggleBought(b){const on=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',on);b.textContent=on?'✓ Купил':'Купил';toast(on?'Отмечено «Купил» — бронь не снимется сама':'Отметка «Купил» снята')}
+/* «Отметить полученным» + отмена 10 с (окно совпадает с серверным, без паузы) */
+let undoTimer=null,undoEl=null;
+function received(id,title){
+  if(!confirm('Подарок «'+title+'» получен?'))return;
+  undoEl=document.getElementById(id);undoEl.style.display='none';
+  const u=document.getElementById('undo');u.classList.add('show');clearTimeout(undoTimer);
+  undoTimer=setTimeout(()=>{u.classList.remove('show');undoEl=null},10000);
+}
+function undoReceived(){clearTimeout(undoTimer);document.getElementById('undo').classList.remove('show');if(undoEl){undoEl.style.display='';undoEl=null}toast('Отменено')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDlg();closeDup()}});
 
 /* ---------- friends: search + infinite scroll (mock data) ---------- */
 const FN=['Анна','Игорь','Ольга','Сергей','Татьяна','Дмитрий','Мария','Алексей','Елена','Павел','Наталья','Андрей','Юлия','Максим','Ксения'];

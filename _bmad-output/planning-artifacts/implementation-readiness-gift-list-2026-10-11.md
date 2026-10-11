@@ -24,7 +24,7 @@ status_file: _bmad-output/implementation-artifacts/sprint-status.yaml
 | Product brief | `briefs/brief-gift-list-2026-09-29/brief.md` | ✅ (модель брони не затрагивает) |
 | PRD + addendum | `prds/prd-gift-list-2026-09-30/` | ✅ D-12, D-13; FR-29…FR-32; A-9, A-23 сняты |
 | UX DESIGN + EXPERIENCE | `ux-designs/ux-gift-list-2026-09-30/` | ✅ EXPERIENCE обновлён; DESIGN без изменений |
-| UX prototype | `ux-designs/ux-gift-list-2026-09-30/prototype/index.html` | ⚠️ модель брони не отражена (spine главнее) |
+| UX prototype | `ux-designs/ux-gift-list-2026-09-30/prototype/index.html` | ✅ обновлён под D-12 / D-13 (spine главнее при конфликте) |
 | Architecture Spine | `architecture/architecture-gift-list-2026-09-30/ARCHITECTURE-SPINE.md` | ✅ AD-1…AD-15, ARCH-A14/A15 |
 | Epics & Stories | `epics/epics-gift-list-2026-09-30/epics.md` | ✅ 6 / 30 |
 | Sprint change proposal | `sprint-change-proposal-2026-10-10.md` | ✅ approved |
@@ -64,7 +64,7 @@ status_file: _bmad-output/implementation-artifacts/sprint-status.yaml
 ## Non-blocking notes
 
 1. **Внешний планировщик для `api/cron/reservation-timers`** не выбран (ARCH-A15). Нужен к началу Story 5.6; задача записана в `discussion-backlog-2026-10-11.md`.
-2. **Прототип** не отражает модель брони; при реализации Epic 5 ориентир — EXPERIENCE.md.
+2. **Прототип** обновлён под модель брони; при расхождении ориентир — EXPERIENCE.md.
 3. **Soft cross-epic**: доставка in-app / email (Epic 6) после событий 5.x — как и раньше; цикл брони в Epic 5 работоспособен и без доставки (метки на карточках и в «Моих бронях»).
 4. **Открытые чаты бэклога могут задеть план**: чат 1 (рынки / хостинг — AD-5, часовой пояс в профиле vs A-27), чат 3 (напоминания, отписка от писем — риск R-3), чат 4 (web push). Ни один не блокирует Epic 1–4; перед Epic 5 стоит проверить `git log -- _bmad-output`.
 5. Parser warnings на `# Gift List - Epic Breakdown` и `## Epic List` — false positive.

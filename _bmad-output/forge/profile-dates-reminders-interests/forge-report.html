@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forge: даты и напоминания</title>
+<style>
+:root{--bg:#f6f2e9;--paper:#fffdf7;--ink:#2b2a26;--muted:#6d6a60;--line:#e2dccd;--green:#2f5d3a;--red:#9b2c2c;--wax:#7a1f1f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1c19;--paper:#252520;--ink:#ece8dc;--muted:#a7a397;--line:#3a3933;--green:#7fb38a;--red:#e08a8a;--wax:#b04040}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Georgia,"Times New Roman",serif}
+main{max-width:860px;margin:0 auto;padding:32px 16px 64px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:24px;margin-bottom:20px}
+h1{font-size:28px;margin:0 0 4px}h2{font-size:19px;margin:0 0 12px}
+.sub{color:var(--muted);margin:0}
+header{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+header svg{flex:0 0 auto}
+ul{margin:0;padding-left:20px}li{margin:4px 0}
+.kill li::marker{content:"✕  ";color:var(--red)}
+.lock li::marker{content:"✓  ";color:var(--green)}
+.crack li::marker{content:"!  ";color:var(--wax)}
+.tag{display:inline-block;font:12px/1 system-ui,sans-serif;padding:4px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.voices{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.voice{border:1px solid var(--line);border-radius:8px;padding:12px}
+.voice b{display:block}.voice i{color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+<header class="card">
+<svg width="120" height="120" viewBox="0 0 120 120" aria-label="Печать HARDENED">
+<circle cx="60" cy="60" r="54" fill="var(--wax)"/>
+<circle cx="60" cy="60" r="44" fill="none" stroke="#f3d9c9" stroke-width="2" stroke-dasharray="4 3"/>
+<text x="60" y="56" text-anchor="middle" font-family="Georgia,serif" font-size="15" font-weight="bold" fill="#f8e6da" letter-spacing="1">HARDENED</text>
+<text x="60" y="74" text-anchor="middle" font-family="Georgia,serif" font-size="10" fill="#f3d9c9">11·10·2026</text>
+</svg>
+<div>
+<h1>Даты, напоминания, интересы</h1>
+<p class="sub">Gift List · bmad-forge-idea · цель: минимум, при котором напоминания действительно возвращают людей</p>
+<p><span class="tag">Раунд 1: Epic 7</span><span class="tag">Раунд 1.5</span><span class="tag">email</span></p>
+</div>
+</header>
+
+<section class="card"><h2>Итог</h2>
+<p>Напоминание ценно, только когда <b>есть что забронировать</b>. Минимум: поле ДР, одно письмо дарителю за 14 дней (только при открытых видимых подарках), одно письмо владельцу за 30 дней «обнови список», отписка и часовой пояс. Это входит в хвост Раунда 1. Личные даты и интересы переходят в новый Раунд 1.5. От госпраздников отказались.</p></section>
+
+<section class="card lock"><h2>Зафиксировано</h2><ul>
+<li>ДР опционален (день и месяц). Год виден только владельцу. 29.02 переносится на 28.02.</li>
+<li>ДР видят только друзья. «Скрыть от друзей» означает, что напоминаний им тоже нет.</li>
+<li>Канал — email поверх Story 6.1. Push обсуждаем в чате 4.</li>
+<li>SM-C1: одно письмо на событие, без повторов, не больше одного письма-напоминания в день (дайджест). Только вкл/выкл.</li>
+<li>Отписка в один клик и List-Unsubscribe. Письма о брони не меняются.</li>
+<li>IANA-пояс в профиле. Письма уходят около 10:00 по местному времени.</li>
+<li>Модель UserDate {BIRTHDAY | CUSTOM}.</li>
+<li>Раунд 1.5: личные даты и интересы-теги с автодополнением.</li>
+</ul></section>
+
+<section class="card kill"><h2>Отклонено</h2><ul>
+<li>Госпраздники: не личный повод, нужны страна и пол, писем становится больше.</li>
+<li>.ics-подписка: не отвечает на вопрос «что подарить», фид утекает.</li>
+<li>Напоминания о людях вне сервиса — это задача календаря.</li>
+</ul></section>
+
+<section class="card crack"><h2>Остались слабые места</h2><ul>
+<li>Напоминания — кандидат в платную функцию (чат 6). Бесплатный Раунд 1 может с этим разойтись.</li>
+<li>Q-8 (страна, мультивалюта) открыт. Закрыт только часовой пояс.</li>
+</ul></section>
+
+<section class="card"><h2>Кто проверял</h2><div class="voices">
+<div class="voice"><b>📋 John · PM</b><i>«Возвращает людей» — это кто и что делает после клика? Письма за 30, 14 и 7 дней нарушат SM-C1.</i></div>
+<div class="voice"><b>🎨 Sally · UX</b><i>Скрыл ДР — значит, письма друзьям не уходят. Одна настройка, одно правило.</i></div>
+<div class="voice"><b>🧺 Ольга · мама двоих детей</b><i>Про ДР мне и так напомнит телефон. Мне нужно знать, что подарить и не взял ли это уже кто-то.</i></div>
+</div></section>
+</main>
+</body>
+</html>

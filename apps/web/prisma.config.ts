@@ -16,7 +16,7 @@ function resolveDatabaseUrl(): string {
   }
 
   throw new Error(
-    "DATABASE_URL is required for Prisma database commands. Copy .env.example to .env and configure PostgreSQL.",
+    "DATABASE_URL is required for Prisma database commands. Copy apps/web/.env.example to apps/web/.env and configure PostgreSQL.",
   );
 }
 

@@ -5,10 +5,10 @@ import { redirect } from "next/navigation";
 import { createId } from "@paralleldrive/cuid2";
 import { hashPassword } from "better-auth/crypto";
 import { z } from "zod";
+import type { ActionResult } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
 import { LIST_TYPES, NICK_RULES_TEXT, isValidNick, normalizeNick } from "@/domain";
-import type { ActionResult } from "@/lib/contracts";
 import { auth } from "@/lib/auth";
 import { REGISTER_LIMIT, consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 

@@ -1,6 +1,6 @@
 ---
 name: Gift List
-description: "Веб-вишлист с двумя списками видимости и бронью «куплю сам». shadcn/ui + Next.js + Tailwind; этот DESIGN.md — brand-layer delta для Раунда 1."
+description: "Вишлист с видимостью на каждом желании и бронью «куплю сам». Серверные страницы и админка: shadcn/ui + Next.js + Tailwind; приложение Expo (Android, iOS, браузер) — раздел App ожидает прогона bmad-ux (D-40). Токены общие."
 status: final
 created: 2026-09-30
 updated: 2026-10-05

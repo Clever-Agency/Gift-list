@@ -39,6 +39,9 @@ binds:
   - D-31
   - D-32
   - D-33
+  - D-40
+  - D-41
+  - D-42
   - A-24
 sources:
   - _bmad-output/planning-artifacts/prds/prd-gift-list-2026-09-30/prd.md
@@ -55,6 +58,8 @@ decisions_locked:
   - native-expo-client-D-20
   - one-wishlist-D-23
   - no-money-collection-D-25
+  - clients-expo-everywhere-D-40
+  - monorepo-D-41
 ---
 
 # Architecture Spine — Gift List (MVP)
@@ -65,12 +70,13 @@ decisions_locked:
 
 | Слой | Каталог | Может зависеть от |
 |------|---------|-------------------|
-| Web UI | `src/app/` (кроме `api/`) | actions, components |
-| Native UI | `apps/mobile/` | только HTTP `api/v1` и общий контракт |
-| HTTP / cron | `src/app/api/` | те же use-case, что и actions |
-| Application | `src/actions/`, `src/lib/auth/` | domain, db |
-| Domain | `src/domain/` | ничего внешнего (чистые правила + порты ошибок) |
-| Persistence | `src/db/` | Prisma client only |
+| Server pages + admin (Next.js) | `apps/web/src/app/` (кроме `api/`) | actions, components, `packages/contracts` |
+| App UI (Android, iOS, браузер) | `apps/mobile/` | только HTTP `api/v1` и `packages/contracts` |
+| Contract | `packages/contracts/` | только zod (без React, Prisma, env) |
+| HTTP / cron | `apps/web/src/app/api/` | те же use-case, что и actions |
+| Application | `apps/web/src/actions/`, `apps/web/src/lib/auth/` | domain, db |
+| Domain | `apps/web/src/domain/` | ничего внешнего (чистые правила + порты ошибок) |
+| Persistence | `apps/web/src/db/` | Prisma client only |
 
 ```mermaid
 flowchart TB
@@ -83,7 +89,7 @@ flowchart TB
   DOM -->|"GiftStatusService пишет статус"| DB
 ```
 
-Зависимости только **вниз**. Ни веб, ни Expo не импортируют Prisma и не обходят `VisibilityPolicy` / `GiftStatusService`. `apps/mobile` не импортирует `src/`.
+Зависимости только **вниз**. Ни веб, ни Expo не импортируют Prisma и не обходят `VisibilityPolicy` / `GiftStatusService`. `apps/mobile` не импортирует `apps/web`.
 
 ## Invariants & Rules
 
@@ -91,19 +97,19 @@ flowchart TB
 
 - **Binds:** all
 - **Prevents:** бизнес-логика в UI; параллельный SQL из компонентов/cron в обход сервисов
-- **Rule:** Мутации продукта для веба — Server Actions. Нативный клиент вызывает Route Handlers `app/api/v1/*`. Cron и webhooks — Route Handlers `app/api/cron/*` и `app/api/webhooks/*`. Все три адаптера **вызывают те же domain/application методы** и не копируют правила. Domain не импортирует React/Next. Prisma — из `db/` и application/domain-writer сервисов по AD-8.
+- **Rule:** Мутации продукта для веба — Server Actions. Нативный клиент вызывает Route Handlers `app/api/v1/*`. Cron и webhooks — Route Handlers `app/api/cron/*` и `app/api/webhooks/*`. Все три адаптера **вызывают те же domain/application методы** и не копируют правила. Набор use-case один; какой клиент показывает экран, решает D-40, а не сервер: метод `api/v1`, нужный только приложению, допустим, но правило в нём не дублируется. Domain не импортирует React/Next. Prisma — из `db/` и application/domain-writer сервисов по AD-8.
 
 ### AD-2 — Starter и UI-стек `[ADOPTED UX-A1]`
 
 - **Binds:** веб-frontend, design tokens
 - **Prevents:** расхождение UI-библиотеки веба; общий React-пакет с нативным клиентом
-- **Rule:** Веб уже поднят: Next.js App Router + shadcn + brand delta Forest Paper. Нативный UI — отдельное приложение Expo (AD-17) и **не** импортирует shadcn и `src/app`. Токены Forest Paper в мобильном клиенте — константы, не общий React-пакет: версии React расходятся.
+- **Rule:** Веб уже поднят: Next.js App Router + shadcn + brand delta Forest Paper. UI приложения — отдельное приложение Expo на трёх платформах (AD-17) и **не** импортирует shadcn и `apps/web`; shadcn остаётся для серверных страниц и админки. Токены Forest Paper в мобильном клиенте — константы, не общий React-пакет: версии React расходятся.
 
 ### AD-3 — Аутентификация `[ASSUMPTION]`
 
 - **Binds:** FR-1..FR-3, A-1..A-3, D-21, AD-17
 - **Prevents:** два источника пользователей; SMS-вход; OAuth в MVP; сессия натива мимо Better Auth
-- **Rule:** **Better Auth** — email + пароль, одна таблица пользователей и database sessions. Веб: cookie httpOnly. Натив: серверный плагин `@better-auth/expo` **той же версии**, что пакет `better-auth`, плюс `bearer()`; клиент Expo хранит токен в `expo-secure-store` и шлёт `Authorization`. `trustedOrigins` включает scheme приложения. Сброс пароля и опциональное confirm-письмо — Resend. Ответы login/register/forgot **не** раскрывают, существует ли email. OAuth и SMS-вход вне MVP. Сессия обязательна для брони, не для чтения PUBLIC-желаний по ссылке (AD-7).
+- **Rule:** **Better Auth** — email + пароль, одна таблица пользователей и database sessions. Браузер (Next-страницы и веб-сборка приложения на том же домене): cookie httpOnly. Android и iOS: серверный плагин `@better-auth/expo` **той же версии**, что пакет `better-auth`, плюс `bearer()`; клиент Expo хранит токен в `expo-secure-store` и шлёт `Authorization`. `trustedOrigins` включает scheme приложения. Сброс пароля и опциональное confirm-письмо — Resend. Ответы login/register/forgot **не** раскрывают, существует ли email. OAuth и SMS-вход вне MVP. Сессия обязательна для брони, не для чтения PUBLIC-желаний по ссылке (AD-7).
 
 ### AD-4 — Система записи `[ASSUMPTION]`
 
@@ -118,7 +124,7 @@ flowchart TB
 - **Rule:** **Этап разработки:** Web → Vercel (Hobby) — хостинг разработки, **не целевой**; DB → managed Postgres; email → Resend; секреты — env хостинга.
   **Переезд** обязателен до публикации в сторе (D-15). До этого сервер остаётся на Vercel. Юрлицо и место хостинга выбираются к публикации (Q-7), не сейчас. Hobby — только некоммерческая разработка. Публикация сборки в Google Play или App Store с API на Vercel запрещена.
   **Целевая схема:** Docker-образ (`output: 'standalone'`) → сборка в GitHub Actions → деплой на собственный сервер в РБ или РФ. Провайдер и место хостинга не выбраны (Deferred). После переезда репозиторий становится приватным (D-17).
-  Таймеры брони (D-12) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h`; AWAITING_OWNER→OPEN при `phaseAt ≤ now−168h AND bought=false`. Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
+  Таймеры брони (D-12) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h`; AWAITING_OWNER→OPEN при `phaseAt ≤ now−168h AND bought=false`. Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Веб-сборка приложения деплоится вместе с `apps/web` (AD-26). Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
 
 ### AD-6 — Один список, токен, профиль `[ADOPTED D-23]`
 
@@ -256,7 +262,7 @@ flowchart TB
 - **Rule:** Action result: `{ ok: true, data } | { ok: false, code, message }`. Коды **закрытый** набор: `UNAUTHENTICATED | FORBIDDEN | NOT_FOUND | CONFLICT | VALIDATION | RATE_LIMITED`. Gate-ответы — `ok: true` с `access`.
 
   Ответ списка: `{ ok: true, data: { access: "gifts"|"not_found", gifts } }`. Иного конверта нет.
-  Gift card — закрытый набор, один и тот же для веба и Expo (`contracts.ts`):
+  Gift card — закрытый набор, один и тот же для веба и Expo (`packages/contracts`):
   `{ id, title, description, priceAmount: number|null, priceCurrency: "USD"|"EUR"|"CNY"|"BYN"|"RUB"|null, linkUrl, visibility: "PUBLIC"|"FRIENDS"|"SECRET", quantity: "SINGLE"|"UNLIMITED", expiresOn: string|null, archivedAt: string|null, tags: { catalogId: string|null, label: string }[], status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservationLabel: null | "BOUGHT" | "GIVEN", ownerAction: null | "CONFIRM_GIVEN" | "EXPIRED_NO_REPLY" }`.
   `reservedBy` — по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. `reservationLabel` — только не-владельцу; `ownerAction` — только владельцу. Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOwner, holderVisibleToOthers }`. Пустая цена — оба поля `null`. Непустая цена без выбранной валюты сохраняется как `USD`. `visibility` чужое желание не раскрывает: в выдаче только те карточки, которые фильтр уже пропустил.
 
@@ -291,7 +297,7 @@ flowchart TB
 
 - **Binds:** весь UI, AD-1, AD-2, AD-3, D-20
 - **Prevents:** Expo вызывает Server Actions; две копии доменных правил; общий UI-пакет на разных React
-- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Веб-страницы публичной ссылки `/l/:token` и админки `/admin` остаются в Next.js. Общий код между клиентами — только контракт (zod-схемы без React), если его вынесут в пакет; импорт `src/domain` из Expo запрещён. Проверено 2026-10-28: SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб в репозитории на React 19.2.8 — версии не выравнивать через общий UI. Отображаемое имя — AD-24, не строковый литерал в экранах.
+- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Приложение — полный клиент на Android, iOS и в браузере (react-native-web, D-40). Платформенные модули (`expo-contacts`, `expo-secure-store`) подключаются через платформенные файлы; веб-сборка без них собирается, сверка контактов в браузере не предлагается. Next.js отдаёт только серверные страницы: `/l/:token` (первый показ анониму и мета-теги превью), `/i/:token`, `/unsubscribe/:token`, `/admin`, `.well-known`. Отдельного UI пользователя на Next.js нет. Выход iOS — шаг публикации и не меняет это правило. Общий код между клиентами — только `packages/contracts` (zod-схемы без React); импорт `apps/web` из Expo запрещён. Проверено 2026-10-28: SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб в репозитории на React 19.2.8 — версии не выравнивать через общий UI. Отображаемое имя — AD-24, не строковый литерал в экранах.
 
 ### AD-18 — Сопоставление телефонной книги `[ADOPTED D-21, D-30]`
 
@@ -341,6 +347,12 @@ flowchart TB
 - **Prevents:** рубль по умолчанию на одном клиенте и доллар на другом; произвольный ISO-код
 - **Rule:** Цена необязательна. Если она есть, `priceCurrency` — ровно одно из `USD`, `EUR`, `CNY`, `BYN`, `RUB`, иначе `VALIDATION`. Невыбранная валюта при непустой сумме — `USD`. Сумма хранится целым числом минимальных единиц; у всех пяти валют два знака после запятой. Поле не проводит платёж.
 
+### AD-26 — Монорепозиторий и ссылки в клиенты `[ADOPTED D-40, D-41]`
+
+- **Binds:** весь репозиторий, AD-17, AD-14, FR-26, FR-27, FR-47
+- **Prevents:** второй репозиторий и рассинхрон типов; письмо, которое ведёт только в браузер или только в приложение; архитектура «на время без iOS»
+- **Rule:** Один репозиторий, npm workspaces: `apps/web` (Next.js: сервер, `api/v1`, cron, серверные страницы, `/admin`, Prisma, env; раздаёт веб-сборку приложения), `apps/mobile` (Expo), `packages/contracts` (zod-схемы AD-12, gift card, коды ошибок; без React, Prisma и env). Prisma и секреты живут только в `apps/web`. Общего UI-пакета нет (AD-2, AD-17). **Один домен.** Веб-сборка приложения (`expo export --platform web`, SPA) публикуется вместе с `apps/web`. Next.js обслуживает свои пути (`/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known`), всё остальное отдаёт SPA (fallback rewrite). Поэтому сессия в браузере — cookie того же домена, без CORS. `/l/:token` при наличии сессии или по «Куплю сам» передаёт пользователя на экран вишлиста в приложении. Все ссылки наружу (письма, копирование вишлиста, приглашение) — `https://{домен}/…`. Тот же домен объявлен для Android App Links (`assetlinks.json`) и iOS Universal Links (`apple-app-site-association`). При установленном приложении путь открывается в нём, иначе — тот же экран в браузере. Домен — конфигурация (Q-2); на этапе разработки — домен хостинга разработки. Флаг `IOS_APP_PUBLISHED` включает ссылку в App Store в подсказке «установите приложение» без правки кода. Деплой: веб-сборка приложения собирается в том же CI, что `apps/web`, и уходит на тот же хост (Vercel сейчас, Docker после переезда, AD-5).
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -382,30 +394,33 @@ flowchart TB
 ## Structural Seed
 
 ```text
-src/
-  app/
-    (auth)/login|register|forgot|reset/
-    (app)/                    # wishlist, search, friends, reservations, settings, notifications
-    admin/                    # AD-22, web only
-    u/[nick]/
-    l/[token]/                # public link, anonymous PUBLIC wishes
-    i/[token]/                # invite
-    api/v1/                   # native adapter, AD-17
-    api/cron/reservation-timers/
-    api/cron/date-reminders/
-    api/cron/wish-expiry/
-  actions/
-  domain/
-    visibility.ts
-    gift-status.ts
-    friendship.ts
-  db/
-  components/
-  lib/
-    auth.ts
-    env.ts
-    contracts.ts              # zod wire types AD-12
-apps/mobile/                  # Expo SDK 58, не импортирует src/
+apps/
+  web/                        # Next.js: сервер + серверные страницы + админка; раздаёт веб-сборку приложения (AD-26)
+    prisma/
+    src/
+      app/
+        admin/                # AD-22, web only
+        l/[token]/            # public link, anonymous PUBLIC wishes
+        i/[token]/            # invite
+        unsubscribe/[token]/
+        .well-known/          # assetlinks.json, apple-app-site-association
+        api/v1/               # native adapter, AD-17
+        api/cron/reservation-timers/
+        api/cron/date-reminders/
+        api/cron/wish-expiry/
+      actions/
+      domain/
+        visibility.ts
+        gift-status.ts
+        friendship.ts
+      db/
+      components/
+      lib/
+        auth.ts
+        env.ts
+  mobile/                     # Expo SDK 58 — полный клиент: Android, iOS, браузер; не импортирует apps/web
+packages/
+  contracts/                  # zod wire types AD-12, без React/Prisma/env
 ```
 
 ```mermaid
@@ -473,7 +488,7 @@ stateDiagram-v2
 
 | Capability / Area | Lives in | Governed by |
 | --- | --- | --- |
-| FR-1..3 Auth | `lib/auth`, `(auth)/*` | AD-3, AD-13 |
+| FR-1..3 Auth | `lib/auth`, экраны приложения | AD-3, AD-13 |
 | FR-4 Email gate payments | — R2 | AD-11 |
 | FR-5..8 Profile / search / hide | `u/[nick]`, search | AD-7, AD-13 |
 | FR-9..12 Один список, CRUD, видимость | actions + domain | AD-1, AD-6, AD-7, AD-8 |
@@ -482,9 +497,11 @@ stateDiagram-v2
 | FR-40, FR-50 Телефон и книга | `api/v1` + Expo | AD-18 |
 | FR-38, FR-33..37 Даты | `UserDate`, cron date-reminders | AD-23 |
 | FR-44, FR-49 Админка и теги | `app/admin` | AD-22 |
-| FR-48 Предложить идею | domain + Notification | AD-8, AD-14, D-28 |
+| FR-48 Предложить идею | Раунд 1.5 (D-42); правила уже в AD-14 | AD-14, D-28 |
 | FR-51 Удаление аккаунта | settings + Expo | AD-20 |
 | Нативный клиент | `apps/mobile` | AD-17 |
+| Приложение в браузере, серверные страницы, ссылки | веб-сборка `apps/mobile`, `apps/web/src/app` (`/l`, `/i`, `/unsubscribe`, `/admin`), `.well-known` | AD-17, AD-26 |
+| Монорепозиторий | `apps/*`, `packages/contracts` | AD-26 |
 | FR-17 Reserve / release / close | `GiftStatusService` | AD-8, AD-9, AD-12 |
 | FR-29..FR-32 Срок, отметки, видимость, закрытие | `GiftStatusService`, cron `reservation-timers` | AD-5, AD-7, AD-8, AD-9, AD-12, AD-14 |
 | FR-25 My reservations | reservation card queries | AD-7 matrix, AD-9 |
@@ -503,6 +520,7 @@ stateDiagram-v2
 | Банк идей и наблюдения, автосопоставление | D-24: список в Раунде 2, сопоставление позже |
 | Тайный Санта, группы, AI-разбор желаний, «часто добавляют/выбирают», рекомендации блогеров | D-32; блогеры ещё и Q-14 |
 | Share-sheet, per-gift links, OG design | вне MVP |
+| Предложить идею | D-42: Раунд 1.5 |
 | Первое право брони предложившего | Снято (D-28). Срок предупреждения о желании — 3 дня (D-26) |
 | Канал жалоб, если его потребует закон | D-34: в MVP функции нет; сверка до публикации, `pre-release-checklist.md` |
 | i18n, dark mode | UX-A8/A9 |
@@ -526,6 +544,7 @@ stateDiagram-v2
 | ARCH-A6..A11 | Ник UX-A6; RU; light; cron; soft RL; Vercel+Neon+Resend только на этапе разработки (AD-5) | UX + ops |
 | ARCH-A12 | Auto-accept при встречном pending инвайте | AD-10 |
 | ARCH-A13 | `titleSnapshot` на бронь для A-14 path и писем держателю | AD-7, AD-14 |
-| ARCH-A14 | Срок брони = конец даты в IANA-поясе дарителя (из браузера, fallback UTC); хранится как `reservationDueAt timestamptz` | A-27 |
+| ARCH-A14 | Срок брони = конец даты в IANA-поясе дарителя (из устройства или браузера, fallback UTC); хранится как `reservationDueAt timestamptz` | A-27 |
+| ARCH-A17 | Видимость нового желания по умолчанию — `FRIENDS` (безопаснее для приватности; владелец меняет одним касанием). Ждёт подтверждения Sergey | D-23, readiness 2026-10-28 |
 | ARCH-A15 | Таймеры брони вызываются внешним планировщиком раз в час (не Vercel Cron); вызов идемпотентен, пропуск запуска только сдвигает переходы | D-12, переносимость |
 | ARCH-A16 | Предупреждение о сроке жизни желания — за 3 дня (D-26). Первого права брони нет (D-28) | D-26, D-28 |

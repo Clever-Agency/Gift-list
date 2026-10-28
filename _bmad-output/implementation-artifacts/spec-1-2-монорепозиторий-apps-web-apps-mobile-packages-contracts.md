@@ -78,7 +78,7 @@ context:
 - `next dev` пишет блок агентских правил в каталог проекта (`app-info-log.js` → `writeAgentFiles(dir)`), то есть в `apps/web`. `hasCurrentAgentRules("apps/web")` = true, второй копии не будет. Корневой `AGENTS.md` описывает структуру и ссылается на `apps/web/AGENTS.md`.
 - `outputFileTracingRoot` и `turbopack.root` заданы явно: worktree лежит внутри основной копии со своим lock, автоопределение корня могло выбрать её. Сервер standalone — `apps/web/.next/standalone/apps/web/server.js`; smoke: `node server.js` отдаёт 200 на `/` и `/register`.
 - `next start` при `standalone` работает (200), но печатает предупреждение; README описывает запуск через `node … server.js` для Docker.
-- `.env` скопирован из основной копии в `apps/web/.env`, git его игнорирует. `migrate` не проверен: `prisma migrate status` из `apps/web` подхватил конфиг, но Supabase-хост недоступен (P1001).
+- `.env` скопирован из основной копии в `apps/web/.env`, git его игнорирует. `migrate`: после восстановления проекта Supabase из паузы `prisma migrate status` из `apps/web` нашёл 2 миграции, «Database schema is up to date».
 - Проверено из корня: `typecheck`, `lint`, `test` (web 12, contracts 14), `build`.
 
 ## Spec Change Log

@@ -183,7 +183,7 @@ flowchart TB
 
   `Gift.quantity`: `SINGLE | UNLIMITED` (D-25). `UNLIMITED` не переходит в `RESERVED` (отказ `VALIDATION`). Счётчик «сколько подарили» в MVP не хранится как публичное поле.
 
-  `Gift.archivedAt`: срок жизни (D-26) или ручной архив. Архив скрывает желание из активного списка. Восстановление → `OPEN` и сбрасывает бронь. Дублирование создаёт новое `OPEN`. Cron `wish-expiry` архивирует просроченные и снимает активную бронь, если держатель не отметил вручение в том же действии. Уведомление «за несколько дней» не включается, пока открыт Q-12 (ARCH-A16).
+  `Gift.archivedAt`: срок жизни (D-26) или ручной архив. Архив скрывает желание из активного списка. Восстановление → `OPEN` и сбрасывает бронь. Дублирование создаёт новое `OPEN`. Cron `wish-expiry` за 3 дня до `expiresOn` (локальная дата держателя, окно ~10:00) шлёт одно `WISH_EXPIRY_SOON`, если статус `RESERVED`; просроченное архивирует и снимает активную бронь, если держатель не отметил вручение. Раннее письмо задним числом не досылается.
 
   Переходы MVP:
   - `OPEN → RESERVED` — только `SINGLE`; даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны; если задан `priorityReserverId` и право не снято — актор = этот пользователь (D-28, Q-13)
@@ -271,7 +271,7 @@ flowchart TB
 - **Prevents:** push-scope; FO leak в нотификациях; утечка держателя владельцу; повторные «пинги»
 - **Rule:** MVP — in-app `Notification` + email (Resend). Каналы получателя: in-app и email, по категориям (FR-52). Нативный push в MVP нет (Q-9). Одно событие → одна запись `Notification` (+ одно письмо, если канал email включён и событие в email-перечне).
   `Notification.deliverAfter timestamptz` — для закрытия (= `closedAt + 10 s`); отмена удаляет недоставленную запись. Доставка отложенных писем — механизм на выбор dev (after-response task или cron), допустимая задержка ≤ 1 ч.
-  Закрытый `Notification.kind`: `FRIEND_INVITE`, `FRIEND_ACCEPT`, `FRIEND_REJECT`, `RESERVATION_CREATED`, `RESERVATION_RELEASED`, `RESERVATION_DUE`, `RESERVATION_OWNER_ASK`, `RESERVATION_AUTO_RELEASE`, `GIFT_EDITED`, `GIFT_DELETED`, `GIFT_CLOSED`, `GIFT_GIVEN`, `DATE_FRIEND`, `DATE_OWN`, `SUGGESTION`, `WISH_EXPIRY`. Другие kind запрещены. Email — подмножество: события брони из FR-26, напоминания дат, `SUGGESTION` и `WISH_EXPIRY`, если у получателя включён канал email.
+  Закрытый `Notification.kind`: `FRIEND_INVITE`, `FRIEND_ACCEPT`, `FRIEND_REJECT`, `RESERVATION_CREATED`, `RESERVATION_RELEASED`, `RESERVATION_DUE`, `RESERVATION_OWNER_ASK`, `RESERVATION_AUTO_RELEASE`, `GIFT_EDITED`, `GIFT_DELETED`, `GIFT_CLOSED`, `GIFT_GIVEN`, `DATE_FRIEND`, `DATE_OWN`, `SUGGESTION`, `WISH_EXPIRY_SOON`, `WISH_EXPIRY`. Другие kind запрещены. Email — подмножество: события брони из FR-26, напоминания дат, `SUGGESTION`, `WISH_EXPIRY_SOON` и `WISH_EXPIRY`, если у получателя включён канал email. `WISH_EXPIRY_SOON` — ровно за 3 дня до `expiresOn` (D-26).
   Payload и письма: не содержат названий желаний, которые получатель не может видеть (AD-7); не содержат дат, которые он не может видеть (AD-23); держателю — `titleSnapshot`; владельцу — без идентичности держателя без `holderVisibleToOwner` и без `bought`. Предложение идеи: журнал `Suggestion` не хранит право брони. Право — только `Gift.priorityReserverId`. Принятие создаёт `OPEN` + `SINGLE`; видимость выбирает получатель. Если он выбрал `SECRET`, право снимается (бронировать некому). Имя отправителя в payload есть только если он его раскрыл (D-28).
 
 ### AD-15 — Тестирование инвариантов `[ASSUMPTION]`
@@ -489,7 +489,7 @@ stateDiagram-v2
 | Банк идей и наблюдения, автосопоставление | D-24: список в Раунде 2, сопоставление позже |
 | Тайный Санта, группы, AI-разбор желаний, «часто добавляют/выбирают», рекомендации блогеров | D-32; блогеры ещё и Q-14 |
 | Share-sheet, per-gift links, OG design | вне MVP |
-| Число дней до срока желания и таймаут первого права брони | Q-12, Q-13; до ответа истории не стартуют (ARCH-A16) |
+| Таймаут первого права брони | Q-13; до ответа история таймера не стартует (ARCH-A16). Срок предупреждения о желании закрыт: 3 дня (D-26) |
 | Self-serve репорт | ARCH-A1; удаление аккаунта не откладывается (AD-20) |
 | i18n, dark mode | UX-A8/A9 |
 | Redis rate-limit prod hardening | пилот; soft |
@@ -514,4 +514,4 @@ stateDiagram-v2
 | ARCH-A13 | `titleSnapshot` на бронь для A-14 path и писем держателю | AD-7, AD-14 |
 | ARCH-A14 | Срок брони = конец даты в IANA-поясе дарителя (из браузера, fallback UTC); хранится как `reservationDueAt timestamptz` | A-27 |
 | ARCH-A15 | Таймеры брони вызываются внешним планировщиком раз в час (не Vercel Cron); вызов идемпотентен, пропуск запуска только сдвигает переходы | D-12, переносимость |
-| ARCH-A16 | Пока Q-12 открыт, упреждающее уведомление о сроке жизни желания не реализуется. Пока Q-13 открыт, первое право брони не истекает само: его снимают бронь, отказ предложившего или владелец | Q-12, Q-13, D-26, D-28 |
+| ARCH-A16 | Предупреждение о сроке жизни желания — за 3 дня (D-26, Q-12 закрыт). Пока Q-13 открыт, первое право брони не истекает само: его снимают бронь, отказ предложившего или владелец | Q-13, D-26, D-28 |

@@ -116,7 +116,7 @@ flowchart TB
 - **Binds:** ops envelope R1, D-15, D-17
 - **Prevents:** разные хосты без явного решения; Vercel как де-факто целевой хост
 - **Rule:** **Этап разработки:** Web → Vercel (Hobby) — хостинг разработки, **не целевой**; DB → managed Postgres; email → Resend; секреты — env хостинга.
-  **Триггеры переезда** (первый из): решены юрлицо и место хостинга; приближается пилот с реальными пользователями; нужно закрыть репозиторий или появилась монетизация (Hobby — только некоммерческое использование).
+  **Переезд** обязателен до публикации в сторе (D-15). До этого сервер остаётся на Vercel. Юрлицо и место хостинга выбираются к публикации (Q-7), не сейчас. Hobby — только некоммерческая разработка. Публикация сборки в Google Play или App Store с API на Vercel запрещена.
   **Целевая схема:** Docker-образ (`output: 'standalone'`) → сборка в GitHub Actions → деплой на собственный сервер в РБ или РФ. Провайдер и место хостинга не выбраны (Deferred). После переезда репозиторий становится приватным (D-17).
   Таймеры брони (D-12) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h`; AWAITING_OWNER→OPEN при `phaseAt ≤ now−168h AND bought=false`. Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
 
@@ -186,7 +186,7 @@ flowchart TB
   `Gift.archivedAt`: срок жизни (D-26) или ручной архив. Архив скрывает желание из активного списка. Восстановление → `OPEN` и сбрасывает бронь. Дублирование создаёт новое `OPEN`. Cron `wish-expiry` за 3 дня до `expiresOn` (локальная дата держателя, окно ~10:00) шлёт одно `WISH_EXPIRY_SOON`, если статус `RESERVED`; просроченное архивирует и снимает активную бронь, если держатель не отметил вручение. Раннее письмо задним числом не досылается.
 
   Переходы MVP:
-  - `OPEN → RESERVED` — только `SINGLE`; даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны; если задан `priorityReserverId` и право не снято — актор = этот пользователь (D-28, Q-13)
+  - `OPEN → RESERVED` — только `SINGLE`; даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны. Отдельного права «забронировать первым» нет (D-28)
   - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, toggles); владелец (T6 «оставить», T10 «не получал»); cron (таймеры)
   - `RESERVED → OPEN` — держатель | владелец | cron (только `phase=AWAITING_OWNER AND bought=false`)
   - `OPEN | RESERVED → CLOSED` — владелец; reserved* **сохраняются** для аудита; пишутся `closedAt`, `closedFromStatus`; FR-25 активные = `status=RESERVED`
@@ -195,7 +195,7 @@ flowchart TB
   - Владелец **не** может `OPEN → RESERVED` на своём подарке → `FORBIDDEN`
   - `COLLECTION` не используется в R1
 
-  Gift CRUD: поля `title`, `description?`, `priceCents?`, `linkUrl?`, `visibility`, `quantity`, `expiresOn?`, теги (AD-22). Переноса между списками нет. Правка полей при `RESERVED` разрешена и порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в том же списке. Нематериальное желание — то же желание без обязательного `linkUrl`. Денежный сбор не создаётся (AD-11).
+  Gift CRUD: поля `title`, `description?`, `priceAmount?` (целые минимальные единицы, два знака), `priceCurrency?` (`USD|EUR|CNY|BYN|RUB`, при непустой цене по умолчанию `USD`), `linkUrl?`, `visibility`, `quantity`, `expiresOn?`, теги (AD-22, AD-25). Переноса между списками нет. Правка полей при `RESERVED` разрешена и порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в том же списке. Нематериальное желание — то же желание без обязательного `linkUrl`. Денежный сбор не создаётся (AD-11). Цена может отсутствовать (D-36).
 
 ### AD-9 — Сериализация всех переходов статуса
 
@@ -203,7 +203,8 @@ flowchart TB
 - **Prevents:** двойная бронь; гонки release/close/cron; fork схемы брони
 - **Rule:** R1 хранит бронь **на `Gift`** (таблицы `Reservation` в R1 **нет**):
   `status`, `visibility enum(PUBLIC|FRIENDS|SECRET)`, `quantity enum(SINGLE|UNLIMITED)`,
-  `expiresOn date null`, `archivedAt timestamptz null`, `priorityReserverId null`,
+  `expiresOn date null`, `archivedAt timestamptz null`,
+  `priceAmount int null`, `priceCurrency enum(USD|EUR|CNY|BYN|RUB) null`,
   `reservedById`, `reservedAt`, `reservationDueAt timestamptz`, `reservationTimeZone text` (IANA),
   `reservationPhase enum(ACTIVE|AWAITING_GIVER|AWAITING_OWNER|GIVEN)`, `reservationPhaseAt timestamptz`,
   `reservationBought bool default false`, `holderVisibleToOwner bool default false`, `holderVisibleToOthers bool default true`,
@@ -214,7 +215,7 @@ flowchart TB
 
   | Transition | Predicate |
   |------------|-----------|
-  | OPEN→RESERVED | `status=OPEN AND quantity=SINGLE AND archivedAt IS NULL AND (priorityReserverId IS NULL OR priorityReserverId=actor)`; set reserved*, `phase=ACTIVE`; чужой актор при живом праве → `FORBIDDEN` |
+  | OPEN→RESERVED | `status=OPEN AND quantity=SINGLE AND archivedAt IS NULL`; set reserved*, `phase=ACTIVE` |
   | holder: extend / bought / given / toggles | `status=RESERVED AND reservedById=actor` (+ `phase<>GIVEN` для given). Любой возврат фазы в `ACTIVE` в том же UPDATE ставит `reservationDueAt` в будущее; иначе следующий тик cron снова увидит `dueAt<=now` |
   | owner: keep (T6) / not received (T10) | `status=RESERVED AND phase=AWAITING_OWNER` / `phase=GIVEN` |
   | cron: ACTIVE→AWAITING_GIVER | `status=RESERVED AND phase=ACTIVE AND dueAt<=now()` |
@@ -246,7 +247,7 @@ flowchart TB
 
 - **Binds:** A-24, A-17..A-21, FR-4, FR-16, D-25
 - **Prevents:** ledger и Сбор в MVP; таблица Contribution «на потом», которую уже нельзя честно ввести
-- **Rule:** Нет таблиц платежей, ЮKassa и Contribution. `priceCents` nullable и только ориентир. Статус `COLLECTION` не вводится. Совместный денежный сбор отклонён навсегда (D-25). Целая оплата одного желания, если её вернут, — Раунд 2, отдельным решением, без сборов. Заглушки оплаты в UI запрещены.
+- **Rule:** Нет таблиц платежей, ЮKassa, Contribution и платной подписки. Цена желания — ориентир в валюте AD-25, не платёж. Статус `COLLECTION` не вводится. Совместный денежный сбор отклонён навсегда (D-25). Монетизации в MVP нет. Будущая платная подписка оформляется на сайте, не через IAP магазина (D-38). Заглушки оплаты и подписки в UI запрещены.
 
 ### AD-12 — Wire-контракт мутаций и карточек
 
@@ -256,8 +257,8 @@ flowchart TB
 
   Ответ списка: `{ ok: true, data: { access: "gifts"|"not_found", gifts } }`. Иного конверта нет.
   Gift card — закрытый набор, один и тот же для веба и Expo (`contracts.ts`):
-  `{ id, title, description, priceCents: number|null, linkUrl, visibility: "PUBLIC"|"FRIENDS"|"SECRET", quantity: "SINGLE"|"UNLIMITED", expiresOn: string|null, archivedAt: string|null, tags: { catalogId: string|null, label: string }[], status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservationLabel: null | "BOUGHT" | "GIVEN", ownerAction: null | "CONFIRM_GIVEN" | "EXPIRED_NO_REPLY" }`.
-  `priorityReserver` (id, nick) — только владельцу и обладателю права; остальным поле отсутствует. `reservedBy` — по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. `reservationLabel` — только не-владельцу; `ownerAction` — только владельцу. Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOwner, holderVisibleToOthers }`. Деньги только `priceCents` integer|null — без money-object. `visibility` чужое желание не раскрывает: в выдаче только те карточки, которые фильтр уже пропустил.
+  `{ id, title, description, priceAmount: number|null, priceCurrency: "USD"|"EUR"|"CNY"|"BYN"|"RUB"|null, linkUrl, visibility: "PUBLIC"|"FRIENDS"|"SECRET", quantity: "SINGLE"|"UNLIMITED", expiresOn: string|null, archivedAt: string|null, tags: { catalogId: string|null, label: string }[], status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservationLabel: null | "BOUGHT" | "GIVEN", ownerAction: null | "CONFIRM_GIVEN" | "EXPIRED_NO_REPLY" }`.
+  `reservedBy` — по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. `reservationLabel` — только не-владельцу; `ownerAction` — только владельцу. Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOwner, holderVisibleToOthers }`. Пустая цена — оба поля `null`. Непустая цена без выбранной валюты сохраняется как `USD`. `visibility` чужое желание не раскрывает: в выдаче только те карточки, которые фильтр уже пропустил.
 
 ### AD-13 — Идентификаторы, ник, поиск
 
@@ -272,7 +273,7 @@ flowchart TB
 - **Rule:** MVP — in-app `Notification` + email (Resend). Каналы получателя: in-app и email, по категориям (FR-52). Нативный push в MVP нет (Q-9). Одно событие → одна запись `Notification` (+ одно письмо, если канал email включён и событие в email-перечне).
   `Notification.deliverAfter timestamptz` — для закрытия (= `closedAt + 10 s`); отмена удаляет недоставленную запись. Доставка отложенных писем — механизм на выбор dev (after-response task или cron), допустимая задержка ≤ 1 ч.
   Закрытый `Notification.kind`: `FRIEND_INVITE`, `FRIEND_ACCEPT`, `FRIEND_REJECT`, `RESERVATION_CREATED`, `RESERVATION_RELEASED`, `RESERVATION_DUE`, `RESERVATION_OWNER_ASK`, `RESERVATION_AUTO_RELEASE`, `GIFT_EDITED`, `GIFT_DELETED`, `GIFT_CLOSED`, `GIFT_GIVEN`, `DATE_FRIEND`, `DATE_OWN`, `SUGGESTION`, `WISH_EXPIRY_SOON`, `WISH_EXPIRY`. Другие kind запрещены. Email — подмножество: события брони из FR-26, напоминания дат, `SUGGESTION`, `WISH_EXPIRY_SOON` и `WISH_EXPIRY`, если у получателя включён канал email. `WISH_EXPIRY_SOON` — ровно за 3 дня до `expiresOn` (D-26).
-  Payload и письма: не содержат названий желаний, которые получатель не может видеть (AD-7); не содержат дат, которые он не может видеть (AD-23); держателю — `titleSnapshot`; владельцу — без идентичности держателя без `holderVisibleToOwner` и без `bought`. Предложение идеи: журнал `Suggestion` не хранит право брони. Право — только `Gift.priorityReserverId`. Принятие создаёт `OPEN` + `SINGLE`; видимость выбирает получатель. Если он выбрал `SECRET`, право снимается (бронировать некому). Имя отправителя в payload есть только если он его раскрыл (D-28).
+  Payload и письма: не содержат названий желаний, которые получатель не может видеть (AD-7); не содержат дат, которые он не может видеть (AD-23); держателю — `titleSnapshot`; владельцу — без идентичности держателя без `holderVisibleToOwner` и без `bought`. Принятие идеи создаёт обычное желание (`OPEN`, количество выбирает получатель, по умолчанию `SINGLE`); видимость выбирает получатель. Колонки `priorityReserverId` нет (D-28). Имя отправителя в payload есть только если он его раскрыл.
 
 ### AD-15 — Тестирование инвариантов `[ASSUMPTION]`
 
@@ -290,7 +291,7 @@ flowchart TB
 
 - **Binds:** весь UI, AD-1, AD-2, AD-3, D-20
 - **Prevents:** Expo вызывает Server Actions; две копии доменных правил; общий UI-пакет на разных React
-- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Он обращается только к `app/api/v1` JSON с конвертом AD-12. Веб-страницы публичной ссылки `/l/:token` и админки `/admin` остаются в Next.js. Общий код между клиентами — только контракт (zod-схемы без React), если его вынесут в пакет; импорт `src/domain` из Expo запрещён. Проверено 2026-10-28: SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб в репозитории на React 19.2.8 — версии не выравнивать через общий UI.
+- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Веб-страницы публичной ссылки `/l/:token` и админки `/admin` остаются в Next.js. Общий код между клиентами — только контракт (zod-схемы без React), если его вынесут в пакет; импорт `src/domain` из Expo запрещён. Проверено 2026-10-28: SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб в репозитории на React 19.2.8 — версии не выравнивать через общий UI. Отображаемое имя — AD-24, не строковый литерал в экранах.
 
 ### AD-18 — Сопоставление телефонной книги `[ADOPTED D-21, D-30]`
 
@@ -308,7 +309,7 @@ flowchart TB
 
 - **Binds:** FR-51, D-33, Q-3
 - **Prevents:** релиз в App Store с удалением только письмом автору; разное удаление на вебе и в Expo
-- **Rule:** Единственная команда `deleteAccount(userId)`. Её вызывают веб и Expo. Better Auth не отдаёт отдельный delete наружу: сессии cookie и bearer гасятся внутри этой команды. Порядок: активные брони этого пользователя снимаются через `GiftStatusService` (CAS) с событием другой стороне и `titleSnapshotOnReserve`; затем удаляются строки, которые создал сервис, включая `phoneE164` и `phoneHmac`; ссылка `/l/:token` становится `not_found`. Прямой `deleteUser` Better Auth и SQL `onDelete` мимо сервиса запрещены. Срок хранения — Q-3; до ответа исключения пустые. Кнопка в настройках, с подтверждением. Обязательна до отправки в App Store.
+- **Rule:** Единственная команда `deleteAccount(userId)`. Её вызывают веб и Expo. Better Auth не отдаёт отдельный delete наружу: сессии cookie и bearer гасятся внутри этой команды. Порядок: активные брони этого пользователя снимаются через `GiftStatusService` (CAS) с событием другой стороне и `titleSnapshotOnReserve`; затем удаляются строки, которые создал сервис, включая `phoneE164` и `phoneHmac`; ссылка `/l/:token` становится `not_found`. Прямой `deleteUser` Better Auth и SQL `onDelete` мимо сервиса запрещены. Срок хранения — Q-3; до ответа исключения пустые. Кнопка в настройках, с подтверждением. Кнопка входит в первую сборку Google Play. Перед отправкой в App Store отдельно проверяется формулировка Apple 5.1.1(v).
 
 ### AD-21 — Приглашение и ссылка на вишлист `[ADOPTED D-29]`
 
@@ -326,7 +327,19 @@ flowchart TB
 
 - **Binds:** FR-33..FR-38, D-18, D-22, D-31
 - **Prevents:** напоминание тому, кто дату не видит; госпраздники в календаре; второй источник часового пояса
-- **Rule:** `User.timeZone` IANA, not null, default `UTC` — единственный пояс пользователя. `reservationTimeZone` на брони — снимок на момент Срока, не второй источник правки. `UserDate`: `kind BIRTHDAY|CUSTOM`, день, месяц, год опционален, `visibility only_me|friends|everyone` (default `friends`). `only_me` — владелец. `friends` — принятая дружба. `everyone` — любой зритель профиля после проверки Block, включая анонима на `/u/:nick`, подписчика и `ContactMatch`. Дата не входит в ответ `/l/:token`. BIRTHDAY — не больше одной. CUSTOM — не больше 10. Год — отдельный флаг `yearVisibility`, default `only_me`; видимость даты `everyone` год сама не открывает. Напоминание дарителю (T-14) — только другу, которому дата видна, и только при видимом ему `OPEN` желании. Напоминание владельцу (T-30) — только о своём ДР. `ReminderLog` UNIQUE(получатель, dateId, год, kind). Cron `api/cron/date-reminders`. Интересы (FR-39) в MVP не создаются; видимость по умолчанию — друзья (D-31).
+- **Rule:** `User.timeZone` IANA, not null, default `UTC` — единственный пояс пользователя. `reservationTimeZone` на брони — снимок на момент Срока, не второй источник правки. `UserDate`: `kind BIRTHDAY|CUSTOM`, день, месяц, год опционален, `visibility only_me|friends|everyone` (default `friends`). `only_me` — владелец. `friends` — принятая дружба. `everyone` — любой зритель профиля после проверки Block, включая анонима на `/u/:nick`, подписчика и `ContactMatch`. Дата не входит в ответ `/l/:token`. BIRTHDAY — не больше одной. CUSTOM — не больше 10. Год — отдельный флаг `yearVisibility`, default `only_me`; видимость даты `everyone` год сама не открывает. Напоминание дарителю (T-14) — только другу, которому дата видна, и только при видимом ему `OPEN` желании. Напоминание владельцу (T-30) — только о своём ДР. `ReminderLog` UNIQUE(получатель, dateId, год, kind). Cron `api/cron/date-reminders`. Напоминания не стоят за платёжным флагом (D-39). Интересы (FR-39) в MVP не создаются; видимость по умолчанию — друзья (D-31).
+
+### AD-24 — Имя продукта `[ADOPTED D-35]`
+
+- **Binds:** весь UI веба и Expo
+- **Prevents:** два захардкоженных названия; смена имени правкой экранов
+- **Rule:** Единственный источник отображаемого имени — переменная `BRAND_NAME`. Веб читает её из `env.ts`. Сборка Expo получает то же значение как `EXPO_PUBLIC_BRAND_NAME` из той же переменной CI, не из второго литерала. В компонентах строка «Gift List» не пишется. Пока имя не выбрано по спросу в поиске, значение переменной — `Gift List`. Домен эта переменная не задаёт (Q-2).
+
+### AD-25 — Валюта цены `[ADOPTED D-36, D-37]`
+
+- **Binds:** FR-10, AD-12
+- **Prevents:** рубль по умолчанию на одном клиенте и доллар на другом; произвольный ISO-код
+- **Rule:** Цена необязательна. Если она есть, `priceCurrency` — ровно одно из `USD`, `EUR`, `CNY`, `BYN`, `RUB`, иначе `VALIDATION`. Невыбранная валюта при непустой сумме — `USD`. Сумма хранится целым числом минимальных единиц; у всех пяти валют два знака после запятой. Поле не проводит платёж.
 
 ## Consistency Conventions
 
@@ -335,7 +348,7 @@ flowchart TB
 | Naming entities | `User`, `List` (один), `Gift.visibility` (`PUBLIC` \| `FRIENDS` \| `SECRET`), `Gift.quantity` (`SINGLE` \| `UNLIMITED`), `Friendship`, `Subscription`, `FriendshipInvite`, `InviteLink`, `Block`, `Notification`, `UserDate`, `EditorialCollection` |
 | Files | kebab-case файлы; PascalCase типы; domain без React |
 | Status on wire | English enum `OPEN\|RESERVED\|CLOSED`; UI labels из UX (открыт/…) |
-| Money R1 | `priceCents: number \| null`; display ₽ |
+| Money R1 | `priceAmount` + `priceCurrency`; пустая цена — оба null; показ по коду валюты, не по зашитому ₽ (AD-25) |
 | Errors | AD-12 closed codes |
 | Authz | AD-7 + ownership; object-level |
 | Logging | audit смены Gift.status (actor, from→to, at) |
@@ -416,7 +429,8 @@ erDiagram
   Gift {
     string id PK
     enum status
-    int priceCents
+    int priceAmount
+    string priceCurrency
     string reservedById
     datetime reservedAt
     datetime reservationDueAt
@@ -484,18 +498,18 @@ stateDiagram-v2
 
 | Item | Why wait |
 | --- | --- |
-| Целая оплата одного желания (без Сбора) | Раунд 2, A-24; Сбор отклонён навсегда (D-25, AD-11) |
+| Платная подписка на сайте | D-38; в MVP нет, IAP магазина не используем |
 | OAuth, SMS-вход, нативный push | Push — кандидат Раунда 1.5 (Q-9); OAuth и SMS вне MVP |
 | Банк идей и наблюдения, автосопоставление | D-24: список в Раунде 2, сопоставление позже |
 | Тайный Санта, группы, AI-разбор желаний, «часто добавляют/выбирают», рекомендации блогеров | D-32; блогеры ещё и Q-14 |
 | Share-sheet, per-gift links, OG design | вне MVP |
-| Таймаут первого права брони | Q-13; до ответа история таймера не стартует (ARCH-A16). Срок предупреждения о желании закрыт: 3 дня (D-26) |
-| Self-serve репорт | ARCH-A1; удаление аккаунта не откладывается (AD-20) |
+| Первое право брони предложившего | Снято (D-28). Срок предупреждения о желании — 3 дня (D-26) |
+| Канал жалоб, если его потребует закон | D-34: в MVP функции нет; сверка до публикации, `pre-release-checklist.md` |
 | i18n, dark mode | UX-A8/A9 |
 | Redis rate-limit prod hardening | пилот; soft |
 | Prisma 8 | RC; revisit after GA |
 | Финальный бренд/домен | Q-2 открыт |
-| Место хостинга и провайдер (РБ или РФ, managed Postgres), юрлицо | PRD Q-7; чат 1 `discussion-backlog-2026-10-11.md`; фиксируется в AD-5 при переезде |
+| Юрлицо и место хостинга | Q-7, до публикации. До этого сервер остаётся на Vercel (D-15). Публикация в стор до переезда запрещена |
 | Мультирегиональная модель (домашний регион + общий каталог ников; `homeRegion`) | PRD Q-8; чат 1 `discussion-backlog-2026-10-11.md`; сейчас не строим |
 | Внешний планировщик для `api/cron/reservation-timers` | к Story 5.6; при переезде — cron хоста |
 | Полная test pyramid / e2e tooling | epics; AD-15 задаёт минимум |
@@ -504,14 +518,14 @@ stateDiagram-v2
 
 | ID | Решение spine | Источник |
 |----|---------------|----------|
-| ARCH-A1 | Нет self-serve репорта; контакт Sergey | Q-1 / UX-A2 |
-| ARCH-A2 | Имя Gift List; домен открыт | Q-2 |
+| ARCH-A1 | Принято как D-34: жалоб в MVP нет. Юридическая сверка — чеклист перед публикацией | D-34 |
+| ARCH-A2 | Имя — переменная `BRAND_NAME` (AD-24). Домен открыт | Q-2, D-35 |
 | ARCH-A3 | Снято для механизма: удаление в приложении обязательно (AD-20, D-33). Срок хранения по-прежнему Q-3 | Q-3 |
-| ARCH-A4 | Цена опциональна | Q-6 / UX-A5 |
+| ARCH-A4 | Принято: цена необязательна, валюта из AD-25 | D-36, D-37 |
 | ARCH-A5 | Нет reopen CLOSED в R1, кроме отмены владельцем в течение 10 s | UX-A11, D-12 |
 | ARCH-A6..A11 | Ник UX-A6; RU; light; cron; soft RL; Vercel+Neon+Resend только на этапе разработки (AD-5) | UX + ops |
 | ARCH-A12 | Auto-accept при встречном pending инвайте | AD-10 |
 | ARCH-A13 | `titleSnapshot` на бронь для A-14 path и писем держателю | AD-7, AD-14 |
 | ARCH-A14 | Срок брони = конец даты в IANA-поясе дарителя (из браузера, fallback UTC); хранится как `reservationDueAt timestamptz` | A-27 |
 | ARCH-A15 | Таймеры брони вызываются внешним планировщиком раз в час (не Vercel Cron); вызов идемпотентен, пропуск запуска только сдвигает переходы | D-12, переносимость |
-| ARCH-A16 | Предупреждение о сроке жизни желания — за 3 дня (D-26, Q-12 закрыт). Пока Q-13 открыт, первое право брони не истекает само: его снимают бронь, отказ предложившего или владелец | Q-13, D-26, D-28 |
+| ARCH-A16 | Предупреждение о сроке жизни желания — за 3 дня (D-26). Первого права брони нет (D-28) | D-26, D-28 |

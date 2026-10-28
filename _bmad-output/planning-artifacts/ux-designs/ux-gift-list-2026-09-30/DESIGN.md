@@ -1,6 +1,6 @@
 ---
 name: Gift List
-description: "Вишлист с видимостью на каждом желании и бронью «Куплю сам». Одно приложение Expo (React Native + react-native-web) на Android, iOS и в браузере — раздел App; четыре серверные страницы Next.js (/l, /i, /unsubscribe, /admin) на shadcn/ui + Tailwind — раздел Next-страницы. Токены общие, только светлая тема, только русский."
+description: "Вишлист с видимостью на каждом желании и бронью «Куплю сам». Одно приложение Expo (React Native + react-native-web) на Android, iOS и в браузере — раздел App; четыре серверные страницы Next.js (/l, /i, /unsubscribe, /admin) на shadcn/ui + Tailwind — раздел Next-страницы. Токены общие, только светлая тема. Пилот на русском, мультиязычность заложена (кириллица + латиница)."
 status: final
 created: 2026-09-30
 updated: 2026-10-28
@@ -41,47 +41,48 @@ colors:
   destructive-foreground: '#FFFFFF'
   scrim: '#1E241F'
 typography:
-  # Файлы начертаний: Fraunces 600; DM Sans 400, 500, 600.
+  # D-46 (Sergey 2026-10-28): Lora 600 + Manrope 400, 500, 600 — оба с кириллицей и латиницей (Google Fonts, OFL;
+  # подмножества latin, latin-ext, cyrillic, cyrillic-ext). Fraunces и DM Sans заменены: в них нет кириллицы.
   # В React Native lineHeight задаётся в px: fontSize × множитель, округлить до целого.
   display:
-    fontFamily: 'Fraunces'
+    fontFamily: 'Lora'
     fontSize: 36px
     fontWeight: '600'
     lineHeight: '1.15'
-    letterSpacing: '-0.02em'
+    letterSpacing: '-0.01em'
   display-sm:
-    fontFamily: 'Fraunces'
+    fontFamily: 'Lora'
     fontSize: 24px
     fontWeight: '600'
     lineHeight: '1.2'
-    letterSpacing: '-0.01em'
+    letterSpacing: '0'
   heading:
-    fontFamily: 'DM Sans'
+    fontFamily: 'Manrope'
     fontSize: 18px
     fontWeight: '600'
     lineHeight: '1.3'
   body-strong:
-    fontFamily: 'DM Sans'
+    fontFamily: 'Manrope'
     fontSize: 16px
     fontWeight: '600'
     lineHeight: '1.4'
   body:
-    fontFamily: 'DM Sans'
+    fontFamily: 'Manrope'
     fontSize: 16px
     fontWeight: '400'
     lineHeight: '1.5'
   button:
-    fontFamily: 'DM Sans'
+    fontFamily: 'Manrope'
     fontSize: 15px
     fontWeight: '600'
     lineHeight: '1.2'
   label:
-    fontFamily: 'DM Sans'
+    fontFamily: 'Manrope'
     fontSize: 14px
     fontWeight: '500'
     lineHeight: '1.4'
   caption:
-    fontFamily: 'DM Sans'
+    fontFamily: 'Manrope'
     fontSize: 12px
     fontWeight: '400'
     lineHeight: '1.35'
@@ -325,7 +326,7 @@ components:
 
 > **[DECISION] Палитра C — Forest Paper** подтверждена Sergey (2026-09-30). Рабочее имя «Gift List» остаётся до финального бренда и домена (Q-2). Имя на экранах — переменная `BRAND_NAME` / `EXPO_PUBLIC_BRAND_NAME` (AD-24), в макетах — только плейсхолдер.
 > **[DECISION] D-40 (2026-10-28).** Один клиент — приложение Expo на Android, iOS и в браузере; дизайн приложения один, с адаптивными раскладками (раздел **App**). Next.js отдаёт только `/l`, `/i`, `/unsubscribe`, `/admin` (раздел **Next-страницы**).
-> [ASSUMPTION: UX-A8] Только светлая тема. [ASSUMPTION: UX-A9] Только русский.
+> [ASSUMPTION: UX-A8] Только светлая тема. **[DECISION] D-46:** пилот на русском, мультиязычность заложена — кириллица и латиница, слева направо (`EXPERIENCE.md` → Локализация).
 > Spines главнее макетов. Ключевые экраны приложения (телефон и широкий браузер) — [`mockups/app-key-screens.html`](mockups/app-key-screens.html). `prototype/index.html` устарел (см. `EXPERIENCE.md` → Foundation).
 
 ## Brand & Style
@@ -352,11 +353,12 @@ Gift List — тихий координатор подарков для узко
 
 ## Typography
 
-- **Display (`Fraunces`)** — редкий акцент: заголовок пустого состояния, имя владельца на вишлисте и профиле, приветствие на `/i`. Один display на экран. Не для body, кнопок, навигации.
-- **UI (`DM Sans`)** — всё остальное. `heading` — заголовок экрана в шапке и заголовки секций; `body-strong` — название желания в карточке; `button` — текст кнопок; `label` — подписи полей, пункты меню; `caption` — вспомогательный текст, pill, подписи вкладок.
+- **Display (`Lora`)** — редкий акцент: заголовок пустого состояния, имя владельца на вишлисте и профиле, приветствие на `/i`. Один display на экран. Не для body, кнопок, навигации.
+- **UI (`Manrope`)** — всё остальное. `heading` — заголовок экрана в шапке и заголовки секций; `body-strong` — название желания в карточке; `button` — текст кнопок; `label` — подписи полей, пункты меню; `caption` — вспомогательный текст, pill, подписи вкладок.
 - Цена — цифры lining tabular, код валюты после неразрывного пробела.
 - Масштаб шрифта системы (Dynamic Type, «Размер шрифта» Android, zoom браузера) не отключается. Раскладка выдерживает 200%: строки переносятся, кнопки растут по высоте, текст не обрезается многоточием в действиях. Поэтому высоты в токенах — `min-height`, не фиксированные. Исключение одно: подписи нижних вкладок ограничены `maxFontSizeMultiplier = 1.5`; на iOS при долгом нажатии — Large Content Viewer. Проверка: 200% Android, AX3 iOS, zoom 200% и 400% в браузере.
 - Логотип в боковом меню и шапках Next-страниц — `display-sm`.
+- **Языки.** Шрифты покрывают кириллицу и латиницу, включая расширенные наборы (украинский, белорусский, польский, немецкий и т.п.). Подключать подмножества `latin`, `latin-ext`, `cyrillic`, `cyrillic-ext`; без системной подмены глифов. Перед добавлением нового языка — проверить его буквы в обоих шрифтах (например, казахские Ұ, Ү, Һ). Manrope шире DM Sans: подписи тестировать с самым длинным языком, а не с русским.
 
 ## Layout & Spacing
 
@@ -486,7 +488,7 @@ UX-A13 (принято Sergey 2026-10-28). Пять разделов и коло
 ### Доступность
 
 - **Браузер:** WCAG 2.2 AA для веб-сборки приложения и Next-страниц. Контраст — раздел Colors. Цель нажатия не меньше 24×24 по 2.5.8; у нас везде 44×44. Фокус не перекрыт — механизм в «Мышь и клавиатура».
-- **Язык и заголовки страниц:** `<html lang="ru">` — в `app/+html.tsx` (expo-router) и `app/layout.tsx` (Next). `document.title` на каждом маршруте — «{Экран} — {BRAND_NAME}», у детали — «{название} — {BRAND_NAME}» (expo-router `Head`, Next `metadata`). После перехода фокус — на `h1` (`tabIndex=-1`), без дублирования live-регионом.
+- **Язык и заголовки страниц:** `<html lang>` = текущий язык (в пилоте `ru`) — в `app/+html.tsx` (expo-router) и `app/layout.tsx` (Next). `document.title` на каждом маршруте — «{Экран} — {BRAND_NAME}», у детали — «{название} — {BRAND_NAME}» (expo-router `Head`, Next `metadata`). После перехода фокус — на `h1` (`tabIndex=-1`), без дублирования live-регионом.
 - **Landmarks и заголовки:** шапка — `banner`, меню и вкладки — `nav`, область контента — `main`, правая колонка — `complementary`. `h1` — экран; `h2` (`role="heading"`, `aria-level={2}`) — секции («Получено (N)», «Архив», «Недавние вишлисты»), карточки правой колонки, заголовки диалогов и шторок. В react-native-web `accessibilityRole="header"` по умолчанию даёт `h1`, поэтому уровень задаётся явно.
 - **Куда уходит фокус, если открывший элемент исчез** (закрыли желание, приняли запрос, удалили карточку, забронировали, закрыли подсказку): (а) на «Отменить» в toast, если оно есть; иначе (б) на элемент, который его заменил (строка-пояснение вместо «Куплю сам», pill нового статуса); иначе (в) на следующий элемент списка, если его нет — на предыдущий; иначе (г) на `h1` экрана. Фокус никогда не уходит на `body`.
 - **ToastHost:** постоянно смонтирован, два региона — вежливый и срочный. Браузер — `role="status"` и `role="alert"` (в DOM до появления текста); Android — `accessibilityLiveRegion` на хосте; iOS — ещё `AccessibilityInfo.announceForAccessibility`. Длительность и пауза — строка Toast выше.
@@ -497,7 +499,7 @@ UX-A13 (принято Sergey 2026-10-28). Пять разделов и коло
 
 ## Next-страницы
 
-Next.js + shadcn/ui + Tailwind. Тот же brand-layer: CSS-переменные shadcn (`--primary`, `--accent`, `--background`, `--border`, `--ring`, …) принимают значения из frontmatter, шрифты — Fraunces и DM Sans через `next/font`. Своего UI вошедшего пользователя здесь нет (AD-17): вошедшего каждая страница передаёт в приложение.
+Next.js + shadcn/ui + Tailwind. Тот же brand-layer: CSS-переменные shadcn (`--primary`, `--accent`, `--background`, `--border`, `--ring`, …) принимают значения из frontmatter, шрифты — Lora и Manrope через `next/font` с подмножествами `cyrillic` и `latin`. `lang` страницы — язык страницы, не жёстко `ru`. Своего UI вошедшего пользователя здесь нет (AD-17): вошедшего каждая страница передаёт в приложение.
 
 Общий каркас `/l`, `/i`, `/unsubscribe`: `{components.next-header}` — логотип (`BRAND_NAME`, `display-sm`) слева; справа «Войти» (ghost) там, где вход уместен. Контент по центру, gutter как в приложении, без бокового меню; внизу футер со ссылкой «Написать автору». Сначала телефон (UX-DR10): первый показ — серверный HTML, без загрузки приложения. Доступность — как в приложении: `lang="ru"`, ссылка «Перейти к содержимому», `main`, `h1`. Заголовки страниц: «Вишлист {имя} — {BRAND}», «{Имя} приглашает в друзья — {BRAND}», «Отписка — {BRAND}», «Список не найден — {BRAND}».
 
@@ -514,7 +516,7 @@ Next.js + shadcn/ui + Tailwind. Тот же brand-layer: CSS-переменны�
 |----|-------|
 | Один primary action на экран | Стек CTA «оплатить / скинуться / куплю» в R1 |
 | Accent только для брони | Accent на навигации, логотипе, пустых состояниях |
-| Fraunces — точечно, один раз на экран | Body в serif «для уюта» |
+| Lora — точечно, один раз на экран | Body в serif «для уюта» |
 | На широком экране — меню, сетка, правая колонка, диалог по центру | Растянутый на 1440 px телефон с нижними вкладками |
 | Зона касания 44×44 везде, фокус виден везде | Действия, доступные только по hover; `hitSlop` вместо настоящей зоны |
 | Выбранный раздел — полоса, вес и цвет | Выбранный раздел только цветом |

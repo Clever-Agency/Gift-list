@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gift List — пары шрифтов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:opsz,wght@9..144,600&family=Manrope:wght@400;600&family=Lora:wght@600&family=Onest:wght@400;600&family=Literata:opsz,wght@7..72,600&family=Inter:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&family=Golos+Text:wght@400;600&family=PT+Serif:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{--primary:#2F5D3A;--accent:#D4A017;--bg:#F4F1EA;--fg:#1E241F;--muted:#E8E4DA;--mfg:#5C6358;--border:#D9D3C6}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;padding:32px 16px}
+h1{font-size:28px;margin-bottom:6px}
+.lead{color:var(--mfg);max-width:760px;margin-bottom:24px;font-size:15px;line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px;max-width:1500px}
+.pair{background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px}
+.pair.cur{border-style:dashed}
+.tag{font:600 12px/1 system-ui;text-transform:uppercase;letter-spacing:.06em;color:var(--mfg);margin-bottom:12px}
+.d{font-size:30px;line-height:1.15;letter-spacing:-.01em;font-weight:600;margin-bottom:4px}
+.nick{font-size:12px;color:var(--mfg);margin-bottom:14px}
+.card{border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+.t{font-size:16px;font-weight:600;line-height:1.4}
+.m{display:flex;gap:6px;align-items:center;margin:6px 0 10px;font-size:14px;color:var(--mfg)}
+.pill{font-size:12px;background:var(--muted);color:var(--primary);border-radius:999px;padding:3px 10px}
+.btn{display:block;text-align:center;background:var(--accent);border-radius:10px;padding:13px;font-size:15px;font-weight:600}
+.b{font-size:16px;line-height:1.5;margin-top:12px}
+.langs{font-size:14px;line-height:1.6;color:var(--mfg);margin-top:10px;border-top:1px solid var(--border);padding-top:10px}
+.note{font-size:13px;color:var(--fg);margin-top:10px;line-height:1.45}
+</style>
+</head>
+<body>
+<h1>Пары шрифтов с кириллицей</h1>
+<p class="lead">Fraunces и DM Sans кириллицы не имеют — в первой карточке русский текст рисуется запасным шрифтом браузера. Остальные пары поддерживают кириллицу и латиницу (включая расширенную: польский, чешский, турецкий и т.п.). Все — Google Fonts, лицензия OFL, работают и в Expo (<code>@expo-google-fonts/*</code>), и в Next (<code>next/font</code>).</p>
+<div class="grid">
+<script>
+const pairs=[
+ ["Сейчас: Fraunces + DM Sans","Fraunces","DM Sans","Нет кириллицы — русский текст ниже рисуется не этими шрифтами.",true],
+ ["A · Lora + Manrope","Lora","Manrope","Ближе всего к нынешнему тону: тёплая книжная антиква и мягкий геометрический гротеск. Кириллица, греческий, вьетнамский."],
+ ["B · Literata + Onest","Literata","Onest","Onest сделан для кириллицы (Яндекс-шрифтовая школа), Literata — спокойная книжная. Хорошо для RU/BY."],
+ ["C · Source Serif 4 + Inter","Source Serif 4","Inter","Самая широкая языковая поддержка и самый «нейтральный» вид. Inter есть почти везде."],
+ ["D · PT Serif + Golos Text","PT Serif","Golos Text","Классика для русского интерфейса; латиница проще, греческого нет."]
+];
+for(const [name,serif,sans,note,cur] of pairs){
+ document.write(`<div class="pair${cur?' cur':''}" style="font-family:'${sans}',sans-serif">
+ <div class="tag">${name}</div>
+ <div class="d" style="font-family:'${serif}',serif">Вишлист Сергея</div><div class="nick">@sergey · друзья</div>
+ <div class="card"><div class="t">Механическая клавиатура «Йети»</div><div class="m">12&nbsp;000&nbsp;RUB <span class="pill">Открыт</span></div><div class="btn">Куплю сам</div></div>
+ <div class="b">Срок брони истёк. Подарок уже у вас? Владелец не увидит, кто берёт, если вы не разрешите.</div>
+ <div class="langs">EN: Mechanical keyboard — I'll buy it<br>PL: Klawiatura mechaniczna — kupię sam<br>UK: Механічна клавіатура — куплю сам · Ґґ Єє Її<br>KK: Механикалық пернетақта · Әә Ғғ Ққ Ңң Өө Ұұ Үү Һһ<br>BE: Механічная клавіятура · Ўў</div>
+ <div class="note">${note}</div></div>`);
+}
+</script>
+</div>
+</body>
+</html>

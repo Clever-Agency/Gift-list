@@ -365,7 +365,7 @@ flowchart TB
 | Authz | AD-7 + ownership; object-level |
 | Logging | audit смены Gift.status (actor, from→to, at) |
 | Config | typed `env.ts` (zod); секреты не в клиент |
-| Locale / theme | RU only; light only |
+| Locale / theme | Пилот `ru`, i18n заложен (D-46, ARCH-A19); light only |
 | Hide from search | `User.hideFromSearch` boolean default false |
 
 ## Stack
@@ -523,7 +523,7 @@ stateDiagram-v2
 | Предложить идею | D-42: Раунд 1.5 |
 | Первое право брони предложившего | Снято (D-28). Срок предупреждения о желании — 3 дня (D-26) |
 | Канал жалоб, если его потребует закон | D-34: в MVP функции нет; сверка до публикации, `pre-release-checklist.md` |
-| i18n, dark mode | UX-A8/A9 |
+| Второй язык интерфейса, dark mode | D-46 (i18n заложен, язык добавится позже), UX-A8 |
 | Redis rate-limit prod hardening | пилот; soft |
 | Prisma 8 | RC; revisit after GA |
 | Финальный бренд/домен | Q-2 открыт |
@@ -549,3 +549,4 @@ stateDiagram-v2
 | ARCH-A15 | Таймеры брони вызываются внешним планировщиком раз в час (не Vercel Cron); вызов идемпотентен, пропуск запуска только сдвигает переходы | D-12, переносимость |
 | ARCH-A16 | Предупреждение о сроке жизни желания — за 3 дня (D-26). Первого права брони нет (D-28) | D-26, D-28 |
 | ARCH-A18 | **Открыто, решить до Story 2.7.** Фото желания (D-45, FR-53): файлы — в S3-совместимом объектном хранилище (не Vercel Blob — Rule выше), в `Gift` — только `photoKey` и `photoThumbKey`; в gift card (AD-12) — `photo: null \| { url, thumbUrl }`, где `url` — короткоживущая подписанная ссылка, выданная после VisibilityPolicy (AD-7); бакет не публичный. Загрузка — presigned PUT от сервера; сервер проверяет тип и размер (≤ 500 КБ). Ужатие и удаление EXIF — на клиенте (UX-A19). Провайдер выбрать с учётом рынков BY/RU | D-45, AD-7, AD-12 |
+| ARCH-A19 | **Открыто, решить до Story 1.3.** i18n (D-46): библиотека каталогов с ICU-плюралами для Expo и Next (например, i18next + `expo-localization`, `next-intl`), где лежат каталоги при запрете общего React-пакета (AD-2 — общий JSON допустим?), `User.locale` для писем и уведомлений, язык Next-страниц из `Accept-Language` | D-46, AD-2 |

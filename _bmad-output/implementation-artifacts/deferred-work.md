@@ -16,5 +16,5 @@
 
 - Живая БД не проверена (SQL rate limit, совместимость credential-аккаунта с `signInEmail`, миграции, гонка регистраций) — закрывается ручной проверкой из спеки 1.2. Unverified medium.
 - `getEnv()` в `src/lib/auth.ts` и проверка `DATABASE_URL` в `src/db/client.ts` выполняются при импорте; комментарий в `env.ts` про lazy неверен. Проверить: `npm run build` без `.env`. Unverified medium.
-- Cyrillic отсутствует в DM Sans / Fraunces → системный шрифт в RU-интерфейсе; нужно решение по UX (`src/app/layout.tsx`).
+- Cyrillic отсутствует в DM Sans / Fraunces → системный шрифт в RU-интерфейсе (`src/app/layout.tsx`). **Решено 2026-10-28 (D-46):** Lora + Manrope с `cyrillic`; заменить в `layout.tsx` в ближайшей истории Next-страниц, в приложении — в Story 1.3.
 - `/lists` без сессии редиректит на `/register` — заменить на `/login` в Story 1.3.

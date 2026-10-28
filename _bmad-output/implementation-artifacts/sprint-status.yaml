@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-10-11'
+last_updated: '2026-10-28'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -37,7 +37,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-scaffold-проекта-из-starter-next-js-shadcn-forest-paper: done
-  1-2-регистрация-и-создание-двух-списков: review
+  1-2-регистрация-и-создание-двух-списков: review # не принимать: D-23 требует один список, код переписать
   1-3-вход-и-выход: backlog
   1-4-сброс-пароля-по-email: backlog
   1-5-часовой-пояс-пользователя: backlog
@@ -48,6 +48,8 @@ development_status:
   2-2-создание-и-редактирование-подарка: backlog
   2-3-перенос-и-удаление-подарка-open: backlog
   2-4-копирование-ссылки-на-список: backlog
+  2-5-тип-желания-теги-и-срок: backlog
+  2-6-архив-по-сроку: backlog
   epic-2-retrospective: optional
 
   epic-3: backlog
@@ -64,6 +66,8 @@ development_status:
   4-3-списки-друзей-и-заявок: backlog
   4-4-удаление-из-друзей: backlog
   4-5-блокировка-и-разблокировка: backlog
+  4-6-подписка: backlog
+  4-7-ссылка-приглашение: backlog
   epic-4-retrospective: optional
 
   epic-5: backlog
@@ -89,4 +93,22 @@ development_status:
   7-2-настройки-напоминаний-часовой-пояс-и-отписка: backlog
   7-3-напоминание-дарителю-о-др-друга-t-14: backlog
   7-4-напоминание-владельцу-о-своём-др-t-30: backlog
+  7-5-личные-даты: backlog
+  7-6-напоминание-о-личной-дате: backlog
   epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-http-адаптер: backlog
+  8-2-вход-в-expo: backlog
+  8-3-телефон-и-книга-контактов: backlog
+  8-4-удаление-аккаунта: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  9-1-отправка-и-принятие-идеи: backlog
+  epic-9-retrospective: optional
+
+  epic-10: backlog
+  10-1-роль-и-подборки: backlog
+  10-2-модерация-своих-тегов: backlog
+  epic-10-retrospective: optional

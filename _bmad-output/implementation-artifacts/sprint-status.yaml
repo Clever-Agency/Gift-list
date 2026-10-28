@@ -38,7 +38,7 @@ development_status:
   epic-1: in-progress
   1-1-scaffold-проекта-из-starter-next-js-shadcn-forest-paper: done
   1-2-монорепозиторий-apps-web-apps-mobile-packages-contracts: backlog
-  1-3-каркас-expo-и-токены-forest-paper: backlog # ждёт UX-спеку приложения (bmad-ux)
+  1-3-каркас-expo-и-токены-forest-paper: backlog # UX-спека приложения готова 2026-10-28
   1-4-http-адаптер-app-api-v1-и-сессия-приложения: backlog
   1-5-регистрация-и-один-вишлист: backlog # бывшая 1.2: код двух списков на ревью не принимать, переписать
   1-6-вход-и-выход: backlog
@@ -53,6 +53,7 @@ development_status:
   2-4-копирование-ссылки-на-вишлист: backlog
   2-5-тип-желания-и-теги: backlog
   2-6-срок-жизни-желания-и-архив: backlog
+  2-7-фото-желания: backlog # нужен ARCH-A18 (хранилище фото)
   epic-2-retrospective: optional
 
   epic-3: backlog
@@ -86,7 +87,7 @@ development_status:
 
   epic-6: backlog
   6-1-уведомления-in-app-и-email-каналы: backlog
-  6-2-навигация-приложения: backlog # ждёт UX-спеку приложения (bmad-ux)
+  6-2-навигация-приложения: backlog # UX-спека приложения готова 2026-10-28
   6-3-настройки-контакт-автора-и-удаление-аккаунта: backlog
   6-4-доступность-ключевых-потоков: backlog
   6-5-приложение-в-браузере-на-одном-домене-с-next-js: backlog

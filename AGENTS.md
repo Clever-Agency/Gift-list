@@ -11,3 +11,7 @@ npm workspaces (D-41, AD-26). Команды запускаются из кор�
 - Зависимость ставится в свой workspace: `npm install <pkg> -w @gift-list/web`. Lock один — корневой `package-lock.json`.
 - Общего UI-пакета нет: React у веба и Expo разных версий (AD-17).
 - Планирование — `_bmad-output/planning-artifacts/`, статус историй — `_bmad-output/implementation-artifacts/sprint-status.yaml`. Язык документов — русский.
+
+## UI и UX
+
+Спека интерфейса — в `_bmad-output/planning-artifacts/ux-designs/ux-gift-list-2026-09-30/`: `DESIGN.md` (вид, токены во frontmatter), `EXPERIENCE.md` (поведение, тексты, состояния, доступность) и `mockups/app-key-screens.html` (статичные ключевые экраны). Истории с критериями приёмки — в `_bmad-output/planning-artifacts/epics/epics-gift-list-2026-09-30/epics.md`. Прочтите их перед любым экраном; спека главнее макета, `prototype/index.html` устарел. Полные правила для Cursor — `.cursor/rules/ux-design.mdc`.

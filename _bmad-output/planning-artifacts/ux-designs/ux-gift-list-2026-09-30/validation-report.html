@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<!--
+  UX Design Validation Report — skeleton template.
+
+  This file is a starter the synthesis pass fills in directly. There is no
+  substitution engine. The LLM:
+    1. Reads {doc_workspace}/review-rubric.md and every review-{slug}.md from
+       additional reviewers.
+    2. Copies this skeleton.
+    3. Replaces the placeholder content (everything between TEMPLATE markers)
+       with the consolidated review, preserving the structure and CSS.
+    4. Writes the result to {doc_workspace}/validation-report.html.
+    5. Writes a markdown twin to {doc_workspace}/validation-report.md.
+
+  Visual rules the LLM must preserve:
+    - The container width, the color tokens, the typography.
+    - One dimension = one collapsible <section class="dimension">.
+    - Verdict pill uses the verdict-* class matching its judgment.
+    - Severity badge uses the badge-sev-* class matching its level.
+    - Each extra reviewer (accessibility, adversarial, etc.) gets its own
+      collapsible section below the rubric dimensions.
+    - The footer always shows the artifact paths and timestamp.
+-->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>UX Design Validation: Gift List</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.92em; background: #f5f5f4; padding: 0 3px; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 8px 0; }
+  th, td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+</style>
+</head>
+<body><div class="container">
+<header class="report-header"><div class="title"><h1>Gift List — UX Design Validation Report</h1>
+<div class="subtitle">E:\Projects\CleverAgency\Gift-list\.claude\worktrees\gift-list-ux-spec-update-9e1ceb\_bmad-output\planning-artifacts\ux-designs\ux-gift-list-2026-09-30</div></div></header>
+<div class="synthesis"><p><strong>Adequate, но извлекать из пары без вопросов пока нельзя.</strong> Переход на D-40 сделан чисто: оболочка (одно приложение Expo, 4 Next-страницы), точки перехода, навигация, модель брони D-12/D-13 и видимость по умолчанию «всем» согласованы между файлами и с AD-7/AD-17/AD-26. Остатков модели двух списков в действующих правилах почти нет.</p>
+<p>Мешают три группы пробелов. Story-dev упрётся в них в Epic 2 и Epic 4: 1. <strong>Пилотные функции без UI-спеки:</strong> теги, срок жизни желания и архив (Stories 2.5, 2.6, D-42), вкладка «Подписки» (Story 4.3), блок, личные даты. Их придётся придумывать. 2. <strong>Противоречия с источниками:</strong> в Voice and Tone осталась строка «Войдите, чтобы увидеть подарки», хотя по D-29 аноним видит желания «всем». VisibilityChip меняет видимость без условия, а Story 2.3 разрешает это только у <code>открыт</code>. Flow 13 расходится со Story 2.6. 3. <strong>Не хватает строк компонентов и состояний:</strong> нет визуала у строк списков (друзья, запросы, уведомления, reservation card), не заданы пустые состояния и состояния ошибок у половины экранов, не определён маршрут приложения «Вишлист по ссылке».</p><p>Ревью доступности (WCAG 2.2 AA, TalkBack/VoiceOver) не меняет вердикт, но добавляет блокер ключевого потока Story 6.4: toast «Отменить» на 10 с без паузы (2.2.1) и невидимое кольцо фокуса на тёмном toast (2.07:1). Плюс вложенная интерактивность карточки, отсутствие lang/title и autocomplete на входе. Палитру менять не нужно.</p><p><strong>Находки:</strong> critical 0 · high 13 · medium 32 · low 29.</p></div>
+<div class="dimension-summary"><div class="dim-card"><div class="dim-name">1. Flow coverage</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div><div class="dim-card"><div class="dim-name">2. Token completeness</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div><div class="dim-card"><div class="dim-name">3. Component coverage</div><div class="dim-verdict" style="color: var(--verdict-thin)">thin</div></div><div class="dim-card"><div class="dim-name">4. State coverage</div><div class="dim-verdict" style="color: var(--verdict-thin)">thin</div></div><div class="dim-card"><div class="dim-name">5. Visual reference coverage</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div><div class="dim-card"><div class="dim-name">6. Bloat &amp; overspecification</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div><div class="dim-card"><div class="dim-name">7. Inheritance discipline</div><div class="dim-verdict" style="color: var(--verdict-thin)">thin</div></div><div class="dim-card"><div class="dim-name">8. Shape fit</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div></div>
+<section class="dimension"><details><summary><h2>1. Flow coverage</h2>
+<span class="verdict-pill verdict-adequate">adequate</span></summary>
+<div class="dim-body"><div class="dim-judgment"><p>Покрытие: UJ-1→Flow 1, UJ-2→Flow 2, UJ-3→Flow 3, UJ-3b→Flow 4, UJ-4→Flow 5, UJ-5→Flow 6, UJ-7→Flow 7, UJ-8→Flow 9. UJ-6 относится к Раунду 2 и исключён верно. Дополнительные потоки: Flow 8, 10, 12, 13, 14; Flow 11 помечен как Раунд 1.5 (D-42). Полные образцы — Flow 1, 2, 14: есть протагонист, шаги, кульминация, край. Остальные потоки короче.</p></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Нет Key Flow для ссылки-приглашения <code>/i/{token}</code> (Story 4.7, D-29, AD-21).</h3><span class="finding-location">EXPERIENCE стр. 69</span></header>
+<div class="finding-note">Нет Key Flow для ссылки-приглашения <code>/i/{token}</code> (Story 4.7, D-29, AD-21). Это второй вход в продукт после <code>/l</code>. Не описаны: регистрация по приглашению с дружбой в той же транзакции; экран «Добавить {имя} в друзья?» для вошедшего; что превью мессенджером ничего не создаёт; отказы (своя же ссылка, уже друзья, Block, невалидный токен). В IA это одна строка (EXPERIENCE стр. 69), в DESIGN — строка <code>/i</code> (стр. 434).</div>
+<div class="finding-fix"><strong>Fix:</strong> Flow 15 «Марина регистрируется по приглашению Сергея» с протагонистом, кульминацией «сразу видит желания «друзьям»» и веткой отказов.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Flow 13 (стр.</h3><span class="finding-location">стр. 356–362</span></header>
+<div class="finding-note">Flow 13 (стр. 356–362) и паттерн «Wish lifetime notice» (стр. 121) противоречат Story 2.6. По Story при <code>bought=false</code> бронь в день срока <strong>снимается автоматически</strong>, а желание архивируется одной транзакцией. Spine же говорит, что Марина «может отметить «Подарил» или снять бронь», хотя снимать уже нечего.</div>
+<div class="finding-fix"><strong>Fix:</strong> развести две ветки. <code>bought=false</code>: «Срок желания вышел, бронь снята», без кнопок. <code>bought=true</code> / GIVEN: статус не меняется, кнопка «Подарил».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">У Flow 4, 5, 6, 7, 9, 10 нет строки «Протагонист».</h3><span class="finding-location"></span></header>
+<div class="finding-note">У Flow 4, 5, 6, 7, 9, 10 нет строки «Протагонист». У Flow 4, 9 и 10 нет «Кульминации», хотя стр. 259 говорит «кульминация обязательна». Flow 4 теряет край PRD UJ-3b: у Сергея нет публичных желаний, Марина ещё не друг → «Пока нет открытых желаний», а не «закрыто» и не «не найдено».</div>
+<div class="finding-fix"><strong>Fix:</strong> дописать протагонистов и кульминации; в Flow 4 вернуть край из PRD.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">У Flow 3 (UJ-3) нет failure-пути.</h3><span class="finding-location"></span></header>
+<div class="finding-note">У Flow 3 (UJ-3) нет failure-пути. Самый вероятный сбой: пока Алексей регистрировался, «Наушники» забронировал кто-то другой, и после возврата confirm открывается на уже занятом желании. Ещё один сбой — желание удалили.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Край: желание заняли во время входа → confirm не открывается, toast «Кто-то только что забрал этот подарок», карточка <code>забронирован</code>».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Нет потоков для функций, которые D-42 оставляет в первом пилоте:</h3><span class="finding-location"></span></header>
+<div class="finding-note">Нет потоков для функций, которые D-42 оставляет в первом пилоте: теги, архив желания со стороны владельца (вернуть, скопировать), личные даты (Story 7.5), «Добавить в мой вишлист» из подборки (Story 10.1). Нет и потока блокировки (Story 4.5).</div>
+<div class="finding-fix"><strong>Fix:</strong> хотя бы короткие потоки по 3–4 шага с кульминацией для архива и подборок; для блока — край в Flow 6.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Кульминация Flow 1 (стр.</h3><span class="finding-location">стр. 269</span></header>
+<div class="finding-note">Кульминация Flow 1 (стр. 269) молчит про «секрет», хотя кульминация PRD UJ-1 говорит «Секретное желание не видит никто». Failure Flow 1 («ник занят при смене в настройках») к UJ-1 не относится.</div>
+<div class="finding-fix"><strong>Fix:</strong> добавить «Секрет» в шаг 2 и кульминацию. Failure сделать по сути потока: например, ошибка копирования ссылки или сети при сохранении.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Flow 9 не покрывает связанный путь UJ-8 / FR-35:</h3><span class="finding-location">стр. 140</span></header>
+<div class="finding-note">Flow 9 не покрывает связанный путь UJ-8 / FR-35: письмо владельцу за 30 дней. Есть только паттерн «Owner reminder email» (стр. 140).</div>
+<div class="finding-fix"><strong>Fix:</strong> одна строка «Связанный путь» в Flow 9.</div></article></div></details></section><section class="dimension"><details><summary><h2>2. Token completeness</h2>
+<span class="verdict-pill verdict-adequate">adequate</span></summary>
+<div class="dim-body"><div class="dim-judgment"><p>Во frontmatter 19 цветов, все в hex. Также 8 типографских ролей, 5 радиусов, 22 spacing и 29 компонентов. Все ссылки <code>{…}</code> внутри <code>components</code> разрешаются. Контраст заявлен (DESIGN стр. 305) и пересчитан: primary/paper 6.78, fg/accent 6.66, muted-fg/paper 5.51, status-reserved/bg 4.92, destructive/white 6.57, border-strong/white 3.6 — цифры верны.</p></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">EXPERIENCE §Component Patterns, строка «Reserve CTA» (стр.</h3><span class="finding-location">стр. 116</span></header>
+<div class="finding-note">EXPERIENCE §Component Patterns, строка «Reserve CTA» (стр. 116): <code>{button-reserve}</code> — путь, который не разрешается. Это единственная токен-ссылка в EXPERIENCE.</div>
+<div class="finding-fix"><strong>Fix:</strong> <code>{components.button-reserve}</code>.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Значения в обход токенов в DESIGN App.</h3><span class="finding-location">стр. 380</span></header>
+<div class="finding-note">Значения в обход токенов в DESIGN App. «Fraunces 22» для логотипа (стр. 380) — такого шага шкалы нет, <code>display-sm</code> = 24. «label 15» (стр. 380) — <code>label</code> = 14. Иконки в меню 22, хотя в разделе App сказано «24 px в навигации» (стр. 344). Без токенов также: ширина детали «до 640 px» (стр. 403), Avatar 28 и 64, высоты 24 / 28 / 56, ручка 32×4, padding <code>'12px'</code> / <code>'32px'</code> в <code>owner-action-label</code> и <code>next-panel</code>.</div>
+<div class="finding-fix"><strong>Fix:</strong> завести <code>typography.logo</code>, <code>spacing.detail-width</code>, <code>spacing.avatar-sm/lg</code> или свести значения к существующим шагам; иконку в навигации выбрать одну, 22 или 24.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Не заявлен контраст для нагруженных пар:</h3><span class="finding-location"></span></header>
+<div class="finding-note">Не заявлен контраст для нагруженных пар: primary-foreground на primary (7.27), status-open на muted (6.02), toast (14:1). Важнее другое: <code>border-strong</code> на paper даёт 3.2:1, а на <code>muted</code> — <strong>2.84:1</strong>, ниже 3:1 по WCAG 1.4.11. Это критично, если поле или выключенный switch окажутся на фоне <code>muted</code>.</div>
+<div class="finding-fix"><strong>Fix:</strong> дописать пары в Colors и запретить <code>border-strong</code> на <code>muted</code>.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Прозрачность scrim задана текстом <code>'{colors.scrim} at 40%'</code> (стр.</h3><span class="finding-location">стр. 260, 265</span></header>
+<div class="finding-note">Прозрачность scrim задана текстом <code>'{colors.scrim} at 40%'</code> (стр. 260, 265). Токена прозрачности нет, а затемнение pressed 8% (стр. 348) — литерал.</div>
+<div class="finding-fix"><strong>Fix:</strong> <code>opacity.scrim: 0.4</code>, <code>opacity.pressed: 0.08</code>, <code>opacity.disabled: 0.4</code>.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Таблица точек перехода (DESIGN стр.</h3><span class="finding-location">DESIGN стр. 390–391</span></header>
+<div class="finding-note">Таблица точек перехода (DESIGN стр. 390–391) берёт верхние границы литералами «–1023», «–1279», хотя токены <code>bp-expanded</code> и <code>bp-wide</code> есть.</div>
+<div class="finding-fix"><strong>Fix:</strong> «&lt; <code>{spacing.bp-expanded}</code>».</div></article></div></details></section><section class="dimension"><details open><summary><h2>3. Component coverage</h2>
+<span class="verdict-pill verdict-thin">thin</span></summary>
+<div class="dim-body"><div class="dim-judgment"><p>Есть в обоих файлах: Gift card / WishCard, Status pill, Visibility chip, Reserve CTA / ReserveButton, Reserve confirm, ReservationPhase, OwnerActionLabel, Toast, EmptyState, Badge, BottomSheet / Dialog, Form, Install hint. В прозе используются, но строки в DESIGN нет: Switch (токен есть, строки нет), Avatar, Skeleton, вкладки «Друзья / Запросы», меню ⋯ (есть только токен <code>user-menu</code>), поле поиска, чипы «Куплено» и «Ожидает ответа», секция «Получено (N)».</p></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">В UI-спеке нет <strong>тегов</strong> (Story 2.5, D-27) и <strong>срока жизни желания с архивом</strong> (Story 2.6, FR-42), хотя D-42 оставляет обе функции в пилоте.</h3><span class="finding-location">стр. 361</span></header>
+<div class="finding-note">В UI-спеке нет <strong>тегов</strong> (Story 2.5, D-27) и <strong>срока жизни желания с архивом</strong> (Story 2.6, FR-42), хотя D-42 оставляет обе функции в пилоте. Нет поля тегов в форме (фиксированные «мечта», «нужно сейчас», «когда-нибудь» и свой ≤ 30 символов) и нет отображения тегов на WishCard. Нет поля «Срок желания» (<code>expiresOn</code>) и секции «Архив» с «Вернуть» / «Скопировать». В DESIGN Форма (стр. 361) есть только общее «Дата — системный выбор даты».</div>
+<div class="finding-fix"><strong>Fix:</strong> строки «Tag picker» и «Archive section» в DESIGN App и в Component Patterns; поля «Теги» и «Срок желания» в описании формы.</div></article><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Нет визуальной спеки у строк списков, хотя на них держатся 5 из 13 экранов:</h3><span class="finding-location"></span></header>
+<div class="finding-note">Нет визуальной спеки у строк списков, хотя на них держатся 5 из 13 экранов: строка друга, входящий и исходящий запрос, строка уведомления (с кнопками действий, прочитано / не прочитано), <strong>reservation card</strong> в «Мои брони» (A-14, AD-7: только <code>titleSnapshot</code>, <code>ownerNick</code>, Срок, фаза, действия), строка результата поиска и найденного контакта, карточка подборки. В EXPERIENCE поведение описано частично, вида нет совсем.</div>
+<div class="finding-fix"><strong>Fix:</strong> строки «ListRow (person)», «NotificationRow», «ReservationCard», «CollectionCard» в DESIGN App с анатомией и размерами.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Reserve confirm описан по-разному.</h3><span class="finding-location">стр. 117</span></header>
+<div class="finding-note">Reserve confirm описан по-разному. В EXPERIENCE (стр. 117) это «Dialog» с «чекбоксами». В DESIGN (стр. 356) и Accessibility Floor (стр. 209) — <strong>Switch</strong>, а на compact — BottomSheet.</div>
+<div class="finding-fix"><strong>Fix:</strong> в EXPERIENCE «Шторка (compact) / диалог (medium+)» и «переключатели».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Недоступная «Куплю сам» описана по-разному.</h3><span class="finding-location">стр. 116</span></header>
+<div class="finding-note">Недоступная «Куплю сам» описана по-разному. EXPERIENCE «Reserve CTA» (стр. 116): «Disabled + пояснение». DESIGN ReserveButton (стр. 355): «кнопка скрыта, вместо неё строка-пояснение».</div>
+<div class="finding-fix"><strong>Fix:</strong> выбрать одно (скорее «скрыта + строка», как в DESIGN) и записать в оба файла.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Имена компонентов расходятся:</h3><span class="finding-location"></span></header>
+<div class="finding-note">Имена компонентов расходятся: DESIGN Components называет «Gift card», DESIGN App — «WishCard», EXPERIENCE — «Gift card». Так же «ReserveButton» ↔ «Reserve CTA», «ReserveConfirm» ↔ «Reserve confirm», «Badge» ↔ <code>badge-count</code>, «Undo toast» ↔ Toast. Frontmatter называет <code>gift-card</code>.</div>
+<div class="finding-fix"><strong>Fix:</strong> одно имя на компонент в обоих файлах; DESIGN App при этом может давать RN-имя в скобках.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Без строки в DESIGN App:</h3><span class="finding-location"></span></header>
+<div class="finding-note">Без строки в DESIGN App: Switch, Avatar, Skeleton, Tabs-сегмент, OverflowMenu ⋯, SearchField, Chip («Куплено», «Ожидает ответа»), Radio rows, Select валюты, свёрнутая секция «Получено (N)» / «Уже подарено».</div>
+<div class="finding-fix"><strong>Fix:</strong> добавить строки или раздел «Мелкие элементы» с размерами и состояниями.</div></article></div></details></section><section class="dimension"><details open><summary><h2>4. State coverage</h2>
+<span class="verdict-pill verdict-thin">thin</span></summary>
+<div class="dim-body"><div class="dim-judgment"><table><thead><tr><th>Поверхность</th><th>Есть</th><th>Нет</th></tr></thead><tbody><tr><td>Вход / Регистрация / Сброс</td><td>—</td><td>неверный пароль, email занят, ник занят при регистрации, токен сброса истёк или использован</td></tr><tr><td>Мой вишлист</td><td>пусто, cold load, сеть</td><td>архив, ошибка загрузки</td></tr><tr><td>Вишлист по ссылке (app)</td><td>пусто, не найден</td><td>—</td></tr><tr><td>Профиль</td><td>пусто, не найден, Block, pending</td><td>—</td></tr><tr><td>Деталь <code>/gifts/{id}</code></td><td>гонка</td><td>нет права, удалено, архив, SECRET по прямой ссылке</td></tr><tr><td>Поиск</td><td>скрыт из поиска</td><td>пустой результат (Story 3.5), начальное состояние</td></tr><tr><td>Друзья</td><td>пусто (друзья), подгрузка</td><td>пустые «Запросы», «Подписки»</td></tr><tr><td>Найти знакомых</td><td>отказ, браузер</td><td>0 совпадений</td></tr><tr><td>Мои брони</td><td>unfriend, «Купил» + молчание</td><td>пусто (копирайта нет)</td></tr><tr><td>Уведомления</td><td>устаревший запрос</td><td>пусто (копирайта нет)</td></tr><tr><td>Подборки</td><td>—</td><td>пусто, успех «Добавить в мой вишлист»</td></tr><tr><td>Настройки</td><td>ник занят</td><td>неверный номер (E.164), 11-я личная дата (Story 7.5)</td></tr><tr><td><code>/l</code></td><td>аноним, вошедший, пусто, не найден</td><td>—</td></tr><tr><td><code>/i</code></td><td>не найден</td><td>своя ссылка, уже друзья, Block</td></tr><tr><td><code>/unsubscribe</code></td><td>успех, «Вернуть»</td><td>невалидный токен, ошибка «Вернуть»</td></tr><tr><td><code>/admin</code></td><td>USER → не найдено</td><td>аноним, пустые таблицы</td></tr></tbody></table></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Не задано состояние детали <code>/gifts/{id}</code> без права.</h3><span class="finding-location">DESIGN стр. 403</span></header>
+<div class="finding-note">Не задано состояние детали <code>/gifts/{id}</code> без права. URL виден и меняется даже на expanded (DESIGN стр. 403), так что сюда можно попасть по прямой ссылке. Случаи: после unfriend, при Block, на SECRET, на удалённом или архивном желании. AD-7 требует <code>not_found</code> без полей, иначе возможна утечка через разницу текстов.</div>
+<div class="finding-fix"><strong>Fix:</strong> строка в State Patterns «Желание не найдено» — один текст для всех случаев, без «скрыто».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Пустые состояния без текста:</h3><span class="finding-location">стр. 340</span></header>
+<div class="finding-note">Пустые состояния без текста: «Мои брони», «Уведомления», «Запросы», «Поиск» (Story 3.5: «empty state, не ошибка»), «Найти знакомых» — 0 совпадений, «Подборки», «Архив». DESIGN Empty state (стр. 340) упоминает «нет броней, нет уведомлений», но слов нет.</div>
+<div class="finding-fix"><strong>Fix:</strong> строки Empty в Component Patterns с заголовком, текстом и CTA.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Ошибки входа и форм не заданы, кроме «ник занят» в настройках (стр.</h3><span class="finding-location">стр. 274</span></header>
+<div class="finding-note">Ошибки входа и форм не заданы, кроме «ник занят» в настройках (стр. 274): неверная пара email / пароль, email уже есть, ник занят при регистрации, ссылка сброса истекла или использована (A-3), номер без кода страны (Story 8.1, AD-18), лимит 10 личных дат (Story 7.5).</div>
+<div class="finding-fix"><strong>Fix:</strong> таблица «Ошибки форм» в State Patterns.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Нет глобальных состояний приложения:</h3><span class="finding-location">стр. 245</span></header>
+<div class="finding-note">Нет глобальных состояний приложения: истёкшая сессия (401 → вход с <code>?next=</code>), холодный старт без сети (skeleton без конца?), ошибка загрузки списка, а не только действия. Concern Coverage: «Offline — ошибка на действиях» (стр. 245).</div>
+<div class="finding-fix"><strong>Fix:</strong> строки «Сессия истекла», «Нет сети при загрузке» (экран-ошибка с «Повторить»).</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Не хватает состояний Next-страниц.</h3><span class="finding-location"></span></header>
+<div class="finding-note">Не хватает состояний Next-страниц. <code>/unsubscribe</code> с невалидным токеном и ошибка «Вернуть». <code>/i</code>: своя ссылка, уже друзья, Block (по AD-7 Block → «не найдено»). <code>/admin</code> для анонима: вход или «не найдено»?</div>
+<div class="finding-fix"><strong>Fix:</strong> дописать в таблицу DESIGN Next-страницы и в State Patterns.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Optimistic UI и откат описаны только для брони.</h3><span class="finding-location">стр. 126</span></header>
+<div class="finding-note">Optimistic UI и откат описаны только для брони. Смена видимости чипом «сохраняется сразу» (стр. 126), но поведение при ошибке не задано.</div>
+<div class="finding-fix"><strong>Fix:</strong> «при ошибке — откат чипа + toast «Нет сети»».</div></article></div></details></section><section class="dimension"><details><summary><h2>5. Visual reference coverage</h2>
+<span class="verdict-pill verdict-strong">strong</span></summary>
+<div class="dim-body"><div class="dim-judgment"><p>Файлы: <code>prototype/index.html</code>, <code>.working/color-themes-1.html</code>. Папок <code>mockups/</code>, <code>wireframes/</code>, <code>imports/</code> нет. Prototype упомянут в DESIGN (стр. 284) и EXPERIENCE (стр. 30) с пояснением, что верно (модель брони), а что устарело (оболочка, видимость). Баннер «Прототип устарел» в самом файле есть (стр. 159). Правило «spines главнее» записано в DESIGN стр. 284.</p></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">EXPERIENCE стр.</h3><span class="finding-location"></span></header>
+<div class="finding-note">EXPERIENCE стр. 30 датирует устаревание «(2026-10-11)», а баннер прототипа и memlog — 2026-10-28.</div>
+<div class="finding-fix"><strong>Fix:</strong> одна дата.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Правило «spines главнее» сформулировано дважды и по-разному:</h3><span class="finding-location">«Брать поведение из этого spine, вид — из DESIGN.md»</span></header>
+<div class="finding-note">Правило «spines главнее» сформулировано дважды и по-разному: DESIGN стр. 284 и EXPERIENCE стр. 30 («Брать поведение из этого spine, вид — из DESIGN.md»).</div>
+<div class="finding-fix"><strong>Fix:</strong> одна формулировка в одном месте и ссылка на неё из второго.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title"><code>.working/color-themes-1.html</code> не упомянут в spines, только в memlog.</h3><span class="finding-location"></span></header>
+<div class="finding-note"><code>.working/color-themes-1.html</code> не упомянут в spines, только в memlog. Для рабочего файла это допустимо.</div>
+<div class="finding-fix"><strong>Fix:</strong> одна ссылка в DESIGN Colors как история выбора палитры C.</div></article></div></details></section><section class="dimension"><details><summary><h2>6. Bloat &amp; overspecification</h2>
+<span class="verdict-pill verdict-adequate">adequate</span></summary>
+<div class="dim-body"><div class="dim-judgment"><p>Объём в целом оправдан: раздел App нагружен, тексты писем полезны. Проблема не в объёме, а в повторах, которые уже разошлись.</p></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Раскладки по ширине записаны в трёх местах:</h3><span class="finding-location">стр. 217–222</span></header>
+<div class="finding-note">Раскладки по ширине записаны в трёх местах: DESIGN App → Точки перехода / Широкий экран, EXPERIENCE Responsive (стр. 217–222) и UX-A12. Они уже расходятся с собственной формулой колонок (≥ <code>card-min</code> 280, <code>grid-gap</code> 16, не больше 3):<br>- 1440 px, меню 264, правая колонка 300, gutter 24×2 → около 828 px контента → <strong>2 колонки</strong>, а Flow 14 (стр. 368) обещает 3.<br>- medium на 600 px: 552 px → <strong>1 колонка</strong>, а таблицы говорят «обычно 2».<br>- expanded на 1279 px: около 967 px → <strong>3 колонки</strong>, а таблицы говорят «2».<br>Не задан промежуток между меню, контентом и правой колонкой.</div>
+<div class="finding-fix"><strong>Fix:</strong> оставить формулу только в DESIGN, в EXPERIENCE сослаться на неё и убрать конкретные числа колонок; задать <code>spacing.column-gap</code>; поправить Flow 14.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Install hint описан в шести местах:</h3><span class="finding-location"></span></header>
+<div class="finding-note">Install hint описан в шести местах: DESIGN стр. 402 и 405, EXPERIENCE Voice стр. 93 и 107, Component Patterns стр. 141, State стр. 156, Responsive стр. 222 и 230, Flow 14. Описания расходятся. DESIGN: на wide — правая колонка, на compact и medium — «Найти знакомых» + «Профиль». <strong>Для expanded (1024–1279) место не задано нигде.</strong> Край Flow 14 называет только «Найти знакомых».</div>
+<div class="finding-fix"><strong>Fix:</strong> одно правило в DESIGN App с явным expanded (например, как compact и medium), в остальных местах — ссылка.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Concern Coverage, «Content density:</h3><span class="finding-location">стр. 246</span></header>
+<div class="finding-note">Concern Coverage, «Content density: Одна колонка; цена вторична» (стр. 246), устарело и противоречит сетке на medium и шире.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Одна колонка на compact; сетка от medium».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Навигация пересказана в EXPERIENCE IA «Кратко» (стр.</h3><span class="finding-location">стр. 73</span></header>
+<div class="finding-note">Навигация пересказана в EXPERIENCE IA «Кратко» (стр. 73), полное описание — в DESIGN App → Навигация. Сейчас совпадают, но это второй источник.</div>
+<div class="finding-fix"><strong>Fix:</strong> оставить только ссылку и правила поведения (back, aria-current).</div></article></div></details></section><section class="dimension"><details open><summary><h2>7. Inheritance discipline</h2>
+<span class="verdict-pill verdict-thin">thin</span></summary>
+<div class="dim-body"><div class="dim-judgment"></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">В EXPERIENCE Voice and Tone (стр.</h3><span class="finding-location">стр. 99</span></header>
+<div class="finding-note">В EXPERIENCE Voice and Tone (стр. 99) остался кусок старой модели: Do «Войдите, чтобы увидеть подарки», Don't «Показывать названия подарков анониму». Это прямо противоречит D-29, AD-7 (PUBLIC видит любой обладатель <code>/l/:token</code>, включая анонима), Story 3.3 и собственным <code>/l</code> (DESIGN стр. 433, EXPERIENCE стр. 38, 103, 153). Story-dev, который возьмёт копирайт из Voice, сделает gate.</div>
+<div class="finding-fix"><strong>Fix:</strong> Do «Чтобы забронировать «{название}», войдите или зарегистрируйтесь»; Don't «Прятать желания «всем» от анонима за входом».</div></article><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Story 4.3 требует три вкладки «Друзья», «Подписки», «Запросы», а подписчиков — в профиле с «Убрать подписчика».</h3><span class="finding-location">стр. 373</span></header>
+<div class="finding-note">Story 4.3 требует три вкладки «Друзья», «Подписки», «Запросы», а подписчиков — в профиле с «Убрать подписчика». Story 4.6 — «отписаться». В spines «Подписок» нет совсем: DESIGN Навигация (стр. 373) даёт «Друзья» / «Запросы» / «Найти знакомых», EXPERIENCE IA (стр. 57) — подписки внутри «Друзей» без вкладки. Действий «Отписаться» и «Убрать подписчика» нет.</div>
+<div class="finding-fix"><strong>Fix:</strong> вкладка «Подписки» и действия в Invite actions / Профиль; согласовать набор вкладок с Story 4.3 или явно изменить Story.</div></article><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Story 2.3, 2.5 и 5.4:</h3><span class="finding-location">DESIGN стр. 354; EXPERIENCE стр. 126</span></header>
+<div class="finding-note">Story 2.3, 2.5 и 5.4: видимость и <code>quantity</code> меняются только у <code>открыт</code>, у <code>забронирован</code> и <code>закрыт</code> → VALIDATION. В spines VisibilityChip «нажимается и открывает выбор видимости» без условия (DESIGN стр. 354; EXPERIENCE стр. 126). Меню ⋯ на Gift card содержит «видимость» (стр. 115).</div>
+<div class="finding-fix"><strong>Fix:</strong> «При <code>забронирован</code> / <code>закрыт</code> чип не нажимается, пункт «Видимость» в ⋯ скрыт, в форме — пояснение «Нельзя менять, пока желание забронировано»»; то же для «Один раз / Можно дарить снова».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Маршрут «Вишлист по ссылке» в приложении не закоммичен (EXPERIENCE стр.</h3><span class="finding-location">EXPERIENCE стр. 53, <em>NOTE FOR ARCH</em></span></header>
+<div class="finding-note">Маршрут «Вишлист по ссылке» в приложении не закоммичен (EXPERIENCE стр. 53, <em>NOTE FOR ARCH</em>), в AD-26 пути тоже нет. От него зависят передача с <code>/l</code> вошедшего, возврат <code>?next=</code> после входа с открытым confirm, App Links и «назад». <code>/u/{ник}</code> не подходит: зрителю без отношения AD-7 отдаёт ноль желаний, а токен ссылки даёт PUBLIC.</div>
+<div class="finding-fix"><strong>Fix:</strong> закоммитить путь (например, <code>/wishlist/{token}</code>) в EXPERIENCE IA и попросить внести его в AD-26.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Словарь расходится.</h3><span class="finding-location">стр. 55</span></header>
+<div class="finding-note">Словарь расходится. «Желание» и «подарок» смешаны: «Деталь желания» в IA (стр. 55), но «Деталь подарка» (стр. 116–117); «Форма желания» (стр. 128), но «Форма подарка» (стр. 136, 187); «Статусы подарка» (стр. 170). Остатки модели нескольких списков: «Ссылки на списки работают» (стр. 165), «В списках {N} открытых подарков», «Открыть списки» (стр. 139, 332), «обновите списки» (стр. 140). По D-23 вишлист один.</div>
+<div class="finding-fix"><strong>Fix:</strong> в UI — «желание» и «вишлист» в единственном числе («Открыть вишлист», «обновите вишлист»); «подарок» — только в устойчивых фразах («Подарок у вас?»), список фраз — в Voice.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Подписи фаз брони расходятся в трёх местах.</h3><span class="finding-location">стр. 357</span></header>
+<div class="finding-note">Подписи фаз брони расходятся в трёх местах. DESIGN ReservationPhase (стр. 357): «Срок брони истёк» / «Ждём ответа владельца» / «Подарил · ждём подтверждения», чип «Куплено». EXPERIENCE: «Куплен» / «Подарен» (стр. 115), «Срок брони истёк» / «Срок истёк» (стр. 161). Story 5.5: «Срок истёк» для AWAITING_*, «Ждёт подтверждения» для GIVEN.</div>
+<div class="finding-fix"><strong>Fix:</strong> одна таблица «фаза × роль → подпись» в EXPERIENCE State Patterns; DESIGN ссылается на неё.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">В frontmatter <code>sources</code> EXPERIENCE нет architecture и epics (стр.</h3><span class="finding-location">стр. 9–12</span></header>
+<div class="finding-note">В frontmatter <code>sources</code> EXPERIENCE нет architecture и epics (стр. 9–12), хотя текст опирается на AD-2/7/9/17/24/26 и Stories 3.3, 4.7, 5.3, 6.4, 8.1, 10.1. В DESIGN они есть.</div>
+<div class="finding-fix"><strong>Fix:</strong> добавить оба пути.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Видимость по умолчанию «всем» согласована:</h3><span class="finding-location">стр. 361</span></header>
+<div class="finding-note">Видимость по умолчанию «всем» согласована: DESIGN Форма (стр. 361), EXPERIENCE стр. 127 и Flow 1, Story 2.2, Story 10.1, ARCH-A17. Но UX-A17 (стр. 395) говорит «заменяет ARCH-A17 «друзьям»», а ARCH-A17 уже переписан на PUBLIC. Подсказка «Всем — видят все, у кого есть ссылка» (стр. 127) неполна: PUBLIC видят также подписчики, совпавшие контакты и профиль (AD-7).</div>
+<div class="finding-fix"><strong>Fix:</strong> «ARCH-A17 приведён к PUBLIC»; подсказка «Всем — по ссылке, подписчикам и в профиле».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Остатков старой модели в действующих правилах нет:</h3><span class="finding-location">стр. 30, 105</span></header>
+<div class="finding-note">Остатков старой модели в действующих правилах нет: «Discoverable», «FO gate», «Мои списки», sidebar &lt; 900 не найдены. «Friends-only» встречается только в историческом пояснении (стр. 30, 105) — это допустимо. Исключение — находка про Voice стр. 99 выше.</div>
+<div class="finding-fix"><strong>Fix:</strong> </div></article></div></details></section><section class="dimension"><details><summary><h2>8. Shape fit</h2>
+<span class="verdict-pill verdict-strong">strong</span></summary>
+<div class="dim-body"><div class="dim-judgment"><p>DESIGN: frontmatter → Brand &amp; Style → Colors → Typography → Layout &amp; Spacing → Elevation &amp; Depth → Shapes → Components → <strong>App</strong> → <strong>Next-страницы</strong> → Do's and Don'ts. EXPERIENCE: Foundation → IA → Voice → Component Patterns → State Patterns → Interaction Primitives → Accessibility Floor → Responsive &amp; Platform → (Concern Coverage) → Inspiration → Key Flows → (Open assumptions, Non-goals). Порядок совпадает с <code>experience-example-shadcn.md</code>, все обязательные разделы на месте.</p></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Размещение App и Next-страниц между Components и Do's and Don'ts оправдано.</h3><span class="finding-location">стр. 316</span></header>
+<div class="finding-note">Размещение App и Next-страниц между Components и Do's and Don'ts оправдано. По сути это платформенные дельты Components, а Do's and Don'ts остаются последним разделом, как требует порядок спеки. Но в App попали содержимое Layout &amp; Spacing (Точки перехода, Широкий экран) и Accessibility, а парсер design.md увидит два неизвестных H2. Указатель из Layout &amp; Spacing (стр. 316) смягчает это.</div>
+<div class="finding-fix"><strong>Fix:</strong> одна строка под заголовком App: «Расширение спеки: платформенная реализация разделов 4 и 7».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">В таблице Open assumptions строка UX-A11 стоит после UX-A17 (стр.</h3><span class="finding-location">стр. 396</span></header>
+<div class="finding-note">В таблице Open assumptions строка UX-A11 стоит после UX-A17 (стр. 396).</div>
+<div class="finding-fix"><strong>Fix:</strong> отсортировать.</div></article></div></details></section>
+<section class="reviewer-section"><details><summary><h2>Accessibility review</h2><span class="reviewer-source">review-accessibility.md</span></summary>
+<div class="dim-body"><div class="dim-judgment"><p>Токены текста почти все проходят AA с запасом (проверено расчётом), и намерения в спеке верные: слово вместо цвета, 44×44, фокус-кольцо, ловушка фокуса, live-регионы. Но в спеке есть заявления без механизма («фокус не перекрыт», «200% выдерживает», «возврат фокуса на открывший элемент»), а в ключевых потоках Story 6.4 нарушения уровня A/AA: toast отмены на 10 с без паузы (2.2.1), кольцо фокуса на тёмном toast — 2.07:1, нет <code>lang="ru"</code> и заголовков страниц в веб-сборке, нет autocomplete при входе и регистрации, а вложенная интерактивность карточки на iOS прячет ⋯ и чип от VoiceOver. С исправлениями ниже до AA реально дойти без смены палитры. Нужны правка одного токена фокуса, одно архитектурное решение по окну отмены и около десяти строк правил.</p><p>Таблица контраста (52 пары) — в review-accessibility.md.</p></div></div>
+<div class="findings-list"><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Toast «Отменить» — ровно 10 с без паузы:</h3><span class="finding-location"><code>DESIGN.md</code> §App → Компоненты на RN, строка Toast; <code>EXPERIENCE.md</code> §Component Patterns «Undo toast», §Interaction Primitives «Закрытие владельцем», §Accessibility Floor</span></header>
+<div class="finding-note">Toast «Отменить» — ровно 10 с без паузы: нарушение WCAG 2.2.1 Timing Adjustable. Обоснование спеки не работает (<code>DESIGN.md</code> §App → Компоненты на RN, строка Toast; <code>EXPERIENCE.md</code> §Component Patterns «Undo toast», §Interaction Primitives «Закрытие владельцем», §Accessibility Floor). Ни одно из исключений 2.2.1 не подходит. Лимит не «essential»: по <code>ARCHITECTURE-SPINE.md</code> строка 280 окно нужно лишь для <code>Notification.deliverAfter = closedAt + 10 s</code>, а допустимая задержка доставки — до 1 ч. Довод «без паузы клиент и сервер разойдутся» ложный: источник истины — CAS на сервере (<code>closedAt &gt; now()-10s</code>), клиентский таймер только косметика, и расхождение на латентности есть уже сейчас (запрос на 9.9 с). Confirm до действия снижает число промахов, но не делает лимит допустимым: confirm защищает от случайного нажатия, а отмена — от ошибочного решения, и это разные вещи. При этом откатить <code>закрыт</code> нельзя никак (UX-A11). Пользователь TalkBack при <code>polite</code> и toast внизу экрана за 10 с до «Отменить» практически не доберётся (AC Story 6.4 «Отменить достижима диктором» на деле не выполняется).</div>
+<div class="finding-fix"><strong>Fix:</strong> (1) <code>UNDO_WINDOW = 10 мин</code>: <code>closedAt &gt; now()-UNDO_WINDOW</code>, <code>deliverAfter = closedAt + UNDO_WINDOW</code> — укладывается в допуск «≤ 1 ч» из AD-уведомлений; (2) toast по-прежнему показывается 10 с, но ставится на паузу при hover, фокусе и фокусе диктора и не исчезает сам, пока включён экранный диктор (<code>AccessibilityInfo.isScreenReaderEnabled</code>); (3) пока окно открыто, у закрытой карточки в «Получено» и в детали есть постоянная кнопка «Вернуть в открытые · ещё N мин»; (4) после окна сервер отвечает <code>CONFLICT</code>, toast — «Время на отмену вышло». В спеку строкой: «Отмена закрытия доступна UNDO_WINDOW (10 мин) из toast и из карточки; toast 10 с, пауза при hover/фокусе, без автоскрытия при включённом дикторе». Правка AD-9/ARCH-A5: 10 s → UNDO_WINDOW.</div></article><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">«Фокус возвращается на элемент, который открыл слой» — правило без запасного варианта, а в ключевых потоках открывший элемент исчезает (<code>DESIGN.md</code> §Мышь и клавиатура «Esc»; <code>EXPERIENCE.md</code> §Interaction Primitives «Esc / scrim»; §Accessibility Floor «Шторка и диалог»).</h3><span class="finding-location"><code>DESIGN.md</code> §Мышь и клавиатура «Esc»; <code>EXPERIENCE.md</code> §Interaction Primitives «Esc / scrim»; §Accessibility Floor «Шторка и диалог»</span></header>
+<div class="finding-note">«Фокус возвращается на элемент, который открыл слой» — правило без запасного варианта, а в ключевых потоках открывший элемент исчезает (<code>DESIGN.md</code> §Мышь и клавиатура «Esc»; <code>EXPERIENCE.md</code> §Interaction Primitives «Esc / scrim»; §Accessibility Floor «Шторка и диалог»). После «Отметить полученным» карточка уходит в свёрнутое «Получено», и ⋯ больше нет. После «Подтвердить» в брони «Куплю сам» скрывается (§Компоненты, ReserveButton). При принятии или отклонении запроса строка пропадает; после «Удалить» нет карточки; у Install hint крестик исчезает вместе с подсказкой. В браузере фокус падает на <code>body</code>, VoiceOver и TalkBack перескакивают в начало экрана.</div>
+<div class="finding-fix"><strong>Fix:</strong> добавить в §Accessibility Floor правило: «Если открывший элемент исчез: фокус → (а) на действие «Отменить» в toast, если оно есть; иначе (б) на элемент, который его заменил (строка-пояснение вместо «Куплю сам», pill нового статуса); иначе (в) на следующий элемент списка, а если его нет — на предыдущий; иначе (г) на <code>h1</code> экрана. Фокус никогда не уходит на <code>body</code>.» Для undo-потока это ещё и решает достижимость «Отменить» диктором.</div></article><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Карточка желания — вложенная интерактивность.</h3><span class="finding-location"><code>DESIGN.md</code> §Компоненты на RN, WishCard «Нажатие по карточке — деталь»; §Доступность «Карточка читается одной фразой… ⋯ и чип — отдельные элементы»</span></header>
+<div class="finding-note">Карточка желания — вложенная интерактивность. На iOS она ломает доступ к ⋯ и чипу, на вебе даёт невалидную разметку (<code>DESIGN.md</code> §Компоненты на RN, WishCard «Нажатие по карточке — деталь»; §Доступность «Карточка читается одной фразой… ⋯ и чип — отдельные элементы»). В React Native у <code>accessible={true}</code> родителя (а <code>Pressable</code> с <code>accessibilityLabel</code> по умолчанию такой) VoiceOver объединяет детей: вложенные <code>Pressable</code> ⋯ и VisibilityChip становятся недостижимы. Это меню владельца: «Отметить полученным», «Удалить», «Видимость». На вебе react-native-web рисует <code>div role="button"</code> с вложенными <code>role="button"</code>: в дереве доступности так нельзя, и NVDA/JAWS читают это непредсказуемо. К тому же карточка ведёт на URL <code>/gifts/{id}</code>, значит по семантике это ссылка, а не кнопка.</div>
+<div class="finding-fix"><strong>Fix:</strong> правило в §Компоненты на RN: «WishCard — контейнер без <code>accessible</code>; внутри три соседних элемента: (1) основная зона — <code>Link</code> (expo-router <code>&lt;Link asChild&gt;</code>, в браузере <code>&lt;a href="/gifts/{id}"&gt;</code>), её подпись — та самая «одна фраза»; (2) VisibilityChip; (3) ⋯. Плюс на основной зоне <code>accessibilityActions</code> [«Изменить видимость», «Меню»] для ротора VoiceOver и действий TalkBack». Порядок Tab «карточка → чип → ⋯» сохраняется.</div></article><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Вход, регистрация и сброс пароля:</h3><span class="finding-location"><code>EXPERIENCE.md</code> §Information Architecture: Вход, Регистрация, Сброс; <code>DESIGN.md</code> §Компоненты на RN, Форма; Story 6.4 «регистрация»</span></header>
+<div class="finding-note">Вход, регистрация и сброс пароля: нет ни одного правила под 3.3.8 Accessible Authentication и 1.3.5 Identify Input Purpose (<code>EXPERIENCE.md</code> §Information Architecture: Вход, Регистрация, Сброс; <code>DESIGN.md</code> §Компоненты на RN, Форма; Story 6.4 «регистрация»). Это ворота во все потоки, включая бронь с <code>/l</code>. Не сказано, что разрешена вставка, нет <code>autocomplete</code> и <code>textContentType</code>, нет показа пароля, нет связки менеджера паролей с доменом.</div>
+<div class="finding-fix"><strong>Fix:</strong> строка в §Компоненты на RN → Форма: «Вход: email — web <code>autocomplete="username"</code> + <code>type="email"</code>, RN <code>autoComplete="email"</code>, <code>textContentType="username"</code>, <code>keyboardType="email-address"</code>; пароль — <code>autocomplete="current-password"</code>, RN <code>autoComplete="password"</code>, <code>textContentType="password"</code>. Регистрация и сброс: <code>new-password</code> / <code>textContentType="newPassword"</code>; имя — <code>name</code>; ник — <code>autocomplete="nickname"</code>; телефон в настройках — <code>tel</code>; ДР — <code>bday-day</code> / <code>bday-month</code> / <code>bday-year</code>. Вставка не блокируется; кнопка «Показать пароль» (44×44, <code>accessibilityLabel</code> «Показать пароль», состояние pressed). Без CAPTCHA с когнитивным тестом. iOS — <code>webcredentials:</code> в associated domains; Android — Digital Asset Links для автозаполнения». Код из письма сброса — ссылкой, без ручного ввода.</div></article><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">В веб-сборке приложения и на Next-страницах не заданы <code>lang="ru"</code> и заголовки страниц (3.1.1 — уровень A, 2.4.2 — уровень A; <code>DESIGN.md</code> §App, §Next-страницы; <code>EXPERIENCE.md</code> §Responsive &amp; Platform «Браузер»).</h3><span class="finding-location">3.1.1 — уровень A, 2.4.2 — уровень A; <code>DESIGN.md</code> §App, §Next-страницы; <code>EXPERIENCE.md</code> §Responsive &amp; Platform «Браузер»</span></header>
+<div class="finding-note">В веб-сборке приложения и на Next-страницах не заданы <code>lang="ru"</code> и заголовки страниц (3.1.1 — уровень A, 2.4.2 — уровень A; <code>DESIGN.md</code> §App, §Next-страницы; <code>EXPERIENCE.md</code> §Responsive &amp; Platform «Браузер»). В SPA вкладка браузера и история показывают одно имя на всех экранах. Диктор не объявляет смену маршрута, а голосовой синтезатор с английским языком по умолчанию читает кириллицу неверно.</div>
+<div class="finding-fix"><strong>Fix:</strong> в §Доступность → «Браузер»: «<code>&lt;html lang="ru"&gt;</code> — в <code>app/+html.tsx</code> (expo-router) и в <code>app/layout.tsx</code> Next. <code>document.title</code> на каждом маршруте — «{Экран} — {BRAND_NAME}», для деталей «{название} — {BRAND_NAME}» (expo-router <code>Head</code> / Next <code>metadata</code>). После перехода фокус — на <code>h1</code> (<code>tabIndex=-1</code>), ничего не дублировать live-регионом».</div></article><article class="finding"><header><span class="badge badge-sev-high">high</span>
+<h3 class="finding-title">Кольцо фокуса <code>{colors.ring}</code> = primary на тёмном toast — 2.07:1, на toast-error — 1.16:1 (<code>DESIGN.md</code> frontmatter <code>ring</code>, <code>toast</code>; §Мышь и клавиатура «Видимый фокус»).</h3><span class="finding-location"><code>DESIGN.md</code> frontmatter <code>ring</code>, <code>toast</code>; §Мышь и клавиатура «Видимый фокус»</span></header>
+<div class="finding-note">Кольцо фокуса <code>{colors.ring}</code> = primary на тёмном toast — 2.07:1, на toast-error — 1.16:1 (<code>DESIGN.md</code> frontmatter <code>ring</code>, <code>toast</code>; §Мышь и клавиатура «Видимый фокус»). Именно здесь, на «Отменить», клавиатурный пользователь должен видеть фокус (Story 6.4: «видимый фокус <code>{colors.ring}</code>»). Нарушение 1.4.11 / 2.4.7.</div>
+<div class="finding-fix"><strong>Fix:</strong> токен <code>ring-inverse: '{colors.background}'</code> (14.03:1 к foreground, 5.83:1 к destructive); в <code>toast</code> и <code>toast-error</code> — <code>focus-ring: '{colors.ring-inverse}'</code>. Строка в §Мышь и клавиатура: «На тёмных и цветных поверхностях кольцо — <code>ring-inverse</code>».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">2.4.11 Focus Not Obscured заявлен одной фразой без механизма (<code>DESIGN.md</code> §Доступность «Фокус не перекрыт…»).</h3><span class="finding-location"><code>DESIGN.md</code> §Доступность «Фокус не перекрыт…»</span></header>
+<div class="finding-note">2.4.11 Focus Not Obscured заявлен одной фразой без механизма (<code>DESIGN.md</code> §Доступность «Фокус не перекрыт…»). Фокус могут перекрыть: прилипшая «Куплю сам» на compact (в узком окне браузера тоже), нижние вкладки, toast «над вкладками», прилипшая кнопка формы над клавиатурой. Отдельный случай — zoom 400% на ноутбуке: окно 1280×720 даёт 320×180 CSS px, и шапка 56 + «Куплю сам» 48 + safe area + toast почти полностью закрывают контент (заодно 1.4.10).</div>
+<div class="finding-fix"><strong>Fix:</strong> правило: «Прокручиваемая область получает <code>scroll-padding-bottom</code> / <code>contentInset</code> = высота прилипших элементов + 8; при фокусе элемент докручивается в видимую зону (<code>scrollIntoView({block:'nearest'})</code>). Toast не перекрывает элемент в фокусе — встаёт над прилипшей кнопкой, на экранах без вкладок тоже. Если высота окна &lt; 480 CSS px — шапка, «Куплю сам» и кнопка формы перестают прилипать и идут в потоке».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Выбранная вкладка и активный пункт меню отличаются только цветом (1.4.1):</h3><span class="finding-location"><code>DESIGN.md</code> §Навигация: «Нижние вкладки… активная — primary», «Активный пункт — фон muted…»</span></header>
+<div class="finding-note">Выбранная вкладка и активный пункт меню отличаются только цветом (1.4.1): primary к muted-foreground — 1.23:1, текст primary к foreground — 2.07:1, фон muted к surface — 1.27:1 (<code>DESIGN.md</code> §Навигация: «Нижние вкладки… активная — primary», «Активный пункт — фон muted…»).</div>
+<div class="finding-fix"><strong>Fix:</strong> в <code>tab-bar</code> добавить <code>active-indicator: '3px {colors.primary} сверху'</code> + залитая иконка и подпись 600; в <code>nav-item</code> — <code>active-indicator: '3px {colors.primary} слева'</code> + <code>font-weight 600</code>. У «Друзья / Запросы» — подчёркивание 2 px primary.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Нижние вкладки в браузере размечены как <code>tablist</code>/<code>tab</code> (<code>EXPERIENCE.md</code> §Accessibility Floor «Навигация:</h3><span class="finding-location"><code>EXPERIENCE.md</code> §Accessibility Floor «Навигация: нижние вкладки — tablist/tab»</span></header>
+<div class="finding-note">Нижние вкладки в браузере размечены как <code>tablist</code>/<code>tab</code> (<code>EXPERIENCE.md</code> §Accessibility Floor «Навигация: нижние вкладки — tablist/tab»), а на самом деле это навигация по URL. Роль tab обещает переключение стрелками и <code>tabpanel</code>, а браузер при этом меняет маршрут.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Браузер: нижние вкладки и боковое меню — <code>&lt;nav aria-label="Разделы"&gt;</code> со ссылками и <code>aria-current="page"</code>. Android/iOS: <code>accessibilityRole="tab"</code> + <code>selected</code> (как в React Navigation). <code>tablist</code> — только для «Друзья / Запросы», которые переключают панели на одном экране».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Спека противоречит себе в слоях.</h3><span class="finding-location"><code>DESIGN.md</code> §Компоненты, BottomSheet / Dialog; <code>EXPERIENCE.md</code> §Interaction Primitives «Banned»</span></header>
+<div class="finding-note">Спека противоречит себе в слоях. Сказано «одновременно не больше одного слоя» и «modal stack &gt; 1 запрещён» (<code>DESIGN.md</code> §Компоненты, BottomSheet / Dialog; <code>EXPERIENCE.md</code> §Interaction Primitives «Banned»). Но на expanded деталь — это Dialog (§Широкий экран), и «Куплю сам» внутри открывает Reserve confirm, тоже Dialog. «Не сохранять изменения?» поверх Dialog формы — тоже второй слой. Без правила неясно, куда идёт фокус и что закрывает Esc.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Confirm внутри детали или формы — шаг в том же слое: содержимое диалога меняется, фокус — на новый заголовок, «Отмена» и Esc возвращают предыдущий шаг с фокусом на «Куплю сам». Других вложенных слоёв нет».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Объявления toast описаны так, что на практике часть не прозвучит (<code>EXPERIENCE.md</code> §Accessibility Floor «Undo toast:</h3><span class="finding-location"><code>EXPERIENCE.md</code> §Accessibility Floor «Undo toast: объявляется…»; <code>DESIGN.md</code> Toast «Один toast за раз, новый заменяет старый»</span></header>
+<div class="finding-note">Объявления toast описаны так, что на практике часть не прозвучит (<code>EXPERIENCE.md</code> §Accessibility Floor «Undo toast: объявляется…»; <code>DESIGN.md</code> Toast «Один toast за раз, новый заменяет старый»). (а) На Android <code>accessibilityLiveRegion</code> срабатывает при изменении уже смонтированного View; новый монтируемый toast часто не объявляется. (б) В браузере <code>aria-live</code> нужен в DOM до того, как в него попадёт текст. (в) При замене toast за 4 с прежний текст обрывается. (г) 4 с мало для экранной лупы (1.4.13 / 2.2.1 для информационных сообщений).</div>
+<div class="finding-fix"><strong>Fix:</strong> «Один постоянно смонтированный ToastHost с двумя регионами (<code>polite</code>, <code>assertive</code>) — в браузере <code>role="status"</code> / <code>role="alert"</code>, на Android <code>accessibilityLiveRegion</code> на хосте, на iOS дополнительно <code>AccessibilityInfo.announceForAccessibility</code>. Длительность — <code>max(4 с, 1 с + 60 мс × символ)</code>, пауза при hover и фокусе. «Нет сети» не скрывается сам, пока не закрыт или не повторено действие».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">«Раскладка выдерживает 200%» противоречит токенам с жёсткой высотой (<code>DESIGN.md</code> §Typography; frontmatter:</h3><span class="finding-location"><code>DESIGN.md</code> §Typography; frontmatter: <code>button-*.height</code>, <code>input.height</code>, <code>tab-bar.height 56</code>, <code>header 56</code>; §Компоненты: StatusPill «Высота 24», VisibilityChip «высота 28», строки Switch «высота 56», OwnerActionLabel «высотой 44»</span></header>
+<div class="finding-note">«Раскладка выдерживает 200%» противоречит токенам с жёсткой высотой (<code>DESIGN.md</code> §Typography; frontmatter: <code>button-*.height</code>, <code>input.height</code>, <code>tab-bar.height 56</code>, <code>header 56</code>; §Компоненты: StatusPill «Высота 24», VisibilityChip «высота 28», строки Switch «высота 56», OwnerActionLabel «высотой 44»). Dynamic Type на iOS доходит до ~310% (AX5), и подпись вкладки <code>caption</code> в 56 px не влезет.</div>
+<div class="finding-fix"><strong>Fix:</strong> все <code>height:</code> в компонентах переименовать в <code>min-height:</code>. Строка: «Подписи вкладок при масштабе &gt; 150% — <code>maxFontSizeMultiplier=1.5</code> + Large Content Viewer на iOS (долгое нажатие); остальной текст без ограничения». Проверка: 200% Android, AX3 iOS, zoom 200% и 400% в браузере.</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Ошибки и подсказки полей программно не связаны, обязательность не обозначена (<code>EXPERIENCE.md</code> §Accessibility Floor «ошибка — текстом рядом и объявляется при отправке»; <code>DESIGN.md</code> Форма).</h3><span class="finding-location"><code>EXPERIENCE.md</code> §Accessibility Floor «ошибка — текстом рядом и объявляется при отправке»; <code>DESIGN.md</code> Форма</span></header>
+<div class="finding-note">Ошибки и подсказки полей программно не связаны, обязательность не обозначена (<code>EXPERIENCE.md</code> §Accessibility Floor «ошибка — текстом рядом и объявляется при отправке»; <code>DESIGN.md</code> Форма). Неясно, как диктор узнает об ошибке, когда вернётся к полю позже.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Браузер: <code>aria-invalid</code> + <code>aria-describedby</code> → id подсказки и ошибки. Android/iOS: текст ошибки добавляется в <code>accessibilityHint</code> поля (на iOS ещё <code>accessibilityValue</code>), при отправке — сводка через announce. Обязательные поля не помечаются; необязательные — «(необязательно)» в подписи (цена, год рождения). Валюта — в браузере нативный <code>&lt;select&gt;</code>, на телефоне — шторка с <code>radio</code>. Часовой пояс — combobox: <code>role="combobox"</code>, <code>aria-expanded</code>, <code>aria-activedescendant</code>, результат объявляется «Найдено N»».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Выбор даты описан только как «системный» (<code>DESIGN.md</code> Форма «Дата — системный выбор даты… <code>&lt;input type="date"&gt;</code> в браузере»; <code>EXPERIENCE.md</code> Reserve confirm «по умолчанию +7 дней, max +30»).</h3><span class="finding-location"><code>DESIGN.md</code> Форма «Дата — системный выбор даты… <code>&lt;input type="date"&gt;</code> в браузере»; <code>EXPERIENCE.md</code> Reserve confirm «по умолчанию +7 дней, max +30»</span></header>
+<div class="finding-note">Выбор даты описан только как «системный» (<code>DESIGN.md</code> Форма «Дата — системный выбор даты… <code>&lt;input type="date"&gt;</code> в браузере»; <code>EXPERIENCE.md</code> Reserve confirm «по умолчанию +7 дней, max +30»). Ограничение +30 дней не объявляется. В браузере <code>&lt;input type="date"&gt;</code> при наборе с клавиатуры принимает дату вне диапазона, а формат зависит от <code>lang</code>. На телефоне поле — это кнопка, и не сказано, что в её подписи.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Поле даты на телефоне — <code>accessibilityRole="button"</code>, подпись «Подарю до, 4 ноября 2026», hint «Выбрать дату». Под полем — <code>caption</code> «Не позже {DD.MM}», связанный с полем. В браузере — <code>min</code>/<code>max</code>, проверка при отправке с текстом ошибки «Выберите дату не позже {DD.MM}». iOS — <code>display="inline"</code> в шторке или системный compact».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">В веб-сборке нет landmarks и уровней заголовков (<code>DESIGN.md</code> §Широкий экран; <code>EXPERIENCE.md</code> §Accessibility Floor «Заголовок экрана — h1»).</h3><span class="finding-location"><code>DESIGN.md</code> §Широкий экран; <code>EXPERIENCE.md</code> §Accessibility Floor «Заголовок экрана — h1»</span></header>
+<div class="finding-note">В веб-сборке нет landmarks и уровней заголовков (<code>DESIGN.md</code> §Широкий экран; <code>EXPERIENCE.md</code> §Accessibility Floor «Заголовок экрана — h1»). В react-native-web <code>accessibilityRole="header"</code> даёт <code>h1</code> по умолчанию, поэтому «Получено (N)», «Ближайшие даты», «Недавние вишлисты» и заголовок диалога станут вторыми <code>h1</code> или не будут заголовками вообще. Skip link есть только в порядке Tab для wide; на compact в браузере и на Next-страницах его нет.</div>
+<div class="finding-fix"><strong>Fix:</strong> «<code>role="main"</code> — область контента; <code>role="complementary"</code> + <code>aria-label="Ближайшие даты"</code> — правая колонка; <code>role="banner"</code> — шапка; <code>nav</code> — меню. Заголовки: <code>h1</code> — экран; <code>h2</code> (<code>role="heading" aria-level={2}</code>) — секции, карточки правой колонки, заголовок диалога и шторки; «Недавние вишлисты» — <code>h2</code> внутри nav. Ссылка «Перейти к содержимому» — на всех ширинах и на Next-страницах».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">На <code>/l</code> много одинаковых «Куплю сам», и роль кнопки неверная (<code>DESIGN.md</code> §Next-страницы, <code>/l/{token}</code>:</h3><span class="finding-location"><code>DESIGN.md</code> §Next-страницы, <code>/l/{token}</code>: «Куплю сам» у единичного желания → переход в приложение</span></header>
+<div class="finding-note">На <code>/l</code> много одинаковых «Куплю сам», и роль кнопки неверная (<code>DESIGN.md</code> §Next-страницы, <code>/l/{token}</code>: «Куплю сам» у единичного желания → переход в приложение). В списке ссылок диктора — N штук «Куплю сам» (2.4.4 / 2.4.6), а элемент на самом деле ссылка (переход). Остального по Next-страницам в спеке тоже нет: <code>lang</code>, title, фокус после «Вернуть» на <code>/unsubscribe</code>.</div>
+<div class="finding-fix"><strong>Fix:</strong> «На <code>/l</code> «Куплю сам» — <code>&lt;a&gt;</code> с <code>aria-label="Куплю сам: {название}"</code> (видимый текст не меняется). Заголовки страниц: «Вишлист {имя} — {BRAND}», «{Имя} приглашает в друзья — {BRAND}», «Отписка — {BRAND}», «Список не найден — {BRAND}». <code>/unsubscribe</code>: после «Вернуть» текст «Подписка возвращена» в <code>role="status"</code>, фокус — на него (<code>tabIndex=-1</code>). <code>h1</code> — имя владельца / текст приглашения / «Вы отписались…»».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title"><code>hitSlop</code> как способ добрать до 44 ненадёжен в браузере и конфликтует с нажатием карточки (<code>DESIGN.md</code> §Компоненты на RN «при меньшем визуале — hitSlop»; VisibilityChip «высота 28, зона касания 44»).</h3><span class="finding-location"><code>DESIGN.md</code> §Компоненты на RN «при меньшем визуале — hitSlop»; VisibilityChip «высота 28, зона касания 44»</span></header>
+<div class="finding-note"><code>hitSlop</code> как способ добрать до 44 ненадёжен в браузере и конфликтует с нажатием карточки (<code>DESIGN.md</code> §Компоненты на RN «при меньшем визуале — hitSlop»; VisibilityChip «высота 28, зона касания 44»). В react-native-web <code>hitSlop</code> не расширяет зону, по которой работает мышь и касание (проверить на используемой версии), так что 2.5.8 остаётся выполнен только на уровне 24×24. Кроме того, у чипа внутри карточки «лишние» 16 px совпадают с зоной нажатия самой карточки.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Зона 44 — <code>minHeight</code>/<code>minWidth</code> 44 + прозрачный padding вокруг визуала, а не <code>hitSlop</code>. Чип и ⋯ отделены от основной зоны карточки (см. finding про вложенность), зазор между целями 8». Отдельно указать 44×44 для крестика Install hint, «Отменить» в toast, текстовых ссылок «Открыть вишлист», «Посмотреть подборки».</div></article><article class="finding"><header><span class="badge badge-sev-medium">medium</span>
+<h3 class="finding-title">Деталь как Dialog с URL <code>/gifts/{id}</code> открывается и по глубокой ссылке или после обновления — тогда «открывшего» элемента нет (<code>DESIGN.md</code> §Широкий экран; <code>EXPERIENCE.md</code> §Information Architecture «Маршрут… настоящий URL»).</h3><span class="finding-location"><code>DESIGN.md</code> §Широкий экран; <code>EXPERIENCE.md</code> §Information Architecture «Маршрут… настоящий URL»</span></header>
+<div class="finding-note">Деталь как Dialog с URL <code>/gifts/{id}</code> открывается и по глубокой ссылке или после обновления — тогда «открывшего» элемента нет (<code>DESIGN.md</code> §Широкий экран; <code>EXPERIENCE.md</code> §Information Architecture «Маршрут… настоящий URL»). Не сказано, что объявляет диктор и куда уходит фокус при «назад» браузера.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Деталь — <code>role="dialog" aria-modal="true" aria-labelledby</code> = заголовок. При прямом открытии фокус — на заголовок диалога, после закрытия — на карточку этого желания в сетке, а если её нет — на <code>h1</code>. «Назад» браузера = Esc».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Спека противоречит себе в disabled «Куплю сам» (<code>DESIGN.md</code> ReserveButton:</h3><span class="finding-location"><code>DESIGN.md</code> ReserveButton: «Disabled… — кнопка скрыта, вместо неё строка-пояснение» и §Компоненты на RN «disabled — 40% и пояснение рядом»; <code>EXPERIENCE.md</code> Reserve CTA «Disabled + пояснение»</span></header>
+<div class="finding-note">Спека противоречит себе в disabled «Куплю сам» (<code>DESIGN.md</code> ReserveButton: «Disabled… — кнопка скрыта, вместо неё строка-пояснение» и §Компоненты на RN «disabled — 40% и пояснение рядом»; <code>EXPERIENCE.md</code> Reserve CTA «Disabled + пояснение»). Атрибут <code>disabled</code> в браузере выкидывает кнопку из Tab, и клавиатура не узнаёт причину.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Недоступное действие — <code>aria-disabled="true"</code> / <code>accessibilityState.disabled</code>, остаётся в фокусе, пояснение связано <code>aria-describedby</code> и не попадает под 40%». Для «Куплю сам» выбрать один вариант: скрыть и показать строку-пояснение.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">В Reserve confirm элементы называются по-разному:</h3><span class="finding-location"></span></header>
+<div class="finding-note">В Reserve confirm элементы называются по-разному: «чекбоксы» в <code>EXPERIENCE.md</code> Component Patterns и «Switch» в <code>DESIGN.md</code> ReserveConfirm и §Accessibility Floor. Динамическая подсказка «Владелец сразу увидит ваше имя…» (Reservation actions) появляется молча.</div>
+<div class="finding-fix"><strong>Fix:</strong> везде «переключатель» (<code>role="switch"</code>, <code>aria-checked</code>). Подсказку держать видимой всегда, рядом с переключателем, через <code>aria-describedby</code>, без live-объявления.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Семантика chip видимости не определена (<code>DESIGN.md</code> VisibilityChip «нажимается и открывает выбор видимости»; <code>EXPERIENCE.md</code> Visibility chip).</h3><span class="finding-location"><code>DESIGN.md</code> VisibilityChip «нажимается и открывает выбор видимости»; <code>EXPERIENCE.md</code> Visibility chip</span></header>
+<div class="finding-note">Семантика chip видимости не определена (<code>DESIGN.md</code> VisibilityChip «нажимается и открывает выбор видимости»; <code>EXPERIENCE.md</code> Visibility chip). Граница chip «Всем» — 1.49:1, «Друзьям» — 1.27:1: что это нажимаемый элемент, видно хуже, чем у кнопки.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Chip — <code>button</code>, подпись «Видимость: всем. Изменить», <code>aria-haspopup="dialog"</code>; выбор — <code>radiogroup</code>; после сохранения фокус — обратно на chip, новое значение объявляет toast». Токены: <code>visibility-chip-public.border</code> и <code>-friends.border</code> → <code>{colors.border-strong}</code> (3.60:1).</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">border-strong на muted — 2.84:1, на status-reserved-bg — 2.90:1 (secondary-кнопки внутри OwnerActionLabel).</h3><span class="finding-location"></span></header>
+<div class="finding-note">border-strong на muted — 2.84:1, на status-reserved-bg — 2.90:1 (secondary-кнопки внутри OwnerActionLabel). Смысла граница здесь не несёт, но запас по paper тоже мал (3.20).</div>
+<div class="finding-fix"><strong>Fix:</strong> <code>border-strong: '#78705E'</code> → surface 4.91, background 4.35, muted 3.87. Иначе — правило «secondary на muted не ставить: кнопки OwnerActionLabel — на surface».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Закрытая карточка:</h3><span class="finding-location"><code>DESIGN.md</code> WishCard «Закрытая — фон <code>{colors.background}</code>»</span></header>
+<div class="finding-note">Закрытая карточка: заливка = фон страницы (1.00), граница — 1.32:1, и край элемента с ⋯ не виден (<code>DESIGN.md</code> WishCard «Закрытая — фон <code>{colors.background}</code>»).</div>
+<div class="finding-fix"><strong>Fix:</strong> закрытая карточка — <code>surface</code> + текст <code>muted-foreground</code> (6.21) + pill «Получен», либо граница <code>border-strong</code>.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">3.2.6 Consistent Help.</h3><span class="finding-location"><code>DESIGN.md</code> §Навигация</span></header>
+<div class="finding-note">3.2.6 Consistent Help. «Написать автору» есть только у вошедшего: на compact — во вкладке «Профиль», на expanded — в меню пользователя (<code>DESIGN.md</code> §Навигация). Это допустимо, но помощь нужнее всего там, где её нет: на входе, регистрации, сбросе пароля и на <code>/l</code>, <code>/i</code>.</div>
+<div class="finding-fix"><strong>Fix:</strong> «Ссылка «Написать автору» — в одном месте на всех анонимных экранах и Next-страницах (футер, последняя в порядке Tab), у вошедшего — на прежних местах».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">3.3.7 Redundant Entry:</h3><span class="finding-location"></span></header>
+<div class="finding-note">3.3.7 Redundant Entry: не сказано, что email переносится между «Вход» ↔ «Регистрация» ↔ «Забыли пароль», а цепочка с <code>/l</code> идёт как раз так («Куплю сам» → вход → «Зарегистрироваться»).</div>
+<div class="finding-fix"><strong>Fix:</strong> «Введённый email переносится между анонимными экранами; <code>?next=</code> сохраняет и открытый confirm брони». Подтверждение удаления «с именем» допустимо как мера безопасности.</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Ориентация (1.3.4):</h3><span class="finding-location"></span></header>
+<div class="finding-note">Ориентация (1.3.4): спека подразумевает альбомную («телефон в альбомной → medium»), но в шаблоне Expo <code>app.json</code> по умолчанию <code>"orientation": "portrait"</code>.</div>
+<div class="finding-fix"><strong>Fix:</strong> «<code>app.json</code> → <code>"orientation": "default"</code>; блокировки ориентации нет».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Уменьшение движения покрыто только для шторки (<code>DESIGN.md</code> §Доступность «Движение»).</h3><span class="finding-location"><code>DESIGN.md</code> §Доступность «Движение»</span></header>
+<div class="finding-note">Уменьшение движения покрыто только для шторки (<code>DESIGN.md</code> §Доступность «Движение»). Мерцание скелетона (<code>EXPERIENCE.md</code> State Patterns «Cold load») и анимация перестройки при смене ширины не упомянуты (2.3.3 / 2.2.2 для повторяющейся анимации &gt; 5 с).</div>
+<div class="finding-fix"><strong>Fix:</strong> «Скелетон — статичный при reduce motion (<code>prefers-reduced-motion</code> / <code>AccessibilityInfo.isReduceMotionEnabled</code> / <code>useReducedMotion</code>) и в любом случае без мерцания дольше 5 с».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Порядок чтения сетки не закреплён (<code>DESIGN.md</code> §Точки перехода «Колонки карточек…»).</h3><span class="finding-location"><code>DESIGN.md</code> §Точки перехода «Колонки карточек…»</span></header>
+<div class="finding-note">Порядок чтения сетки не закреплён (<code>DESIGN.md</code> §Точки перехода «Колонки карточек…»). Колоночная masonry или CSS <code>order</code> развели бы визуальный порядок и порядок в DOM; без семантики списка диктор не говорит «N элементов».</div>
+<div class="finding-fix"><strong>Fix:</strong> «Порядок в DOM и для диктора — по строкам слева направо, тот же, что визуально; masonry и <code>order</code> запрещены. Сетка — <code>role="list"</code>, карточка — <code>listitem</code>».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Порядок Tab на wide:</h3><span class="finding-location"><code>DESIGN.md</code> §Мышь и клавиатура</span></header>
+<div class="finding-note">Порядок Tab на wide: правая колонка идёт после всех карточек (<code>DESIGN.md</code> §Мышь и клавиатура). При 50 желаниях и 3 остановках на карточку до «Ближайших дат» около 150 нажатий Tab.</div>
+<div class="finding-fix"><strong>Fix:</strong> вторая skip-ссылка «К ближайшим датам» (видна при фокусе) + landmark <code>complementary</code> (см. medium про landmarks).</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">2.5.7 Dragging Movements:</h3><span class="finding-location"><code>EXPERIENCE.md</code> §Accessibility Floor</span></header>
+<div class="finding-note">2.5.7 Dragging Movements: правило «у свайпа всегда есть кнопка» есть (<code>EXPERIENCE.md</code> §Accessibility Floor), но в анатомии шторки кнопки закрытия нет (<code>DESIGN.md</code> BottomSheet: «ручка 32×4, заголовок, содержимое, кнопки»). Шторка выбора видимости, например, может остаться без «Отмена».</div>
+<div class="finding-fix"><strong>Fix:</strong> «В каждой шторке — видимая «Отмена» или «Закрыть» 44×44. Ручка декоративная: не фокусируется, <code>importantForAccessibility="no"</code>».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title"><code>/admin</code> описан как «shadcn без изменений» (<code>DESIGN.md</code> §Next-страницы).</h3><span class="finding-location"><code>DESIGN.md</code> §Next-страницы</span></header>
+<div class="finding-note"><code>/admin</code> описан как «shadcn без изменений» (<code>DESIGN.md</code> §Next-страницы). Требования WCAG 2.2 AA действуют и здесь.</div>
+<div class="finding-fix"><strong>Fix:</strong> «<code>Table</code> — с <code>&lt;caption&gt;</code> (можно визуально скрытой) и <code>&lt;th scope="col"&gt;</code>; <code>Sheet</code> — с <code>SheetTitle</code>; публикация — <code>Switch</code> с подписью; toasts Sonner в <code>role="status"</code>. На ширине 320 таблицы прокручиваются горизонтально внутри контейнера, это допустимо по 1.4.10 для двумерных данных».</div></article><article class="finding"><header><span class="badge badge-sev-low">low</span>
+<h3 class="finding-title">Scrim 40% даёт 2.67:1 между диалогом и подложкой, но границу слоя держит ещё и тень.</h3><span class="finding-location"></span></header>
+<div class="finding-note">Scrim 40% даёт 2.67:1 между диалогом и подложкой, но границу слоя держит ещё и тень. Информационно, правка не нужна. Не опускать scrim ниже 40%.</div>
+<div class="finding-fix"><strong>Fix:</strong> </div></article></div></details></section>
+<div class="mechanical"><h3>Mechanical notes</h3><ul><li><strong>Токены:</strong> все ссылки во frontmatter <code>components</code> разрешаются; цвета все в hex. Единственная битая ссылка — <code>{button-reserve}</code> в EXPERIENCE стр. 116. Токены <code>{components.*}</code> в прозе DESIGN все существуют. Токен <code>components.switch</code> определён, но строки компонента нет.</li><li><strong>Контраст (пересчитан):</strong> primary-fg/primary 7.27; status-open/muted 6.02; border-strong/paper 3.20; border-strong/muted 2.84 (ниже 3:1); accent-заливка к paper 2.11 и к white 2.38 (не текст, кнопку определяет текст — допустимо, но стоит записать).</li><li><strong>Колонки сетки по формуле DESIGN стр. 394</strong> (gutter 24, меню 264, правая колонка 300): 600 → 1; 624 → 2; 1024 → 2; 1279 → 3; 1280 → 2; 1440 → 2; 1484 → 3.</li><li><strong>Согласовано между DESIGN App и EXPERIENCE IA / Responsive:</strong> границы 600 / 1024 / 1280; нижние вкладки до expanded; боковое меню с expanded; колокольчик только на compact и medium; деталь — экран до expanded и Dialog с URL <code>/gifts/{id}</code> с expanded; «Ближайшие даты» — правая колонка на wide и секция вверху «Друзей» на compact–expanded. Не согласовано: место Install hint на expanded и число колонок.</li><li><strong>Visibility default PUBLIC:</strong> согласовано во всех местах, кроме устаревшей формулировки UX-A17 и неоднозначной фразы во Flow 11 «оставляет видимость «друзьям»» (Раунд 1.5; по AD-12 видимость выбирает получатель).</li><li><strong>Не проверялось:</strong> содержимое <code>prototype/index.html</code> (намеренно устарел); проверено только, что spines ссылаются на него верно.</li><li><strong>Счёт находок:</strong> critical 0 · high 7 · medium 19 · low 15.</li></ul></div>
+<footer class="report-footer"><div class="meta"><span>Rubric: review-rubric.md</span><span>Accessibility: review-accessibility.md</span><span>Generated: 2026-10-28T15:43:49+03:00</span></div></footer>
+</div></body></html>

@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gift List — ключевые экраны приложения</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Lora:wght@600&display=swap" rel="stylesheet">
+<!--
+  Макет ключевых экранов по DESIGN.md + EXPERIENCE.md (ред. 2026-10-28).
+  Spines главнее этого файла. Статичный HTML: показывает вид, а не поведение.
+  Заменяет prototype/index.html (устарел).
+-->
+<style>
+:root{
+  --primary:#2F5D3A; --primary-fg:#F7FAF7; --accent:#D4A017; --accent-fg:#1E241F;
+  --bg:#F4F1EA; --fg:#1E241F; --surface:#FFFFFF; --muted:#E8E4DA; --muted-fg:#5C6358;
+  --border:#D9D3C6; --border-strong:#8F8673; --ring:#2F5D3A; --ring-inverse:#F4F1EA;
+  --st-open:#2F5D3A; --st-res:#7A5E07; --st-res-bg:#F5E6B8; --st-closed:#5C6358;
+  --destructive:#B42318; --scrim:rgba(30,36,31,.4);
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-xl:20px;
+  --serif:'Lora',Georgia,serif; --sans:'Manrope',system-ui,sans-serif;
+  --page:#E6E2D8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--page);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.5}
+svg.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.s{width:16px;height:16px} svg.i.n{width:24px;height:24px}
+
+/* ---------- страница-обёртка ---------- */
+.doc{max-width:1560px;margin:0 auto;padding:32px 16px 64px}
+.doc>header{max-width:860px;margin-bottom:40px}
+.doc h1.t{font-family:var(--serif);font-weight:600;font-size:36px;line-height:1.15;letter-spacing:-.02em}
+.doc .lead{color:var(--muted-fg);margin-top:8px}
+.doc .note{margin-top:16px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:var(--r-md);font-size:14px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.toc a{font-size:14px;color:var(--primary);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:4px 10px;text-decoration:none}
+section.scr{margin-top:56px}
+section.scr>h2{font-size:22px;font-weight:600}
+section.scr>p.d{color:var(--muted-fg);font-size:14px;max-width:860px;margin-top:4px}
+.row{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;margin-top:20px}
+.cap{font-size:12px;color:var(--muted-fg);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+
+/* ---------- рамки ---------- */
+.phone{width:375px;height:800px;border-radius:40px;background:var(--bg);border:10px solid #22271F;overflow:hidden;position:relative;display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,.12)}
+.status{height:28px;flex:none;display:flex;justify-content:space-between;align-items:center;padding:0 22px;font-size:12px;font-weight:600}
+.laptop-wrap{flex:1 1 720px;min-width:300px;max-width:1440px}
+.laptop-scaler{position:relative;overflow:hidden;border-radius:12px;border:8px solid #22271F;box-shadow:0 20px 40px rgba(0,0,0,.12);background:#22271F}
+.laptop{width:1440px;height:900px;transform-origin:0 0;background:var(--bg);position:absolute;top:0;left:0;display:flex}
+.urlbar{height:36px;background:#EDEAE3;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 14px;font-size:13px;color:var(--muted-fg)}
+.urlbar span.u{background:var(--surface);border-radius:var(--r-sm);padding:3px 12px;flex:1;max-width:560px}
+
+/* ---------- шапка, вкладки ---------- */
+.ah{height:56px;flex:none;display:flex;align-items:center;gap:8px;padding:0 8px 0 16px}
+.ah h1{font-size:18px;font-weight:600;line-height:1.3;flex:1}
+.ib{width:44px;height:44px;display:grid;place-items:center;border-radius:var(--r-md);position:relative;color:var(--fg);background:none;border:0}
+.badge{position:absolute;top:6px;right:4px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--primary);color:var(--primary-fg);font-size:11px;font-weight:600;display:grid;place-items:center;line-height:1}
+.content{flex:1;overflow:hidden;padding:0 16px;position:relative}
+.tabs{flex:none;height:76px;background:var(--surface);border-top:1px solid var(--border);display:flex;padding-bottom:20px}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:var(--muted-fg);position:relative}
+.tab.on{color:var(--primary);font-weight:600}
+.tab.on::before{content:"";position:absolute;top:-1px;left:22%;right:22%;height:3px;background:var(--primary);border-radius:0 0 3px 3px}
+.tab .badge{top:2px;right:calc(50% - 22px)}
+
+/* ---------- кнопки ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border-radius:var(--r-md);font:600 15px/1.2 var(--sans);border:0;white-space:nowrap}
+.btn.p{background:var(--primary);color:var(--primary-fg)}
+.btn.r{background:var(--accent);color:var(--accent-fg)}
+.btn.s{background:var(--surface);color:var(--fg);border:1px solid var(--border-strong)}
+.btn.g{background:transparent;color:var(--primary);min-height:44px;padding:0 12px}
+.btn.sm{min-height:44px;padding:0 14px;font-size:14px}
+.btn.w{width:100%}
+.focus{outline:2px solid var(--ring);outline-offset:2px}
+
+/* ---------- карточка желания ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px;display:flex;flex-direction:column;gap:8px}
+.card .top{display:flex;gap:8px;align-items:flex-start}
+.card .ttl{font-weight:600;font-size:16px;line-height:1.4;flex:1}
+.card .more{width:44px;height:44px;margin:-12px -12px -8px 0;display:grid;place-items:center;color:var(--muted-fg)}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.price{font-size:14px;font-weight:500;color:var(--muted-fg);font-variant-numeric:lining-nums tabular-nums;margin-right:4px}
+.pill{font-size:12px;line-height:1.35;padding:3px 10px;border-radius:999px;min-height:24px;display:inline-flex;align-items:center}
+.pill.o{background:var(--muted);color:var(--st-open)}
+.pill.rs{background:var(--st-res-bg);color:var(--st-res)}
+.pill.c{background:var(--muted);color:var(--st-closed)}
+.tag{font-size:12px;padding:3px 8px;border-radius:var(--r-sm);background:var(--bg);color:var(--muted-fg)}
+.phase{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:500;color:var(--st-res)}
+.bot{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.vchip{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:3px 8px;border-radius:var(--r-sm);font-size:12px;border:1px solid var(--border-strong)}
+.vchip.pub{background:var(--surface);color:var(--primary)}
+.vchip.fr{background:var(--muted);color:var(--fg)}
+.vchip.sec{background:transparent;color:var(--muted-fg);border-style:dashed}
+.vchip.locked{opacity:1}
+.vchip .chev{width:14px;height:14px}
+.oal{background:var(--muted);border-left:3px solid var(--accent);border-radius:var(--r-md);padding:12px;display:flex;flex-direction:column;gap:10px}
+.oal .l{font-size:14px;font-weight:500}
+.oal .bs{display:flex;flex-wrap:wrap;gap:8px}
+.card.closed .ttl{color:var(--muted-fg)}
+.card.wp{display:grid;grid-template-columns:72px 1fr;column-gap:12px;row-gap:8px;align-items:start}
+.card.wp>.ph{grid-row:1 / span 2}
+.card.wp>*:not(.ph){grid-column:2}
+.card.wp>.btn,.card.wp>.oal{grid-column:1 / -1}
+.ph{width:72px;height:72px;border-radius:var(--r-md);background:var(--muted);position:relative;overflow:hidden}
+.ph::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.55),transparent 55%)}
+.ph.a{background:linear-gradient(135deg,#2b2f33,#5a6470)} .ph.b{background:linear-gradient(135deg,#7b6a58,#c9b79c)}
+.ph.c{background:linear-gradient(135deg,#3f6b52,#9cc0a4)} .ph.d{background:linear-gradient(135deg,#8a3b2e,#e0a37a)}
+.hero{width:100%;aspect-ratio:4/3;border-radius:var(--r-lg);margin-bottom:12px}
+.ph.big{width:120px;height:120px}
+.sect{display:flex;align-items:center;justify-content:space-between;min-height:48px;font-size:18px;font-weight:600;margin-top:8px}
+.sect svg{color:var(--muted-fg)}
+.undo-line{font-size:14px;color:var(--primary);font-weight:600;display:inline-flex;align-items:center;min-height:44px}
+
+/* ---------- toast ---------- */
+.toast{position:absolute;left:16px;right:16px;bottom:84px;background:var(--fg);color:var(--primary-fg);border-radius:var(--r-md);padding:12px 8px 12px 16px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:5}
+.toast span{flex:1}
+.toast b{color:var(--bg);text-decoration:underline;text-underline-offset:3px;font-weight:600;font-size:15px;min-height:44px;display:inline-flex;align-items:center;padding:0 10px;border-radius:var(--r-sm)}
+.toast b.focusinv{outline:2px solid var(--ring-inverse);outline-offset:2px}
+
+/* ---------- строки списков ---------- */
+.lrow{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 0;border-bottom:1px solid var(--border)}
+.av{width:40px;height:40px;border-radius:50%;background:var(--muted);display:grid;place-items:center;font-size:14px;font-weight:600;color:var(--muted-fg);flex:none}
+.av.sm{width:28px;height:28px;font-size:11px} .av.lg{width:64px;height:64px;font-size:22px}
+.who{flex:1;min-width:0}
+.who .n{font-weight:600;font-size:16px;line-height:1.3}
+.who .k{font-size:12px;color:var(--muted-fg)}
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--muted);color:var(--muted-fg);min-height:24px;display:inline-flex;align-items:center}
+.seg{display:flex;border-bottom:1px solid var(--border);margin:0 -16px;padding:0 16px}
+.seg div{flex:1;text-align:center;font-size:14px;font-weight:500;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--muted-fg);position:relative}
+.seg div.on{color:var(--fg);font-weight:600}
+.seg div.on::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;background:var(--primary)}
+.seg .badge{position:static}
+.search{display:flex;align-items:center;gap:8px;min-height:48px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-sm);padding:0 12px;color:var(--muted-fg);font-size:16px}
+.search.f{border:2px solid var(--ring);color:var(--fg)}
+.rc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:16px}
+.rc h3{font-size:18px;font-weight:600;line-height:1.3;margin-bottom:8px}
+.drow{display:flex;align-items:center;gap:10px;min-height:48px}
+.drow .x{flex:1;font-size:14px;line-height:1.3}
+.drow .x small{display:block;color:var(--muted-fg);font-size:12px}
+.lnk{color:var(--primary);font-weight:600;font-size:14px;min-height:44px;display:inline-flex;align-items:center}
+.hint{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:12px 4px 12px 16px;display:flex;gap:12px;align-items:flex-start;font-size:14px}
+.hint .tx{flex:1}
+.hint .tx a{display:inline-block;margin-top:6px;margin-right:12px;color:var(--primary);font-weight:600}
+
+/* ---------- формы, шторки, диалоги ---------- */
+.lbl{font-size:14px;font-weight:500;margin-bottom:6px;display:block}
+.inp{min-height:48px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-sm);padding:12px;font-size:16px;display:flex;align-items:center;justify-content:space-between}
+.cap2{font-size:12px;color:var(--muted-fg);margin-top:6px}
+.swrow{display:flex;align-items:center;gap:12px;min-height:56px;border-bottom:1px solid var(--border)}
+.swrow span{flex:1;font-size:15px}
+.sw{width:52px;height:32px;border-radius:999px;background:var(--border-strong);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:28px;height:28px;border-radius:50%;background:#fff}
+.sw.on{background:var(--primary)} .sw.on::after{left:22px}
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:4}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:20px 20px 0 0;z-index:6;padding:8px 16px 28px;box-shadow:0 -8px 24px rgba(0,0,0,.12)}
+.handle{width:32px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 8px}
+.sh-h{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.sh-h h2{flex:1;font-size:18px;font-weight:600;line-height:1.3}
+.dialog{position:absolute;z-index:6;background:var(--surface);border-radius:var(--r-lg);box-shadow:0 16px 48px rgba(0,0,0,.2);padding:24px}
+.stack>*+*{margin-top:12px}
+
+/* ---------- широкий экран ---------- */
+.sidebar{width:264px;flex:none;background:var(--surface);border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;gap:2px}
+.logo{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.01em;padding:4px 12px 16px}
+.nav{display:flex;align-items:center;gap:12px;min-height:44px;padding:10px 12px;border-radius:var(--r-md);font-size:14px;font-weight:500;position:relative}
+.nav.on{background:var(--muted);color:var(--primary);font-weight:600}
+.nav.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--primary)}
+.nav .badge{position:static;margin-left:auto}
+.sbsec{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-fg);padding:20px 12px 6px}
+.recent{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;font-size:14px}
+.recent small{color:var(--muted-fg);font-size:12px}
+.ucard{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--border)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.mainbody{flex:1;display:flex;gap:24px;padding:24px;overflow:hidden}
+.colc{flex:1;min-width:0;max-width:1120px}
+.colr{width:300px;flex:none;display:flex;flex-direction:column;gap:16px}
+.whead{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.whead h1{font-size:24px;font-weight:600;flex:1}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.grid.c2{grid-template-columns:repeat(2,1fr)}
+.nexth{height:56px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 16px;border-bottom:1px solid var(--border);background:var(--bg)}
+.nexth .logo{padding:0;font-size:22px}
+.foot{font-size:14px;color:var(--primary);padding:16px 0;text-align:center;font-weight:500}
+.skip{position:absolute;top:8px;left:8px;background:var(--surface);border:2px solid var(--ring);border-radius:var(--r-sm);padding:6px 12px;font-size:14px;font-weight:600;color:var(--primary);z-index:7}
+.legend{font-size:13px;color:var(--muted-fg);margin-top:10px;max-width:375px}
+.legend.wide{max-width:none}
+.err{font-size:12px;color:var(--destructive)}
+@media (max-width:820px){ .laptop-wrap{flex-basis:100%} }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <symbol id="globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+ <symbol id="users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+ <symbol id="lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+ <symbol id="gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C10 3 12 8 12 8s2-5 4.5-5a2.5 2.5 0 0 1 0 5"/></symbol>
+ <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+ <symbol id="bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+ <symbol id="bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></symbol>
+ <symbol id="user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+ <symbol id="more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+ <symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+ <symbol id="phone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+ <symbol id="x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+ <symbol id="left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+ <symbol id="down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+ <symbol id="right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+ <symbol id="plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+ <symbol id="link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+ <symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></symbol>
+ <symbol id="layers" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></symbol>
+ <symbol id="check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+ <symbol id="eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+ <symbol id="ext" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+</svg>
+
+<div class="doc">
+<header>
+  <h1 class="t">Ключевые экраны приложения</h1>
+  <p class="lead">Gift List · одно приложение Expo на Android, iOS и в браузере · по DESIGN.md и EXPERIENCE.md, редакция 2026-10-28</p>
+  <div class="note">Статичный макет: показывает вид и раскладку, а не поведение. При расхождении верны spines — DESIGN.md (вид) и EXPERIENCE.md (поведение). Заменяет устаревший <code>prototype/index.html</code>. Имя продукта — плейсхолдер <code>BRAND_NAME</code>, люди и желания вымышлены. Фокус показан там, где важно его кольцо.</div>
+  <nav class="toc" aria-label="Экраны">
+    <a href="#s1">1. Мой вишлист</a><a href="#s2">2. Деталь и бронь</a><a href="#s3">3. Друзья и «Найти знакомых»</a><a href="#s4">4. Мои брони</a><a href="#s5">5. Ссылка /l и вход</a>
+  </nav>
+</header>
+
+<!-- ======================= 1. МОЙ ВИШЛИСТ ======================= -->
+<section class="scr" id="s1">
+  <h2>1. Мой вишлист</h2>
+  <p class="d">Владелец. Один вишлист, видимость на каждом желании. Чип со стрелкой нажимается только у открытого желания; у забронированного он лишь показывает значение. Только что закрытое желание — в «Получено» с кнопкой возврата на 10 минут (D-43). Фото необязательно: есть — превью слева, нет — без заглушки.</p>
+  <div class="row">
+    <div>
+      <div class="cap">Телефон · compact · сразу после «Отметить полученным»</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah"><h1>Мой вишлист</h1><span class="ib" aria-label="Уведомления, 3 новых"><svg class="i n"><use href="#bell"/></svg><span class="badge">3</span></span></div>
+        <div class="content">
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <span class="btn p" style="flex:1"><svg class="i"><use href="#plus"/></svg>Добавить желание</span>
+            <span class="btn s" aria-label="Скопировать ссылку"><svg class="i"><use href="#link"/></svg></span>
+          </div>
+          <div class="stack">
+            <div class="card wp"><div class="ph b"></div>
+              <div class="top"><div class="ttl">Механическая клавиатура</div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+              <div class="meta"><span class="price">12&nbsp;000&nbsp;RUB</span><span class="pill rs">Забронирован</span><span class="tag">мечта</span></div>
+              <div class="bot"><span class="vchip fr locked"><svg class="i s"><use href="#users"/></svg>Друзьям</span></div>
+            </div>
+            <div class="sect"><span>Получено (2)</span><svg class="i"><use href="#down"/></svg></div>
+            <div class="card closed">
+              <div class="top"><div class="ttl">Книга «Дюна»</div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+              <div class="meta"><span class="pill c">Получен</span></div>
+              <span class="undo-line">Вернуть в открытые · ещё 10 мин</span>
+            </div>
+          </div>
+          <div class="toast"><span>Отмечено полученным</span><b class="focusinv">Отменить</b></div>
+        </div>
+        <div class="tabs">
+          <div class="tab on"><svg class="i n"><use href="#gift"/></svg>Вишлист</div>
+          <div class="tab"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+          <div class="tab"><svg class="i n"><use href="#users"/></svg>Друзья<span class="badge">2</span></div>
+          <div class="tab"><svg class="i n"><use href="#bookmark"/></svg>Брони</div>
+          <div class="tab"><svg class="i n"><use href="#user"/></svg>Профиль</div>
+        </div>
+      </div>
+      <p class="legend">Метка владельца «Срок брони истёк» с кнопками — на широком экране справа. Toast «Отменить» — 10 с, пауза при фокусе, без автоскрытия при дикторе; кольцо фокуса — ring-inverse. Активная вкладка — полоса сверху и вес 600, не только цвет.</p>
+    </div>
+
+    <div>
+      <div class="cap">Телефон · форма желания с фото</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah" style="padding-left:4px"><span class="ib" aria-label="Закрыть"><svg class="i n"><use href="#x"/></svg></span><h1>Новое желание</h1></div>
+        <div class="content" style="padding-top:4px">
+          <span class="lbl">Фото (необязательно)</span>
+          <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px"><div class="ph a big"></div><div style="display:flex;flex-direction:column"><span class="btn g sm" style="justify-content:flex-start">Заменить</span><span class="btn g sm" style="justify-content:flex-start;color:var(--destructive)">Убрать</span><span class="cap2" style="margin:0 12px">84 КБ · ужато на телефоне</span></div></div>
+          <label class="lbl">Название</label>
+          <div class="inp">Наушники Sony WH-1000XM5</div>
+          <label class="lbl" style="margin-top:14px">Цена (необязательно)</label>
+          <div style="display:flex;gap:8px"><div class="inp" style="flex:1">250</div><div class="inp" style="width:96px">USD <svg class="i s"><use href="#down"/></svg></div></div>
+          <label class="lbl" style="margin-top:14px">Кто видит</label>
+          <div class="swrow" style="min-height:48px"><svg class="i s" style="color:var(--primary)"><use href="#globe"/></svg><span>Всем <small style="display:block;color:var(--muted-fg);font-size:12px">по ссылке, подписчикам и в профиле</small></span><i style="width:20px;height:20px;border-radius:50%;border:6px solid var(--primary)"></i></div>
+          <div class="swrow" style="min-height:48px"><svg class="i s"><use href="#users"/></svg><span>Друзьям</span><i style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border-strong)"></i></div>
+          <div class="swrow" style="min-height:48px;border:0"><svg class="i s"><use href="#lock"/></svg><span>Секрет</span><i style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border-strong)"></i></div>
+        </div>
+        <div style="flex:none;padding:12px 16px 28px;background:var(--bg);border-top:1px solid var(--border)"><span class="btn p w">Сохранить</span></div>
+      </div>
+      <p class="legend">Фото выбирается камерой или из галереи, ужимается на телефоне (до 1200 px, WebP/JPEG, без EXIF) и только потом загружается. Ниже в форме — теги, ссылка, «Один раз / Можно дарить снова», «Убрать в архив после».</p>
+    </div>
+
+    <div class="laptop-wrap">
+      <div class="cap">Браузер · wide · окно 1440 px</div>
+      <div class="laptop-scaler" data-w="1440" data-h="936">
+        <div class="laptop" style="flex-direction:column;height:936px">
+          <div class="urlbar"><span>‹ ›</span><span class="u">giftlist.app/</span></div>
+          <div style="flex:1;display:flex;min-height:0">
+            <aside class="sidebar">
+              <div class="logo">Gift List</div>
+              <div class="nav on"><svg class="i n"><use href="#gift"/></svg>Мой вишлист</div>
+              <div class="nav"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+              <div class="nav"><svg class="i n"><use href="#users"/></svg>Друзья<span class="badge">2</span></div>
+              <div class="nav"><svg class="i n"><use href="#bookmark"/></svg>Мои брони</div>
+              <div class="nav"><svg class="i n"><use href="#bell"/></svg>Уведомления<span class="badge">3</span></div>
+              <div class="nav"><svg class="i n"><use href="#layers"/></svg>Подборки</div>
+              <div class="sbsec">Недавние вишлисты</div>
+              <div class="recent"><span class="av sm">МП</span><span>Марина <small>@marina</small></span></div>
+              <div class="recent"><span class="av sm">ДК</span><span>Дима <small>@dima_k</small></span></div>
+              <div class="recent"><span class="av sm">АС</span><span>Аня <small>@anya</small></span></div>
+              <div class="ucard"><span class="av">С</span><div class="who"><div class="n" style="font-size:14px">Сергей</div><div class="k">@sergey</div></div><svg class="i" style="color:var(--muted-fg)"><use href="#more"/></svg></div>
+            </aside>
+            <main class="main">
+              <div class="mainbody">
+                <div class="colc">
+                  <div class="whead"><h1>Мой вишлист</h1><span class="btn s"><svg class="i"><use href="#link"/></svg>Скопировать ссылку</span><span class="btn p"><svg class="i"><use href="#plus"/></svg>Добавить желание</span></div>
+                  <div class="grid c2">
+                    <div class="card wp"><div class="ph a"></div>
+                      <div class="top"><div class="ttl">Наушники Sony WH-1000XM5</div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+                      <div class="meta"><span class="price">250&nbsp;USD</span><span class="pill o">Открыт</span><span class="tag">нужно сейчас</span></div>
+                      <div class="bot"><span class="vchip pub"><svg class="i s"><use href="#globe"/></svg>Всем<svg class="i chev"><use href="#down"/></svg></span></div>
+                    </div>
+                    <div class="card wp" style="border-color:var(--primary)"><div class="ph b"></div>
+                      <div class="top"><div class="ttl">Механическая клавиатура</div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+                      <div class="meta"><span class="price">12&nbsp;000&nbsp;RUB</span><span class="pill rs">Забронирован</span><span class="tag">мечта</span></div>
+                      <div class="bot"><span class="vchip fr"><svg class="i s"><use href="#users"/></svg>Друзьям</span></div>
+                    </div>
+                    <div class="card">
+                      <div class="top"><div class="ttl">Подарок для жены</div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+                      <div class="meta"><span class="pill o">Открыт</span></div>
+                      <div class="bot"><span class="vchip sec"><svg class="i s"><use href="#lock"/></svg>Секрет<svg class="i chev"><use href="#down"/></svg></span></div>
+                    </div>
+                    <div class="card">
+                      <div class="top"><div class="ttl">Билет на концерт</div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+                      <div class="meta"><span class="pill rs">Забронирован</span></div>
+                      <div class="oal"><span class="l">Срок брони истёк. Подарок уже у вас?</span>
+                        <div class="bs"><span class="btn s sm">Получил</span><span class="btn s sm">Не получал, оставить бронь</span></div></div>
+                    </div>
+                    <div class="card wp"><div class="ph c"></div>
+                      <div class="top"><div class="ttl">Термос для рыбалки</div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+                      <div class="meta"><span class="price">40&nbsp;EUR</span><span class="pill o">Открыт</span><span class="tag">когда-нибудь</span></div>
+                      <div class="bot"><span class="vchip pub"><svg class="i s"><use href="#globe"/></svg>Всем<svg class="i chev"><use href="#down"/></svg></span></div>
+                    </div>
+                    <div class="card">
+                      <div class="top"><div class="ttl">Настольная игра «Каркассон»</div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+                      <div class="meta"><span class="price">45&nbsp;BYN</span><span class="pill o">Открыт</span></div>
+                      <div class="bot"><span class="vchip fr"><svg class="i s"><use href="#users"/></svg>Друзьям<svg class="i chev"><use href="#down"/></svg></span></div>
+                    </div>
+                  </div>
+                  <div class="sect" style="margin-top:20px"><span>Получено (2)</span><svg class="i"><use href="#right"/></svg></div>
+                  <div class="sect"><span>Архив (1)</span><svg class="i"><use href="#right"/></svg></div>
+                </div>
+                <aside class="colr" aria-label="Подсказка">
+                  <div class="hint"><svg class="i" style="color:var(--primary);margin-top:2px"><use href="#phone"/></svg><div class="tx">Установите приложение: поиск друзей по контактам<br><a>Google Play</a><a>App Store</a></div><span class="ib" aria-label="Закрыть подсказку"><svg class="i"><use href="#x"/></svg></span></div>
+                </aside>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+      <p class="legend wide">Область контента 1440 − 264 − 300 − 24×3 = 804 px → 2 колонки по формуле DESIGN.md. Hover на карточке — граница primary (вторая карточка). Шапки с колокольчиком нет: уведомления — пункт меню. Правая колонка — только в браузере и только с подсказкой установить приложение; закрыли подсказку — колонки нет, сетка становится в 3 колонки. «Ближайшие даты» отложены (UX-A16).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 2. ДЕТАЛЬ И БРОНЬ ======================= -->
+<section class="scr" id="s2">
+  <h2>2. Деталь желания и бронь «Куплю сам»</h2>
+  <p class="d">Марина, подруга, открыла вишлист Сергея. На телефоне деталь — отдельный экран с прилипшей «Куплю сам», confirm — шторка. На широком экране деталь — диалог поверх сетки с URL <code>/gifts/{id}</code>, а confirm — шаг в том же диалоге, не второй слой.</p>
+  <div class="row">
+    <div>
+      <div class="cap">Телефон · деталь</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah" style="padding-left:4px"><span class="ib" aria-label="Назад"><svg class="i n"><use href="#left"/></svg></span><h1>Желание</h1></div>
+        <div class="content" style="padding-top:8px">
+          <div class="ph a hero" style="width:100%;height:auto"></div>
+          <div style="font-size:12px;color:var(--muted-fg)">в вишлисте Сергея · @sergey</div>
+          <h2 style="font-size:24px;font-weight:600;line-height:1.25;margin:6px 0 10px">Наушники Sony WH-1000XM5</h2>
+          <div class="meta"><span class="price" style="font-size:16px">250&nbsp;USD</span><span class="pill o">Открыт</span><span class="tag">нужно сейчас</span></div>
+          <p style="margin-top:16px">Чёрные, с шумоподавлением. Можно б/у в хорошем состоянии.</p>
+          <span class="lnk" style="gap:6px;margin-top:8px"><svg class="i s"><use href="#ext"/></svg>Ссылка на магазин</span>
+          
+        </div>
+        <div style="flex:none;padding:12px 16px 28px;background:var(--bg);border-top:1px solid var(--border)"><span class="btn r w">Куплю сам</span></div>
+      </div>
+      <p class="legend">Вкладки спрятаны: «Куплю сам» прилипает к низу над safe area. Контент получает отступ снизу на высоту кнопки, чтобы фокус не перекрывался.</p>
+    </div>
+
+    <div>
+      <div class="cap">Телефон · confirm брони в шторке</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah" style="padding-left:4px"><span class="ib"><svg class="i n"><use href="#left"/></svg></span><h1>Желание</h1></div>
+        <div class="content" style="padding-top:8px"><h2 style="font-size:24px;font-weight:600;line-height:1.25">Наушники Sony WH-1000XM5</h2></div>
+        <div class="scrim"></div>
+        <div class="sheet">
+          <div class="handle"></div>
+          <div class="sh-h"><h2>Забронировать «Наушники Sony WH-1000XM5»?</h2><span class="ib" aria-label="Закрыть"><svg class="i"><use href="#x"/></svg></span></div>
+          <span class="lbl">Подарю до</span>
+          <div class="inp"><span>4 ноября 2026</span><svg class="i" style="color:var(--muted-fg)"><use href="#cal"/></svg></div>
+          <div class="cap2">Не позже 27.11</div>
+          <div style="margin-top:8px">
+            <div class="swrow"><span>Показать владельцу, что это я</span><i class="sw"></i></div>
+            <div class="swrow"><span>Показать другим, кто берёт</span><i class="sw on"></i></div>
+          </div>
+          <div class="cap2" style="margin:10px 0 16px">Если купите заранее, отметьте «Купил» — бронь не снимется сама.</div>
+          <span class="btn r w">Подтвердить</span>
+          <span class="btn g w" style="margin-top:4px">Отмена</span>
+        </div>
+      </div>
+      <p class="legend">Дата — кнопка с подписью «Подарю до, 4 ноября 2026» → системный выбор. Переключатели — role switch, нажимается вся строка. Ручка декоративная, закрыть можно крестиком и «Отменой».</p>
+    </div>
+
+    <div class="laptop-wrap">
+      <div class="cap">Браузер · wide · confirm — шаг в диалоге детали</div>
+      <div class="laptop-scaler" data-w="1440" data-h="936">
+        <div class="laptop" style="flex-direction:column;height:936px">
+          <div class="urlbar"><span>‹ ›</span><span class="u">giftlist.app/gifts/8f3a</span></div>
+          <div style="flex:1;display:flex;min-height:0;position:relative">
+            <aside class="sidebar">
+              <div class="logo">Gift List</div>
+              <div class="nav"><svg class="i n"><use href="#gift"/></svg>Мой вишлист</div>
+              <div class="nav"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+              <div class="nav on"><svg class="i n"><use href="#users"/></svg>Друзья</div>
+              <div class="nav"><svg class="i n"><use href="#bookmark"/></svg>Мои брони</div>
+              <div class="nav"><svg class="i n"><use href="#bell"/></svg>Уведомления</div>
+              <div class="nav"><svg class="i n"><use href="#layers"/></svg>Подборки</div>
+              <div class="ucard"><span class="av">М</span><div class="who"><div class="n" style="font-size:14px">Марина</div><div class="k">@marina</div></div></div>
+            </aside>
+            <main class="main">
+              <div class="mainbody">
+                <div class="colc">
+                  <div class="whead"><span class="av lg" style="width:48px;height:48px;font-size:16px">С</span><div style="flex:1"><div style="font-family:var(--serif);font-size:24px;font-weight:600">Сергей</div><div style="font-size:12px;color:var(--muted-fg)">@sergey · друзья</div></div></div>
+                  <div class="grid c2">
+                    <div class="card wp"><div class="ph a"></div><div class="ttl">Наушники Sony WH-1000XM5</div><div class="meta"><span class="price">250&nbsp;USD</span><span class="pill o">Открыт</span></div></div>
+                    <div class="card"><div class="ttl">Механическая клавиатура</div><div class="meta"><span class="pill rs">Забронирован</span></div><div class="phase">Берёт Дима</div></div>
+                    <div class="card"><div class="ttl">Термос для рыбалки</div><div class="meta"><span class="price">40&nbsp;EUR</span><span class="pill o">Открыт</span></div></div>
+                    <div class="card"><div class="ttl">Настольная игра «Каркассон»</div><div class="meta"><span class="pill o">Открыт</span></div></div>
+                  </div>
+                </div>
+              </div>
+            </main>
+            <div class="scrim"></div>
+            <div class="dialog" role="dialog" aria-modal="true" style="width:640px;left:calc(50% - 320px + 132px);top:120px">
+              <div class="sh-h"><span class="ib" aria-label="Назад к желанию"><svg class="i"><use href="#left"/></svg></span><h2 style="font-size:18px">Забронировать «Наушники Sony WH-1000XM5»?</h2><span class="ib" aria-label="Закрыть"><svg class="i"><use href="#x"/></svg></span></div>
+              <div style="display:flex;gap:16px;align-items:flex-start">
+                <div style="flex:1"><span class="lbl">Подарю до</span><div class="inp" style="border:2px solid var(--ring)"><span>04.11.2026</span><svg class="i" style="color:var(--muted-fg)"><use href="#cal"/></svg></div><div class="cap2">Не позже 27.11</div></div>
+              </div>
+              <div style="margin-top:8px">
+                <div class="swrow"><span>Показать владельцу, что это я</span><i class="sw"></i></div>
+                <div class="swrow"><span>Показать другим, кто берёт</span><i class="sw on"></i></div>
+              </div>
+              <div class="cap2" style="margin:10px 0 20px">Если купите заранее, отметьте «Купил» — бронь не снимется сама.</div>
+              <div style="display:flex;justify-content:flex-end;gap:8px"><span class="btn g">Отмена</span><span class="btn r">Подтвердить</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="legend wide">Диалог детали до 640 px; «Отмена» и Esc возвращают шаг «Деталь» с фокусом на «Куплю сам». «Назад» браузера = Esc. Поле в фокусе — граница ring 2 px.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 3. ДРУЗЬЯ ======================= -->
+<section class="scr" id="s3">
+  <h2>3. Друзья и «Найти знакомых»</h2>
+  <p class="d">«Друзья» — только свой круг: сегмент «Друзья · Подписки · Запросы» (Story 4.3), поле «Искать среди друзей». Искать среди всех пользователей — вкладка «Поиск». В браузере «Найти знакомых» объясняет, что сверка контактов есть только в приложении, и сразу даёт поиск по нику (Flow 14).</p>
+  <div class="row">
+    <div>
+      <div class="cap">Телефон · Друзья</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah"><h1>Друзья</h1><span class="ib"><svg class="i n"><use href="#bell"/></svg><span class="badge">3</span></span></div>
+        <div class="content">
+          <div class="seg"><div class="on">Друзья</div><div>Подписки</div><div>Запросы <span class="badge">2</span></div></div>
+          <div class="lrow" style="margin-top:4px"><span class="av" style="background:var(--muted);color:var(--primary)"><svg class="i"><use href="#phone"/></svg></span><div class="who"><div class="n">Найти знакомых</div><div class="k">по контактам телефона</div></div><svg class="i" style="color:var(--muted-fg)"><use href="#right"/></svg></div>
+          <div class="search" style="margin:12px 0 4px"><svg class="i"><use href="#search"/></svg>Искать среди друзей</div>
+          <div style="font-size:12px;color:var(--muted-fg);margin-bottom:4px">12 из 12</div>
+          <div class="lrow"><span class="av">МП</span><div class="who"><div class="n">Марина Петрова</div><div class="k">@marina</div></div><span class="ib"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ДК</span><div class="who"><div class="n">Дима</div><div class="k">@dima_k</div></div><span class="ib"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">АС</span><div class="who"><div class="n">Аня Смирнова</div><div class="k">@anya</div></div><span class="ib"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОЛ</span><div class="who"><div class="n">Оля</div><div class="k">@olya</div></div><span class="ib"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ПГ</span><div class="who"><div class="n">Паша Голубев</div><div class="k">@pasha</div></div><span class="ib"><svg class="i"><use href="#more"/></svg></span></div>
+          <div style="font-size:12px;color:var(--muted-fg);text-align:center;padding:10px">Загружаем…</div>
+        </div>
+        <div class="tabs">
+          <div class="tab"><svg class="i n"><use href="#gift"/></svg>Вишлист</div>
+          <div class="tab"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+          <div class="tab on"><svg class="i n"><use href="#users"/></svg>Друзья<span class="badge">2</span></div>
+          <div class="tab"><svg class="i n"><use href="#bookmark"/></svg>Брони</div>
+          <div class="tab"><svg class="i n"><use href="#user"/></svg>Профиль</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">Телефон · Запросы</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah"><h1>Друзья</h1><span class="ib"><svg class="i n"><use href="#bell"/></svg><span class="badge">3</span></span></div>
+        <div class="content">
+          <div class="seg"><div>Друзья</div><div>Подписки</div><div class="on">Запросы <span class="badge">2</span></div></div>
+          <div style="font-size:12px;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 4px">Входящие</div>
+          <div class="lrow" style="align-items:flex-start;flex-wrap:wrap"><span class="av">ОЛ</span><div class="who"><div class="n">Оля</div><div class="k">@olya</div>
+            <div style="display:flex;gap:8px;margin-top:8px"><span class="btn p sm">Принять</span><span class="btn g sm">Отклонить</span></div></div></div>
+          <div class="lrow" style="align-items:flex-start"><span class="av">ИВ</span><div class="who"><div class="n">Игорь Васильев</div><div class="k">@igor_v</div>
+            <div style="display:flex;gap:8px;margin-top:8px"><span class="btn p sm">Принять</span><span class="btn g sm">Отклонить</span></div></div></div>
+          <div style="font-size:12px;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.06em;margin:20px 0 4px">Исходящие</div>
+          <div class="lrow"><span class="av">КЛ</span><div class="who"><div class="n">Катя</div><div class="k">@katya_l</div></div><span class="chip">Ожидает ответа</span><span class="btn g sm" style="padding:0 8px">Отменить</span></div>
+        </div>
+        <div class="tabs">
+          <div class="tab"><svg class="i n"><use href="#gift"/></svg>Вишлист</div>
+          <div class="tab"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+          <div class="tab on"><svg class="i n"><use href="#users"/></svg>Друзья<span class="badge">2</span></div>
+          <div class="tab"><svg class="i n"><use href="#bookmark"/></svg>Брони</div>
+          <div class="tab"><svg class="i n"><use href="#user"/></svg>Профиль</div>
+        </div>
+      </div>
+      <p class="legend">Входящие выше исходящих. На compact «Принять» и «Отклонить» — в ряд под именем; от medium — справа.</p>
+    </div>
+
+    <div>
+      <div class="cap">Телефон · Поиск — все пользователи</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah"><h1>Поиск</h1><span class="ib"><svg class="i n"><use href="#bell"/></svg><span class="badge">3</span></span></div>
+        <div class="content">
+          <div class="search f" style="margin:4px 0 6px"><svg class="i"><use href="#search"/></svg>ол</div>
+          <div style="font-size:12px;color:var(--muted-fg);margin-bottom:4px">Среди всех пользователей</div>
+          <div class="lrow"><span class="av">ОС</span><div class="who"><div class="n">Олег Сидоров</div><div class="k">@oleg_s</div></div><span class="ib" aria-label="Действия: Олег Сидоров"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОМ</span><div class="who"><div class="n">Олег М.</div><div class="k">@olegm</div></div><span class="chip">Друзья</span><span class="ib" aria-label="Действия: Олег М."><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОК</span><div class="who"><div class="n">Олеся Ким</div><div class="k">@olesya</div></div><span class="chip">Ожидает ответа</span><span class="ib" aria-label="Действия: Олеся Ким"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОЛ</span><div class="who"><div class="n">Оля</div><div class="k">@olya</div></div><span class="chip" style="background:var(--muted);color:var(--primary);font-weight:600">Зовёт в друзья</span><span class="ib" aria-label="Действия: Оля"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОВ</span><div class="who"><div class="n">Ольга Власова</div><div class="k">@olga_v</div></div><span class="chip">Вы подписаны</span><span class="ib" aria-label="Действия: Ольга Власова"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОЖ</span><div class="who"><div class="n">Олжас</div><div class="k">@olzhas</div></div><span class="chip">Подписан на вас</span><span class="ib" aria-label="Действия: Олжас"><svg class="i"><use href="#more"/></svg></span></div>
+          <p class="cap2" style="margin-top:12px">Кто скрыл себя из поиска, здесь не появится — его можно открыть только по ссылке.</p>
+        </div>
+        <div class="tabs">
+          <div class="tab"><svg class="i n"><use href="#gift"/></svg>Вишлист</div>
+          <div class="tab on"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+          <div class="tab"><svg class="i n"><use href="#users"/></svg>Друзья<span class="badge">2</span></div>
+          <div class="tab"><svg class="i n"><use href="#bookmark"/></svg>Брони</div>
+          <div class="tab"><svg class="i n"><use href="#user"/></svg>Профиль</div>
+        </div>
+      </div>
+      <p class="legend">Справа — только статус отношения, все действия — в ⋯. Нет отношения — chip нет. Статусы и меню одни для Поиска, Друзей, Подписок, Подписчиков и контактов.</p>
+    </div>
+
+    <div>
+      <div class="cap">Телефон · меню ⋯ человека</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah"><h1>Поиск</h1><span class="ib"><svg class="i n"><use href="#bell"/></svg><span class="badge">3</span></span></div>
+        <div class="content">
+          <div class="search" style="margin:4px 0 6px;color:var(--fg)"><svg class="i" style="color:var(--muted-fg)"><use href="#search"/></svg>ол</div>
+          <div class="lrow"><span class="av">ОС</span><div class="who"><div class="n">Олег Сидоров</div><div class="k">@oleg_s</div></div><span class="ib" aria-label="Действия: Олег Сидоров"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОМ</span><div class="who"><div class="n">Олег М.</div><div class="k">@olegm</div></div><span class="chip">Друзья</span><span class="ib" aria-label="Действия: Олег М."><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОК</span><div class="who"><div class="n">Олеся Ким</div><div class="k">@olesya</div></div><span class="chip">Ожидает ответа</span><span class="ib" aria-label="Действия: Олеся Ким"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОЛ</span><div class="who"><div class="n">Оля</div><div class="k">@olya</div></div><span class="chip" style="background:var(--muted);color:var(--primary);font-weight:600">Зовёт в друзья</span><span class="ib" aria-label="Действия: Оля"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОВ</span><div class="who"><div class="n">Ольга Власова</div><div class="k">@olga_v</div></div><span class="chip">Вы подписаны</span><span class="ib" aria-label="Действия: Ольга Власова"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ОЖ</span><div class="who"><div class="n">Олжас</div><div class="k">@olzhas</div></div><span class="chip">Подписан на вас</span><span class="ib" aria-label="Действия: Олжас"><svg class="i"><use href="#more"/></svg></span></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="sheet" style="padding-bottom:20px">
+          <div class="handle"></div>
+          <div class="sh-h" style="margin-bottom:4px"><span class="av sm">ОЖ</span><h2 style="font-size:16px">Олжас · @olzhas</h2><span class="ib" aria-label="Закрыть"><svg class="i"><use href="#x"/></svg></span></div>
+          <div style="min-height:48px;display:flex;align-items:center;font-size:16px;">Открыть профиль</div>
+          <div style="min-height:48px;display:flex;align-items:center;font-size:16px;color:var(--primary);font-weight:600;">Добавить в друзья</div>
+          <div style="min-height:48px;display:flex;align-items:center;font-size:16px;">Подписаться</div>
+          <div style="height:1px;background:var(--border);margin:4px 0"></div>
+          <div style="min-height:48px;display:flex;align-items:center;font-size:16px;color:var(--destructive);">Убрать подписчика</div>
+          <div style="min-height:48px;display:flex;align-items:center;font-size:16px;color:var(--destructive);">Заблокировать</div>
+          <span class="btn g w" style="margin-top:4px">Отмена</span>
+        </div>
+        <div class="tabs">
+          <div class="tab"><svg class="i n"><use href="#gift"/></svg>Вишлист</div>
+          <div class="tab on"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+          <div class="tab"><svg class="i n"><use href="#users"/></svg>Друзья<span class="badge">2</span></div>
+          <div class="tab"><svg class="i n"><use href="#bookmark"/></svg>Брони</div>
+          <div class="tab"><svg class="i n"><use href="#user"/></svg>Профиль</div>
+        </div>
+      </div>
+      <p class="legend">Меню для «Подписан на вас». У друга: «Открыть профиль · Удалить из друзей · Заблокировать». На «Зовёт в друзья»: «Принять приглашение · Отклонить». Полная таблица — EXPERIENCE.md → «Отношение → статус и меню».</p>
+    </div>
+
+    <div>
+      <div class="cap">Телефон · Подписки → Мои подписчики</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah"><h1>Друзья</h1><span class="ib"><svg class="i n"><use href="#bell"/></svg><span class="badge">3</span></span></div>
+        <div class="content">
+          <div class="seg"><div>Друзья</div><div class="on">Подписки</div><div>Запросы <span class="badge">2</span></div></div>
+          <div style="display:flex;background:var(--muted);border-radius:var(--r-md);padding:3px;margin:12px 0 8px">
+            <div style="flex:1;text-align:center;font-size:14px;font-weight:500;min-height:40px;display:flex;align-items:center;justify-content:center;color:var(--muted-fg)">Я подписан · 4</div>
+            <div style="flex:1;text-align:center;font-size:14px;font-weight:600;min-height:40px;display:flex;align-items:center;justify-content:center;background:var(--surface);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.08)">Мои подписчики · 3</div>
+          </div>
+          <div class="lrow"><span class="av">ЛК</span><div class="who"><div class="n">Лена Котова</div><div class="k">@lena_k</div></div><span class="chip">Подписан на вас</span><span class="ib" aria-label="Действия: Лена Котова"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ТН</span><div class="who"><div class="n">Тимур</div><div class="k">@timur_n</div></div><span class="chip">Взаимная подписка</span><span class="ib" aria-label="Действия: Тимур"><svg class="i"><use href="#more"/></svg></span></div>
+          <div class="lrow"><span class="av">ВР</span><div class="who"><div class="n">Вика Романова</div><div class="k">@vika</div></div><span class="chip">Подписан на вас</span><span class="ib" aria-label="Действия: Вика Романова"><svg class="i"><use href="#more"/></svg></span></div>
+        </div>
+        <div class="tabs">
+          <div class="tab"><svg class="i n"><use href="#gift"/></svg>Вишлист</div>
+          <div class="tab"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+          <div class="tab on"><svg class="i n"><use href="#users"/></svg>Друзья<span class="badge">2</span></div>
+          <div class="tab"><svg class="i n"><use href="#bookmark"/></svg>Брони</div>
+          <div class="tab"><svg class="i n"><use href="#user"/></svg>Профиль</div>
+        </div>
+      </div>
+      <p class="legend">Та же строка человека. В ⋯ — «Подписаться» (в ответ), «Добавить в друзья», «Убрать подписчика», «Заблокировать». Подписчик об удалении не узнаёт.</p>
+    </div>
+
+    <div class="laptop-wrap">
+      <div class="cap">Браузер · wide · «Найти знакомых»</div>
+      <div class="laptop-scaler" data-w="1440" data-h="936">
+        <div class="laptop" style="flex-direction:column;height:936px">
+          <div class="urlbar"><span>‹ ›</span><span class="u">giftlist.app/friends/contacts</span></div>
+          <div style="flex:1;display:flex;min-height:0">
+            <aside class="sidebar">
+              <div class="logo">Gift List</div>
+              <div class="nav"><svg class="i n"><use href="#gift"/></svg>Мой вишлист</div>
+              <div class="nav"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+              <div class="nav on"><svg class="i n"><use href="#users"/></svg>Друзья<span class="badge">2</span></div>
+              <div class="nav"><svg class="i n"><use href="#bookmark"/></svg>Мои брони</div>
+              <div class="nav"><svg class="i n"><use href="#bell"/></svg>Уведомления<span class="badge">3</span></div>
+              <div class="nav"><svg class="i n"><use href="#layers"/></svg>Подборки</div>
+              <div class="ucard"><span class="av">С</span><div class="who"><div class="n" style="font-size:14px">Сергей</div><div class="k">@sergey</div></div></div>
+            </aside>
+            <main class="main">
+              <div class="mainbody">
+                <div class="colc" style="max-width:720px">
+                  <span class="lnk" style="gap:4px;color:var(--muted-fg);font-weight:500"><svg class="i s"><use href="#left"/></svg>Друзья</span>
+                  <div class="whead" style="margin-top:4px"><h1>Найти знакомых</h1></div>
+                  <p style="max-width:560px">Сверка с контактами работает в приложении на телефоне. Здесь можно найти человека по нику или имени.</p>
+                  <div class="search f" style="margin:20px 0 8px;max-width:560px"><svg class="i"><use href="#search"/></svg>marina</div>
+                  <div style="max-width:720px">
+                    <div class="lrow"><span class="av">МП</span><div class="who"><div class="n">Марина Петрова</div><div class="k">@marina</div></div><span class="btn g sm">Подписаться</span><span class="btn p sm focus">Добавить в друзья</span></div>
+                    <div class="lrow"><span class="av">МК</span><div class="who"><div class="n">Марина К.</div><div class="k">@marina_k</div></div><span class="btn g sm">Подписаться</span><span class="btn p sm">Добавить в друзья</span></div>
+                  </div>
+                </div>
+                <aside class="colr" aria-label="Подсказка" style="margin-left:auto">
+                  <div class="hint"><svg class="i" style="color:var(--primary);margin-top:2px"><use href="#phone"/></svg><div class="tx">Установите приложение: поиск друзей по контактам<br><a>Google Play</a><a>App Store</a></div><span class="ib"><svg class="i"><use href="#x"/></svg></span></div>
+                </aside>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+      <p class="legend wide">Flow 14: Сергей проходит Tab-ом до «Добавить в друзья» (фокус показан), Enter — toast «Приглашение отправлено». Подсказка на wide — только в правой колонке; на compact–expanded — карточкой вверху этого экрана.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 4. МОИ БРОНИ ======================= -->
+<section class="scr" id="s4">
+  <h2>4. Мои брони</h2>
+  <p class="d">Карточка брони держит только снимок названия, ник владельца, Срок и фазу (A-14, AD-7) — она живёт, даже если доступа к вишлисту больше нет. Подписи фаз — по таблице «Подписи брони» в EXPERIENCE.md.</p>
+  <div class="row">
+    <div>
+      <div class="cap">Телефон · Мои брони</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah"><h1>Мои брони</h1><span class="ib"><svg class="i n"><use href="#bell"/></svg></span></div>
+        <div class="content stack">
+          <div class="card">
+            <div class="top"><div class="ttl">Механическая клавиатура<div style="font-size:12px;font-weight:400;color:var(--muted-fg)">у @sergey</div></div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+            <div class="meta"><span class="phase"><svg class="i s"><use href="#bookmark"/></svg>Вы берёте · до 04.11</span><span class="chip">Куплено</span></div>
+            <div class="swrow" style="border:0;min-height:48px"><span style="font-size:14px">Купил</span><i class="sw on"></i></div>
+            <div style="display:flex;gap:8px"><span class="btn s sm" style="flex:1">Продлить до…</span><span class="btn s sm" style="flex:1">Подарил</span></div>
+            <span class="lnk" style="gap:4px;color:var(--muted-fg);font-weight:500">Кто видит, что это я <svg class="i s"><use href="#down"/></svg></span>
+          </div>
+          <div class="card">
+            <div class="top"><div class="ttl">Билет на концерт<div style="font-size:12px;font-weight:400;color:var(--muted-fg)">у @anya</div></div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+            <div class="meta"><span class="phase"><svg class="i s"><use href="#clock"/></svg>Срок истёк · был 25.10</span></div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px"><span class="btn s sm">Подарил</span><span class="btn s sm">Купил, ещё не вручил</span><span class="btn s sm">Продлить до…</span></div>
+          </div>
+          <div class="card">
+            <div class="top"><div class="ttl">Термос для рыбалки<div style="font-size:12px;font-weight:400;color:var(--muted-fg)">у @dima_k</div></div><span class="more"><svg class="i"><use href="#more"/></svg></span></div>
+            <div class="meta"><span class="phase"><svg class="i s"><use href="#check"/></svg>Ждёт подтверждения</span></div>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab"><svg class="i n"><use href="#gift"/></svg>Вишлист</div>
+          <div class="tab"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+          <div class="tab"><svg class="i n"><use href="#users"/></svg>Друзья</div>
+          <div class="tab on"><svg class="i n"><use href="#bookmark"/></svg>Брони</div>
+          <div class="tab"><svg class="i n"><use href="#user"/></svg>Профиль</div>
+        </div>
+      </div>
+      <p class="legend">«Снять бронь» — в ⋯, с confirm. Срок в прошлом — иконка часов, без красного. Без цены, тегов и других желаний владельца.</p>
+    </div>
+    <div>
+      <div class="cap">Телефон · пусто</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="ah"><h1>Мои брони</h1><span class="ib"><svg class="i n"><use href="#bell"/></svg></span></div>
+        <div class="content" style="display:flex;flex-direction:column;justify-content:center;text-align:center;padding-bottom:80px">
+          <div style="font-family:var(--serif);font-size:24px;font-weight:600;line-height:1.2">Броней нет</div>
+          <p style="color:var(--muted-fg);margin-top:8px">Нажмите «Куплю сам» у желания друга — бронь появится здесь.</p>
+        </div>
+        <div class="tabs">
+          <div class="tab"><svg class="i n"><use href="#gift"/></svg>Вишлист</div>
+          <div class="tab"><svg class="i n"><use href="#search"/></svg>Поиск</div>
+          <div class="tab"><svg class="i n"><use href="#users"/></svg>Друзья</div>
+          <div class="tab on"><svg class="i n"><use href="#bookmark"/></svg>Брони</div>
+          <div class="tab"><svg class="i n"><use href="#user"/></svg>Профиль</div>
+        </div>
+      </div>
+      <p class="legend">EmptyState: Lora — один раз на экран, без CTA, без иллюстрации.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 5. /l И ВХОД ======================= -->
+<section class="scr" id="s5">
+  <h2>5. Ссылка на вишлист <code>/l/{token}</code> и вход</h2>
+  <p class="d">Алексей, коллега, открывает ссылку без аккаунта (Flow 3). Страница <code>/l</code> — серверная Next.js на shadcn с теми же токенами: аноним видит желания «всем», скрытые не показаны и не посчитаны. «Куплю сам» ведёт на вход в приложение с возвратом и открытым confirm.</p>
+  <div class="row">
+    <div>
+      <div class="cap">Next-страница /l · телефон, аноним</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="nexth"><span class="logo">Gift List</span><span class="btn g">Войти</span></div>
+        <div class="content" style="padding-top:20px">
+          <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px"><span class="av" style="width:48px;height:48px">С</span><div><h1 style="font-family:var(--serif);font-size:24px;font-weight:600;line-height:1.2">Вишлист Сергея</h1><div style="font-size:12px;color:var(--muted-fg)">@sergey</div></div></div>
+          <div class="stack">
+            <div class="card wp"><div class="ph a"></div>
+              <div class="ttl">Наушники Sony WH-1000XM5</div>
+              <div class="meta"><span class="price">250&nbsp;USD</span><span class="pill o">Открыт</span><span class="tag">нужно сейчас</span></div>
+              <span class="btn r w" aria-label="Куплю сам: Наушники Sony WH-1000XM5">Куплю сам</span>
+            </div>
+            <div class="card">
+              <div class="ttl">Термос для рыбалки</div>
+              <div class="meta"><span class="price">40&nbsp;EUR</span><span class="pill o">Открыт</span></div>
+              <span class="btn r w">Куплю сам</span>
+            </div>
+            <div class="card">
+              <div class="ttl">Хорошее настроение</div>
+              <div class="meta"><span class="pill o">Открыт</span></div>
+              <div style="font-size:14px;color:var(--muted-fg)">Можно дарить без брони</div>
+            </div>
+          </div>
+          <div class="foot">Написать автору</div>
+        </div>
+      </div>
+      <p class="legend">Ни чипов видимости, ни «ещё 3 скрыто». «Куплю сам» — ссылка с подписью «Куплю сам: {название}». У «Можно дарить снова» кнопки нет, на её месте строка-пояснение.</p>
+    </div>
+    <div>
+      <div class="cap">Приложение · вход после «Куплю сам»</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="content" style="padding-top:32px">
+          <div class="logo" style="padding:0 0 24px;text-align:center">Gift List</div>
+          <div class="rc" style="background:var(--muted);border:0;border-left:3px solid var(--primary);border-radius:var(--r-md);font-size:14px;margin-bottom:20px">Чтобы забронировать «Наушники Sony WH-1000XM5», войдите или зарегистрируйтесь.</div>
+          <label class="lbl">Email</label>
+          <div class="inp">alexey@example.com</div>
+          <label class="lbl" style="margin-top:16px">Пароль</label>
+          <div class="inp" style="padding-right:2px"><span>••••••••</span><span class="ib" aria-label="Показать пароль"><svg class="i" style="color:var(--muted-fg)"><use href="#eye"/></svg></span></div>
+          <span class="lnk" style="margin-top:4px">Забыли пароль?</span>
+          <span class="btn p w" style="margin-top:12px">Войти</span>
+          <span class="btn s w" style="margin-top:12px">Зарегистрироваться</span>
+          <div class="foot" style="margin-top:24px">Написать автору</div>
+        </div>
+      </div>
+      <p class="legend">Без вкладок. Email переносится на регистрацию и сброс. После входа — <code>/wishlist/{token}</code> с открытым confirm брони; дружба не создаётся.</p>
+    </div>
+    <div>
+      <div class="cap">Next-страница /l · пусто для зрителя</div>
+      <div class="phone">
+        <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+        <div class="nexth"><span class="logo">Gift List</span><span class="btn g">Войти</span></div>
+        <div class="content" style="padding-top:20px;display:flex;flex-direction:column">
+          <div style="display:flex;gap:12px;align-items:center"><span class="av" style="width:48px;height:48px">А</span><div><h1 style="font-family:var(--serif);font-size:24px;font-weight:600;line-height:1.2">Вишлист Ани</h1><div style="font-size:12px;color:var(--muted-fg)">@anya</div></div></div>
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center;padding-bottom:120px">
+            <div style="font-size:18px;font-weight:600">Пока нет открытых желаний</div>
+          </div>
+          <div class="foot">Написать автору</div>
+        </div>
+      </div>
+      <p class="legend">Одинаково для анонима, подписчика и не-друга: без «список только для друзей» и без числа скрытых.</p>
+    </div>
+  </div>
+</section>
+</div>
+
+<script>
+function fit(){
+  document.querySelectorAll('.laptop-scaler').forEach(function(s){
+    var w=+s.dataset.w,h=+s.dataset.h,inner=s.querySelector('.laptop');
+    var k=Math.min(1,s.clientWidth/w);
+    inner.style.transform='scale('+k+')';
+    s.style.height=(h*k+16)+'px';
+  });
+}
+window.addEventListener('resize',fit);document.fonts&&document.fonts.ready.then(fit);fit();
+</script>
+</body>
+</html>

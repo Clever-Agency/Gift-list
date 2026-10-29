@@ -196,7 +196,7 @@ flowchart TB
   - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, toggles); владелец (T6 «оставить», T10 «не получал»); cron (таймеры)
   - `RESERVED → OPEN` — держатель | владелец | cron (только `phase=AWAITING_OWNER AND bought=false`)
   - `OPEN | RESERVED → CLOSED` — владелец; reserved* **сохраняются** для аудита; пишутся `closedAt`, `closedFromStatus`; FR-25 активные = `status=RESERVED`
-  - `CLOSED → closedFromStatus` — только владелец, только при `closedAt > now()-10s` (отмена) `[ARCH-A5]`
+  - `CLOSED → closedFromStatus` — только владелец, только при `closedAt > now()-UNDO_WINDOW` (отмена; `UNDO_WINDOW` = 10 min, D-43) `[ARCH-A5]`
   - Остальные `CLOSED → *` запрещены
   - Владелец **не** может `OPEN → RESERVED` на своём подарке → `FORBIDDEN`
   - `COLLECTION` не используется в R1
@@ -230,7 +230,7 @@ flowchart TB
   | RESERVED→OPEN (holder) | `status=RESERVED AND reservedById=actor`; clear reserved* |
   | RESERVED→OPEN (owner) | `status=RESERVED`; clear reserved* |
   | OPEN/RESERVED→CLOSED | `status = expected`; set CLOSED, `closedAt`, `closedFromStatus`; keep reserved* |
-  | CLOSED→undo | `status=CLOSED AND closedAt>now()-10s AND owner=actor`; restore `closedFromStatus` |
+  | CLOSED→undo | `status=CLOSED AND closedAt>now()-UNDO_WINDOW AND owner=actor`; restore `closedFromStatus` |
   | OPEN→archive | `status=OPEN AND archivedAt IS NULL`; set `archivedAt` |
   | RESERVED→archive | только если `bought=false AND phase<>GIVEN`: снять бронь и set `archivedAt` одной транзакцией. При `bought` или `GIVEN` архив не автоматический: уведомление держателю, без смены статуса |
 
@@ -277,7 +277,7 @@ flowchart TB
 - **Binds:** FR-26, FR-31, SM-C1, NFR privacy
 - **Prevents:** push-scope; FO leak в нотификациях; утечка держателя владельцу; повторные «пинги»
 - **Rule:** MVP — in-app `Notification` + email (Resend). Каналы получателя: in-app и email, по категориям (FR-52). Нативный push в MVP нет (Q-9). Одно событие → одна запись `Notification` (+ одно письмо, если канал email включён и событие в email-перечне).
-  `Notification.deliverAfter timestamptz` — для закрытия (= `closedAt + 10 s`); отмена удаляет недоставленную запись. Доставка отложенных писем — механизм на выбор dev (after-response task или cron), допустимая задержка ≤ 1 ч.
+  `Notification.deliverAfter timestamptz` — для закрытия (= `closedAt + UNDO_WINDOW`, 10 min); отмена удаляет недоставленную запись. Доставка отложенных писем — механизм на выбор dev (after-response task или cron), допустимая задержка ≤ 1 ч.
   Закрытый `Notification.kind`: `FRIEND_INVITE`, `FRIEND_ACCEPT`, `FRIEND_REJECT`, `RESERVATION_CREATED`, `RESERVATION_RELEASED`, `RESERVATION_DUE`, `RESERVATION_OWNER_ASK`, `RESERVATION_AUTO_RELEASE`, `GIFT_EDITED`, `GIFT_DELETED`, `GIFT_CLOSED`, `GIFT_GIVEN`, `DATE_FRIEND`, `DATE_OWN`, `SUGGESTION`, `WISH_EXPIRY_SOON`, `WISH_EXPIRY`. Другие kind запрещены. Email — подмножество: события брони из FR-26, напоминания дат, `SUGGESTION`, `WISH_EXPIRY_SOON` и `WISH_EXPIRY`, если у получателя включён канал email. `WISH_EXPIRY_SOON` — ровно за 3 дня до `expiresOn` (D-26).
   Payload и письма: не содержат названий желаний, которые получатель не может видеть (AD-7); не содержат дат, которые он не может видеть (AD-23); держателю — `titleSnapshot`; владельцу — без идентичности держателя без `holderVisibleToOwner` и без `bought`. Принятие идеи создаёт обычное желание (`OPEN`, количество выбирает получатель, по умолчанию `SINGLE`); видимость выбирает получатель. Колонки `priorityReserverId` нет (D-28). Имя отправителя в payload есть только если он его раскрыл.
 
@@ -285,7 +285,7 @@ flowchart TB
 
 - **Binds:** AD-7, AD-9, AD-14, SM-2, FR-31
 - **Prevents:** «забытые» гонки и privacy в epics
-- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → `not_found`; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец при `holderVisibleToOwner=false` не получает идентичность держателя ни в gift card, ни в Notification, ни в письме; `bought` владельцу не отдаётся; (6) cron не переводит в OPEN брони с `bought=true` и в фазе GIVEN; (7) гонка cron-таймера и действия держателя/владельца → ровно один переход; (8) отмена закрытия после 10 s → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера. Остальной test pyramid — на epics.
+- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → `not_found`; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец при `holderVisibleToOwner=false` не получает идентичность держателя ни в gift card, ни в Notification, ни в письме; `bought` владельцу не отдаётся; (6) cron не переводит в OPEN брони с `bought=true` и в фазе GIVEN; (7) гонка cron-таймера и действия держателя/владельца → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера. Остальной test pyramid — на epics.
 
 ### AD-16 — Переносимость `[ADOPTED D-16]`
 
@@ -365,7 +365,7 @@ flowchart TB
 | Authz | AD-7 + ownership; object-level |
 | Logging | audit смены Gift.status (actor, from→to, at) |
 | Config | typed `env.ts` (zod); секреты не в клиент |
-| Locale / theme | RU only; light only |
+| Locale / theme | Пилот `ru`, i18n заложен (D-46, ARCH-A19); light only |
 | Hide from search | `User.hideFromSearch` boolean default false |
 
 ## Stack
@@ -479,8 +479,8 @@ stateDiagram-v2
   RESERVED --> OPEN: holder / owner release; cron +168h if !bought
   OPEN --> CLOSED: owner received
   RESERVED --> CLOSED: owner received
-  CLOSED --> OPEN: undo ≤10s (closedFromStatus)
-  CLOSED --> RESERVED: undo ≤10s (closedFromStatus)
+  CLOSED --> OPEN: undo ≤UNDO_WINDOW (closedFromStatus)
+  CLOSED --> RESERVED: undo ≤UNDO_WINDOW (closedFromStatus)
   CLOSED --> [*]
 ```
 
@@ -523,7 +523,7 @@ stateDiagram-v2
 | Предложить идею | D-42: Раунд 1.5 |
 | Первое право брони предложившего | Снято (D-28). Срок предупреждения о желании — 3 дня (D-26) |
 | Канал жалоб, если его потребует закон | D-34: в MVP функции нет; сверка до публикации, `pre-release-checklist.md` |
-| i18n, dark mode | UX-A8/A9 |
+| Второй язык интерфейса, dark mode | D-46 (i18n заложен, язык добавится позже), UX-A8 |
 | Redis rate-limit prod hardening | пилот; soft |
 | Prisma 8 | RC; revisit after GA |
 | Финальный бренд/домен | Q-2 открыт |
@@ -540,11 +540,13 @@ stateDiagram-v2
 | ARCH-A2 | Имя — переменная `BRAND_NAME` (AD-24). Домен открыт | Q-2, D-35 |
 | ARCH-A3 | Снято для механизма: удаление в приложении обязательно (AD-20, D-33). Срок хранения по-прежнему Q-3 | Q-3 |
 | ARCH-A4 | Принято: цена необязательна, валюта из AD-25 | D-36, D-37 |
-| ARCH-A5 | Нет reopen CLOSED в R1, кроме отмены владельцем в течение 10 s | UX-A11, D-12 |
+| ARCH-A5 | Нет reopen CLOSED в R1, кроме отмены владельцем в течение `UNDO_WINDOW` = 10 min (было 10 s; D-43 — WCAG 2.2.1). Константа одна на сервере; клиент берёт срок из ответа (`undoUntil`), а не из своего таймера | UX-A11, D-12, D-43 |
 | ARCH-A6..A11 | Ник UX-A6; RU; light; cron; soft RL; Vercel+Neon+Resend только на этапе разработки (AD-5) | UX + ops |
 | ARCH-A12 | Auto-accept при встречном pending инвайте | AD-10 |
 | ARCH-A13 | `titleSnapshot` на бронь для A-14 path и писем держателю | AD-7, AD-14 |
 | ARCH-A14 | Срок брони = конец даты в IANA-поясе дарителя (из устройства или браузера, fallback UTC); хранится как `reservationDueAt timestamptz` | A-27 |
-| ARCH-A17 | Видимость нового желания по умолчанию — `FRIENDS` (безопаснее для приватности; владелец меняет одним касанием). Ждёт подтверждения Sergey | D-23, readiness 2026-10-28 |
+| ARCH-A17 | Принято: видимость нового желания по умолчанию — `PUBLIC` («всем»), в том числе при «Добавить в мой вишлист» из подборки. Владелец меняет её в форме или чипом. Решение Sergey 2026-10-28 (PRD D-44) | D-23, readiness 2026-10-28 |
 | ARCH-A15 | Таймеры брони вызываются внешним планировщиком раз в час (не Vercel Cron); вызов идемпотентен, пропуск запуска только сдвигает переходы | D-12, переносимость |
 | ARCH-A16 | Предупреждение о сроке жизни желания — за 3 дня (D-26). Первого права брони нет (D-28) | D-26, D-28 |
+| ARCH-A18 | **Открыто, решить до Story 2.7.** Фото желания (D-45, FR-53): файлы — в S3-совместимом объектном хранилище (не Vercel Blob — Rule выше), в `Gift` — только `photoKey` и `photoThumbKey`; в gift card (AD-12) — `photo: null \| { url, thumbUrl }`, где `url` — короткоживущая подписанная ссылка, выданная после VisibilityPolicy (AD-7); бакет не публичный. Загрузка — presigned PUT от сервера; сервер проверяет тип и размер (≤ 500 КБ). Ужатие и удаление EXIF — на клиенте (UX-A19). Провайдер выбрать с учётом рынков BY/RU | D-45, AD-7, AD-12 |
+| ARCH-A19 | **Открыто, решить до Story 1.3.** i18n (D-46): библиотека каталогов с ICU-плюралами для Expo и Next (например, i18next + `expo-localization`, `next-intl`), где лежат каталоги при запрете общего React-пакета (AD-2 — общий JSON допустим?), `User.locale` для писем и уведомлений, язык Next-страниц из `Accept-Language` | D-46, AD-2 |

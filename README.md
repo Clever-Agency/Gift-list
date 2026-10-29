@@ -1,8 +1,18 @@
 # Gift List
 
-Сервис персональных вишлистов подарков (web-first). Планирование ведётся по [BMAD Method](https://bmadcode.com/).
+Сервис персональных вишлистов подарков (приложение для Android, iOS и браузера). Планирование ведётся по [BMAD Method](https://bmadcode.com/).
 
-## Локальная разработка приложения
+## Структура репозитория
+
+Монорепозиторий на npm workspaces (D-41, AD-26):
+
+- `apps/web` — Next.js: сервер, `app/api/v1`, cron, серверные страницы, админка, Prisma, env.
+- `apps/mobile` — приложение Expo для Android, iOS и браузера (каркас — Story 1.3, пока пустой workspace).
+- `packages/contracts` — `@gift-list/contracts`: zod-схемы конверта ответа (AD-12), gift card и коды ошибок; без React, Prisma и env.
+
+Все команды ниже запускаются из корня. Lock-файл один — корневой `package-lock.json`.
+
+## Локальная разработка
 
 ### Требования
 
@@ -13,10 +23,11 @@
 
 ```bash
 npm install
-cp .env.example .env
-# Отредактируйте DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL в .env
-npx prisma generate
+cp apps/web/.env.example apps/web/.env
+# Отредактируйте DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL в apps/web/.env
 ```
+
+`npm install` ставит все workspaces и запускает `prisma generate` в `apps/web`. Новую зависимость ставьте в нужный workspace: `npm install <pkg> -w @gift-list/web`.
 
 ### Запуск dev-сервера
 
@@ -29,29 +40,36 @@ npm run dev
 ### Проверки
 
 ```bash
-npm run typecheck   # next typegen + tsc
-npm run lint
-npm test            # Vitest (src/**/*.test.ts)
+npm run typecheck   # next typegen + tsc в apps/web, tsc в packages/contracts
+npm run lint        # ESLint apps/web
+npm test            # Vitest во всех workspaces с тестами
+npm run build       # prisma generate + next build (output: 'standalone')
 ```
 
 ### Миграции БД
 
-Модели User, Session, Account, Verification и List уже в схеме (story 1.2), стартовая миграция — `src/db/migrations/20261002000000_init_auth_lists`. При изменении `src/db/schema.prisma`:
+Схема — `apps/web/src/db/schema.prisma`, миграции — `apps/web/src/db/migrations`. После изменения схемы:
 
 ```bash
 npm run migrate
 ```
 
-Это алиас для `prisma migrate dev` (интерактивное создание/применение миграций в development). Для CI/production используйте `npx prisma migrate deploy`.
+Это алиас для `prisma migrate dev` в `apps/web` (интерактивное создание/применение миграций в development). Для CI/production: `npm exec -w @gift-list/web -- prisma migrate deploy`.
 
 PIN: `prisma` и `@prisma/client` — **7.10.0** (не ставьте bare `prisma@latest` — он может указать на Prisma 8 RC).
 
-### Стек (R1 scaffold)
+### Деплой (Vercel)
 
-- Next.js ^16.3.8 (App Router) · React 19 · Tailwind 4 · TypeScript · ESLint
+В настройках проекта Vercel Root Directory = `apps/web`. Vercel видит workspaces и ставит зависимости из корня.
+
+Сборка — `output: 'standalone'` с корнем трассировки в корне репозитория (AD-16), поэтому сервер лежит в `apps/web/.next/standalone/apps/web/server.js`. Вне Vercel (Docker) запускайте его через `node`, а не `next start`; рядом нужно положить `apps/web/.next/static` (в `.next/standalone/apps/web/.next/static`) и `apps/web/public`, если он появится.
+
+### Стек
+
+- Next.js 16.3.8 (App Router) · React 19 · Tailwind 4 · TypeScript · ESLint
 - shadcn/ui · Forest Paper (light only)
 - Prisma 7.10.0 + PostgreSQL
-- Слои: `src/app` → `src/actions` → `src/domain` → `src/db`
+- Слои `apps/web`: `src/app` → `src/actions` → `src/domain` → `src/db`
 
 ## BMAD в репозитории
 

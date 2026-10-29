@@ -1,0 +1,6 @@
+{
+  "name": "@gift-list/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Приложение Expo (Android, iOS, браузер). Каркас ставит Story 1.3."
+}

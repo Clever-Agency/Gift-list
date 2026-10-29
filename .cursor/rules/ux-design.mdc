@@ -1,6 +1,6 @@
 ---
 description: UI и UX Gift List — экраны, компоненты, токены, тексты, доступность. Применять при любой работе с интерфейсом приложения Expo или Next-страниц.
-globs: apps/**/*.tsx,apps/**/*.ts,apps/**/*.css,packages/**/*.tsx,src/**/*.tsx,src/**/*.css
+globs: apps/**/*.tsx,apps/**/*.ts,apps/**/*.css,packages/**/*.tsx
 alwaysApply: false
 ---
 

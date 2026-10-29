@@ -7,7 +7,7 @@ paradigm: modular-monolith-layered
 scope: "Gift List MVP — один вишлист, нативный клиент Expo и веб для публичной ссылки и админки. Бронь «куплю сам». Без оплаты и без денежных сборов."
 status: final
 created: 2026-09-30
-updated: 2026-10-28
+updated: 2026-10-29
 language: ru
 workflow: bmad-architecture
 round: 1
@@ -42,6 +42,7 @@ binds:
   - D-40
   - D-41
   - D-42
+  - D-46
   - A-24
 sources:
   - _bmad-output/planning-artifacts/prds/prd-gift-list-2026-09-30/prd.md
@@ -60,6 +61,7 @@ decisions_locked:
   - no-money-collection-D-25
   - clients-expo-everywhere-D-40
   - monorepo-D-41
+  - i18n-next-intl-use-intl-D-46
 ---
 
 # Architecture Spine — Gift List (MVP)
@@ -72,7 +74,7 @@ decisions_locked:
 |------|---------|-------------------|
 | Server pages + admin (Next.js) | `apps/web/src/app/` (кроме `api/`) | actions, components, `packages/contracts` |
 | App UI (Android, iOS, браузер) | `apps/mobile/` | только HTTP `api/v1` и `packages/contracts` |
-| Contract | `packages/contracts/` | только zod (без React, Prisma, env) |
+| Contract | `packages/contracts/` | только zod и JSON-каталоги переводов (без React, Prisma, env) |
 | HTTP / cron | `apps/web/src/app/api/` | те же use-case, что и actions |
 | Application | `apps/web/src/actions/`, `apps/web/src/lib/auth/` | domain, db |
 | Domain | `apps/web/src/domain/` | ничего внешнего (чистые правила + порты ошибок) |
@@ -109,7 +111,7 @@ flowchart TB
 
 - **Binds:** FR-1..FR-3, A-1..A-3, D-21, AD-17
 - **Prevents:** два источника пользователей; SMS-вход; OAuth в MVP; сессия натива мимо Better Auth
-- **Rule:** **Better Auth** — email + пароль, одна таблица пользователей и database sessions. Браузер (Next-страницы и веб-сборка приложения на том же домене): cookie httpOnly. Android и iOS: серверный плагин `@better-auth/expo` **той же версии**, что пакет `better-auth`, плюс `bearer()`; клиент Expo хранит токен в `expo-secure-store` и шлёт `Authorization`. `trustedOrigins` включает scheme приложения. Сброс пароля и опциональное confirm-письмо — Resend. Ответы login/register/forgot **не** раскрывают, существует ли email. OAuth и SMS-вход вне MVP. Сессия обязательна для брони, не для чтения PUBLIC-желаний по ссылке (AD-7).
+- **Rule:** **Better Auth** — email + пароль, одна таблица пользователей и database sessions. Браузер (Next-страницы и веб-сборка приложения на том же домене): cookie httpOnly. Android и iOS: серверный плагин `@better-auth/expo` **той же версии**, что пакет `better-auth`, плюс `bearer()`; клиент Expo хранит токен в `expo-secure-store` и шлёт `Authorization`. `trustedOrigins` включает scheme приложения. Сброс пароля и опциональное confirm-письмо — Resend. Ответы login и forgot **не** раскрывают, существует ли email (FR-2). Регистрация на занятый email отвечает `VALIDATION` с `reason: EMAIL_TAKEN` — «Этот email уже зарегистрирован» (решение Sergey 2026-10-29, EXPERIENCE «Ошибки форм»); попытки ограничены rate limit. OAuth и SMS-вход вне MVP. Сессия обязательна для брони, не для чтения PUBLIC-желаний по ссылке (AD-7).
 
 ### AD-4 — Система записи `[ASSUMPTION]`
 
@@ -259,7 +261,7 @@ flowchart TB
 
 - **Binds:** all write/read DTOs, D-13, FR-31, UJ-2
 - **Prevents:** разнобой shapes; FO gate как NOT_FOUND; утечка имени держателя владельцу
-- **Rule:** Action result: `{ ok: true, data } | { ok: false, code, message }`. Коды **закрытый** набор: `UNAUTHENTICATED | FORBIDDEN | NOT_FOUND | CONFLICT | VALIDATION | RATE_LIMITED`. Gate-ответы — `ok: true` с `access`.
+- **Rule:** Action result: `{ ok: true, data } | { ok: false, code, message, reason?, field?, params? }`. `reason` — закрытый zod-enum в `packages/contracts` (например `EMAIL_TAKEN`, `NICK_TAKEN`, `DUE_OUT_OF_RANGE`, `DATES_LIMIT`); `field` — имя поля формы; `params` — только примитивы и ISO-строки. Текст пользователю — по AD-27. Коды **закрытый** набор: `UNAUTHENTICATED | FORBIDDEN | NOT_FOUND | CONFLICT | VALIDATION | RATE_LIMITED`. Gate-ответы — `ok: true` с `access`.
 
   Ответ списка: `{ ok: true, data: { access: "gifts"|"not_found", gifts } }`. Иного конверта нет.
   Gift card — закрытый набор, один и тот же для веба и Expo (`packages/contracts`):
@@ -270,7 +272,7 @@ flowchart TB
 
 - **Binds:** FR-5, FR-6, FR-8, A-5, A-6, A-26, UX-A6
 - **Prevents:** nick как PK; утечка через поиск
-- **Rule:** PK = CUID2. Ник: 3–24 `[a-z0-9_]`, уникальность case-insensitive (`nickNormalized`). Текстовый поиск: точный/префикс ник + нечёткое displayName с лимитом; ищет любого пользователя, не только контакты (D-30); `hideFromSearch=true` исключает из этой выдачи. Прямые `/u/...` и `/l/...` работают по AD-7. Совпадение по телефону — отдельный endpoint (AD-18), не этот поиск. `User.phoneE164` опционален и уникален; вход по нему запрещён (D-21). Timestamps `timestamptz` UTC.
+- **Rule:** PK = CUID2. Ник: 3–24 `[a-z0-9_]`, уникальность case-insensitive (`nickNormalized`). Текстовый поиск: точный/префикс ник + нечёткое displayName с лимитом, сравнение через `normalizeForSearch()` (AD-27); ищет любого пользователя, не только контакты (D-30); `hideFromSearch=true` исключает из этой выдачи. Прямые `/u/...` и `/l/...` работают по AD-7. Совпадение по телефону — отдельный endpoint (AD-18), не этот поиск. `User.phoneE164` опционален и уникален; вход по нему запрещён (D-21). Timestamps `timestamptz` UTC.
 
 ### AD-14 — Уведомления `[ASSUMPTION A-22]`
 
@@ -297,7 +299,7 @@ flowchart TB
 
 - **Binds:** весь UI, AD-1, AD-2, AD-3, D-20
 - **Prevents:** Expo вызывает Server Actions; две копии доменных правил; общий UI-пакет на разных React
-- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Приложение — полный клиент на Android, iOS и в браузере (react-native-web, D-40). Платформенные модули (`expo-contacts`, `expo-secure-store`) подключаются через платформенные файлы; веб-сборка без них собирается, сверка контактов в браузере не предлагается. Next.js отдаёт только серверные страницы: `/l/:token` (первый показ анониму и мета-теги превью), `/i/:token`, `/unsubscribe/:token`, `/admin`, `.well-known`. Отдельного UI пользователя на Next.js нет. Выход iOS — шаг публикации и не меняет это правило. Общий код между клиентами — только `packages/contracts` (zod-схемы без React); импорт `apps/web` из Expo запрещён. Проверено 2026-10-28: SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб в репозитории на React 19.2.8 — версии не выравнивать через общий UI. Отображаемое имя — AD-24, не строковый литерал в экранах.
+- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Приложение — полный клиент на Android, iOS и в браузере (react-native-web, D-40). Платформенные модули (`expo-contacts`, `expo-secure-store`) подключаются через платформенные файлы; веб-сборка без них собирается, сверка контактов в браузере не предлагается. Next.js отдаёт только серверные страницы: `/l/:token` (первый показ анониму и мета-теги превью), `/i/:token`, `/unsubscribe/:token`, `/admin`, `.well-known`. Отдельного UI пользователя на Next.js нет. Выход iOS — шаг публикации и не меняет это правило. Общий код между клиентами — только `packages/contracts` (zod-схемы и каталоги переводов AD-27, без React); импорт `apps/web` из Expo запрещён. Проверено 2026-10-28: SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб в репозитории на React 19.2.8 — версии не выравнивать через общий UI. Отображаемое имя — AD-24, не строковый литерал в экранах.
 
 ### AD-18 — Сопоставление телефонной книги `[ADOPTED D-21, D-30]`
 
@@ -327,7 +329,7 @@ flowchart TB
 
 - **Binds:** FR-44, FR-49, D-27, D-32
 - **Prevents:** админка внутри бинарника стора; свои теги в общей статистике до модерации
-- **Rule:** `User.role = USER | ADMIN`. `/admin` только на вебе, только ADMIN. Редакционные подборки — сущности `EditorialCollection` / `EditorialItem`, наполнение вручную, без AI. Тег желания: либо id из фиксированного каталога (старт: `мечта`, `нужно сейчас`, `когда-нибудь`; ADMIN может добавить фиксированные), либо custom-текст. Custom виден на желании тем, кто видит желание, и не входит в агрегаты. В каталог он попадает только после нормализации и одобрения ADMIN. Секретные желания в любые агрегаты не входят.
+- **Rule:** `User.role = USER | ADMIN`. `/admin` только на вебе, только ADMIN. Редакционные подборки — сущности `EditorialCollection` / `EditorialItem`, наполнение вручную, без AI. Тег желания: либо id из фиксированного каталога (старт: `мечта`, `нужно сейчас`, `когда-нибудь`; ADMIN может добавить фиксированные, указывая подпись для каждого языка, AD-27), либо custom-текст. Custom виден на желании тем, кто видит желание, и не входит в агрегаты. В каталог он попадает только после нормализации и одобрения ADMIN. Секретные желания в любые агрегаты не входят.
 
 ### AD-23 — Даты профиля `[ADOPTED D-18, D-22, D-31]`
 
@@ -351,7 +353,21 @@ flowchart TB
 
 - **Binds:** весь репозиторий, AD-17, AD-14, FR-26, FR-27, FR-47
 - **Prevents:** второй репозиторий и рассинхрон типов; письмо, которое ведёт только в браузер или только в приложение; архитектура «на время без iOS»
-- **Rule:** Один репозиторий, npm workspaces: `apps/web` (Next.js: сервер, `api/v1`, cron, серверные страницы, `/admin`, Prisma, env; раздаёт веб-сборку приложения), `apps/mobile` (Expo), `packages/contracts` (zod-схемы AD-12, gift card, коды ошибок; без React, Prisma и env). Prisma и секреты живут только в `apps/web`. Общего UI-пакета нет (AD-2, AD-17). **Один домен.** Веб-сборка приложения (`expo export --platform web`, SPA) публикуется вместе с `apps/web`. Next.js обслуживает свои пути (`/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known`), всё остальное отдаёт SPA (fallback rewrite). Поэтому сессия в браузере — cookie того же домена, без CORS. `/l/:token` при наличии сессии или по «Куплю сам» передаёт пользователя на экран вишлиста в приложении. Все ссылки наружу (письма, копирование вишлиста, приглашение) — `https://{домен}/…`. Тот же домен объявлен для Android App Links (`assetlinks.json`) и iOS Universal Links (`apple-app-site-association`). При установленном приложении путь открывается в нём, иначе — тот же экран в браузере. Домен — конфигурация (Q-2); на этапе разработки — домен хостинга разработки. Флаг `IOS_APP_PUBLISHED` включает ссылку в App Store в подсказке «установите приложение» без правки кода. Деплой: веб-сборка приложения собирается в том же CI, что `apps/web`, и уходит на тот же хост (Vercel сейчас, Docker после переезда, AD-5).
+- **Rule:** Один репозиторий, npm workspaces: `apps/web` (Next.js: сервер, `api/v1`, cron, серверные страницы, `/admin`, Prisma, env; раздаёт веб-сборку приложения), `apps/mobile` (Expo), `packages/contracts` (zod-схемы AD-12, gift card, коды ошибок, каталоги переводов AD-27; без React, Prisma и env). Prisma и секреты живут только в `apps/web`. Общего UI-пакета нет (AD-2, AD-17). **Один домен.** Веб-сборка приложения (`expo export --platform web`, SPA) публикуется вместе с `apps/web`. Next.js обслуживает свои пути (`/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known`), всё остальное отдаёт SPA (fallback rewrite). Поэтому сессия в браузере — cookie того же домена, без CORS. `/l/:token` при наличии сессии или по «Куплю сам» передаёт пользователя на экран приложения `/wishlist/:token`; туда же ведёт `?next=` после входа; `?next=` принимает только относительный путь того же домена (иначе — главный экран). Этот путь отдаёт SPA fallback. App Links и Universal Links объявляют пути `/l/*`, `/i/*`, `/wishlist/*`. Next.js путь `/wishlist` не обслуживает (UX-A18). Все ссылки наружу (письма, копирование вишлиста, приглашение) — `https://{домен}/…`. Тот же домен объявлен для Android App Links (`assetlinks.json`) и iOS Universal Links (`apple-app-site-association`). При установленном приложении путь открывается в нём, иначе — тот же экран в браузере. Домен — конфигурация (Q-2); на этапе разработки — домен хостинга разработки. Флаг `IOS_APP_PUBLISHED` включает ссылку в App Store в подсказке «установите приложение» без правки кода. Деплой: веб-сборка приложения собирается в том же CI, что `apps/web`, и уходит на тот же хост (Vercel сейчас, Docker после переезда, AD-5).
+
+### AD-27 — Мультиязычность `[ADOPTED D-46]`
+
+- **Binds:** весь UI `apps/mobile`, серверные страницы `apps/web`, письма, `Notification`, AD-12, AD-13, AD-14, AD-22, AD-24, AD-26
+- **Prevents:** два формата сообщений и плюралов; две формулировки одного события в приложении и в письме; уведомление, застывшее на языке момента создания; разный язык у приложения и у писем одного пользователя; язык в URL, ломающий App Links; поиск, который находит «Алёну» в одном месте и не находит в другом
+- **Rule:** **Библиотеки.** `apps/web` — `next-intl` (и `createTranslator` для писем и cron — тоже из `next-intl`); `apps/mobile` — `use-intl` той же точной версии (поднимать парой). Формат один — ICU MessageFormat. `intl-messageformat` приходит транзитивно и напрямую не ставится и не импортируется. Плюралы, даты, числа и цены — только через ICU и `Intl`; ручная склейка строки с числом запрещена.
+  **Каталоги.** JSON-каталоги, `SUPPORTED_LOCALES`, `DEFAULT_LOCALE = 'ru'`, `negotiateLocale()`, `normalizeForSearch()`, `formatPrice()` и `formatDate()` — в `packages/contracts/src/i18n`, без React (AD-17). Наружу — только через `src/i18n/index.ts`, реэкспорт из `src/index.ts`; JSON импортируется относительным путём без import attributes (`resolveJsonModule`, `src/**/*.json` в tsconfig). Исходный язык — `ru`; ключ — контракт, перевод — данные. Пространства имён: `common` (всё, что нужно двум потребителям: ошибки, события уведомлений, статусы), `app`, `web`, `email`. Строки интерфейса в компонентах и шаблонах писем запрещены. Имя продукта в каталоге не пишется: только аргумент `{brand}`, который подставляет обёртка каждого потребителя из AD-24.
+  **Ошибки.** Клиент показывает текст `common.errors.reason.<reason>`, если `reason` есть, иначе `common.errors.code.<code>` (AD-12). `message` — английская диагностика; клиенты её не показывают и не разбирают.
+  **Уведомления.** `NotificationPayload` — zod-union по `kind` в `packages/contracts`, только примитивы и ISO-строки, без готовых текстов и отформатированных дат. Текст события — один ключ `common.notifications.<KIND>`: его показывает лента в приложении и первая строка письма. `email` хранит только тему, обрамление и кнопки. Лента строится на языке зрителя, письмо — в момент отправки на `User.locale` получателя; неизвестный клиенту `kind` показывается текстом `common.notifications.UNKNOWN`.
+  **Теги.** Фиксированные теги каталога (AD-22) — данные БД, не JSON: `slug` неизменен, `labels jsonb` обязан содержать каждый язык из `SUPPORTED_LOCALES`. Сервер кладёт в `tags[].label` подпись на языке запроса; клиенты всегда показывают `label`. Это единственное исключение из правила «тексты не приходят с сервера». Свои теги и данные пользователей не переводятся.
+  **Язык.** `negotiateLocale(preferred: string[])` сопоставляет по языковому субтегу с `SUPPORTED_LOCALES`, иначе `ru`. Expo всегда шлёт `Accept-Language` с языком устройства (`expo-localization`). До входа UI — на языке устройства или браузера; после входа — `User.locale` из профиля. `User.locale` — `text`, проверяется zod по `SUPPORTED_LOCALES`, по умолчанию `ru`; пишется только при создании пользователя (из `Accept-Language`) и методом профиля `api/v1`. Next-страницы (`/l`, `/i`, `/unsubscribe`) выбирают язык через `negotiateLocale()` из `Accept-Language`, `lang` у `<html>` — выбранный; их ответы — `Vary: Accept-Language` или `Cache-Control: private`. Сегмента языка в URL нет. Админка — только `ru`.
+  **Поиск и сортировка.** Поиск (AD-13) сравнивает только через `normalizeForSearch()`: NFC, нижний регистр, `ё → е`, `й` остаётся `й`; на сервере — нормализованная колонка, на клиенте — та же функция. `Intl.Collator` с `sensitivity: 'base'` для поиска запрещён; `Intl.Collator(locale).compare` — только сортировка.
+  **Форматы.** `formatDate()` для дат без времени (ДР, личные даты, `expiresOn`) форматирует в `UTC`, чтобы день не съезжал; моменты — в `User.timeZone`. `formatPrice()` — `Intl.NumberFormat` с кодом валюты AD-25; вид валюты задаёт UX.
+  **Hermes.** Только на Android и iOS, не в веб-сборке, первым импортом: `@formatjs/intl-pluralrules/polyfill-force.js`, затем `locale-data` для каждого из `SUPPORTED_LOCALES`. Остальные полифилы — только если smoke-тест падает, с версией в Stack. В приложении запрещены `RelativeTimeFormat`, `ListFormat`, `DisplayNames`, `formatRange`, compact-нотация и `signDisplay`, пока их не покрывает полифил. Smoke-тест на трёх платформах: «1 желание · 3 желания · 5 желаний · 21 желание», цена BYN и RUB, дата `ru`, сортировка «Алёна / Алена / Яна».
 
 ## Consistency Conventions
 
@@ -365,7 +381,7 @@ flowchart TB
 | Authz | AD-7 + ownership; object-level |
 | Logging | audit смены Gift.status (actor, from→to, at) |
 | Config | typed `env.ts` (zod); секреты не в клиент |
-| Locale / theme | Пилот `ru`, i18n заложен (D-46, ARCH-A19); light only |
+| Locale / theme | Пилот `ru`; ключи каталога и ICU по AD-27; light only |
 | Hide from search | `User.hideFromSearch` boolean default false |
 
 ## Stack
@@ -374,7 +390,7 @@ flowchart TB
 | --- | --- |
 | Next.js (App Router) | 16.3.8 |
 | React (веб, как в репозитории) | 19.2.8 |
-| Expo SDK | 58.0.20 |
+| Expo SDK | 58.0.20 (на 2026-10-29 есть патч 58.0.21) |
 | React Native (через SDK 58) | 0.88 |
 | expo-contacts | 58.0.9 |
 | @better-auth/expo | 1.7.6 (равна установленному better-auth; поднимать только парой) |
@@ -385,11 +401,15 @@ flowchart TB
 | Prisma + `@prisma/client` | 7.10.0 (pin; не `latest` → 8 RC) |
 | PostgreSQL | 16+ managed |
 | Zod | 4.6.5 |
+| next-intl (веб) / use-intl (Expo, письма) | 4.14.9 (одна версия, поднимать парой) |
+| expo-localization | 58.0.5 |
+| intl-messageformat | транзитивно через use-intl (`^11.1.0`, сейчас 11.2.15); отдельно не ставить |
+| @formatjs/intl-pluralrules (полифил Hermes, только native) | 6.3.16 |
 | `@paralleldrive/cuid2` | 3.3.0 |
 | Resend | 6.31.0 |
 | Hosting | Разработка: Vercel (Hobby) + Neon (preferred) + Resend; цель: Docker-образ (`standalone`) на собственном сервере РБ/РФ (AD-5) |
 
-Проверено npm view / Next security release 2026-09-30.
+Проверено npm view / Next security release 2026-09-30; i18n-пакеты — npm view 2026-10-29.
 
 ## Structural Seed
 
@@ -421,6 +441,7 @@ apps/
   mobile/                     # Expo SDK 58 — полный клиент: Android, iOS, браузер; не импортирует apps/web
 packages/
   contracts/                  # zod wire types AD-12, без React/Prisma/env
+    src/i18n/                 # каталоги ru/*.json, SUPPORTED_LOCALES, negotiateLocale (AD-27)
 ```
 
 ```mermaid
@@ -523,7 +544,7 @@ stateDiagram-v2
 | Предложить идею | D-42: Раунд 1.5 |
 | Первое право брони предложившего | Снято (D-28). Срок предупреждения о желании — 3 дня (D-26) |
 | Канал жалоб, если его потребует закон | D-34: в MVP функции нет; сверка до публикации, `pre-release-checklist.md` |
-| Второй язык интерфейса, dark mode | D-46 (i18n заложен, язык добавится позже), UX-A8 |
+| Второй язык интерфейса и «Настройки → Язык», dark mode | D-46: каркас по AD-27, язык добавляется каталогом и строкой в `SUPPORTED_LOCALES`; UX-A8 |
 | Redis rate-limit prod hardening | пилот; soft |
 | Prisma 8 | RC; revisit after GA |
 | Финальный бренд/домен | Q-2 открыт |
@@ -549,4 +570,4 @@ stateDiagram-v2
 | ARCH-A15 | Таймеры брони вызываются внешним планировщиком раз в час (не Vercel Cron); вызов идемпотентен, пропуск запуска только сдвигает переходы | D-12, переносимость |
 | ARCH-A16 | Предупреждение о сроке жизни желания — за 3 дня (D-26). Первого права брони нет (D-28) | D-26, D-28 |
 | ARCH-A18 | **Открыто, решить до Story 2.7.** Фото желания (D-45, FR-53): файлы — в S3-совместимом объектном хранилище (не Vercel Blob — Rule выше), в `Gift` — только `photoKey` и `photoThumbKey`; в gift card (AD-12) — `photo: null \| { url, thumbUrl }`, где `url` — короткоживущая подписанная ссылка, выданная после VisibilityPolicy (AD-7); бакет не публичный. Загрузка — presigned PUT от сервера; сервер проверяет тип и размер (≤ 500 КБ). Ужатие и удаление EXIF — на клиенте (UX-A19). Провайдер выбрать с учётом рынков BY/RU | D-45, AD-7, AD-12 |
-| ARCH-A19 | **Открыто, решить до Story 1.3.** i18n (D-46): библиотека каталогов с ICU-плюралами для Expo и Next (например, i18next + `expo-localization`, `next-intl`), где лежат каталоги при запрете общего React-пакета (AD-2 — общий JSON допустим?), `User.locale` для писем и уведомлений, язык Next-страниц из `Accept-Language` | D-46, AD-2 |
+| ARCH-A19 | Закрыто 2026-10-29 → AD-27: `next-intl` + `use-intl`, ICU, каталоги в `packages/contracts/src/i18n`, `User.locale`, язык Next-страниц из `Accept-Language`, без языка в URL. Решение Sergey | D-46, AD-17 |

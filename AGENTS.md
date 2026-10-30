@@ -1,5 +1,5 @@
 <!-- bmad:context -->
-<!-- Verified 2026-10-29 against c9eddb2. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
+<!-- Verified 2026-10-30 against d3a3846. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
 
 ## Gift List
 
@@ -13,6 +13,7 @@
 - PRD, эпики и архитектуру меняйте только через `bmad-correct-course` или `bmad-architecture`, не правкой вручную.
 - Истории продукта — в `epics.md` и `sprint-status.yaml`, Linear — трекер задач (команда CleverWebAgency, проект Gift List). Задачу из Linear, которая соответствует истории, реализуйте через `bmad-build` по этой истории и её критериям приёмки; если история не указана, найдите её в `epics.md`. Задачи без истории (инфраструктура, CI) делайте без BMAD-историй.
 - Создавая задачу в Linear, начинайте название с номера истории (`Story 1.3: …`) или пишите в описании «Без истории»; в описании укажите путь к истории в `epics.md`, связанные решения (`D-…`, `AD-…`), что сделать и когда готово. Не переписывайте критерии приёмки в задачу — источник правды `epics.md`.
+- Беря задачу Linear в работу, одним вызовом `save_issue` переводите её в `In Progress` и ставьте `assignee: "me"` — это владелец подключения Linear MCP, то есть тот, кто запустил агента. Если задача уже назначена на другого человека, не переназначайте её, а спросите.
 - Не меняйте номера историй и ключи в `sprint-status.yaml`.
 - Репозиторий публичный до переезда с Vercel (D-17): не коммитьте секреты, `.env*` и реальные строки подключения; образец — `apps/web/.env.example`.
 - Prisma, `.env*` и секреты — только в `apps/web`.

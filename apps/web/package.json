@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "node ./scripts/sync-spa.mjs && prisma generate && next build && node ./scripts/copy-standalone-assets.mjs",
     "start": "next start",
     "lint": "eslint",
     "migrate": "prisma migrate dev",
@@ -24,6 +24,7 @@
     "cn": "^0.4.0",
     "lucide-react": "^1.49.0",
     "next": "16.4.3",
+    "next-intl": "4.14.9",
     "pg": "8.23.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -42,7 +42,7 @@
 
 ## UX & Interaction Patterns
 
-- Токены Forest Paper общие: primary `#2F5D3A`, accent `#D4A017`, background `#F4F1EA`; light only. Шрифты Fraunces + DM Sans.
+- Токены Forest Paper общие: primary `#2F5D3A`, accent `#D4A017`, background `#F4F1EA`; light only. Шрифты Lora + Manrope, не Fraunces/DM Sans.
 - Приложение (все платформы): компоненты и навигация — по дизайн-спеке приложения (прогон `bmad-ux`, раздел App в DESIGN.md: телефон и широкий браузер). До неё Story 1.3 не начинается. Формы регистрации, входа и сброса с превью `@ник`.
 - Серверные страницы и админка: shadcn + brand delta.
 - Доступность: браузер — WCAG 2.2 AA на регистрации; Android/iOS — подписи для TalkBack/VoiceOver.

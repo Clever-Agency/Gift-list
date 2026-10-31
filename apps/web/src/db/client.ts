@@ -32,12 +32,31 @@ function createPrismaClient(): PrismaClient {
   return new PrismaClient({ adapter });
 }
 
-/**
- * Shared Prisma client. Import only from server code (actions / domain ports).
- * Do not import from Client Components.
- */
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+let singleton = globalForPrisma.prisma;
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+function getPrismaClient(): PrismaClient {
+  if (singleton) return singleton;
+  singleton = createPrismaClient();
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.prisma = singleton;
+  }
+  return singleton;
 }
+
+/**
+ * Shared Prisma client. The connection is opened on first use so `next build`
+ * can load route modules without `DATABASE_URL`.
+ * Import only from server code (actions / domain ports).
+ */
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    if (prop === "then") return undefined;
+    const client = getPrismaClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+  has(_target, prop) {
+    if (prop === "then") return false;
+    return prop in getPrismaClient();
+  },
+});

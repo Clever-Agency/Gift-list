@@ -7,8 +7,8 @@
 Монорепозиторий на npm workspaces (D-41, AD-26):
 
 - `apps/web` — Next.js: сервер, `app/api/v1`, cron, серверные страницы, админка, Prisma, env.
-- `apps/mobile` — приложение Expo для Android, iOS и браузера (каркас — Story 1.3, пока пустой workspace).
-- `packages/contracts` — `@gift-list/contracts`: zod-схемы конверта ответа (AD-12), gift card и коды ошибок; без React, Prisma и env.
+- `apps/mobile` — приложение Expo SDK 58 для Android, iOS и браузера (Story 1.3: заглушки маршрутов, токены Forest Paper, Lora и Manrope).
+- `packages/contracts` — `@gift-list/contracts`: zod-схемы конверта ответа (AD-12), gift card, коды ошибок и каталоги переводов (AD-27); без React, Prisma и env.
 
 Все команды ниже запускаются из корня. Lock-файл один — корневой `package-lock.json`.
 
@@ -35,15 +35,24 @@ cp apps/web/.env.example apps/web/.env
 npm run dev
 ```
 
-Откройте [http://localhost:3000](http://localhost:3000) — должна открыться страница **Gift List** с темой Forest Paper.
+Откройте [http://localhost:3000](http://localhost:3000). После сборки Next отдаёт веб-сборку приложения на `/` и `/login`; свои пути (`/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known`) остаются у Next. Пока `apps/web/public/spa-index.html` нет, эти адреса не из чего отдать — файл появляется при `npm run build`.
+
+Приложение Expo (Metro) отдельно от сервера Next:
+
+```bash
+npm run mobile:start   # Android, iOS и меню Expo
+npm run mobile:web     # то же приложение в браузере
+```
+
+Имя на экранах берётся из `EXPO_PUBLIC_BRAND_NAME` (пустое значение → запасное имя только в `apps/mobile/src/config/env.ts`). Веб читает `BRAND_NAME` из `apps/web/.env`.
 
 ### Проверки
 
 ```bash
-npm run typecheck   # next typegen + tsc в apps/web, tsc в packages/contracts
-npm run lint        # ESLint apps/web
+npm run typecheck   # tsc в web, mobile и packages/contracts
+npm run lint        # ESLint web, mobile, contracts и границы AD-17
 npm test            # Vitest во всех workspaces с тестами
-npm run build       # prisma generate + next build (output: 'standalone')
+npm run build       # expo export (web) + prisma generate + next build (output: 'standalone')
 ```
 
 ### Миграции БД

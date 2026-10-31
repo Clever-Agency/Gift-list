@@ -34,7 +34,7 @@
 - Node.js 24.22.1+ (линия 24.x, как на Vercel; `engines` в корневом `package.json`): в более ранних версиях не закрыты уязвимости из октябрьского выпуска безопасности Node.js 2026, а Node 20 больше не поддерживается.
 - `prisma` и `@prisma/client` закреплены на 7.10.0: не ставьте `prisma@latest`, он может указать на Prisma 8 RC.
 - `npm run migrate` — интерактивный `prisma migrate dev` для разработки; в CI и проде — `npm exec -w @gift-list/web -- prisma migrate deploy`.
-- `npm run lint` проверяет только `apps/web`. CI нет: перед PR прогоните `npm run typecheck`, `npm test`, `npm run lint`, `npm run build`.
+- `npm run lint` проверяет только `apps/web`. CI (`.github/workflows/ci.yml`) на каждый PR в `main` гоняет `typecheck`, `lint`, `test`, `build` и запуск standalone-сервера; локально перед PR прогоните `npm run typecheck`, `npm test`, `npm run lint`, `npm run build`.
 - Сборка — `output: 'standalone'`: вне Vercel запускайте `node apps/web/.next/standalone/apps/web/server.js`, не `npm start` (`next start`).
 
 ## Conventions that differ from defaults

@@ -5,11 +5,12 @@ import { redirect } from "next/navigation";
 import { createId } from "@paralleldrive/cuid2";
 import { hashPassword } from "better-auth/crypto";
 import { z } from "zod";
-import type { ActionResult } from "@gift-list/contracts";
+import type { ActionResult, ErrorReason } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
 import { LIST_TYPES, NICK_RULES_TEXT, isValidNick, normalizeNick } from "@/domain";
 import { auth } from "@/lib/auth";
+import { firstIssueField } from "@/lib/api-v1";
 import { REGISTER_LIMIT, consumeRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export type RegisterState = Extract<ActionResult<never>, { ok: false }> | null;
@@ -31,15 +32,13 @@ const registerSchema = z.object({
     .refine(isValidNick, NICK_RULES_TEXT),
 });
 
-const NICK_TAKEN = "Этот ник уже занят";
-const EMAIL_REJECTED = "Не удалось зарегистрироваться с этим email";
-
-function validation(fieldErrors: Record<string, string>): RegisterState {
+function validation(field?: string, reason?: ErrorReason): RegisterState {
   return {
     ok: false,
     code: "VALIDATION",
-    message: "Проверьте введённые данные",
-    fieldErrors,
+    message: "Invalid input",
+    ...(field ? { field } : {}),
+    ...(reason ? { reason } : {}),
   };
 }
 
@@ -58,12 +57,7 @@ export async function register(
     nick: formData.get("nick") ?? "",
   });
   if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      const key = String(issue.path[0] ?? "form");
-      fieldErrors[key] ??= issue.message;
-    }
-    return validation(fieldErrors);
+    return validation(firstIssueField(parsed.error));
   }
   const { email, password, displayName, nick } = parsed.data;
 
@@ -76,7 +70,7 @@ export async function register(
     return {
       ok: false,
       code: "RATE_LIMITED",
-      message: "Слишком много попыток регистрации. Попробуйте позже.",
+      message: "Too many registration attempts",
     };
   }
 
@@ -127,8 +121,9 @@ export async function register(
 }
 
 function conflictErrors(emailTaken: boolean, nickTaken: boolean): RegisterState {
-  const fieldErrors: Record<string, string> = {};
-  if (emailTaken) fieldErrors.email = EMAIL_REJECTED;
-  if (nickTaken) fieldErrors.nick = NICK_TAKEN;
-  return validation(fieldErrors);
+  // Both taken: report the email only, so the response does not confirm a nick for that address.
+  if (emailTaken) {
+    return validation("email", "EMAIL_TAKEN");
+  }
+  return nickTaken ? validation("nick", "NICK_TAKEN") : validation();
 }

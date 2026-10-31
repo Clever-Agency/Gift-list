@@ -69,7 +69,7 @@ PIN: `prisma` и `@prisma/client` — **7.10.0** (не ставьте bare `pris
 
 ### Деплой (Vercel)
 
-В настройках проекта Vercel Root Directory = `apps/web`. Vercel видит workspaces и ставит зависимости из корня.
+В настройках проекта Vercel Root Directory = `apps/web`. Команду установки задаёт `apps/web/vercel.json`: `cd ../.. && npm ci`. Из `apps/web` npm ставит только зависимости `@gift-list/web`, а сборке нужен и `expo` из `apps/mobile`: `scripts/sync-spa.mjs` экспортирует веб-версию приложения в `public/`.
 
 Сборка — `output: 'standalone'` с корнем трассировки в корне репозитория (AD-16), поэтому сервер лежит в `apps/web/.next/standalone/apps/web/server.js`. Вне Vercel (Docker) запускайте его через `node`, а не `next start`; рядом нужно положить `apps/web/.next/static` (в `.next/standalone/apps/web/.next/static`) и `apps/web/public`, если он появится.
 

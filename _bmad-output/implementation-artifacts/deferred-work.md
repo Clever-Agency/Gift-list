@@ -28,3 +28,20 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-каркас-expo-и-токены-forest-paper.md`
   summary: Автотесты не загружают `next.config` rewrites, HTML ассетов SPA, `generateMetadata` и маркер Hermes `__addLocaleData`.
   evidence: В CLE-35 это проверено сборкой, `path-to-regexp`, `curl` и `strings`. В `npm test` этих проверок нет; CI по-прежнему нет.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-http-адаптер-app-api-v1-и-сессия-приложения.md`
+  summary: Клиентская часть Story 1.4 в `apps/mobile` — API-клиент с `Accept-Language`, токен в `expo-secure-store` и `Authorization` на Android/iOS, cookie в браузере, текст ошибки по `reason`/`code`, восстановление сессии через `/api/v1/me` при запуске, тест-раннер mobile.
+  evidence: Спека 1.4 вышла около 4500 токенов при ориентире 1600; человек 2026-10-31 выбрал разделение. Серверная часть и contracts идут первым PR CLE-36, клиент — следующим заходом `bmad-build` по той же Story 1.4; до него AC 1.4 о клиенте не выполнены и история не закрывается.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-http-адаптер-app-api-v1-и-сессия-приложения.md`
+  summary: Ответ `api/v1` при сбое инфраструктуры (`getSession` бросает, БД недоступна) — 500 Next без конверта AD-12; клиент должен трактовать не-конверт как сетевую ошибку.
+  evidence: В закрытом наборе `ERROR_CODES` нет внутренней ошибки; вопрос встанет при клиентской части 1.4. Unverified medium.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-http-адаптер-app-api-v1-и-сессия-приложения.md`
+  summary: `trustedOrigins` содержит только `giftlist://`; Expo Go (`exp://`) и dev client (`exp+giftlist://`) получат отказ origin-check при входе.
+  evidence: Найдено ревью CLE-36. Добавлять dev-origins через `getEnv()` вместе с клиентским входом (1.4 клиент / 1.6). Unverified medium.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-http-адаптер-app-api-v1-и-сессия-приложения.md`
+  summary: `parseJsonBody` (`apps/web/src/lib/api-v1.ts`) читает тело без ограничения размера.
+  evidence: Вызовов пока нет; ограничить до первой мутации `api/v1`. Unverified medium.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-http-адаптер-app-api-v1-и-сессия-приложения.md`
+  summary: Нативный клиент 1.4/1.6 должен слать `expo-origin: giftlist://` (или `Origin: giftlist://`) на `/api/auth/*`, иначе сервер снимет `set-auth-token` и токен не придёт.
+  evidence: CLE-36: обёртка `/api/auth/*` отдаёт `set-auth-token` только нативным запросам, чтобы токен не был доступен JS в браузере (AC 1.4, AD-3). Клиент `@better-auth/expo/client` шлёт `expo-origin` сам; свой fetch-клиент — должен явно.

@@ -15,25 +15,52 @@ export const errorCodeSchema = z.enum(ERROR_CODES);
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
+export const ERROR_REASONS = [
+  "EMAIL_TAKEN",
+  "NICK_TAKEN",
+  "DUE_OUT_OF_RANGE",
+  "DATES_LIMIT",
+] as const;
+
+/** Closed set of machine-readable causes; the client maps them to `errors.reason.<REASON>`. */
+export const errorReasonSchema = z.enum(ERROR_REASONS);
+
+export type ErrorReason = (typeof ERROR_REASONS)[number];
+
 export const actionErrorSchema = z.strictObject({
   ok: z.literal(false),
   code: errorCodeSchema,
   message: z.string(),
-  /** Field-level messages for VALIDATION, keyed by form field name. */
-  fieldErrors: z.record(z.string(), z.string()).optional(),
+  reason: errorReasonSchema.optional(),
+  /** Form field name the error belongs to. */
+  field: z.string().optional(),
+  /** Interpolation values for the reason message. */
+  params: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional(),
 });
 
 export type ActionError = z.infer<typeof actionErrorSchema>;
 
 export type ActionResult<T> = { ok: true; data: T } | ActionError;
 
-/** Envelope for every mutation and read result: `{ ok: true, data } | { ok: false, code, message }`. */
+/** Envelope for every mutation and read result: `{ ok: true, data } | { ok: false, code, message, reason?, field?, params? }`. */
 export function actionResultSchema<T extends z.ZodType>(data: T) {
   return z.discriminatedUnion("ok", [
     z.strictObject({ ok: z.literal(true), data }),
     actionErrorSchema,
   ]);
 }
+
+/** Current user as returned by `GET /api/v1/me` and the `getMe` action. */
+export const meSchema = z.strictObject({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  nick: z.string(),
+});
+
+export type Me = z.infer<typeof meSchema>;
 
 export const CURRENCIES = ["USD", "EUR", "CNY", "BYN", "RUB"] as const;
 export const VISIBILITIES = ["PUBLIC", "FRIENDS", "SECRET"] as const;

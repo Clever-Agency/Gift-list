@@ -2,7 +2,9 @@ import "server-only";
 
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { expo } from "@better-auth/expo";
 import { nextCookies } from "better-auth/next-js";
+import { bearer } from "better-auth/plugins";
 import { createId } from "@paralleldrive/cuid2";
 import { prisma } from "@/db/client";
 import { getEnv } from "@/lib/env";
@@ -27,8 +29,12 @@ function createAuth() {
         hideFromSearch: { type: "boolean", input: false },
       },
     },
+    // Native app deep link (scheme in apps/mobile/app.config.ts).
+    trustedOrigins: ["giftlist://"],
+    // bearer() accepts `Authorization: Bearer` and adds `set-auth-token` to cookie-setting
+    // responses; the /api/auth route strips that header for non-native requests.
     // nextCookies must stay last so Server Actions can set the session cookie.
-    plugins: [nextCookies()],
+    plugins: [expo(), bearer(), nextCookies()],
   });
 }
 

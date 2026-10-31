@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ERROR_CODES, ERROR_REASONS } from "../index";
 import {
   compareForSort,
   formatDate,
@@ -84,5 +85,16 @@ describe("compareForSort", () => {
 describe("catalogs", () => {
   it("does not embed the product name", () => {
     expect(JSON.stringify(getMessages("ru")).includes("Gift List")).toBe(false);
+  });
+});
+
+describe("error catalog", () => {
+  it("covers every error code and reason with non-empty text", () => {
+    const { code, reason } = getMessages("ru").common.errors;
+    expect(Object.keys(code).sort()).toEqual([...ERROR_CODES].sort());
+    expect(Object.keys(reason).sort()).toEqual([...ERROR_REASONS].sort());
+    for (const text of [...Object.values(code), ...Object.values(reason)]) {
+      expect(text.length).toBeGreaterThan(0);
+    }
   });
 });

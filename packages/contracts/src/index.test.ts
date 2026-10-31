@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
-import { actionResultSchema, giftCardSchema, listDataSchema, type ActionResult } from "./index";
+import { actionResultSchema, giftCardSchema, listDataSchema, meSchema, type ActionResult } from "./index";
 
 const giftCard = {
   id: "g1",
@@ -31,14 +31,27 @@ describe("actionResultSchema", () => {
     expect(schema.safeParse({ ok: true, data: { id: 1 } }).success).toBe(false);
   });
 
-  it("accepts an error with field messages", () => {
+  it("accepts an error with reason and field", () => {
     const result = schema.safeParse({
       ok: false,
       code: "VALIDATION",
       message: "Проверьте поля",
-      fieldErrors: { nick: "Занят" },
+      reason: "NICK_TAKEN",
+      field: "nick",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("accepts params of primitives and rejects nested values", () => {
+    const base = { ok: false, code: "VALIDATION", message: "?" };
+    expect(schema.safeParse({ ...base, params: { max: 3, until: "2026-11-01", f: false, n: null } }).success).toBe(true);
+    expect(schema.safeParse({ ...base, params: { x: {} } }).success).toBe(false);
+  });
+
+  it("rejects an unknown reason and the removed fieldErrors", () => {
+    const base = { ok: false, code: "VALIDATION", message: "?" };
+    expect(schema.safeParse({ ...base, reason: "WHATEVER" }).success).toBe(false);
+    expect(schema.safeParse({ ...base, fieldErrors: { a: "b" } }).success).toBe(false);
   });
 
   it("rejects an unknown error code", () => {
@@ -98,5 +111,13 @@ describe("listDataSchema", () => {
 
   it("accepts open access with gifts", () => {
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [giftCard] }).success).toBe(true);
+  });
+});
+
+describe("meSchema", () => {
+  it("is strict", () => {
+    const me = { id: "u1", email: "a@example.com", name: "Анна", nick: "anna" };
+    expect(meSchema.safeParse(me).success).toBe(true);
+    expect(meSchema.safeParse({ ...me, hideFromSearch: true }).success).toBe(false);
   });
 });

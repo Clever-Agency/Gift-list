@@ -1,41 +1,40 @@
 import type { Metadata } from "next";
-import { DM_Sans, Fraunces } from "next/font/google";
+import { Lora, Manrope } from "next/font/google";
+import { createTranslator } from "next-intl";
+import { DEFAULT_LOCALE, getMessages } from "@gift-list/contracts";
+import { getBrandName } from "@/lib/env";
 import "./globals.css";
 
-// DM Sans / Fraunces have no Cyrillic glyphs in Google Fonts (next/font subsets:
-// latin|latin-ext only). Cyrillic UI falls back to the system stack below.
-const dmSans = DM_Sans({
+const webCopy = createTranslator({
+  locale: DEFAULT_LOCALE,
+  messages: getMessages(DEFAULT_LOCALE),
+  namespace: "web",
+});
+
+const manrope = Manrope({
   variable: "--font-sans",
-  subsets: ["latin", "latin-ext"],
-  fallback: [
-    "Segoe UI",
-    "Roboto",
-    "Helvetica Neue",
-    "Arial",
-    "Noto Sans",
-    "sans-serif",
-  ],
+  subsets: ["latin", "latin-ext", "cyrillic", "cyrillic-ext"],
+  weight: ["400", "500", "600"],
   display: "swap",
 });
 
-const fraunces = Fraunces({
+const lora = Lora({
   variable: "--font-heading",
-  subsets: ["latin", "latin-ext", "vietnamese"],
-  fallback: ["Georgia", "Times New Roman", "serif"],
+  subsets: ["latin", "latin-ext", "cyrillic", "cyrillic-ext"],
+  weight: "600",
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "Gift List",
-  description: "Персональные вишлисты подарков",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: getBrandName(),
+    description: webCopy("description"),
+  };
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="ru"
-      className={`${dmSans.variable} ${fraunces.variable} h-full antialiased`}
-    >
+    <html lang="ru" className={`${manrope.variable} ${lora.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

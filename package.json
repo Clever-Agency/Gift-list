@@ -14,12 +14,19 @@
     "build": "npm run build -w @gift-list/web",
     "start": "npm run start -w @gift-list/web",
     "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint -w @gift-list/web",
+    "lint": "npm run lint -w @gift-list/web && npm run lint -w @gift-list/mobile && npm run lint -w @gift-list/contracts && node scripts/check-boundaries.mjs",
+    "mobile:start": "npm run start -w @gift-list/mobile",
+    "mobile:web": "npm run web -w @gift-list/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "migrate": "npm run migrate -w @gift-list/web"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2",
     "mysql2": "^3.24.5"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.10.0": true,
+    "prisma@7.10.0": true,
+    "unrs-resolver@1.12.2": true
   }
 }

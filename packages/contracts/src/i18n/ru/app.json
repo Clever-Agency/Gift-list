@@ -1,0 +1,27 @@
+{
+  "login": {
+    "title": "Вход",
+    "pageTitle": "Вход — {brand}",
+    "toRegister": "Создать аккаунт",
+    "toHome": "На главную"
+  },
+  "register": {
+    "title": "Регистрация",
+    "pageTitle": "Регистрация — {brand}",
+    "toLogin": "Войти",
+    "toHome": "На главную"
+  },
+  "home": {
+    "title": "Мой вишлист",
+    "pageTitle": "Главная — {brand}",
+    "toLogin": "Войти",
+    "toRegister": "Регистрация"
+  },
+  "contractsOk": "Контракт на месте",
+  "smoke": {
+    "wishes": "{count, plural, one {# желание} few {# желания} many {# желаний} other {# желаний}}",
+    "prices": "{byn} · {rub}",
+    "date": "{date}",
+    "names": "{a} / {b} / {c}"
+  }
+}

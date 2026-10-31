@@ -43,3 +43,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Expo
+.expo/
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/.spa-export/
+dist/
+dist-*/
+
+# SPA published by apps/web (expo export, AD-26)
+apps/web/public/
+apps/web/public.staging/

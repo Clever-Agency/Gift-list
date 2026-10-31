@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-10-29'
+last_updated: '2026-10-31'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -38,7 +38,7 @@ development_status:
   epic-1: in-progress
   1-1-scaffold-проекта-из-starter-next-js-shadcn-forest-paper: done
   1-2-монорепозиторий-apps-web-apps-mobile-packages-contracts: done
-  1-3-каркас-expo-и-токены-forest-paper: backlog # UX-спека приложения готова 2026-10-28
+  1-3-каркас-expo-и-токены-forest-paper: review # UX-спека приложения готова 2026-10-28
   1-4-http-адаптер-app-api-v1-и-сессия-приложения: backlog
   1-5-регистрация-и-один-вишлист: backlog # бывшая 1.2: код двух списков на ревью не принимать, переписать
   1-6-вход-и-выход: backlog

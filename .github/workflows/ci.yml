@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Заглушки: репозиторий публичный, реальных секретов нет, БД не используется.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      BETTER_AUTH_SECRET: ci-placeholder-secret-not-used-anywhere-000
+      BETTER_AUTH_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Check standalone output
+        shell: bash
+        run: |
+          if ! test -f apps/web/.next/standalone/apps/web/server.js; then
+            echo "::error::Не найден apps/web/.next/standalone/apps/web/server.js после npm run build"
+            exit 1
+          fi
+
+      - name: Smoke start standalone server
+        shell: bash
+        run: |
+          PORT=3000 HOSTNAME=127.0.0.1 node apps/web/.next/standalone/apps/web/server.js > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          status() { curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000$1" || true; }
+          fail() {
+            echo "::error::$1"
+            cat server.log
+            exit 1
+          }
+          code=000
+          for _ in $(seq 1 30); do
+            code=$(status /)
+            [ "$code" = "200" ] && break
+            kill -0 "$SERVER_PID" 2>/dev/null || break
+            sleep 1
+          done
+          [ "$code" = "200" ] || fail "GET / вернул $code вместо 200 (ожидание до 30 с)"
+          # /register подгружает auth/env/Prisma при запросе, в отличие от prerender-страницы /.
+          code=$(status /register)
+          [ "$code" = "200" ] || fail "GET /register вернул $code вместо 200"
+          echo "Сервер ответил 200 на / и /register"

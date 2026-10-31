@@ -1,5 +1,5 @@
 <!-- bmad:context -->
-<!-- Verified 2026-10-30 against d3a3846. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
+<!-- Verified 2026-10-31 against 7ec8968. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
 
 ## Gift List
 
@@ -19,7 +19,6 @@
 - Prisma, `.env*` и секреты — только в `apps/web`.
 - Не используйте сервисы Vercel (Cron, Blob, KV, Edge Config) и API одной платформы (AD-16); задачи по расписанию — Route Handler в `app/api/cron/*` под секретом.
 - `apps/mobile` импортирует только `@gift-list/contracts`, импорт `apps/web` запрещён; общий UI-пакет не создавайте — React у веба и Expo разных версий (AD-17).
-- В `packages/contracts` — без React, Prisma и `process.env`.
 
 ## Where things are
 
@@ -34,11 +33,12 @@
 - Node.js 24.22.1+ (линия 24.x, как на Vercel; `engines` в корневом `package.json`): в более ранних версиях не закрыты уязвимости из октябрьского выпуска безопасности Node.js 2026, а Node 20 больше не поддерживается.
 - `prisma` и `@prisma/client` закреплены на 7.10.0: не ставьте `prisma@latest`, он может указать на Prisma 8 RC.
 - `npm run migrate` — интерактивный `prisma migrate dev` для разработки; в CI и проде — `npm exec -w @gift-list/web -- prisma migrate deploy`.
-- `npm run lint` проверяет только `apps/web`. CI (`.github/workflows/ci.yml`) на каждый PR в `main` гоняет `typecheck`, `lint`, `test`, `build` и запуск standalone-сервера; локально перед PR прогоните `npm run typecheck`, `npm test`, `npm run lint`, `npm run build`.
+- CI (`.github/workflows/ci.yml`) на PR и push в `main` гоняет `typecheck`, `lint`, `test`, `build` и запуск standalone-сервера; локально перед PR прогоните те же `npm run typecheck`, `npm test`, `npm run lint`, `npm run build`.
 - Сборка — `output: 'standalone'`: вне Vercel запускайте `node apps/web/.next/standalone/apps/web/server.js`, не `npm start` (`next start`).
 
 ## Conventions that differ from defaults
 
 - `packages/contracts` не собирается: отдаёт исходники TS (`exports` → `src/index.ts`), веб транспилирует их через `transpilePackages`. Не добавляйте build-шаг и `dist/`.
+- `apps/web/public/` генерируется: `npm run build` пересоздаёт его из Expo-web экспорта `apps/mobile` (`scripts/sync-spa.mjs`). Не правьте его — меняйте исходники в `apps/mobile`.
 
 <!-- /bmad:context -->

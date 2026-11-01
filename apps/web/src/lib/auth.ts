@@ -7,7 +7,6 @@ import { nextCookies } from "better-auth/next-js";
 import { bearer } from "better-auth/plugins";
 import { createId } from "@paralleldrive/cuid2";
 import { prisma } from "@/db/client";
-import { trustedExpoWebOrigins } from "@/lib/dev-cors";
 import { getEnv } from "@/lib/env";
 import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
 
@@ -45,10 +44,11 @@ function createAuth() {
         timeZone: { type: "string", required: false, input: false },
       },
     },
-    // `giftlist://` is the shipped scheme. `exp://` and `exp+giftlist://` match
-    // Expo Go and the dev client: a pattern without an authority allows any host.
-    // Expo web on :8081 is a different origin from the API; trust it only outside production.
-    trustedOrigins: ["giftlist://", "exp://", "exp+giftlist://", ...trustedExpoWebOrigins(process.env.NODE_ENV)],
+    // `giftlist://` — схема приложения (AD-3). Dev-origins (`exp://` для Expo Go,
+    // `exp+giftlist://` для dev client) добавляются только через AUTH_DEV_TRUSTED_ORIGINS:
+    // паттерн кастомной схемы без хоста совпадает с любым хостом и портом
+    // (Better Auth matchesOriginPattern), поэтому в проде их быть не должно.
+    trustedOrigins: ["giftlist://", ...env.AUTH_DEV_TRUSTED_ORIGINS],
     // bearer() accepts `Authorization: Bearer` and adds `set-auth-token` to cookie-setting
     // responses; the /api/auth route strips that header for non-native requests.
     // nextCookies must stay last so Server Actions can set the session cookie.

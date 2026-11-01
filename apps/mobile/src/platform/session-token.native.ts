@@ -3,11 +3,8 @@ import * as SecureStore from "expo-secure-store";
 const KEY = "gift-list.auth.token";
 
 export async function readSessionToken(): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(KEY);
-  } catch {
-    return null;
-  }
+  // Errors propagate on purpose: a failed read must not be mistaken for "no token".
+  return SecureStore.getItemAsync(KEY);
 }
 
 export async function writeSessionToken(token: string): Promise<void> {

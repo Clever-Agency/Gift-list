@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
-import { afterEach, describe, expect, it } from "vitest";
-import { allowedExpoWebDevOrigin, applyDevCors, trustedExpoWebOrigins } from "./dev-cors";
-import { proxy } from "@/proxy";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { allowedDevCorsOrigin, applyDevCors } from "./dev-cors";
+
+const expoWeb = ["exp://", "http://localhost:8081", "http://127.0.0.1:8081"];
 
 const previousNodeEnv = process.env.NODE_ENV;
 
@@ -11,33 +12,40 @@ function setNodeEnv(value: string | undefined) {
 
 afterEach(() => {
   setNodeEnv(previousNodeEnv);
+  delete process.env.DATABASE_URL;
+  delete process.env.BETTER_AUTH_SECRET;
+  delete process.env.BETTER_AUTH_URL;
+  delete process.env.AUTH_DEV_TRUSTED_ORIGINS;
 });
 
-describe("allowedExpoWebDevOrigin", () => {
-  it("allows the Expo web dev ports on localhost and 127.0.0.1", () => {
-    for (const origin of [
-      "http://localhost:8081",
-      "http://127.0.0.1:8081",
-      "http://localhost:8085",
-      "http://127.0.0.1:19006",
-    ]) {
-      expect(allowedExpoWebDevOrigin(origin, "development")).toBe(origin);
-    }
+describe("allowedDevCorsOrigin", () => {
+  it("allows http origins listed in AUTH_DEV_TRUSTED_ORIGINS", () => {
+    expect(allowedDevCorsOrigin("http://localhost:8081", expoWeb, "development")).toBe("http://localhost:8081");
+    expect(allowedDevCorsOrigin("http://127.0.0.1:8081", expoWeb, "development")).toBe("http://127.0.0.1:8081");
   });
 
-  it("rejects other origins and every origin in production", () => {
-    expect(allowedExpoWebDevOrigin("http://localhost:3000", "development")).toBeNull();
-    expect(allowedExpoWebDevOrigin("http://localhost:9999", "development")).toBeNull();
-    expect(allowedExpoWebDevOrigin("https://evil.example", "development")).toBeNull();
-    expect(allowedExpoWebDevOrigin("http://localhost:8081", "production")).toBeNull();
-    expect(trustedExpoWebOrigins("production")).toEqual([]);
-    expect(trustedExpoWebOrigins("development")).toContain("http://localhost:8081");
+  it("rejects unlisted origins, custom schemes and an empty list", () => {
+    expect(allowedDevCorsOrigin("http://localhost:3000", expoWeb, "development")).toBeNull();
+    expect(allowedDevCorsOrigin("https://evil.example", expoWeb, "development")).toBeNull();
+    expect(allowedDevCorsOrigin("exp://", expoWeb, "development")).toBeNull();
+    expect(allowedDevCorsOrigin("http://localhost:8081", [], "development")).toBeNull();
+    expect(allowedDevCorsOrigin(null, expoWeb, "development")).toBeNull();
+  });
+
+  it("allows nothing in production, even with the variable set", () => {
+    expect(allowedDevCorsOrigin("http://localhost:8081", expoWeb, "production")).toBeNull();
   });
 });
 
 describe("proxy CORS", () => {
-  function call(method: string, origin: string | null, nodeEnv: string) {
-    setNodeEnv(nodeEnv);
+  async function call(method: string, origin: string | null, devOrigins: string | undefined) {
+    process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
+    process.env.BETTER_AUTH_SECRET = "01234567890123456789012345678901";
+    process.env.BETTER_AUTH_URL = "http://localhost:3000";
+    if (devOrigins === undefined) delete process.env.AUTH_DEV_TRUSTED_ORIGINS;
+    else process.env.AUTH_DEV_TRUSTED_ORIGINS = devOrigins;
+    vi.resetModules();
+    const { proxy } = await import("@/proxy");
     const headers = new Headers();
     if (origin) headers.set("origin", origin);
     headers.set("access-control-request-method", "POST");
@@ -48,7 +56,7 @@ describe("proxy CORS", () => {
   }
 
   it("answers an Expo web preflight with credentials and the request origin", async () => {
-    const res = await call("OPTIONS", "http://localhost:8081", "development");
+    const res = await call("OPTIONS", "http://localhost:8081", "exp://,http://localhost:8081");
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:8081");
     expect(res.headers.get("access-control-allow-credentials")).toBe("true");
@@ -58,17 +66,29 @@ describe("proxy CORS", () => {
   });
 
   it("puts the same headers on a real request from Expo web", async () => {
-    const res = await call("POST", "http://127.0.0.1:8081", "development");
+    const res = await call("POST", "http://127.0.0.1:8081", "http://127.0.0.1:8081");
     expect(res.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:8081");
     expect(res.headers.get("access-control-allow-credentials")).toBe("true");
   });
 
-  it("does not advertise CORS to other origins or in production", async () => {
-    const foreign = await call("OPTIONS", "https://evil.example", "development");
+  it("does not advertise CORS to other origins or without AUTH_DEV_TRUSTED_ORIGINS", async () => {
+    const foreign = await call("OPTIONS", "https://evil.example", "http://localhost:8081");
     expect(foreign.headers.get("access-control-allow-origin")).toBeNull();
-    const shipped = await call("OPTIONS", "http://localhost:8081", "production");
-    expect(shipped.headers.get("access-control-allow-origin")).toBeNull();
-    expect(shipped.headers.get("access-control-allow-credentials")).toBeNull();
+    const unset = await call("OPTIONS", "http://localhost:8081", undefined);
+    expect(unset.headers.get("access-control-allow-origin")).toBeNull();
+    expect(unset.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  it("adds nothing in production and does not read env there", async () => {
+    setNodeEnv("production");
+    const res = await call("OPTIONS", "http://localhost:8081", "http://localhost:8081");
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    delete process.env.DATABASE_URL;
+    vi.resetModules();
+    const { proxy } = await import("@/proxy");
+    const headers = new Headers({ origin: "http://localhost:8081" });
+    const bare = proxy(new NextRequest("http://localhost:3000/api/v1/me", { method: "POST", headers }));
+    expect(bare.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
 

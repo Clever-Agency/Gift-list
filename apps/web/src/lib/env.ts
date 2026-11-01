@@ -25,6 +25,19 @@ const emailFromSchema = z.string().trim().min(1).refine((value) => {
   return z.email().safeParse(address).success && (named == null || (named[1] ?? "").trim().length > 0);
 }, "EMAIL_FROM must be an address or Name <address>");
 
+// Только для разработки: Expo Go и dev client. Список через запятую; пусто или не задано — [].
+const devTrustedOriginsSchema = z.preprocess(
+  (value) => {
+    if (value === undefined) return [];
+    if (typeof value !== "string") return value;
+    return value
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0);
+  },
+  z.array(z.string()),
+);
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   BETTER_AUTH_SECRET: z.string().min(32),
@@ -36,6 +49,7 @@ const envSchema = z.object({
   EMAIL_FROM: z.preprocess(blankToUndefined, emailFromSchema.optional()),
   APPLE_TEAM_ID: optionalEnvString,
   ANDROID_SHA256_CERT_FINGERPRINTS: optionalEnvString,
+  AUTH_DEV_TRUSTED_ORIGINS: devTrustedOriginsSchema,
 });
 
 export type Env = z.infer<typeof envSchema>;

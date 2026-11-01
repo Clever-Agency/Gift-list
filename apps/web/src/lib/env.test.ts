@@ -15,6 +15,7 @@ afterEach(() => {
   delete process.env.EMAIL_FROM;
   delete process.env.APPLE_TEAM_ID;
   delete process.env.ANDROID_SHA256_CERT_FINGERPRINTS;
+  delete process.env.AUTH_DEV_TRUSTED_ORIGINS;
 });
 
 function setRequiredEnv() {
@@ -90,5 +91,31 @@ describe("mail and app-link env", () => {
     vi.resetModules();
     const { getEnv } = await import("./env");
     expect(() => getEnv()).toThrow();
+  });
+});
+
+describe("AUTH_DEV_TRUSTED_ORIGINS", () => {
+  async function loadEnv() {
+    process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
+    process.env.BETTER_AUTH_SECRET = "01234567890123456789012345678901";
+    process.env.BETTER_AUTH_URL = "http://127.0.0.1:3000";
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    return getEnv();
+  }
+
+  it("is an empty list when unset", async () => {
+    delete process.env.AUTH_DEV_TRUSTED_ORIGINS;
+    expect((await loadEnv()).AUTH_DEV_TRUSTED_ORIGINS).toEqual([]);
+  });
+
+  it("splits on commas, trims and drops empty items", async () => {
+    process.env.AUTH_DEV_TRUSTED_ORIGINS = "exp://, ,exp+giftlist://";
+    expect((await loadEnv()).AUTH_DEV_TRUSTED_ORIGINS).toEqual(["exp://", "exp+giftlist://"]);
+  });
+
+  it("is an empty list for an empty string", async () => {
+    process.env.AUTH_DEV_TRUSTED_ORIGINS = "";
+    expect((await loadEnv()).AUTH_DEV_TRUSTED_ORIGINS).toEqual([]);
   });
 });

@@ -21,6 +21,9 @@ function setAuthEnv() {
   delete process.env.BRAND_NAME;
 }
 
+// auth.ts кеширует экземпляр в globalThis.auth вне production; resetModules его не сбрасывает.
+const globalForAuth = globalThis as unknown as { auth?: unknown };
+
 afterEach(() => {
   delete process.env.DATABASE_URL;
   delete process.env.BETTER_AUTH_SECRET;
@@ -28,7 +31,8 @@ afterEach(() => {
   delete process.env.BRAND_NAME;
   delete process.env.RESEND_API_KEY;
   delete process.env.EMAIL_FROM;
-  delete (globalThis as { auth?: unknown }).auth;
+  delete process.env.AUTH_DEV_TRUSTED_ORIGINS;
+  delete globalForAuth.auth;
 });
 
 describe("auth proxy", () => {
@@ -95,5 +99,27 @@ describe("auth proxy", () => {
       ),
     ).resolves.toBeUndefined();
     expect(spy).toHaveBeenCalled();
+  });
+
+  it("trusts only the app scheme without AUTH_DEV_TRUSTED_ORIGINS", async () => {
+    process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
+    process.env.BETTER_AUTH_SECRET = secret;
+    process.env.BETTER_AUTH_URL = "http://127.0.0.1:3000";
+    delete process.env.AUTH_DEV_TRUSTED_ORIGINS;
+    delete globalForAuth.auth;
+    vi.resetModules();
+    const { auth } = await import("@/lib/auth");
+    expect(auth.options.trustedOrigins).toEqual(["giftlist://"]);
+  });
+
+  it("adds dev origins from AUTH_DEV_TRUSTED_ORIGINS", async () => {
+    process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
+    process.env.BETTER_AUTH_SECRET = secret;
+    process.env.BETTER_AUTH_URL = "http://127.0.0.1:3000";
+    process.env.AUTH_DEV_TRUSTED_ORIGINS = " exp:// , exp+giftlist://,";
+    delete globalForAuth.auth;
+    vi.resetModules();
+    const { auth } = await import("@/lib/auth");
+    expect(auth.options.trustedOrigins).toEqual(["giftlist://", "exp://", "exp+giftlist://"]);
   });
 });

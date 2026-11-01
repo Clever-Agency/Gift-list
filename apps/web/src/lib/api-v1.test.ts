@@ -63,6 +63,12 @@ describe("parseJsonBody", () => {
     expect(r).not.toHaveProperty("field");
   });
 
+  it("rejects a body over the size limit", async () => {
+    const r = await parseJsonBody(req(`{"email":"${"a".repeat(40_000)}","n":1}`), schema);
+    expect(r).toMatchObject({ ok: false, code: "VALIDATION" });
+    expect(r).not.toHaveProperty("field");
+  });
+
   it("rejects schema failure with the first path as field", async () => {
     expect(await parseJsonBody(req('{"email":"a","n":"x"}'), schema)).toMatchObject({
       ok: false,

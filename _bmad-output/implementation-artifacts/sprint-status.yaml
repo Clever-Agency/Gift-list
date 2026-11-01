@@ -42,7 +42,7 @@ development_status:
   1-4-http-адаптер-app-api-v1-и-сессия-приложения: done
   1-5-регистрация-и-один-вишлист: done # бывшая 1.2: один List, экраны регистрации
   1-6-вход-и-выход: done
-  1-7-сброс-пароля-по-email: review
+  1-7-сброс-пароля-по-email: done
   1-8-часовой-пояс-пользователя: done
   epic-1-retrospective: optional
 

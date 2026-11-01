@@ -24,6 +24,9 @@ export function firstIssueField(error: z.ZodError): string | undefined {
   return path && path.length > 0 ? path.map(String).join(".") : undefined;
 }
 
+/** First mutation bodies stay small; larger payloads are rejected before JSON.parse. */
+export const MAX_JSON_BYTES = 32 * 1024;
+
 /** Parses the JSON body with a contracts schema; failure is a VALIDATION result. */
 export async function parseJsonBody<S extends z.ZodType>(
   request: Request,
@@ -37,9 +40,18 @@ export async function parseJsonBody<S extends z.ZodType>(
   });
   const contentType = request.headers.get("content-type") ?? "";
   if (!/^application\/json\s*(;|$)/i.test(contentType.trim())) return invalid();
+  const declared = request.headers.get("content-length");
+  if (declared != null && Number(declared) > MAX_JSON_BYTES) return invalid();
+  let text: string;
+  try {
+    text = await request.text();
+  } catch {
+    return invalid();
+  }
+  if (text.length > MAX_JSON_BYTES) return invalid();
   let json: unknown;
   try {
-    json = await request.json();
+    json = JSON.parse(text) as unknown;
   } catch {
     return invalid();
   }

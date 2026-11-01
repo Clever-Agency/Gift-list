@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
@@ -11,7 +11,7 @@ export function AnonymousScreen({ title, children }: { title: string; children?:
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.column}>
+      <ScrollView contentContainerStyle={styles.column} keyboardShouldPersistTaps="handled">
         <Text accessibilityRole="header" style={styles.logo}>
           {t("brandName", { brand: getBrandName() })}
         </Text>
@@ -21,7 +21,7 @@ export function AnonymousScreen({ title, children }: { title: string; children?:
         </View>
         <View style={styles.spacer} />
         <AuthorLink />
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -32,7 +32,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   column: {
-    flex: 1,
+    flexGrow: 1,
     width: "100%",
     maxWidth: spacing["max-form"],
     alignSelf: "center",

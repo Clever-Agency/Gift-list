@@ -1,131 +1,258 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { meSchema } from "@gift-list/contracts";
-import { apiRequest, buildAcceptLanguage } from "./client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { apiRequest } from "./client";
 
-vi.mock("expo-localization", () => ({
-  getLocales: () => [{ languageTag: "ru-BY" }, { languageTag: "en-US" }],
+const rn = vi.hoisted(() => ({ OS: "web" }));
+const store = vi.hoisted(() => ({
+  readSessionToken: vi.fn(),
+  writeSessionToken: vi.fn(),
 }));
 
-const ME = { id: "u1", email: "a@b.c", name: "Аня", nick: "anya" };
+vi.mock("react-native", () => ({
+  Platform: {
+    get OS() {
+      return rn.OS;
+    },
+  },
+}));
+vi.mock("expo-localization", () => ({
+  getLocales: () => [{ languageTag: "ru-RU" }],
+}));
+vi.mock("@/platform/session-token", () => store);
+vi.mock("@/config/env", () => ({ getApiBaseUrl: () => "https://api.test/" }));
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
+function respond(
+  body: unknown,
+  init?: { status?: number; headers?: Record<string, string> },
+) {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  return new Response(text, {
+    status: init?.status ?? 200,
+    headers: init?.headers,
   });
 }
 
-describe("apiRequest (web transport)", () => {
-  const fetchMock = vi.fn();
+const fetchMock = vi.fn();
 
-  beforeEach(() => {
-    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "https://api.example.com/");
-    vi.stubGlobal("fetch", fetchMock);
+function sentHeaders(): Headers {
+  return (fetchMock.mock.calls[0]![1] as RequestInit).headers as Headers;
+}
+
+beforeEach(() => {
+  rn.OS = "web";
+  fetchMock.mockReset();
+  store.readSessionToken.mockReset();
+  store.writeSessionToken.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
+});
+
+describe("apiRequest envelope", () => {
+  it("returns ok data", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { id: 1 } }));
+    expect(await apiRequest("/api/v1/me")).toEqual({
+      ok: true,
+      data: { id: 1 },
+    });
+    expect(fetchMock.mock.calls[0]![0]).toBe("https://api.test/api/v1/me");
   });
 
-  afterEach(() => {
-    fetchMock.mockReset();
-    vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
-  });
-
-  it("me-ok: returns data", async () => {
-    fetchMock.mockResolvedValue(json({ ok: true, data: ME }));
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({ ok: true, data: ME });
-  });
-
-  it("err-reason: returns the api error", async () => {
-    const error = { ok: false, code: "VALIDATION", message: "x", reason: "EMAIL_TAKEN" };
-    fetchMock.mockResolvedValue(json(error, 422));
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({ ok: false, kind: "api", error });
-  });
-
-  it("unknown-reason: keeps the known code without reason", async () => {
+  it("keeps a known reason and field", async () => {
     fetchMock.mockResolvedValue(
-      json({ ok: false, code: "UNAUTHENTICATED", message: "m", reason: "NEW_ONE", extra: 1 }, 401),
+      respond({
+        ok: false,
+        code: "CONFLICT",
+        message: "m",
+        reason: "EMAIL_TAKEN",
+        field: "email",
+      }),
     );
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({
+    expect(await apiRequest("/x")).toEqual({
       ok: false,
-      kind: "api",
-      error: { ok: false, code: "UNAUTHENTICATED", message: "m" },
+      code: "CONFLICT",
+      message: "m",
+      reason: "EMAIL_TAKEN",
+      field: "email",
     });
   });
 
-  it("keeps a known reason and field when an extra field fails the strict schema", async () => {
+  it("drops unknown reason and extra fields", async () => {
     fetchMock.mockResolvedValue(
-      json({ ok: false, code: "VALIDATION", reason: "EMAIL_TAKEN", field: "email", extra: 1 }, 422),
+      respond({
+        ok: false,
+        code: "VALIDATION",
+        message: "m",
+        reason: "NOPE",
+        stack: "boom",
+      }),
     );
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({
+    expect(await apiRequest("/x")).toEqual({
       ok: false,
-      kind: "api",
-      error: { ok: false, code: "VALIDATION", message: "", reason: "EMAIL_TAKEN", field: "email" },
+      code: "VALIDATION",
+      message: "m",
     });
   });
 
-  it("sends method, Content-Type and JSON body; defaults to GET", async () => {
-    fetchMock.mockImplementation(async () => json({ ok: true, data: ME }));
-    await apiRequest("/api/v1/me", meSchema, { method: "POST", body: { a: 1 } });
-    const post = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(post.method).toBe("POST");
-    expect((post.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
-    expect(post.body).toBe('{"a":1}');
-    await apiRequest("/api/v1/me", meSchema);
-    const get = fetchMock.mock.calls[1][1] as RequestInit;
-    expect(get.method).toBe("GET");
-    expect(get.body).toBeUndefined();
+  it("treats an unknown code as a network failure", async () => {
+    fetchMock.mockResolvedValue(
+      respond({ ok: false, code: "WHATEVER", message: "m" }),
+    );
+    expect(await apiRequest("/x")).toEqual({ ok: false, network: true });
   });
 
-  it("unknown code is network", async () => {
-    fetchMock.mockResolvedValue(json({ ok: false, code: "WHATEVER" }, 500));
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({ ok: false, kind: "network" });
+  it("treats HTML 500 and bodies without an envelope as network", async () => {
+    fetchMock.mockResolvedValue(respond("<html>err</html>", { status: 500 }));
+    expect(await apiRequest("/x")).toEqual({ ok: false, network: true });
+    fetchMock.mockResolvedValue(respond({ hello: "world" }));
+    expect(await apiRequest("/x")).toEqual({ ok: false, network: true });
   });
 
-  it("no-envelope: 500 HTML is network", async () => {
-    fetchMock.mockResolvedValue(new Response("<html>500</html>", { status: 500 }));
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({ ok: false, kind: "network" });
-  });
-
-  it("no-envelope: JSON that is not an envelope or has bad data is network", async () => {
-    fetchMock.mockResolvedValueOnce(json({ error: "boom" }, 500));
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({ ok: false, kind: "network" });
-    fetchMock.mockResolvedValueOnce(json({ ok: true, data: { id: 1 } }));
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({ ok: false, kind: "network" });
-  });
-
-  it("fetch-fail: network", async () => {
-    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
-    expect(await apiRequest("/api/v1/me", meSchema)).toEqual({ ok: false, kind: "network" });
-  });
-
-  it("web-headers: cookie, Accept-Language, no Authorization or expo-origin", async () => {
-    fetchMock.mockResolvedValue(json({ ok: true, data: ME }));
-    await apiRequest("/api/auth/sign-in/email", meSchema);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://api.example.com/api/auth/sign-in/email");
-    expect(init.credentials).toBe("include");
-    const headers = init.headers as Record<string, string>;
-    expect(headers["Accept-Language"]).toBe("ru-BY,en-US;q=0.9");
-    expect(headers).not.toHaveProperty("Authorization");
-    expect(headers).not.toHaveProperty("expo-origin");
-  });
-
-  it("uses a relative path when the base URL is empty", async () => {
-    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
-    fetchMock.mockResolvedValue(json({ ok: true, data: ME }));
-    await apiRequest("/api/v1/me", meSchema);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/v1/me");
-    expect(init.credentials).toBe("include");
-    expect((init.headers as Record<string, string>)["Accept-Language"]).toBe("ru-BY,en-US;q=0.9");
+  it("treats a thrown fetch as network", async () => {
+    fetchMock.mockRejectedValue(new TypeError("offline"));
+    expect(await apiRequest("/x")).toEqual({ ok: false, network: true });
   });
 });
 
-describe("buildAcceptLanguage", () => {
-  it("lists tags with descending q", () => {
-    expect(buildAcceptLanguage(["ru-BY", "en-US", "de"])).toBe("ru-BY,en-US;q=0.9,de;q=0.8");
+describe("apiRequest envelope details", () => {
+  it("keeps valid params and drops invalid ones", async () => {
+    fetchMock.mockResolvedValue(
+      respond({
+        ok: false,
+        code: "VALIDATION",
+        message: "m",
+        params: { min: 3, a: "b" },
+      }),
+    );
+    expect(await apiRequest("/x")).toMatchObject({
+      params: { min: 3, a: "b" },
+    });
+    fetchMock.mockResolvedValue(
+      respond({
+        ok: false,
+        code: "VALIDATION",
+        message: "m",
+        params: { x: {} },
+      }),
+    );
+    expect(await apiRequest("/x")).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "m",
+    });
   });
 
-  it("falls back to the default locale", () => {
-    expect(buildAcceptLanguage([])).toBe("ru");
+  it("drops a non-string field", async () => {
+    fetchMock.mockResolvedValue(
+      respond({ ok: false, code: "VALIDATION", message: "m", field: 5 }),
+    );
+    expect(await apiRequest("/x")).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "m",
+    });
+  });
+
+  it("treats ok:true without data as network", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true }));
+    expect(await apiRequest("/x")).toEqual({ ok: false, network: true });
+  });
+
+  it("defaults a missing message to empty", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: false, code: "FORBIDDEN" }));
+    expect(await apiRequest("/x")).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+      message: "",
+    });
+  });
+});
+
+describe("apiRequest broken store", () => {
+  beforeEach(() => {
+    rn.OS = "ios";
+    store.readSessionToken.mockRejectedValue(new Error("keystore"));
+  });
+
+  it("sign-in skips the token read and stores the new token", async () => {
+    fetchMock.mockResolvedValue(
+      respond(
+        { ok: true, data: null },
+        { headers: { "set-auth-token": "t9" } },
+      ),
+    );
+    const result = await apiRequest("/api/v1/session", {
+      method: "POST",
+      body: {},
+    });
+    expect(result).toEqual({ ok: true, data: null });
+    expect(store.readSessionToken).not.toHaveBeenCalled();
+    expect(sentHeaders().get("authorization")).toBeNull();
+    expect(store.writeSessionToken).toHaveBeenCalledWith("t9");
+  });
+
+  it("other paths give network without fetch", async () => {
+    expect(await apiRequest("/api/v1/me")).toEqual({
+      ok: false,
+      network: true,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a failing token write is network", async () => {
+    store.writeSessionToken.mockRejectedValue(new Error("full"));
+    fetchMock.mockResolvedValue(
+      respond(
+        { ok: true, data: null },
+        { headers: { "set-auth-token": "t9" } },
+      ),
+    );
+    expect(
+      await apiRequest("/api/v1/register", { method: "POST", body: {} }),
+    ).toEqual({
+      ok: false,
+      network: true,
+    });
+  });
+});
+
+describe("apiRequest transport", () => {
+  it("web uses cookies and no bearer", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: null }));
+    await apiRequest("/x");
+    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    expect(init.credentials).toBe("include");
+    expect(sentHeaders().get("accept-language")).toBe("ru-RU");
+    expect(sentHeaders().get("authorization")).toBeNull();
+    expect(sentHeaders().get("expo-origin")).toBeNull();
+    expect(store.readSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("native sends bearer and expo-origin and stores a rotated token", async () => {
+    rn.OS = "ios";
+    store.readSessionToken.mockResolvedValue("t1");
+    fetchMock.mockResolvedValue(
+      respond(
+        { ok: true, data: null },
+        { headers: { "set-auth-token": "t2" } },
+      ),
+    );
+    await apiRequest("/x");
+    expect(sentHeaders().get("authorization")).toBe("Bearer t1");
+    expect(sentHeaders().get("expo-origin")).toBe("giftlist://");
+    expect(store.writeSessionToken).toHaveBeenCalledWith("t2");
+  });
+
+  it("native: a failing token read is network and fetch is not called", async () => {
+    rn.OS = "ios";
+    store.readSessionToken.mockRejectedValue(new Error("keychain"));
+    expect(await apiRequest("/x")).toEqual({ ok: false, network: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("POST sends method, content-type and JSON body", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: null }));
+    await apiRequest("/x", { method: "POST", body: { a: 1 } });
+    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe('{"a":1}');
+    expect(sentHeaders().get("content-type")).toBe("application/json");
   });
 });

@@ -1,37 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as SecureStore from "expo-secure-store";
-import { clearSessionToken, getSessionToken, setSessionToken } from "./session-token.native";
+import { clearSessionToken, readSessionToken, writeSessionToken } from "./session-token.native";
 
-vi.mock("expo-secure-store", () => ({
+const secure = vi.hoisted(() => ({
   getItemAsync: vi.fn(),
   setItemAsync: vi.fn(),
   deleteItemAsync: vi.fn(),
 }));
+vi.mock("expo-secure-store", () => secure);
+
+
+beforeEach(() => {
+  Object.values(secure).forEach((fn) => fn.mockReset());
+});
 
 describe("session-token.native", () => {
-  beforeEach(() => {
-    vi.mocked(SecureStore.getItemAsync).mockReset();
-    vi.mocked(SecureStore.setItemAsync).mockReset();
-    vi.mocked(SecureStore.deleteItemAsync).mockReset();
-  });
-
-  it("rejects when the read fails instead of returning null", async () => {
-    vi.mocked(SecureStore.getItemAsync).mockRejectedValue(new Error("keystore"));
-    await expect(getSessionToken()).rejects.toThrow("keystore");
-  });
-
   it("returns the stored value", async () => {
-    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("t1");
-    expect(await getSessionToken()).toBe("t1");
+    secure.getItemAsync.mockResolvedValue("tok");
+    expect(await readSessionToken()).toBe("tok");
   });
 
-  it("stores the token", async () => {
-    await setSessionToken("t2");
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(expect.any(String), "t2");
+  it("rejects when the store read fails", async () => {
+    secure.getItemAsync.mockRejectedValue(new Error("locked"));
+    await expect(readSessionToken()).rejects.toThrow("locked");
+  });
+
+  it("writes through setItemAsync", async () => {
+    await writeSessionToken("abc");
+    expect(secure.setItemAsync).toHaveBeenCalledWith(expect.any(String), "abc");
   });
 
   it("clear swallows a delete failure", async () => {
-    vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("keystore"));
+    secure.deleteItemAsync.mockRejectedValue(new Error("x"));
     await expect(clearSessionToken()).resolves.toBeUndefined();
   });
 });

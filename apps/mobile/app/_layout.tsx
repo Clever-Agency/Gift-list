@@ -15,7 +15,7 @@ import { IntlProvider } from "use-intl";
 import { getMessages, negotiateLocale } from "@gift-list/contracts";
 import { contactsAvailable } from "@/platform/contacts";
 import { secureStoreAvailable } from "@/platform/secure-store";
-import { SessionProvider } from "@/session/SessionProvider";
+import { AuthProvider } from "@/session/auth-context";
 import { colors } from "@/theme/tokens";
 
 void contactsAvailable();
@@ -49,15 +49,15 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <IntlProvider locale={locale} messages={getMessages(locale)}>
-        <StatusBar style="dark" />
-        <SessionProvider>
+        <AuthProvider>
+          <StatusBar style="dark" />
           <Stack
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: colors.background },
             }}
           />
-        </SessionProvider>
+        </AuthProvider>
       </IntlProvider>
     </SafeAreaProvider>
   );

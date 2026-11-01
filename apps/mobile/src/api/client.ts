@@ -1,96 +1,115 @@
-import { getLocales } from "expo-localization";
-import type { z } from "zod";
 import {
-  DEFAULT_LOCALE,
-  actionResultSchema,
+  actionErrorSchema,
   errorCodeSchema,
   errorReasonSchema,
   type ActionError,
   type ActionResult,
 } from "@gift-list/contracts";
-import { prepareRequest, readResponse, resolveUrl } from "@/platform/transport";
+import { getLocales } from "expo-localization";
+import { Platform } from "react-native";
+import { getApiBaseUrl } from "@/config/env";
+import { readSessionToken, writeSessionToken } from "@/platform/session-token";
 
-export type ApiFailure =
-  | { ok: false; kind: "api"; error: ActionError }
-  | { ok: false; kind: "network" };
+export type ClientResult<T> = ActionResult<T> | { ok: false; network: true };
 
-export type ApiResult<T> = { ok: true; data: T } | ApiFailure;
-
-export type ApiRequestInit = {
-  method?: string;
-  body?: unknown;
-};
-
-/** Language tags with descending `q`; the default locale when the device reports none. */
-export function buildAcceptLanguage(tags: readonly string[]): string {
-  const unique = tags.filter((tag, index) => tag.length > 0 && tags.indexOf(tag) === index);
-  if (unique.length === 0) return DEFAULT_LOCALE;
-  return unique
-    .map((tag, index) => {
-      if (index === 0) return tag;
-      const q = Math.max(1 - index * 0.1, 0.1);
-      return `${tag};q=${q.toFixed(1)}`;
-    })
-    .join(",");
-}
-
-function deviceLanguageTags(): string[] {
-  return getLocales()
+function languageTag(): string {
+  const tag = getLocales()
     .map((item) => item.languageTag)
-    .filter((tag): tag is string => typeof tag === "string" && tag.length > 0);
+    .find(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    );
+  return tag ?? "ru";
 }
 
-/** Newer server, older build: an unknown `reason` or extra field is dropped, a known `code`, `reason` and `field` stay. */
-function degradedApiError(body: unknown): ApiFailure {
-  if (typeof body !== "object" || body === null) return NETWORK;
-  const { ok, code, message, reason, field } = body as Record<string, unknown>;
-  const known = errorCodeSchema.safeParse(code);
-  if (ok !== false || !known.success) return NETWORK;
-  const knownReason = errorReasonSchema.safeParse(reason);
+/** Returns a normalized result, or null when the body is not an API envelope. */
+function parseEnvelope(value: unknown): ActionResult<unknown> | null {
+  if (!value || typeof value !== "object" || !("ok" in value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.ok === true)
+    return "data" in record ? (value as ActionResult<unknown>) : null;
+  if (record.ok !== false) return null;
+  const code = errorCodeSchema.safeParse(record.code);
+  if (!code.success) return null;
   const error: ActionError = {
     ok: false,
-    code: known.data,
-    message: typeof message === "string" ? message : "",
+    code: code.data,
+    message: typeof record.message === "string" ? record.message : "",
   };
-  if (knownReason.success) error.reason = knownReason.data;
-  if (typeof field === "string") error.field = field;
-  return { ok: false, kind: "api", error };
+  const reason = errorReasonSchema.safeParse(record.reason);
+  if (reason.success) error.reason = reason.data;
+  if (typeof record.field === "string") error.field = record.field;
+  const params = actionErrorSchema.shape.params.safeParse(record.params);
+  if (params.success && params.data !== undefined) error.params = params.data;
+  return error;
 }
 
-const NETWORK: ApiFailure = { ok: false, kind: "network" };
+/** Requests that create a session never read the stored token: a broken store must not block sign-in. */
+function createsSession(method: string, path: string): boolean {
+  if (path.startsWith("/api/auth/")) return true;
+  return (
+    method === "POST" &&
+    (path === "/api/v1/session" || path === "/api/v1/register")
+  );
+}
 
-/** One request: platform transport, envelope parsed by the contracts schema (AD-12). */
-export async function apiRequest<S extends z.ZodType>(
+export async function apiRequest<T>(
   path: string,
-  dataSchema: S,
-  init: ApiRequestInit = {},
-): Promise<ApiResult<z.infer<S>>> {
-  const url = resolveUrl(path);
-  if (url === null) return NETWORK;
-
-  try {
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      "Accept-Language": buildAcceptLanguage(deviceLanguageTags()),
-    };
-    if (init.body !== undefined) headers["Content-Type"] = "application/json";
-    const prepared = await prepareRequest(path, headers);
-
-    const response = await fetch(url, {
-      method: init.method ?? "GET",
-      headers: prepared.headers,
-      credentials: prepared.credentials,
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    });
-    await readResponse(path, response);
-
-    const body: unknown = await response.json();
-    const parsed = actionResultSchema(dataSchema).safeParse(body);
-    if (!parsed.success) return degradedApiError(body);
-    const result = parsed.data as ActionResult<z.infer<S>>;
-    if (result.ok) return { ok: true, data: result.data };
-    return { ok: false, kind: "api", error: result };
-  } catch {
-    return NETWORK;
+  init?: { method?: string; body?: unknown },
+): Promise<ClientResult<T>> {
+  const headers = new Headers();
+  headers.set("accept", "application/json");
+  headers.set("accept-language", languageTag());
+  if (init?.body !== undefined) headers.set("content-type", "application/json");
+  if (Platform.OS !== "web") {
+    headers.set("expo-origin", "giftlist://");
+    if (!createsSession(init?.method ?? "GET", path)) {
+      try {
+        // A failed read must not look like "no token": an anonymous request would drop a working session.
+        const token = await readSessionToken();
+        if (token) headers.set("authorization", `Bearer ${token}`);
+      } catch {
+        return { ok: false, network: true };
+      }
+    }
   }
+
+  let response: Response;
+  try {
+    const base = getApiBaseUrl().replace(/\/$/, "");
+    response = await fetch(`${base}${path}`, {
+      method: init?.method ?? "GET",
+      headers,
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      credentials: "include",
+    });
+  } catch {
+    return { ok: false, network: true };
+  }
+
+  if (Platform.OS !== "web") {
+    const token = response.headers.get("set-auth-token");
+    if (token) {
+      try {
+        await writeSessionToken(token);
+      } catch {
+        return { ok: false, network: true };
+      }
+    }
+  }
+
+  let json: unknown;
+  try {
+    json = (await response.json()) as unknown;
+  } catch {
+    return { ok: false, network: true };
+  }
+  const result = parseEnvelope(json);
+  if (!result) return { ok: false, network: true };
+  return result as ClientResult<T>;
+}
+
+export function isActionError(
+  result: ClientResult<unknown>,
+): result is ActionError {
+  return result.ok === false && !("network" in result);
 }

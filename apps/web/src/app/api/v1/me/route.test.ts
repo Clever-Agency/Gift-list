@@ -2,15 +2,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession } = vi.hoisted(() => ({ getSession: vi.fn() }));
+const { getSession, findUnique } = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  findUnique: vi.fn(),
+}));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
+vi.mock("@/db/client", () => ({ prisma: { user: { findUnique } } }));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ cookie: "sid=1", authorization: "Bearer h" }),
 }));
 
-const user = { id: "u1", email: "a@example.com", name: "Анна", nick: "anna", hideFromSearch: false };
+const user = {
+  id: "u1",
+  email: "a@example.com",
+  name: "Анна",
+  nick: "anna",
+  timeZone: null as string | null,
+};
 
-beforeEach(() => getSession.mockReset());
+beforeEach(() => {
+  getSession.mockReset();
+  findUnique.mockReset();
+  findUnique.mockImplementation(async () => user);
+});
 
 async function both() {
   const { GET } = await import("./route");
@@ -27,7 +41,7 @@ describe("GET /api/v1/me", () => {
     expect(res.status).toBe(200);
     expect(viaHttp).toEqual({
       ok: true,
-      data: { id: "u1", email: "a@example.com", name: "Анна", nick: "anna" },
+      data: { id: "u1", email: "a@example.com", name: "Анна", nick: "anna", timeZone: null },
     });
   });
 

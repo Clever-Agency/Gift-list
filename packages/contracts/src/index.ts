@@ -58,6 +58,8 @@ export const meSchema = z.strictObject({
   email: z.string(),
   name: z.string(),
   nick: z.string(),
+  /** `null` until the client reports an IANA zone (Story 1.8). */
+  timeZone: z.string().nullable(),
 });
 
 export type Me = z.infer<typeof meSchema>;
@@ -109,6 +111,17 @@ export const listDataSchema = z.discriminatedUnion("access", [
 ]);
 
 export type ListData = z.infer<typeof listDataSchema>;
+
+export {
+  NICK_PATTERN,
+  loginBodySchema,
+  registerBodySchema,
+  safeNextPath,
+  timeZoneBodySchema,
+  type LoginBody,
+  type RegisterBody,
+  type TimeZoneBody,
+} from "./auth";
 
 export {
   DEFAULT_LOCALE,

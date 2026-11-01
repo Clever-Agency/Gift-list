@@ -1,38 +1,28 @@
-"use server";
+import "server-only";
 
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { createId } from "@paralleldrive/cuid2";
 import { hashPassword } from "better-auth/crypto";
-import { z } from "zod";
-import type { ActionResult, ErrorReason } from "@gift-list/contracts";
+import {
+  negotiateLocale,
+  preferredFromAcceptLanguage,
+  safeNextPath,
+  type ActionResult,
+  type Me,
+  type RegisterBody,
+} from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
-import { LIST_TYPES, NICK_RULES_TEXT, isValidNick, normalizeNick } from "@/domain";
 import { auth } from "@/lib/auth";
-import { firstIssueField } from "@/lib/api-v1";
-import { REGISTER_LIMIT, consumeRateLimit, getClientIp } from "@/lib/rate-limit";
+import { REGISTER_LIMIT, clientIp, consumeRateLimit } from "@/lib/rate-limit";
 
-export type RegisterState = Extract<ActionResult<never>, { ok: false }> | null;
+export type AuthPayload = { user: Me; next: string };
 
-const registerSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email("Введите корректный email")),
-  password: z
-    .string()
-    .min(8, "Пароль — не короче 8 символов")
-    .max(128, "Пароль — не длиннее 128 символов"),
-  displayName: z
-    .string()
-    .trim()
-    .min(1, "Укажите имя")
-    .max(50, "Имя — не длиннее 50 символов"),
-  nick: z
-    .string()
-    .transform(normalizeNick)
-    .refine(isValidNick, NICK_RULES_TEXT),
-});
+export type AuthOutcome = {
+  result: ActionResult<AuthPayload>;
+  session?: Response;
+};
 
-function validation(field?: string, reason?: ErrorReason): RegisterState {
+function validation(field?: string, reason?: "EMAIL_TAKEN" | "NICK_TAKEN"): ActionResult<AuthPayload> {
   return {
     ok: false,
     code: "VALIDATION",
@@ -43,44 +33,28 @@ function validation(field?: string, reason?: ErrorReason): RegisterState {
 }
 
 /**
- * Registers a user. User, credential account and both lists are one nested
- * `create` (a single DB transaction), then the session is opened via Better Auth.
+ * Creates the user, the credential account and exactly one list in one nested write,
+ * then opens a Better Auth session. `accountId` matches `user.id` so `signInEmail` finds it.
  */
-export async function register(
-  _prev: RegisterState,
-  formData: FormData,
-): Promise<RegisterState> {
-  const parsed = registerSchema.safeParse({
-    email: formData.get("email"),
-    password: formData.get("password"),
-    displayName: formData.get("displayName"),
-    nick: formData.get("nick") ?? "",
-  });
-  if (!parsed.success) {
-    return validation(firstIssueField(parsed.error));
-  }
-  const { email, password, displayName, nick } = parsed.data;
-
-  // Counted after validation so typos don't burn attempts; duplicate probing does.
-  const allowed = await consumeRateLimit(
-    `register:${await getClientIp()}`,
-    REGISTER_LIMIT,
-  );
+export async function registerUser(input: RegisterBody, headers: Headers): Promise<AuthOutcome> {
+  const allowed = await consumeRateLimit(`register:${clientIp(headers)}`, REGISTER_LIMIT);
   if (!allowed) {
     return {
-      ok: false,
-      code: "RATE_LIMITED",
-      message: "Too many registration attempts",
+      result: { ok: false, code: "RATE_LIMITED", message: "Too many registration attempts" },
     };
   }
 
+  const { email, password, displayName, nick } = input;
   const existing = await prisma.user.findFirst({
     where: { OR: [{ email }, { nickNormalized: nick }] },
     select: { email: true, nickNormalized: true },
   });
-  if (existing) return conflictErrors(existing.email === email, existing.nickNormalized === nick);
+  if (existing) {
+    return { result: conflict(existing.email === email, existing.nickNormalized === nick) };
+  }
 
   const userId = createId();
+  const locale = negotiateLocale(preferredFromAcceptLanguage(headers.get("accept-language")));
   try {
     await prisma.user.create({
       data: {
@@ -89,6 +63,7 @@ export async function register(
         email,
         nick,
         nickNormalized: nick,
+        locale,
         accounts: {
           create: {
             accountId: userId,
@@ -97,33 +72,40 @@ export async function register(
           },
         },
         lists: {
-          create: LIST_TYPES.map((type) => ({ type, publicToken: createId() })),
+          create: { publicToken: createId() },
         },
       },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      // Lost a race with a concurrent registration: report which value is taken.
       const taken = await prisma.user.findFirst({
         where: { OR: [{ email }, { nickNormalized: nick }] },
         select: { email: true, nickNormalized: true },
       });
-      return conflictErrors(taken?.email === email, taken?.nickNormalized === nick);
+      return { result: conflict(taken?.email === email, taken?.nickNormalized === nick) };
     }
     throw error;
   }
 
-  await auth.api.signInEmail({
+  const session = await auth.api.signInEmail({
     body: { email, password },
-    headers: await headers(),
+    headers,
+    asResponse: true,
   });
-  redirect("/lists");
+  const user: Me = { id: userId, email, name: displayName, nick, timeZone: null };
+  const result: ActionResult<AuthPayload> = {
+    ok: true,
+    data: { user, next: safeNextPath(input.next) },
+  };
+  if (!session.ok) {
+    return {
+      result: { ok: false, code: "UNAUTHENTICATED", message: "Sign-in after registration failed" },
+    };
+  }
+  return { result, session };
 }
 
-function conflictErrors(emailTaken: boolean, nickTaken: boolean): RegisterState {
-  // Both taken: report the email only, so the response does not confirm a nick for that address.
-  if (emailTaken) {
-    return validation("email", "EMAIL_TAKEN");
-  }
+function conflict(emailTaken: boolean, nickTaken: boolean): ActionResult<AuthPayload> {
+  if (emailTaken) return validation("email", "EMAIL_TAKEN");
   return nickTaken ? validation("nick", "NICK_TAKEN") : validation();
 }

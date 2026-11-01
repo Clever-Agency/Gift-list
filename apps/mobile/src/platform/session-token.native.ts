@@ -1,13 +1,13 @@
 import * as SecureStore from "expo-secure-store";
 
-const KEY = "giftlist.session-token";
+const KEY = "gift-list.auth.token";
 
-export async function getSessionToken(): Promise<string | null> {
-  // A read failure must surface: swallowing it would send the request without Bearer.
+export async function readSessionToken(): Promise<string | null> {
+  // Errors propagate on purpose: a failed read must not be mistaken for "no token".
   return SecureStore.getItemAsync(KEY);
 }
 
-export async function setSessionToken(token: string): Promise<void> {
+export async function writeSessionToken(token: string): Promise<void> {
   await SecureStore.setItemAsync(KEY, token);
 }
 
@@ -15,6 +15,6 @@ export async function clearSessionToken(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(KEY);
   } catch {
-    // Nothing to delete or store unavailable: the session is gone either way.
+    // A failed delete still continues; the next launch will retry.
   }
 }

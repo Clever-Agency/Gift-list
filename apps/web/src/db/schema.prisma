@@ -10,11 +10,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum ListType {
-  DISCOVERABLE
-  FRIENDS_ONLY
-}
-
 // Better Auth core tables (AD-3). Field names follow Better Auth defaults.
 model User {
   id             String   @id @default(cuid(2))
@@ -25,6 +20,10 @@ model User {
   nick           String
   nickNormalized String   @unique
   hideFromSearch Boolean  @default(false)
+  /// Set once from Accept-Language at registration (AD-27).
+  locale         String   @default("ru")
+  /// Null until the client reports an IANA zone. A stored value is not overwritten (Story 1.8).
+  timeZone       String?
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
@@ -79,17 +78,14 @@ model Verification {
   @@index([identifier])
 }
 
-// Exactly two lists per user (AD-6). `publicToken` is immutable after insert.
+// Exactly one list per user (AD-6). `publicToken` is immutable after insert.
 model List {
   id          String   @id @default(cuid(2))
-  ownerId     String
-  type        ListType
+  ownerId     String   @unique
   publicToken String   @unique
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-
-  @@unique([ownerId, type])
 }
 
 // Fixed-window request counters (soft rate limit, R1). One row per `key`.

@@ -6,11 +6,14 @@ import {
   formatPrice,
 } from "@gift-list/contracts";
 import { Link, Stack } from "expo-router";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocale, useTranslations } from "use-intl";
 import { getApiBaseUrl, getBrandName } from "@/config/env";
+import { useAuth } from "@/session/auth-context";
 import { colors, spacing, textStyle } from "@/theme/tokens";
+import { PrimaryButton } from "@/ui/primary-button";
 import { AuthorLink } from "@/ui/author-link";
 import { navLinkStyle } from "@/ui/nav-link";
 
@@ -22,6 +25,8 @@ export default function HomeScreen() {
   const common = useTranslations("common");
   const locale = useLocale();
   const brand = getBrandName();
+  const auth = useAuth();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const wishes = WISH_COUNTS.map((count) => t("smoke.wishes", { count })).join(" · ");
   const names = [...SORT_NAMES].sort((left, right) => compareForSort(locale, left, right));
   const parsed = errorCodeSchema.safeParse(ERROR_CODES[0]);
@@ -49,12 +54,35 @@ export default function HomeScreen() {
         <Text style={styles.caption}>
           {getApiBaseUrl().length > 0 ? common("apiSet") : common("apiUnset")}
         </Text>
-        <Link href="/login" style={navLinkStyle} accessibilityRole="link">
-          {t("home.toLogin")}
-        </Link>
-        <Link href="/register" style={navLinkStyle} accessibilityRole="link">
-          {t("home.toRegister")}
-        </Link>
+        {auth.state.status === "anonymous" ? (
+          <>
+            <Link href="/login" style={navLinkStyle} accessibilityRole="link">
+              {t("home.toLogin")}
+            </Link>
+            <Link href="/register" style={navLinkStyle} accessibilityRole="link">
+              {t("home.toRegister")}
+            </Link>
+          </>
+        ) : null}
+        {auth.state.status === "ready" ? (
+          <>
+            {logoutError ? (
+              <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {logoutError}
+              </Text>
+            ) : null}
+            <PrimaryButton
+              label={t("home.logout")}
+              onPress={() => {
+                void (async () => {
+                  setLogoutError(null);
+                  const result = await auth.signOut();
+                  if (!result.ok) setLogoutError(t("form.network"));
+                })();
+              }}
+            />
+          </>
+        ) : null}
         <View style={styles.spacer} />
         <AuthorLink />
       </View>

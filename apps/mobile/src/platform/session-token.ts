@@ -1,10 +1,9 @@
-// Stub for tsc and Vitest. Real implementations: session-token.native.ts, session-token.web.ts.
-export async function getSessionToken(): Promise<string | null> {
+/** Web session is the httpOnly cookie. Nothing is stored in JS (AD-3). */
+
+export async function readSessionToken(): Promise<string | null> {
   return null;
 }
 
-export async function setSessionToken(token: string): Promise<void> {
-  void token;
-}
+export async function writeSessionToken(_token: string): Promise<void> {}
 
 export async function clearSessionToken(): Promise<void> {}

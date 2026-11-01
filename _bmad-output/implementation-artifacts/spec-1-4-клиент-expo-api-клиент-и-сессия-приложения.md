@@ -83,6 +83,7 @@ context:
 - Не проверено: живой сервер, secure-store на устройстве, вход. Native-путь покрыт только тестами с моком токена. AC «веб-сборка → `/api/v1/me`» проверен только юнит-тестом веб-транспорта (`credentials: 'include'`, `Accept-Language`, без `Authorization`); в Network браузера не смотрели.
 - Пункт `exp://` из CLE-36 в `deferred-work.md` перенесён в Linear CLE-42.
 - 2026-11-01, после слияния с `main`: клиент `main` + перенос. Проверено: `npm run typecheck`, `npm test` (mobile 27, web 76, contracts 46), `npm run lint` — зелёные. Строки матрицы `me-*` (сессия) покрыты `AuthProvider` из `main` без теста — CLE-43.
+- 2026-11-01, CLE-43: тест `AuthProvider` — `apps/mobile/src/session/auth-context.test.tsx` (см. `spec-cle-43-тест-authprovider-и-проверка-cookie.md`). 2026-11-02: AC «веб-сборка → `/api/v1/me`» проверен в браузере с живым сервером и БД — cookie, `Accept-Language`, без `Authorization`.
 
 ## Spec Change Log
 

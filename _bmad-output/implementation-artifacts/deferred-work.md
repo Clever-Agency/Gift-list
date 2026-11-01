@@ -63,10 +63,10 @@
   evidence: Спека клиента 1.4 вышла около 3000 токенов при ориентире 1600; человек 2026-11-01 выбрал отделить серверный пункт. AC Story 1.4 его не требуют (scheme `giftlist://` уже в `trustedOrigins`); нужен к первому входу из Expo Go или dev client — Story 1.6. Linear CLE-42.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-клиент-expo-api-клиент-и-сессия-приложения.md`
-  summary: `AuthProvider` (`apps/mobile/src/session/auth-context.tsx`) без теста: запрос `/api/v1/me` при запуске, удаление токена на `UNAUTHENTICATED`, `signOut`.
+  summary: ~~`AuthProvider` (`apps/mobile/src/session/auth-context.tsx`) без теста: запрос `/api/v1/me` при запуске, удаление токена на `UNAUTHENTICATED`, `signOut`.~~ — закрыто 2026-11-01: `auth-context.test.tsx` (8 тестов, `react-dom/client` + `happy-dom`), CLE-43.
   evidence: Ревью 2026-11-01 (verification-gap). Vitest в mobile — node-среда без рендера React; клиент и хранилище токена покрыты. Нужен тест-рендер React. Свой `SessionProvider` из CLE-41 снят при слиянии с `main` в пользу `AuthProvider` Stories 1.5/1.6. Linear CLE-43.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-клиент-expo-api-клиент-и-сессия-приложения.md`
-  summary: AC «веб-сборка: cookie и `Accept-Language` на `/api/v1/me`, без `Authorization`» не проверен в браузере с живым сервером — только юнит-тестом клиента.
+  summary: ~~AC «веб-сборка: cookie и `Accept-Language` на `/api/v1/me`, без `Authorization`» не проверен в браузере с живым сервером — только юнит-тестом клиента.~~ — закрыто 2026-11-02: веб-сборка (`sync-spa.mjs`) на `next dev` с PostgreSQL; после перезагрузки `GET /api/v1/me` → 200 по cookie, клиент шлёт `credentials: include` и `accept-language`, без `authorization` (CLE-43).
   evidence: Ревью 2026-11-01. Unverified medium. Закрыть ручной проверкой: `npm run web` в `apps/mobile` + сервер с БД, вкладка Network. Linear CLE-43.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-клиент-expo-api-клиент-и-сессия-приложения.md`
   summary: ~~Успешные ответы разбираются строго (`meSchema` — `z.strictObject`): новое поле в `/api/v1/me` (например `locale` по AD-27) превратит ответ старой нативной сборки в `network`, и при запуске она покажет «Нет связи».~~ — снято 2026-11-01: клиент из `main` (Stories 1.5/1.6) не проверяет `data` строгой схемой.

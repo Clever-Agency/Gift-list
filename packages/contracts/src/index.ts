@@ -128,6 +128,8 @@ export {
   type TimeZoneBody,
 } from "./auth";
 
+export { rateLimitedError, rateLimitedParams } from "./rate-limit";
+
 export {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,

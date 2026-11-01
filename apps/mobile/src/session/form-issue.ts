@@ -45,10 +45,22 @@ export function issueFromError(
   if (error.code === "VALIDATION" && error.field === "nick") {
     return { field: "nick", text: t("register.nickRules") };
   }
+  if (error.code === "RATE_LIMITED") {
+    return { text: common("errors.code.RATE_LIMITED", rateLimitValues(error.params) ?? { unit: "other" }) };
+  }
   if (error.field) {
     return { field: error.field, text: common(`errors.code.${error.code as ErrorCode}`) };
   }
   return { text: common(`errors.code.${error.code as ErrorCode}`) };
+}
+
+function rateLimitValues(
+  params: ActionError["params"],
+): Record<string, string | number> | undefined {
+  const unit = params?.unit;
+  const count = params?.count;
+  if ((unit !== "second" && unit !== "minute") || typeof count !== "number") return undefined;
+  return { unit, count };
 }
 
 export function firstZodField(path: readonly PropertyKey[] | undefined): string | undefined {

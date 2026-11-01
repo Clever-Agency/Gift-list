@@ -35,7 +35,7 @@ beforeEach(() => {
   requestPasswordReset.mockReset();
   resetPassword.mockReset();
   consumeRateLimit.mockReset();
-  consumeRateLimit.mockResolvedValue(true);
+  consumeRateLimit.mockResolvedValue({ allowed: true });
   requestPasswordReset.mockResolvedValue({ status: true, message: providerMessage });
   resetPassword.mockResolvedValue({ status: true });
 });
@@ -76,7 +76,7 @@ describe("POST /api/v1/password/forgot", () => {
       expect(key).toBe("password-forgot:203.0.113.8");
       expect(limit).toEqual({ max: 5, windowSeconds: 60 * 60 });
       count += 1;
-      return count <= 5;
+      return count <= 5 ? { allowed: true } : { allowed: false, retryAfterSeconds: 125 };
     });
     for (let n = 0; n < 5; n += 1) {
       const res = await forgot(post("/api/v1/password/forgot", { email: "known@example.com" }));
@@ -89,6 +89,7 @@ describe("POST /api/v1/password/forgot", () => {
       ok: false,
       code: "RATE_LIMITED",
       message: "Too many password reset attempts",
+      params: { unit: "minute", count: 3 },
     });
     expect(JSON.stringify(body)).not.toContain("other@example.com");
     expect(JSON.stringify(body)).not.toContain("known@example.com");

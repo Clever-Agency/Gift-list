@@ -1,6 +1,11 @@
 import "server-only";
 
-import type { ActionResult, PasswordForgotBody, PasswordResetBody } from "@gift-list/contracts";
+import {
+  rateLimitedError,
+  type ActionResult,
+  type PasswordForgotBody,
+  type PasswordResetBody,
+} from "@gift-list/contracts";
 import { auth } from "@/lib/auth";
 import { getEnv } from "@/lib/env";
 import { passwordResetRedirectTo } from "@/lib/password-reset-mail";
@@ -37,9 +42,9 @@ export async function requestPasswordReset(
   input: PasswordForgotBody,
   headers: Headers,
 ): Promise<ActionResult<{ accepted: true }>> {
-  const allowed = await consumeRateLimit(`password-forgot:${clientIp(headers)}`, REGISTER_LIMIT);
-  if (!allowed) {
-    return { ok: false, code: "RATE_LIMITED", message: "Too many password reset attempts" };
+  const decision = await consumeRateLimit(`password-forgot:${clientIp(headers)}`, REGISTER_LIMIT);
+  if (!decision.allowed) {
+    return rateLimitedError("Too many password reset attempts", decision.retryAfterSeconds);
   }
   await auth.api.requestPasswordReset({
     body: {

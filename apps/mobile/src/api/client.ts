@@ -1,4 +1,10 @@
-import type { ActionError, ActionResult } from "@gift-list/contracts";
+import {
+  actionErrorSchema,
+  errorCodeSchema,
+  errorReasonSchema,
+  type ActionError,
+  type ActionResult,
+} from "@gift-list/contracts";
 import { getLocales } from "expo-localization";
 import { Platform } from "react-native";
 import { getApiBaseUrl } from "@/config/env";
@@ -9,15 +15,41 @@ export type ClientResult<T> = ActionResult<T> | { ok: false; network: true };
 function languageTag(): string {
   const tag = getLocales()
     .map((item) => item.languageTag)
-    .find((value): value is string => typeof value === "string" && value.length > 0);
+    .find(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    );
   return tag ?? "ru";
 }
 
-function isActionResult(value: unknown): value is ActionResult<unknown> {
-  if (!value || typeof value !== "object" || !("ok" in value)) return false;
-  const record = value as { ok: unknown; code?: unknown; data?: unknown };
-  if (record.ok === true) return "data" in record;
-  return record.ok === false && typeof record.code === "string";
+/** Returns a normalized result, or null when the body is not an API envelope. */
+function parseEnvelope(value: unknown): ActionResult<unknown> | null {
+  if (!value || typeof value !== "object" || !("ok" in value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.ok === true)
+    return "data" in record ? (value as ActionResult<unknown>) : null;
+  if (record.ok !== false) return null;
+  const code = errorCodeSchema.safeParse(record.code);
+  if (!code.success) return null;
+  const error: ActionError = {
+    ok: false,
+    code: code.data,
+    message: typeof record.message === "string" ? record.message : "",
+  };
+  const reason = errorReasonSchema.safeParse(record.reason);
+  if (reason.success) error.reason = reason.data;
+  if (typeof record.field === "string") error.field = record.field;
+  const params = actionErrorSchema.shape.params.safeParse(record.params);
+  if (params.success && params.data !== undefined) error.params = params.data;
+  return error;
+}
+
+/** Requests that create a session never read the stored token: a broken store must not block sign-in. */
+function createsSession(method: string, path: string): boolean {
+  if (path.startsWith("/api/auth/")) return true;
+  return (
+    method === "POST" &&
+    (path === "/api/v1/session" || path === "/api/v1/register")
+  );
 }
 
 export async function apiRequest<T>(
@@ -30,8 +62,15 @@ export async function apiRequest<T>(
   if (init?.body !== undefined) headers.set("content-type", "application/json");
   if (Platform.OS !== "web") {
     headers.set("expo-origin", "giftlist://");
-    const token = await readSessionToken();
-    if (token) headers.set("authorization", `Bearer ${token}`);
+    if (!createsSession(init?.method ?? "GET", path)) {
+      try {
+        // A failed read must not look like "no token": an anonymous request would drop a working session.
+        const token = await readSessionToken();
+        if (token) headers.set("authorization", `Bearer ${token}`);
+      } catch {
+        return { ok: false, network: true };
+      }
+    }
   }
 
   let response: Response;
@@ -49,7 +88,13 @@ export async function apiRequest<T>(
 
   if (Platform.OS !== "web") {
     const token = response.headers.get("set-auth-token");
-    if (token) await writeSessionToken(token);
+    if (token) {
+      try {
+        await writeSessionToken(token);
+      } catch {
+        return { ok: false, network: true };
+      }
+    }
   }
 
   let json: unknown;
@@ -58,10 +103,13 @@ export async function apiRequest<T>(
   } catch {
     return { ok: false, network: true };
   }
-  if (!isActionResult(json)) return { ok: false, network: true };
-  return json as ClientResult<T>;
+  const result = parseEnvelope(json);
+  if (!result) return { ok: false, network: true };
+  return result as ClientResult<T>;
 }
 
-export function isActionError(result: ClientResult<unknown>): result is ActionError {
+export function isActionError(
+  result: ClientResult<unknown>,
+): result is ActionError {
   return result.ok === false && !("network" in result);
 }

@@ -116,8 +116,9 @@ describe("listDataSchema", () => {
 
 describe("meSchema", () => {
   it("is strict", () => {
-    const me = { id: "u1", email: "a@example.com", name: "Анна", nick: "anna" };
+    const me = { id: "u1", email: "a@example.com", name: "Анна", nick: "anna", timeZone: null };
     expect(meSchema.safeParse(me).success).toBe(true);
+    expect(meSchema.safeParse({ ...me, timeZone: "Europe/Minsk" }).success).toBe(true);
     expect(meSchema.safeParse({ ...me, hideFromSearch: true }).success).toBe(false);
   });
 });

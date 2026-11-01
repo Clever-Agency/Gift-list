@@ -1,21 +1,51 @@
 {
+  "form": {
+    "email": "Email",
+    "password": "Пароль",
+    "name": "Имя",
+    "nick": "Ник",
+    "showPassword": "Показать пароль",
+    "submitLogin": "Войти",
+    "submitRegister": "Зарегистрироваться",
+    "nickPreview": "@{nick}",
+    "network": "Нет соединения. Попробуйте ещё раз."
+  },
   "login": {
     "title": "Вход",
     "pageTitle": "Вход — {brand}",
     "toRegister": "Создать аккаунт",
-    "toHome": "На главную"
+    "toHome": "На главную",
+    "forgot": "Забыли пароль",
+    "invalid": "Неверный email или пароль."
   },
   "register": {
     "title": "Регистрация",
     "pageTitle": "Регистрация — {brand}",
     "toLogin": "Войти",
-    "toHome": "На главную"
+    "toHome": "На главную",
+    "nickRules": "3–24 символа: латиница, цифры, _"
   },
   "home": {
     "title": "Мой вишлист",
     "pageTitle": "Главная — {brand}",
     "toLogin": "Войти",
-    "toRegister": "Регистрация"
+    "toRegister": "Регистрация",
+    "logout": "Выйти"
+  },
+  "forgot": {
+    "title": "Сброс пароля",
+    "pageTitle": "Сброс пароля — {brand}",
+    "toLogin": "Войти"
+  },
+  "wishlist": {
+    "title": "Вишлист по ссылке",
+    "pageTitle": "Вишлист по ссылке — {brand}",
+    "toHome": "Мой вишлист"
+  },
+  "invite": {
+    "title": "Приглашение",
+    "pageTitle": "Приглашение — {brand}",
+    "toHome": "Мой вишлист"
   },
   "contractsOk": "Контракт на месте",
   "smoke": {

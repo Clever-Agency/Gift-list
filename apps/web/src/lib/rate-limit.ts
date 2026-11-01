@@ -6,13 +6,17 @@ import { prisma } from "@/db/client";
 export const REGISTER_LIMIT = { max: 5, windowSeconds: 60 * 60 } as const;
 
 /** Client IP as set by the hosting proxy (Vercel puts the real client first). */
-export async function getClientIp(): Promise<string> {
-  const h = await headers();
+export function clientIp(h: Headers): string {
   return (
     h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     h.get("x-real-ip") ||
     "unknown"
   );
+}
+
+/** Client IP from the current Next.js request headers. */
+export async function getClientIp(): Promise<string> {
+  return clientIp(await headers());
 }
 
 /**

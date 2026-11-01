@@ -18,7 +18,7 @@ function createAuth() {
     advanced: { database: { generateId: () => createId() } },
     emailAndPassword: {
       enabled: true,
-      // Sign-up goes through the `register` action so the user and both lists
+      // Sign-up goes through `registerUser` so the user and the single list
       // are created in one transaction (AD-6); the raw endpoint stays closed.
       disableSignUp: true,
     },
@@ -27,10 +27,13 @@ function createAuth() {
         nick: { type: "string", input: false },
         nickNormalized: { type: "string", input: false },
         hideFromSearch: { type: "boolean", input: false },
+        locale: { type: "string", required: false, input: false, defaultValue: "ru" },
+        timeZone: { type: "string", required: false, input: false },
       },
     },
-    // Native app deep link (scheme in apps/mobile/app.config.ts).
-    trustedOrigins: ["giftlist://"],
+    // `giftlist://` is the shipped scheme. `exp://` and `exp+giftlist://` match
+    // Expo Go and the dev client: a pattern without an authority allows any host.
+    trustedOrigins: ["giftlist://", "exp://", "exp+giftlist://"],
     // bearer() accepts `Authorization: Bearer` and adds `set-auth-token` to cookie-setting
     // responses; the /api/auth route strips that header for non-native requests.
     // nextCookies must stay last so Server Actions can set the session cookie.

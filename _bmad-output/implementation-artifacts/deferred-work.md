@@ -45,3 +45,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-http-адаптер-app-api-v1-и-сессия-приложения.md`
   summary: Нативный клиент 1.4/1.6 должен слать `expo-origin: giftlist://` (или `Origin: giftlist://`) на `/api/auth/*`, иначе сервер снимет `set-auth-token` и токен не придёт.
   evidence: CLE-36: обёртка `/api/auth/*` отдаёт `set-auth-token` только нативным запросам, чтобы токен не был доступен JS в браузере (AC 1.4, AD-3). Клиент `@better-auth/expo/client` шлёт `expo-origin` сам; свой fetch-клиент — должен явно.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-1-6-1-8-регистрация-вход-часовой-пояс.md`
+  summary: Из отложенного клиента Story 1.4 в этот заход вошли API-клиент с `Accept-Language`, токен в SecureStore и `Authorization` на Android/iOS, cookie в браузере, текст ошибки по `reason`/`code` и восстановление сессии через `GET /api/v1/me`.
+  evidence: CLE-37/38/39 нуждаются в сессии. История 1.4 в `sprint-status.yaml` остаётся `in-progress`: нет тест-раннера `apps/mobile` и конверта на ответ 500 при сбое инфраструктуры.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-1-6-1-8-регистрация-вход-часовой-пояс.md`
+  summary: Форма сброса пароля (Story 1.7) не делается; на входе есть ссылка «Забыли пароль» и заглушка `/forgot`.
+  evidence: CLE-40 отдельно. Ссылка нужна экрану входа, чтобы не вести в несуществующий маршрут.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-1-6-1-8-регистрация-вход-часовой-пояс.md`
+  summary: `/wishlist/:token` и `/invite/:token` только принимают возврат после входа. Список желаний и дружба по приглашению не реализованы.
+  evidence: AC 1.5 требует вернуться на эти пути. Наполнение — Story 2.1, 3.3 и 4.7. Дружба в транзакции регистрации не создаётся: модели `Friendship` ещё нет.

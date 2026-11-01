@@ -39,7 +39,7 @@ development_status:
   1-1-scaffold-проекта-из-starter-next-js-shadcn-forest-paper: done
   1-2-монорепозиторий-apps-web-apps-mobile-packages-contracts: done
   1-3-каркас-expo-и-токены-forest-paper: done # UX-спека приложения готова 2026-10-28
-  1-4-http-адаптер-app-api-v1-и-сессия-приложения: in-progress
+  1-4-http-адаптер-app-api-v1-и-сессия-приложения: done
   1-5-регистрация-и-один-вишлист: done # бывшая 1.2: один List, экраны регистрации
   1-6-вход-и-выход: done
   1-7-сброс-пароля-по-email: backlog

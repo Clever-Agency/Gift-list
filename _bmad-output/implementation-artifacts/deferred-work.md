@@ -37,7 +37,7 @@
   summary: Ответ `api/v1` при сбое инфраструктуры (`getSession` бросает, БД недоступна) — 500 Next без конверта AD-12; клиент должен трактовать не-конверт как сетевую ошибку.
   evidence: В закрытом наборе `ERROR_CODES` нет внутренней ошибки; вопрос встанет при клиентской части 1.4. Unverified medium.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-http-адаптер-app-api-v1-и-сессия-приложения.md`
-  summary: `trustedOrigins` содержит только `giftlist://`; Expo Go (`exp://`) и dev client (`exp+giftlist://`) получат отказ origin-check при входе.
+  summary: ~~`trustedOrigins` содержит только `giftlist://`; Expo Go (`exp://`) и dev client (`exp+giftlist://`) получат отказ origin-check при входе.~~ — закрыто CLE-42 2026-11-01: dev-origins были в коде безусловно (в т.ч. в проде); теперь только через `AUTH_DEV_TRUSTED_ORIGINS` (`getEnv()`), образец в `apps/web/.env.example`.
   evidence: Найдено ревью CLE-36. Добавлять dev-origins через `getEnv()` вместе с клиентским входом (1.4 клиент / 1.6). Unverified medium.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-http-адаптер-app-api-v1-и-сессия-приложения.md`
   summary: `parseJsonBody` (`apps/web/src/lib/api-v1.ts`) читает тело без ограничения размера.
@@ -57,3 +57,23 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-1-6-1-8-регистрация-вход-часовой-пояс.md`
   summary: `/wishlist/:token` и `/invite/:token` только принимают возврат после входа. Список желаний и дружба по приглашению не реализованы.
   evidence: AC 1.5 требует вернуться на эти пути. Наполнение — Story 2.1, 3.3 и 4.7. Дружба в транзакции регистрации не создаётся: модели `Friendship` ещё нет.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
+  summary: `AUTH_DEV_TRUSTED_ORIGINS` не проверяет значения и не блокируется в проде: `*`, `http(s)://…` или `exp://` в прод-env молча станут доверенными origins.
+  evidence: `devTrustedOriginsSchema` — `z.array(z.string())`; можно ограничить элементы кастомными схемами без хоста и отклонять непустое значение при `NODE_ENV=production`. Unverified medium (нужно решение, допустим ли dev-сервер с `NODE_ENV=production`).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
+  summary: Better Auth сам дописывает `BETTER_AUTH_TRUSTED_ORIGINS` из `process.env` в `trustedOrigins` в обход `getEnv()` (AD-16).
+  evidence: `node_modules/better-auth/dist/context/helpers.mjs:83` (1.7.14). Не вызвано CLE-42; решить — запретить переменную в `envSchema` или явно задокументировать. Medium.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
+  summary: Признак нативного клиента (`isNative` в `apps/web/src/lib/auth-token.ts`, `isNativeAuthRequest` в `auth-session.ts`) учитывает только `expo-origin` и `Origin: giftlist://`; клиент, шлющий `Origin: exp://…` без `expo-origin`, пройдёт origin-check, но не получит `set-auth-token`.
+  evidence: текущий `apps/mobile/src/api/client.ts` всегда шлёт `expo-origin: giftlist://`, поэтому сейчас не проявляется. Unverified medium — проверить при входе через `@better-auth/expo/client` (Story 1.6).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
+  summary: Тест `apps/web/src/lib/auth.test.ts` «exposes handler to toNextJsHandler's `in` check» падает по таймауту 5000 мс на холодном импорте `auth.ts` при параллельном `npm test` на Windows.
+  evidence: прогон CLE-42 — импорт 9.5 с, повторные прогоны зелёные; поднять таймаут теста или `testTimeout`. Low/flaky.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
+  summary: `npm run build` на Windows падает в `apps/web/scripts/sync-spa.mjs` с `spawnSync npm ENOENT`.
+  evidence: `spawnSync("npm", …)` без `shell` (строка ~13); на Windows нужен `npm.cmd`/`shell: true`. В CI (Linux) не проявляется.

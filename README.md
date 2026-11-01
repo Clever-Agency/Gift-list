@@ -25,6 +25,7 @@
 npm install
 cp apps/web/.env.example apps/web/.env
 # Отредактируйте DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL в apps/web/.env
+# Для входа из Expo Go или dev client раскомментируйте AUTH_DEV_TRUSTED_ORIGINS (только для разработки)
 ```
 
 `npm install` ставит все workspaces и запускает `prisma generate` в `apps/web`. Новую зависимость ставьте в нужный workspace: `npm install <pkg> -w @gift-list/web`.

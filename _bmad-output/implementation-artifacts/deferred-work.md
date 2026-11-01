@@ -89,5 +89,5 @@
   evidence: прогон CLE-42 — импорт 9.5 с, повторные прогоны зелёные; поднять таймаут теста или `testTimeout`. Low/flaky.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
-  summary: `npm run build` на Windows падает в `apps/web/scripts/sync-spa.mjs` с `spawnSync npm ENOENT`.
+  summary: ~~`npm run build` на Windows падает в `apps/web/scripts/sync-spa.mjs` с `spawnSync npm ENOENT`.~~ — закрыто CLE-44 2026-11-02: Expo CLI запускается через `process.execPath` без `npm` и shell.
   evidence: `spawnSync("npm", …)` без `shell` (строка ~13); на Windows нужен `npm.cmd`/`shell: true`. В CI (Linux) не проявляется.

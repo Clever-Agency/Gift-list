@@ -17,7 +17,7 @@ export function formIssue(
   result: Exclude<ClientResult<unknown>, { ok: true }>,
   t: Translate,
   common: Translate,
-  screen: "login" | "register",
+  screen: "login" | "register" | "forgot" | "reset",
 ): FormIssue {
   if ("network" in result) return { text: t("form.network") };
   return issueFromError(result, t, common, screen);
@@ -27,10 +27,13 @@ export function issueFromError(
   error: ActionError,
   t: Translate,
   common: Translate,
-  screen: "login" | "register",
+  screen: "login" | "register" | "forgot" | "reset",
 ): FormIssue {
   if (screen === "login" && error.code === "UNAUTHENTICATED") {
     return { text: t("login.invalid") };
+  }
+  if (error.reason === "RESET_LINK_STALE") {
+    return { reason: error.reason, text: common(`errors.reason.${error.reason}`) };
   }
   if (error.reason === "EMAIL_TAKEN" || error.reason === "NICK_TAKEN") {
     return {

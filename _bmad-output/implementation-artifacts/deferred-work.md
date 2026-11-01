@@ -57,3 +57,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-1-6-1-8-регистрация-вход-часовой-пояс.md`
   summary: `/wishlist/:token` и `/invite/:token` только принимают возврат после входа. Список желаний и дружба по приглашению не реализованы.
   evidence: AC 1.5 требует вернуться на эти пути. Наполнение — Story 2.1, 3.3 и 4.7. Дружба в транзакции регистрации не создаётся: модели `Friendship` ещё нет.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-сброс-пароля-по-email.md`
+  summary: Лимит сброса берёт IP из первого `X-Forwarded-For`, как регистрация; без заголовка все клиенты делят ключ `unknown`, с поддельным заголовком лимит обходится.
+  evidence: `clientIp` в `apps/web/src/lib/rate-limit.ts` существовал до Story 1.7 и так же используется регистрацией. Чинить разбор IP надо сразу для обоих ключей, не только для forgot.

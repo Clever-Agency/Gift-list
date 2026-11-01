@@ -20,6 +20,7 @@ export const ERROR_REASONS = [
   "NICK_TAKEN",
   "DUE_OUT_OF_RANGE",
   "DATES_LIMIT",
+  "RESET_LINK_STALE",
 ] as const;
 
 /** Closed set of machine-readable causes; the client maps them to `errors.reason.<REASON>`. */
@@ -115,10 +116,14 @@ export type ListData = z.infer<typeof listDataSchema>;
 export {
   NICK_PATTERN,
   loginBodySchema,
+  passwordForgotBodySchema,
+  passwordResetBodySchema,
   registerBodySchema,
   safeNextPath,
   timeZoneBodySchema,
   type LoginBody,
+  type PasswordForgotBody,
+  type PasswordResetBody,
   type RegisterBody,
   type TimeZoneBody,
 } from "./auth";

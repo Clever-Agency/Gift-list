@@ -29,6 +29,9 @@ async function* walk(dir) {
 const failures = [];
 
 const mobileEnv = path.join(root, "apps/mobile/src/config/env.ts");
+// Expo evaluates app.config.ts with Node require, before Metro, so it cannot
+// import src/config/env.ts. It may read EXPO_PUBLIC_API_BASE_URL itself.
+const mobileAppConfig = path.join(root, "apps/mobile/app.config.ts");
 
 for await (const file of walk(path.join(root, "apps/mobile"))) {
   const text = await readFile(file, "utf8");
@@ -40,7 +43,7 @@ for await (const file of walk(path.join(root, "apps/mobile"))) {
   ) {
     failures.push(`${relative}: must not reference apps/web`);
   }
-  if (file !== mobileEnv && /\bprocess\.env\b/.test(text)) {
+  if (file !== mobileEnv && file !== mobileAppConfig && /\bprocess\.env\b/.test(text)) {
     failures.push(`${relative}: reads process.env outside src/config/env.ts`);
   }
 }

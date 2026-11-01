@@ -11,8 +11,20 @@ afterEach(() => {
   else process.env.DATABASE_URL = originalDatabase;
   delete process.env.BETTER_AUTH_SECRET;
   delete process.env.BETTER_AUTH_URL;
+  delete process.env.RESEND_API_KEY;
+  delete process.env.EMAIL_FROM;
+  delete process.env.APPLE_TEAM_ID;
+  delete process.env.ANDROID_SHA256_CERT_FINGERPRINTS;
   delete process.env.AUTH_DEV_TRUSTED_ORIGINS;
 });
+
+function setRequiredEnv() {
+  process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
+  process.env.BETTER_AUTH_SECRET = "01234567890123456789012345678901";
+  process.env.BETTER_AUTH_URL = "http://127.0.0.1:3000";
+  process.env.RESEND_API_KEY = "re_test_key";
+  process.env.EMAIL_FROM = "noreply@example.com";
+}
 
 describe("getBrandName", () => {
   it("defaults to Gift List without DATABASE_URL", () => {
@@ -32,16 +44,53 @@ describe("getBrandName", () => {
   });
 
   it("getEnv uses the same blank-name default without failing the rest of the schema", async () => {
-    process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
-    process.env.BETTER_AUTH_SECRET = "01234567890123456789012345678901";
-    process.env.BETTER_AUTH_URL = "http://127.0.0.1:3000";
+    setRequiredEnv();
     process.env.BRAND_NAME = "  ";
     vi.resetModules();
     const { getEnv } = await import("./env");
     expect(getEnv().BRAND_NAME).toBe("Gift List");
-    delete process.env.DATABASE_URL;
-    delete process.env.BETTER_AUTH_SECRET;
-    delete process.env.BETTER_AUTH_URL;
+  });
+});
+
+describe("mail and app-link env", () => {
+  it("accepts an address or a named address and ignores blank link ids", async () => {
+    setRequiredEnv();
+    process.env.EMAIL_FROM = "Имя <noreply@example.com>";
+    process.env.APPLE_TEAM_ID = "  ";
+    process.env.ANDROID_SHA256_CERT_FINGERPRINTS = "";
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    expect(getEnv().EMAIL_FROM).toBe("Имя <noreply@example.com>");
+    expect(getEnv().APPLE_TEAM_ID).toBeUndefined();
+    expect(getEnv().ANDROID_SHA256_CERT_FINGERPRINTS).toBeUndefined();
+  });
+
+  it("keeps a comma-separated fingerprint list", async () => {
+    setRequiredEnv();
+    process.env.APPLE_TEAM_ID = "AB12CD34EF";
+    process.env.ANDROID_SHA256_CERT_FINGERPRINTS = "AA:BB, CC:DD";
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    expect(getEnv().APPLE_TEAM_ID).toBe("AB12CD34EF");
+    expect(getEnv().ANDROID_SHA256_CERT_FINGERPRINTS).toBe("AA:BB, CC:DD");
+  });
+
+  it("parses when Resend is unset so sign-in does not depend on it", async () => {
+    setRequiredEnv();
+    delete process.env.RESEND_API_KEY;
+    delete process.env.EMAIL_FROM;
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    expect(getEnv().RESEND_API_KEY).toBeUndefined();
+    expect(getEnv().EMAIL_FROM).toBeUndefined();
+  });
+
+  it("rejects an EMAIL_FROM that is neither an address nor Name <address>", async () => {
+    setRequiredEnv();
+    process.env.EMAIL_FROM = "not an email";
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    expect(() => getEnv()).toThrow();
   });
 });
 

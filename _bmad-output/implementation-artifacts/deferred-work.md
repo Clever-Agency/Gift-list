@@ -58,6 +58,10 @@
   summary: `/wishlist/:token` и `/invite/:token` только принимают возврат после входа. Список желаний и дружба по приглашению не реализованы.
   evidence: AC 1.5 требует вернуться на эти пути. Наполнение — Story 2.1, 3.3 и 4.7. Дружба в транзакции регистрации не создаётся: модели `Friendship` ещё нет.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-сброс-пароля-по-email.md`
+  summary: Лимит сброса берёт IP из первого `X-Forwarded-For`, как регистрация; без заголовка все клиенты делят ключ `unknown`, с поддельным заголовком лимит обходится.
+  evidence: `clientIp` в `apps/web/src/lib/rate-limit.ts` существовал до Story 1.7 и так же используется регистрацией. Чинить разбор IP надо сразу для обоих ключей, не только для forgot.
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-клиент-expo-api-клиент-и-сессия-приложения.md`
   summary: ~~Dev-origins Expo (`exp://`, `exp+giftlist://`) в `trustedOrigins` через необязательную переменную `getEnv()` (`AUTH_DEV_TRUSTED_ORIGINS`) с тестом в `auth.test.ts` и образцом в `apps/web/.env.example`.~~ — закрыто CLE-42 2026-11-01: `trustedOrigins = ["giftlist://", ...AUTH_DEV_TRUSTED_ORIGINS]`, образец закомментирован в `apps/web/.env.example`, спека `spec-cle-42-dev-origins-expo.md`.
   evidence: Спека клиента 1.4 вышла около 3000 токенов при ориентире 1600; человек 2026-11-01 выбрал отделить серверный пункт. AC Story 1.4 его не требуют (scheme `giftlist://` уже в `trustedOrigins`); нужен к первому входу из Expo Go или dev client — Story 1.6. Linear CLE-42.

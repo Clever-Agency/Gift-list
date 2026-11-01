@@ -15,7 +15,7 @@ vi.mock("@/db/generated/client", () => ({
 vi.mock("@/lib/auth", () => ({ auth: { api: { signInEmail } } }));
 vi.mock("@/lib/rate-limit", () => ({
   REGISTER_LIMIT: { max: 5, windowSeconds: 3600 },
-  consumeRateLimit: async () => true,
+  consumeRateLimit: async () => ({ allowed: true }),
   clientIp: () => "127.0.0.1",
 }));
 

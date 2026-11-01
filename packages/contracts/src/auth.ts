@@ -23,6 +23,38 @@ export const loginBodySchema = z.object({
 
 export type LoginBody = z.infer<typeof loginBodySchema>;
 
+export const passwordForgotBodySchema = z.object({
+  email: emailSchema,
+});
+
+export type PasswordForgotBody = z.infer<typeof passwordForgotBodySchema>;
+
+/**
+ * `token` is the raw reset-link query value. An omitted or blank token fails
+ * on `token` so the route can answer `RESET_LINK_STALE`. Password length is
+ * checked only after the token is present, so a short password does not spend it.
+ */
+export const passwordResetBodySchema = z
+  .object({
+    token: z.string().optional(),
+    password: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (typeof value.token !== "string" || value.token.trim().length === 0) {
+      ctx.addIssue({ code: "custom", path: ["token"], message: "Reset link is stale" });
+      return;
+    }
+    if (typeof value.password !== "string" || value.password.length < 8 || value.password.length > 128) {
+      ctx.addIssue({ code: "custom", path: ["password"], message: "Invalid input" });
+    }
+  })
+  .transform((value) => ({
+    token: value.token as string,
+    password: value.password as string,
+  }));
+
+export type PasswordResetBody = z.infer<typeof passwordResetBodySchema>;
+
 export const timeZoneBodySchema = z.object({
   timeZone: z.string().optional(),
 });

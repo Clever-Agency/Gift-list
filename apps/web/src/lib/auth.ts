@@ -8,19 +8,32 @@ import { bearer } from "better-auth/plugins";
 import { createId } from "@paralleldrive/cuid2";
 import { prisma } from "@/db/client";
 import { getEnv } from "@/lib/env";
+import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
 
 function createAuth() {
   const env = getEnv();
   return betterAuth({
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
-    database: prismaAdapter(prisma, { provider: "postgresql" }),
+    database: prismaAdapter(prisma, { provider: "postgresql", transaction: true }),
     advanced: { database: { generateId: () => createId() } },
     emailAndPassword: {
       enabled: true,
       // Sign-up goes through `registerUser` so the user and the single list
       // are created in one transaction (AD-6); the raw endpoint stays closed.
       disableSignUp: true,
+      resetPasswordTokenExpiresIn: 60 * 60,
+      // Safe together with `transaction: true`: the token, the new password,
+      // and session revocation commit or roll back as one unit.
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, token }) => {
+        const locale = "locale" in user && typeof user.locale === "string" ? user.locale : null;
+        try {
+          await sendPasswordResetEmail({ to: user.email, locale, token });
+        } catch (error) {
+          console.error("Password reset email failed", error);
+        }
+      },
     },
     user: {
       additionalFields: {

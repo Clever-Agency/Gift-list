@@ -31,6 +31,17 @@ describe("actionResultSchema", () => {
     expect(schema.safeParse({ ok: true, data: { id: 1 } }).success).toBe(false);
   });
 
+  it("accepts RESET_LINK_STALE", () => {
+    expect(
+      schema.safeParse({
+        ok: false,
+        code: "VALIDATION",
+        message: "Reset link is stale",
+        reason: "RESET_LINK_STALE",
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts an error with reason and field", () => {
     const result = schema.safeParse({
       ok: false,

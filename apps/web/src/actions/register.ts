@@ -5,6 +5,7 @@ import { hashPassword } from "better-auth/crypto";
 import {
   negotiateLocale,
   preferredFromAcceptLanguage,
+  rateLimitedError,
   safeNextPath,
   type ActionResult,
   type Me,
@@ -37,10 +38,10 @@ function validation(field?: string, reason?: "EMAIL_TAKEN" | "NICK_TAKEN"): Acti
  * then opens a Better Auth session. `accountId` matches `user.id` so `signInEmail` finds it.
  */
 export async function registerUser(input: RegisterBody, headers: Headers): Promise<AuthOutcome> {
-  const allowed = await consumeRateLimit(`register:${clientIp(headers)}`, REGISTER_LIMIT);
-  if (!allowed) {
+  const decision = await consumeRateLimit(`register:${clientIp(headers)}`, REGISTER_LIMIT);
+  if (!decision.allowed) {
     return {
-      result: { ok: false, code: "RATE_LIMITED", message: "Too many registration attempts" },
+      result: rateLimitedError("Too many registration attempts", decision.retryAfterSeconds),
     };
   }
 

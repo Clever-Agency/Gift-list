@@ -19,16 +19,20 @@ export async function getClientIp(): Promise<string> {
   return clientIp(await headers());
 }
 
+export type RateLimitDecision =
+  | { allowed: true }
+  | { allowed: false; retryAfterSeconds: number };
+
 /**
  * Fixed-window counter in Postgres. The upsert is a single atomic statement,
  * so concurrent requests cannot both slip under the limit.
- * Returns true when the call is allowed.
+ * A denied call does not move `windowStart`: further attempts wait out the same window.
  */
 export async function consumeRateLimit(
   key: string,
   { max, windowSeconds }: { max: number; windowSeconds: number },
-): Promise<boolean> {
-  const rows = await prisma.$queryRaw<{ count: number }[]>`
+): Promise<RateLimitDecision> {
+  const rows = await prisma.$queryRaw<{ count: number; retryAfterSeconds: number }[]>`
     INSERT INTO "RateLimit" ("key", "count", "windowStart")
     VALUES (${key}, 1, now())
     ON CONFLICT ("key") DO UPDATE SET
@@ -38,6 +42,13 @@ export async function consumeRateLimit(
       "windowStart" = CASE
         WHEN "RateLimit"."windowStart" < now() - make_interval(secs => ${windowSeconds})
         THEN now() ELSE "RateLimit"."windowStart" END
-    RETURNING "count"`;
-  return rows[0].count <= max;
+    RETURNING
+      "count"::int AS "count",
+      GREATEST(
+        1,
+        CEIL(EXTRACT(EPOCH FROM ("windowStart" + make_interval(secs => ${windowSeconds}) - now())))
+      )::int AS "retryAfterSeconds"`;
+  const row = rows[0];
+  if (!row || row.count <= max) return { allowed: true };
+  return { allowed: false, retryAfterSeconds: row.retryAfterSeconds };
 }

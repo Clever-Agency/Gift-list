@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { loginBodySchema, registerBodySchema, safeNextPath } from "./auth";
+import {
+  loginBodySchema,
+  passwordForgotBodySchema,
+  passwordResetBodySchema,
+  registerBodySchema,
+  safeNextPath,
+} from "./auth";
 
 describe("safeNextPath", () => {
   it("keeps a relative wishlist path and its query", () => {
@@ -50,5 +56,45 @@ describe("registerBodySchema", () => {
 describe("loginBodySchema", () => {
   it("rejects an empty password", () => {
     expect(loginBodySchema.safeParse({ email: "a@example.com", password: "" }).success).toBe(false);
+  });
+});
+
+describe("passwordForgotBodySchema", () => {
+  it("normalizes email", () => {
+    expect(passwordForgotBodySchema.parse({ email: "  A@Example.com " }).email).toBe("a@example.com");
+  });
+
+  it("rejects an email that is not an address", () => {
+    const parsed = passwordForgotBodySchema.safeParse({ email: "not-an-email" });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["email"]);
+  });
+});
+
+describe("passwordResetBodySchema", () => {
+  it("accepts a token and a password of 8 to 128 characters", () => {
+    expect(passwordResetBodySchema.parse({ token: "tok", password: "12345678" })).toEqual({
+      token: "tok",
+      password: "12345678",
+    });
+    expect(passwordResetBodySchema.safeParse({ token: "tok", password: "x".repeat(128) }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects a short or oversized password without blaming the token", () => {
+    for (const password of ["1234567", "x".repeat(129)]) {
+      const parsed = passwordResetBodySchema.safeParse({ token: "live", password });
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["password"]);
+    }
+  });
+
+  it("rejects a missing or blank token before the password", () => {
+    for (const body of [{ password: "password1" }, { token: "  ", password: "short" }, {}]) {
+      const parsed = passwordResetBodySchema.safeParse(body);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["token"]);
+    }
   });
 });

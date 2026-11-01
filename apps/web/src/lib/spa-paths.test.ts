@@ -9,7 +9,7 @@ describe("isNextOwnedPath", () => {
     },
   );
 
-  it.each(["/", "/login", "/register", "/wishlist/x", "/lists", "/long", "/invite"])(
+  it.each(["/", "/login", "/register", "/forgot", "/reset", "/wishlist/x", "/lists", "/long", "/invite"])(
     "leaves %s to the SPA",
     (pathname) => {
       expect(isNextOwnedPath(pathname)).toBe(false);

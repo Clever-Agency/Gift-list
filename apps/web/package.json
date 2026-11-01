@@ -9,7 +9,7 @@
     "lint": "eslint",
     "migrate": "prisma migrate dev",
     "postinstall": "prisma generate",
-    "typecheck": "next typegen && tsc --noEmit",
+    "typecheck": "prisma generate && next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },

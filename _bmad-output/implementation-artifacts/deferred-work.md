@@ -99,3 +99,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-56-лимит-попыток-входа.md`
   summary: ~~`POST /api/auth/sign-in/email` не тратит счётчик `POST /api/v1/session`: catch-all Better Auth по-прежнему проверяет пароль, его лимитер — память процесса и только в production.~~ Закрыто CLE-57: сырые `/sign-in/email`, `/sign-up/email` и `/request-password-reset` отвечают 404 до обработчика.
   evidence: Закрыто CLE-57. `disabledPaths` в `apps/web/src/lib/auth.ts` отвечает 404 на `/sign-in/email`, `/sign-up/email` и `/request-password-reset` до обработчика. Тест — `apps/web/src/lib/auth.test.ts`. Клиент входит через `/api/v1/session`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-58-прежние-ссылки-сброса-после-смены-пароля.md`
+  summary: Смена пароля вошедшим (`/change-password`) не гасит уже выданные ссылки `reset-password:*`.
+  evidence: `onPasswordReset` вызывается только из сброса. `changePassword` пишет новый пароль своей транзакцией и хук не зовёт. Сырой путь не в `disabledPaths`. Ссылка, выданная до смены, всё ещё задаёт пароль и при флаге отзыва гасит сессии. Вне CLE-58.

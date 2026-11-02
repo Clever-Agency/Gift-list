@@ -59,7 +59,8 @@ export async function requestPasswordReset(
 /**
  * Sets the password through Better Auth. A live but too-short password is rejected
  * before the token is spent. A missing, expired, or already used token is `RESET_LINK_STALE`.
- * This does not open a session.
+ * This does not open a session. Sibling reset links for the same user are removed
+ * by `onPasswordReset` after Better Auth commits the new password and revokes sessions.
  */
 export async function resetPassword(input: PasswordResetBody): Promise<ActionResult<{ saved: true }>> {
   if (input.token.trim().length === 0) return staleLink();

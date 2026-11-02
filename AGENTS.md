@@ -43,3 +43,7 @@
 - `apps/web/public/` генерируется: `npm run build` пересоздаёт его из Expo-web экспорта `apps/mobile` (`scripts/sync-spa.mjs`). Не правьте его — меняйте исходники в `apps/mobile`.
 
 <!-- /bmad:context -->
+
+## Epic acceptance testing
+
+- Когда все истории эпика в `sprint-status.yaml` переходят в `done`, проведите итоговое приёмочное тестирование эпика в отдельной сессии агента, до ретроспективы и до перевода эпика в `done`. Промпт — `_bmad-output/implementation-artifacts/epic-N-qa-prompt.md` по образцу `epic-1-qa-prompt.md`: критерии приёмки всех историй эпика из `epics.md`, проверки CI, сквозные сценарии и известные долги из `deferred-work.md`. Агент только проверяет, код не меняет; отчёт — `epic-N-qa-report.md` рядом с промптом. Дефекты из отчёта заводите задачами в Linear.

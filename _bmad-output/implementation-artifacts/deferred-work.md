@@ -111,3 +111,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-60-неизвестные-пути-api.md`
   summary: В production неизвестный путь `/api/auth/*` может ответить 429 Better Auth без конверта AD-12.
   evidence: Лимитер включён только в production и считает запрос до роутера; тело `{ message: "Too many requests. Please try again later." }` без `ok` и `code`. Закрытые `disabledPaths` по-прежнему 404 до лимитера и уже отдают конверт. Подменять любой не-конверт нельзя: `get-session` отвечает `null`, `/ok` — `{ ok: true }`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-63-минимум-8-символов-пароля.md`
+  summary: Ошибка поля не связана с вводом через `aria-invalid` и `aria-describedby`, фокус после отправки не переходит к первому полю, у ошибки нет иконки.
+  evidence: `DESIGN.md` → Форма и `EXPERIENCE.md` → доступность описывают эту связь. `TextField` и `PasswordField` по-прежнему отдают только `accessibilityHint`. Так было до CLE-63; у пароля добавлен лишь `accessibilityRole="alert"` на текст ошибки.

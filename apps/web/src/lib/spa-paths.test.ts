@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 import { NEXT_OWNED_PREFIXES, isNextOwnedPath, spaFallbackRewriteSources } from "./spa-paths";
 
 describe("isNextOwnedPath", () => {
-  it.each(["/api", "/api/auth", "/l/abc", "/i/abc", "/unsubscribe/t", "/admin", "/.well-known/assetlinks.json"])(
+  it.each([
+    "/api",
+    "/api/nope",
+    "/api/v1/nope",
+    "/api/auth",
+    "/l/abc",
+    "/i/abc",
+    "/unsubscribe/t",
+    "/admin",
+    "/.well-known/assetlinks.json",
+  ])(
     "owns %s",
     (pathname) => {
       expect(isNextOwnedPath(pathname)).toBe(true);

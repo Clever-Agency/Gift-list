@@ -107,3 +107,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-59-аноним-на-главной-вместо-входа.md`
   summary: «Выйти» на заглушке «Мой вишлист» остаётся primary, без блокировки повторного нажатия; ошибка сети — строка формы, не destructive toast.
   evidence: DESIGN относит «Выйти» и toast «Нет сети» к destructive. Кнопка и текст `form.network` пришли из Story 1.6 и в CLE-59 не менялись. Экраны входа уже глушат повторную отправку через `pending`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-60-неизвестные-пути-api.md`
+  summary: В production неизвестный путь `/api/auth/*` может ответить 429 Better Auth без конверта AD-12.
+  evidence: Лимитер включён только в production и считает запрос до роутера; тело `{ message: "Too many requests. Please try again later." }` без `ok` и `code`. Закрытые `disabledPaths` по-прежнему 404 до лимитера и уже отдают конверт. Подменять любой не-конверт нельзя: `get-session` отвечает `null`, `/ok` — `{ ok: true }`.

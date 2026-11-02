@@ -1,6 +1,6 @@
 import { registerBodySchema } from "@gift-list/contracts";
 import { registerUser } from "@/actions/register";
-import { parseJsonBody, toResponse } from "@/lib/api-v1";
+import { notFoundResponse, parseJsonBody, toResponse } from "@/lib/api-v1";
 import { withAuthSession } from "@/lib/auth-session";
 
 export async function POST(request: Request) {
@@ -10,3 +10,9 @@ export async function POST(request: Request) {
   if (outcome.session) return withAuthSession(request, outcome.session, outcome.result);
   return toResponse(outcome.result);
 }
+
+export const GET = notFoundResponse;
+export const PUT = notFoundResponse;
+export const PATCH = notFoundResponse;
+export const DELETE = notFoundResponse;
+export const HEAD = notFoundResponse;

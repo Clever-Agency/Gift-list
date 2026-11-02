@@ -1,7 +1,7 @@
 import { loginBodySchema } from "@gift-list/contracts";
 import { signInUser } from "@/actions/sign-in";
 import { signOutUser } from "@/actions/sign-out";
-import { parseJsonBody, toResponse } from "@/lib/api-v1";
+import { notFoundResponse, parseJsonBody, toResponse } from "@/lib/api-v1";
 import { withAuthSession } from "@/lib/auth-session";
 
 export async function POST(request: Request) {
@@ -17,3 +17,8 @@ export async function DELETE(request: Request) {
   if (outcome.session) return withAuthSession(request, outcome.session, outcome.result);
   return toResponse(outcome.result);
 }
+
+export const GET = notFoundResponse;
+export const PUT = notFoundResponse;
+export const PATCH = notFoundResponse;
+export const HEAD = notFoundResponse;

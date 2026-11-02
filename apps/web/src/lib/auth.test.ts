@@ -172,17 +172,62 @@ describe("closed Better Auth HTTP routes", () => {
       for (let attempt = 0; attempt < 4; attempt += 1) {
         const response = await POST(post(path, body));
         expect(response.status, path).toBe(404);
-        expect(await response.text()).toBe("Not Found");
+        expect(response.headers.get("content-type")).toContain("application/json");
+        expect(await response.json()).toEqual({
+          ok: false,
+          code: "NOT_FOUND",
+          message: "Not found",
+        });
         expect(response.headers.get("set-auth-token")).toBeNull();
         expect(response.headers.get("set-cookie")).toBeNull();
       }
       const slashed = await POST(post(`${path}/`, body));
       expect(slashed.status, path).toBe(404);
-      expect(await slashed.text()).toBe("Not Found");
+      expect(await slashed.json()).toEqual({
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Not found",
+      });
       expect(slashed.headers.get("set-auth-token")).toBeNull();
       expect(slashed.headers.get("set-cookie")).toBeNull();
     }
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("returns the NOT_FOUND envelope for an unknown auth path and an unsupported method", async () => {
+    const { GET, PUT } = await handler();
+    const unknown = await GET(new Request("http://127.0.0.1:3000/api/auth/nope"));
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Not found",
+    });
+    const method = await PUT(
+      post("/api/auth/sign-in/email", { email: "a@example.com", password: "password1" }),
+    );
+    expect(method.status).toBe(404);
+    expect(await method.json()).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Not found",
+    });
+    expect(method.headers.get("set-auth-token")).toBeNull();
+    expect(method.headers.get("set-cookie")).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("keeps a JSON 404 from a live Better Auth endpoint", async () => {
+    const { POST } = await handler();
+    const response = await POST(
+      post("/api/auth/sign-in/social", {
+        provider: "google",
+        callbackURL: "http://127.0.0.1:3000/",
+      }),
+    );
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toMatchObject({ code: "PROVIDER_NOT_FOUND" });
   });
 
   it("still answers session reads and the health route", async () => {

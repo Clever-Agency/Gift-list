@@ -18,6 +18,13 @@ export function toResponse<T>(result: ActionResult<T>): Response {
   });
 }
 
+/** Unknown path or method: the same envelope, so the client does not treat HTML or an empty body as `network`. */
+export function notFoundResponse(request?: Request): Response {
+  // The matched route is already unknown; the request only keeps the handler signature.
+  void request;
+  return toResponse({ ok: false, code: "NOT_FOUND", message: "Not found" });
+}
+
 /** First issue path joined with ".", or undefined when empty. */
 export function firstIssueField(error: z.ZodError): string | undefined {
   const path = error.issues[0]?.path;

@@ -1,6 +1,6 @@
 import { passwordResetBodySchema } from "@gift-list/contracts";
 import { resetPassword } from "@/actions/password-reset";
-import { parseJsonBody, toResponse } from "@/lib/api-v1";
+import { notFoundResponse, parseJsonBody, toResponse } from "@/lib/api-v1";
 
 const staleLink = {
   ok: false as const,
@@ -17,3 +17,9 @@ export async function POST(request: Request) {
   }
   return toResponse(await resetPassword(parsed.data));
 }
+
+export const GET = notFoundResponse;
+export const PUT = notFoundResponse;
+export const PATCH = notFoundResponse;
+export const DELETE = notFoundResponse;
+export const HEAD = notFoundResponse;

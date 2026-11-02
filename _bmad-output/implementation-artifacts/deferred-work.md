@@ -59,8 +59,8 @@
   evidence: AC 1.5 требует вернуться на эти пути. Наполнение — Story 2.1, 3.3 и 4.7. Дружба в транзакции регистрации не создаётся: модели `Friendship` ещё нет.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-7-сброс-пароля-по-email.md`
-  summary: Лимит сброса берёт IP из первого `X-Forwarded-For`, как регистрация; без заголовка все клиенты делят ключ `unknown`, с поддельным заголовком лимит обходится.
-  evidence: `clientIp` в `apps/web/src/lib/rate-limit.ts` существовал до Story 1.7 и так же используется регистрацией. Чинить разбор IP надо сразу для обоих ключей, не только для forgot.
+  summary: ~~Лимит сброса берёт IP из первого `X-Forwarded-For`, как регистрация; без заголовка все клиенты делят ключ `unknown`, с поддельным заголовком лимит обходится.~~ — закрыто CLE-56 2026-11-02: на своём Node-сервере `X-Forwarded-For` и `X-Real-IP` заменяются адресом TCP-соединения до того, как Next их прочитает; на Vercel платформенный заголовок не трогается.
+  evidence: `clientIp` в `apps/web/src/lib/rate-limit.ts` существовал до Story 1.7 и так же используется регистрацией. Чинить разбор IP надо сразу для обоих ключей, не только для forgot. Сделано в `apps/web/src/lib/peer-address.ts` для всех ключей сразу.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-клиент-expo-api-клиент-и-сессия-приложения.md`
   summary: ~~Dev-origins Expo (`exp://`, `exp+giftlist://`) в `trustedOrigins` через необязательную переменную `getEnv()` (`AUTH_DEV_TRUSTED_ORIGINS`) с тестом в `auth.test.ts` и образцом в `apps/web/.env.example`.~~ — закрыто CLE-42 2026-11-01: `trustedOrigins = ["giftlist://", ...AUTH_DEV_TRUSTED_ORIGINS]`, образец закомментирован в `apps/web/.env.example`, спека `spec-cle-42-dev-origins-expo.md`.
@@ -95,3 +95,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
   summary: ~~`npm run build` на Windows падает в `apps/web/scripts/sync-spa.mjs` с `spawnSync npm ENOENT`.~~ — закрыто CLE-44 2026-11-02: Expo CLI запускается через `process.execPath` без `npm` и shell.
   evidence: `spawnSync("npm", …)` без `shell` (строка ~13); на Windows нужен `npm.cmd`/`shell: true`. В CI (Linux) не проявляется.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-56-лимит-попыток-входа.md`
+  summary: `POST /api/auth/sign-in/email` не тратит счётчик `POST /api/v1/session`: catch-all Better Auth по-прежнему проверяет пароль, его лимитер — память процесса и только в production.
+  evidence: Приложение входит через `/api/v1/session` (`apps/mobile/app/(auth)/login.tsx`). Сырой эндпоинт остаётся в `apps/web/src/app/api/auth/[...all]/route.ts` и не вызывает `signInUser`. Тот же класс обхода, что CLE-57 для сброса; CLE-56 закрывает только `/api/v1/session`.

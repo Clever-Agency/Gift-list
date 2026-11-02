@@ -103,3 +103,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-58-прежние-ссылки-сброса-после-смены-пароля.md`
   summary: Смена пароля вошедшим (`/change-password`) не гасит уже выданные ссылки `reset-password:*`.
   evidence: `onPasswordReset` вызывается только из сброса. `changePassword` пишет новый пароль своей транзакцией и хук не зовёт. Сырой путь не в `disabledPaths`. Ссылка, выданная до смены, всё ещё задаёт пароль и при флаге отзыва гасит сессии. Вне CLE-58.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-59-аноним-на-главной-вместо-входа.md`
+  summary: «Выйти» на заглушке «Мой вишлист» остаётся primary, без блокировки повторного нажатия; ошибка сети — строка формы, не destructive toast.
+  evidence: DESIGN относит «Выйти» и toast «Нет сети» к destructive. Кнопка и текст `form.network` пришли из Story 1.6 и в CLE-59 не менялись. Экраны входа уже глушат повторную отправку через `pending`.

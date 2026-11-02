@@ -54,6 +54,11 @@ describe("auth proxy", () => {
     expect(ids.at(-1)).toBe("next-cookies");
     expect(auth.options.trustedOrigins).toContain("giftlist://");
     expect(auth.options.emailAndPassword?.disableSignUp).toBe(true);
+    expect(auth.options.disabledPaths).toEqual([
+      "/sign-in/email",
+      "/sign-up/email",
+      "/request-password-reset",
+    ]);
     expect(auth.options.emailAndPassword?.resetPasswordTokenExpiresIn).toBe(3600);
     expect(auth.options.emailAndPassword?.revokeSessionsOnPasswordReset).toBe(true);
     const database = auth.options.database;
@@ -121,5 +126,74 @@ describe("auth proxy", () => {
     vi.resetModules();
     const { auth } = await import("@/lib/auth");
     expect(auth.options.trustedOrigins).toEqual(["giftlist://", "exp://", "exp+giftlist://"]);
+  });
+});
+
+describe("closed Better Auth HTTP routes", () => {
+  const closed = [
+    {
+      path: "/api/auth/sign-in/email",
+      body: { email: "a@example.com", password: "password1" },
+    },
+    {
+      path: "/api/auth/sign-up/email",
+      body: { name: "Анна", email: "a@example.com", password: "password1" },
+    },
+    {
+      path: "/api/auth/request-password-reset",
+      body: { email: "a@example.com", redirectTo: "http://127.0.0.1:3000/reset" },
+    },
+  ] as const;
+
+  async function handler() {
+    setAuthEnv();
+    delete globalForAuth.auth;
+    vi.resetModules();
+    send.mockClear();
+    return import("@/app/api/auth/[...all]/route");
+  }
+
+  function post(path: string, body: unknown) {
+    return new Request(`http://127.0.0.1:3000${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://127.0.0.1:3000",
+        "x-forwarded-for": "203.0.113.8",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("returns 404 for sign-in, sign-up and password reset before any mail or session", async () => {
+    const { POST } = await handler();
+    for (const { path, body } of closed) {
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const response = await POST(post(path, body));
+        expect(response.status, path).toBe(404);
+        expect(await response.text()).toBe("Not Found");
+        expect(response.headers.get("set-auth-token")).toBeNull();
+        expect(response.headers.get("set-cookie")).toBeNull();
+      }
+      const slashed = await POST(post(`${path}/`, body));
+      expect(slashed.status, path).toBe(404);
+      expect(await slashed.text()).toBe("Not Found");
+      expect(slashed.headers.get("set-auth-token")).toBeNull();
+      expect(slashed.headers.get("set-cookie")).toBeNull();
+    }
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("still answers session reads and the health route", async () => {
+    setAuthEnv();
+    delete globalForAuth.auth;
+    vi.resetModules();
+    const { GET } = await import("@/app/api/auth/[...all]/route");
+    const session = await GET(new Request("http://127.0.0.1:3000/api/auth/get-session"));
+    expect(session.status).toBe(200);
+    expect(await session.json()).toBeNull();
+    const health = await GET(new Request("http://127.0.0.1:3000/api/auth/ok"));
+    expect(health.status).toBe(200);
+    expect(await health.json()).toEqual({ ok: true });
   });
 });

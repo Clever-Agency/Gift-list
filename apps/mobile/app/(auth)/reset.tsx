@@ -6,7 +6,13 @@ import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
-import { firstZodField, formIssue, issueFromError, type FormIssue } from "@/session/form-issue";
+import {
+  firstZodField,
+  formIssue,
+  issueFromError,
+  passwordFieldIssue,
+  type FormIssue,
+} from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { navLinkStyle } from "@/ui/nav-link";
@@ -44,6 +50,10 @@ export default function ResetScreen() {
     if (!parsed.success) {
       flight.current = false;
       const field = firstZodField(parsed.error.issues[0]?.path);
+      if (field === "password") {
+        setIssue(passwordFieldIssue(password, t, common));
+        return;
+      }
       setIssue(
         issueFromError(
           { ok: false, code: "VALIDATION", message: "Invalid input", ...(field ? { field } : {}) },
@@ -62,7 +72,8 @@ export default function ResetScreen() {
     setPending(false);
     if (!result.ok) {
       flight.current = false;
-      setIssue(formIssue(result, t, common, "reset"));
+      const issue = formIssue(result, t, common, "reset");
+      setIssue(issue.field === "password" ? passwordFieldIssue(password, t, common) : issue);
       return;
     }
     await auth.signOut();
@@ -103,6 +114,8 @@ export default function ResetScreen() {
               value={password}
               onChangeText={change}
               error={issue?.field === "password" ? issue.text : undefined}
+              // NOTE FOR UX: «Ошибки форм» не задаёт длину пароля. Подсказка и ошибка — form.passwordRules.
+              hint={password.length < 8 ? t("form.passwordRules") : undefined}
               showLabel={t("form.showPassword")}
               input={{
                 autoCapitalize: "none",

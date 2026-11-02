@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formIssue, issueFromError } from "./form-issue";
+import { formIssue, issueFromError, passwordFieldIssue } from "./form-issue";
 
 const t = (key: string) => key;
 const common = (key: string, values?: Record<string, string | number>) =>
@@ -80,6 +80,22 @@ describe("formIssue", () => {
       field: "nick",
       text: "register.nickRules",
     });
+  });
+
+  it("VALIDATION on password stays on the code text until the screen knows the length", () => {
+    expect(formIssue(err({ code: "VALIDATION", field: "password" }), fake, fake, "register")).toEqual({
+      field: "password",
+      text: "errors.code.VALIDATION",
+    });
+  });
+
+  it("passwordFieldIssue states the minimum only while the password is shorter than 8", () => {
+    expect(passwordFieldIssue("1234567", fake, fake)).toEqual({
+      field: "password",
+      text: "form.passwordRules",
+    });
+    expect(passwordFieldIssue("12345678", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("x".repeat(129), fake, fake).text).toBe("errors.code.VALIDATION");
   });
 
   it("falls back to errors.code", () => {

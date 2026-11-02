@@ -46,6 +46,7 @@ export function PasswordField({
   value,
   onChangeText,
   error,
+  hint,
   showLabel,
   input,
 }: {
@@ -53,10 +54,12 @@ export function PasswordField({
   value: string;
   onChangeText: (value: string) => void;
   error?: string;
+  hint?: string;
   showLabel: string;
   input: TextInputProps;
 }) {
   const [visible, setVisible] = useState(false);
+  const described = error ?? hint;
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -67,7 +70,7 @@ export function PasswordField({
           secureTextEntry={!visible}
           placeholderTextColor={colors["muted-foreground"]}
           accessibilityLabel={label}
-          accessibilityHint={error}
+          accessibilityHint={described}
           style={[styles.input, styles.passwordInput, error ? styles.inputError : null]}
           {...input}
         />
@@ -81,9 +84,14 @@ export function PasswordField({
           <Text style={styles.revealText}>{showLabel}</Text>
         </Pressable>
       </View>
-      {error ? (
-        <Text style={styles.error} accessibilityLiveRegion="polite">
-          {error}
+      {described ? (
+        <Text
+          key={error ? "error" : "hint"}
+          style={error ? styles.error : styles.hint}
+          accessibilityLiveRegion="polite"
+          accessibilityRole={error ? "alert" : undefined}
+        >
+          {described}
         </Text>
       ) : null}
     </View>

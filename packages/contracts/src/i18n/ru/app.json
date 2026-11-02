@@ -8,6 +8,7 @@
     "submitLogin": "Войти",
     "submitRegister": "Зарегистрироваться",
     "nickPreview": "@{nick}",
+    "passwordRules": "Минимум 8 символов",
     "network": "Нет соединения. Попробуйте ещё раз."
   },
   "login": {

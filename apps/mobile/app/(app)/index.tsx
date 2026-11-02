@@ -1,35 +1,28 @@
-import {
-  ERROR_CODES,
-  compareForSort,
-  errorCodeSchema,
-  formatDate,
-  formatPrice,
-} from "@gift-list/contracts";
-import { Link, Stack } from "expo-router";
-import { useState } from "react";
+import { router, Stack } from "expo-router";
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocale, useTranslations } from "use-intl";
-import { getApiBaseUrl, getBrandName } from "@/config/env";
+import { useTranslations } from "use-intl";
+import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { colors, spacing, textStyle } from "@/theme/tokens";
 import { PrimaryButton } from "@/ui/primary-button";
 import { AuthorLink } from "@/ui/author-link";
-import { navLinkStyle } from "@/ui/nav-link";
-
-const WISH_COUNTS = [1, 3, 5, 21] as const;
-const SORT_NAMES = ["Яна", "Алёна", "Алена"] as const;
 
 export default function HomeScreen() {
   const t = useTranslations("app");
   const common = useTranslations("common");
-  const locale = useLocale();
   const brand = getBrandName();
   const auth = useAuth();
   const [logoutError, setLogoutError] = useState<string | null>(null);
-  const wishes = WISH_COUNTS.map((count) => t("smoke.wishes", { count })).join(" · ");
-  const names = [...SORT_NAMES].sort((left, right) => compareForSort(locale, left, right));
-  const parsed = errorCodeSchema.safeParse(ERROR_CODES[0]);
+
+  useEffect(() => {
+    if (auth.state.status === "anonymous") {
+      router.replace({ pathname: "/login", params: { next: "/" } });
+    }
+  }, [auth.state.status]);
+
+  if (auth.state.status !== "ready") return null;
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -39,50 +32,21 @@ export default function HomeScreen() {
           {common("brandName", { brand })}
         </Text>
         <Text style={styles.title}>{t("home.title")}</Text>
-        <Text style={styles.body}>{wishes}</Text>
-        <Text style={styles.body}>
-          {t("smoke.prices", {
-            byn: formatPrice(1050, "BYN", locale),
-            rub: formatPrice(250000, "RUB", locale),
-          })}
-        </Text>
-        <Text style={styles.body}>{t("smoke.date", { date: formatDate("2026-10-31", locale) })}</Text>
-        <Text style={styles.body}>
-          {t("smoke.names", { a: names[0], b: names[1], c: names[2] })}
-        </Text>
-        <Text style={styles.caption}>{parsed.success ? t("contractsOk") : ""}</Text>
-        <Text style={styles.caption}>
-          {getApiBaseUrl().length > 0 ? common("apiSet") : common("apiUnset")}
-        </Text>
-        {auth.state.status === "anonymous" ? (
-          <>
-            <Link href="/login" style={navLinkStyle} accessibilityRole="link">
-              {t("home.toLogin")}
-            </Link>
-            <Link href="/register" style={navLinkStyle} accessibilityRole="link">
-              {t("home.toRegister")}
-            </Link>
-          </>
+        {logoutError ? (
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {logoutError}
+          </Text>
         ) : null}
-        {auth.state.status === "ready" ? (
-          <>
-            {logoutError ? (
-              <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
-                {logoutError}
-              </Text>
-            ) : null}
-            <PrimaryButton
-              label={t("home.logout")}
-              onPress={() => {
-                void (async () => {
-                  setLogoutError(null);
-                  const result = await auth.signOut();
-                  if (!result.ok) setLogoutError(t("form.network"));
-                })();
-              }}
-            />
-          </>
-        ) : null}
+        <PrimaryButton
+          label={t("home.logout")}
+          onPress={() => {
+            void (async () => {
+              setLogoutError(null);
+              const result = await auth.signOut();
+              if (!result.ok) setLogoutError(t("form.network"));
+            })();
+          }}
+        />
         <View style={styles.spacer} />
         <AuthorLink />
       </View>
@@ -112,14 +76,6 @@ const styles = StyleSheet.create({
   title: {
     ...textStyle("heading"),
     color: colors.foreground,
-  },
-  body: {
-    ...textStyle("body"),
-    color: colors.foreground,
-  },
-  caption: {
-    ...textStyle("caption"),
-    color: colors["muted-foreground"],
   },
   spacer: {
     flex: 1,

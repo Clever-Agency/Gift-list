@@ -61,6 +61,7 @@ describe("auth proxy", () => {
     ]);
     expect(auth.options.emailAndPassword?.resetPasswordTokenExpiresIn).toBe(3600);
     expect(auth.options.emailAndPassword?.revokeSessionsOnPasswordReset).toBe(true);
+    expect(typeof auth.options.emailAndPassword?.onPasswordReset).toBe("function");
     const database = auth.options.database;
     expect(typeof database).toBe("function");
     if (typeof database === "function") {

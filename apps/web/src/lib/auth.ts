@@ -9,6 +9,7 @@ import { createId } from "@paralleldrive/cuid2";
 import { prisma } from "@/db/client";
 import { getEnv } from "@/lib/env";
 import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
+import { invalidateOutstandingPasswordResets } from "@/lib/password-reset-tokens";
 
 function createAuth() {
   const env = getEnv();
@@ -33,6 +34,13 @@ function createAuth() {
         } catch (error) {
           console.error("Password reset email failed", error);
         }
+      },
+      // Вызывается после коммита пароля и отзыва сессий
+      // (`revokeSessionsOnPasswordReset`). Better Auth к этому моменту удалил
+      // только использованный токен — остальные ссылки этого пользователя гасим здесь,
+      // в том числе если сброс пришёл сырым `POST /api/auth/reset-password`.
+      onPasswordReset: async ({ user }) => {
+        await invalidateOutstandingPasswordResets(user.id);
       },
     },
     user: {

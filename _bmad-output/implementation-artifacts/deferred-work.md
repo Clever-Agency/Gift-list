@@ -97,5 +97,5 @@
   evidence: `spawnSync("npm", …)` без `shell` (строка ~13); на Windows нужен `npm.cmd`/`shell: true`. В CI (Linux) не проявляется.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-56-лимит-попыток-входа.md`
-  summary: `POST /api/auth/sign-in/email` не тратит счётчик `POST /api/v1/session`: catch-all Better Auth по-прежнему проверяет пароль, его лимитер — память процесса и только в production.
-  evidence: Приложение входит через `/api/v1/session` (`apps/mobile/app/(auth)/login.tsx`). Сырой эндпоинт остаётся в `apps/web/src/app/api/auth/[...all]/route.ts` и не вызывает `signInUser`. Тот же класс обхода, что CLE-57 для сброса; CLE-56 закрывает только `/api/v1/session`.
+  summary: ~~`POST /api/auth/sign-in/email` не тратит счётчик `POST /api/v1/session`: catch-all Better Auth по-прежнему проверяет пароль, его лимитер — память процесса и только в production.~~ Закрыто CLE-57: сырые `/sign-in/email`, `/sign-up/email` и `/request-password-reset` отвечают 404 до обработчика.
+  evidence: Закрыто CLE-57. `disabledPaths` в `apps/web/src/lib/auth.ts` отвечает 404 на `/sign-in/email`, `/sign-up/email` и `/request-password-reset` до обработчика. Тест — `apps/web/src/lib/auth.test.ts`. Клиент входит через `/api/v1/session`.

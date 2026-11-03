@@ -9,14 +9,14 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { fetchMyGifts } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { colors, spacing, textStyle } from "@/theme/tokens";
 import { AuthorLink } from "@/ui/author-link";
-import { cardGrid } from "@/ui/card-grid";
+import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
 import { WishCard } from "@/ui/gift-card";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -62,9 +62,11 @@ export default function MyWishlistScreen() {
   const brand = getBrandName();
   const auth = useAuth();
   const { width } = useWindowDimensions();
-  const grid = cardGrid(width);
-  const gutter =
-    width >= spacing["bp-medium"] ? spacing["page-gutter-lg"] : spacing["page-gutter"];
+  // Review m7: the safe-area insets (a notch in landscape) are outside the column,
+  // so the grid is measured against the width that is actually left for cards.
+  const insets = useSafeAreaInsets();
+  const grid = cardGrid(width, insets);
+  const gutter = pageGutter(width);
   const [state, setState] = useState<ScreenState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<string | null>(null);

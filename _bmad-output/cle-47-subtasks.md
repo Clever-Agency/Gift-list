@@ -12,7 +12,7 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 - [x] 5. `createGift` action: session required, owner's single list, status OPEN, returns AD-12 gift card
 - [x] 6. Tests for `createGift` (401, validation errors, defaults PUBLIC/USD, OPEN, list ownership)
 - [x] 7. `updateGift` action: owner only, same use-case module (AD-1), returns AD-12 card
-- [ ] 8. Tests for `updateGift` (401, not owner → NOT_FOUND/FORBIDDEN, partial update, validation)
+- [x] 8. Tests for `updateGift` (401, not owner → NOT_FOUND/FORBIDDEN, partial update, validation)
 - [ ] 9. `POST /api/v1/me/gifts` route → createGift + route test
 - [ ] 10. `PATCH /api/v1/me/gifts/[id]` route → updateGift + route test
 - [ ] 11. `GET /api/v1/me/gifts/[id]` (load one own gift for edit) + test

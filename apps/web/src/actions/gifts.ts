@@ -3,10 +3,12 @@ import "server-only";
 import {
   giftCardSchema,
   giftInputSchema,
+  giftUpdateSchema,
   type ActionResult,
   type GiftCard,
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
+import { Prisma } from "@/db/generated/client";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import { firstIssueField } from "@/lib/api-v1";
 import { auth } from "@/lib/auth";
@@ -15,6 +17,12 @@ const unauthenticated = {
   ok: false as const,
   code: "UNAUTHENTICATED" as const,
   message: "Authentication required",
+};
+
+const notFound = {
+  ok: false as const,
+  code: "NOT_FOUND" as const,
+  message: "Gift not found",
 };
 
 /** Columns the owner card reads; the same shape the list read selects (AD-12). */
@@ -81,4 +89,61 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   });
 
   return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
+}
+
+/**
+ * Story 2.2 (FR-10, AD-1): the owner edits a wish of their own list. The body is
+ * a partial (`giftUpdateSchema`), so only the keys that came in reach the row: an
+ * absent field keeps the stored value, `status`, list and `quantity` are not
+ * editable here (AD-8, Story 2.5). The ownership check rides in the write's
+ * `where`, so a gift of another list — or an archived one (AD-8) — matches
+ * nothing and answers NOT_FOUND without revealing that the id exists.
+ */
+export async function updateGift(
+  headers: Headers,
+  giftId: string,
+  body: unknown,
+): Promise<ActionResult<GiftCard>> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return unauthenticated;
+
+  const parsed = giftUpdateSchema.safeParse(body);
+  if (!parsed.success) return validation(firstIssueField(parsed.error));
+
+  const update = parsed.data;
+
+  // The owner is the list owner (AD-6); the caller cannot pick the list or gift.
+  const ownedGift = {
+    id: giftId,
+    archivedAt: null,
+    list: { ownerId: session.user.id },
+  };
+
+  // AD-25: a currency sent without an amount keeps the stored amount, so read it
+  // first. A stored `null` amount leaves nothing to price, and the currency is
+  // dropped again — a price never exists as a currency alone. The update below
+  // still carries the ownership gate, so this read is only for the mix-in.
+  if (update.priceCurrency !== undefined && update.priceAmount === undefined) {
+    const stored = await prisma.gift.findFirst({
+      where: ownedGift,
+      select: { priceAmount: true },
+    });
+    if (!stored) return notFound;
+    update.priceCurrency = stored.priceAmount === null ? null : update.priceCurrency;
+  }
+
+  try {
+    const row = await prisma.gift.update({
+      where: ownedGift,
+      data: update,
+      select: ownerGiftSelect,
+    });
+    return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
+  } catch (error) {
+    // P2025: the where matched nothing, i.e. a foreign or archived gift.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return notFound;
+    }
+    throw error;
+  }
 }

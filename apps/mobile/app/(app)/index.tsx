@@ -37,6 +37,15 @@ type ScreenState =
 
 const SKELETON_CARDS = [0, 1, 2];
 
+/**
+ * The footer row («Выйти» + «Написать автору») is pinned to the bottom of the column.
+ * The toast is lifted by exactly that row's height (`spacing.touch-target` plus
+ * `spacing.page-gutter`), so it never covers «Выйти» (`DESIGN.md` → Toast: «снизу,
+ * над прилипшей кнопкой»). The safe-area inset is already outside this box: both
+ * live inside `SafeAreaView`.
+ */
+const FOOTER_CLEARANCE = spacing["touch-target"] + spacing["page-gutter"];
+
 // NOTE FOR UX: the 10 s cold-load deadline («Нет сети при загрузке», EXPERIENCE →
 // State Patterns) needs a request timeout in `api/client`; until then a hung fetch
 // keeps the skeleton. The error view below already matches the same pattern.
@@ -206,9 +215,10 @@ export default function MyWishlistScreen() {
           )}
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View testID="wishlist-footer" style={styles.footer}>
           <Pressable
             accessibilityRole="button"
+            testID="wishlist-logout"
             onPress={signOut}
             style={({ pressed }) => [styles.logout, pressed ? styles.pressed : null]}
           >
@@ -217,7 +227,9 @@ export default function MyWishlistScreen() {
           <AuthorLink />
         </View>
       </View>
-      {toast ? <ToastHost message={toast} onDismiss={dismissToast} /> : null}
+      {toast ? (
+        <ToastHost message={toast} onDismiss={dismissToast} offsetBottom={FOOTER_CLEARANCE} />
+      ) : null}
     </SafeAreaView>
   );
 }

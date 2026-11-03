@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
+/** Style props per `testID`, so layout can be asserted without a real layout engine. */
+const layout = vi.hoisted(() => ({ styles: new Map<string, unknown>() }));
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/platform/session-token", () => store);
@@ -63,10 +65,27 @@ vi.mock("expo-router", () => ({
 }));
 vi.mock("react-native", async () => {
   const React = await import("react");
-  type Props = { children?: React.ReactNode; testID?: string };
+  type Props = {
+    children?: React.ReactNode;
+    testID?: string;
+    pointerEvents?: string;
+    style?: unknown;
+  };
+  /** Keeps the style of a `testID` element; a real layout engine is not available here. */
+  function record(testID: string | undefined, style: unknown) {
+    if (testID) layout.styles.set(testID, style);
+  }
+  function domProps(testID: string | undefined, pointerEvents?: string) {
+    return {
+      ...(testID ? { "data-testid": testID } : {}),
+      // Mirrors RN: `pointerEvents` is a View prop, not a style key.
+      ...(pointerEvents ? { "data-pointer-events": pointerEvents } : {}),
+    };
+  }
   const element = (tag: string) =>
-    function Element({ children, testID }: Props) {
-      return React.createElement(tag, testID ? { "data-testid": testID } : null, children);
+    function Element({ children, testID, pointerEvents, style }: Props) {
+      record(testID, style);
+      return React.createElement(tag, domProps(testID, pointerEvents), children);
     };
   return {
     StyleSheet: { create: (styles: unknown) => styles },
@@ -79,12 +98,22 @@ vi.mock("react-native", async () => {
       children,
       onPress,
       accessibilityLabel,
-    }: Props & { onPress?: () => void; accessibilityLabel?: string }) =>
-      React.createElement(
+      testID,
+      style,
+    }: Props & { onPress?: () => void; accessibilityLabel?: string }) => {
+      // Pressable takes `({ pressed }) => style`, the resting state is enough here.
+      record(
+        testID,
+        typeof style === "function"
+          ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
+          : style,
+      );
+      return React.createElement(
         "button",
-        { type: "button", "aria-label": accessibilityLabel, onClick: onPress },
+        { type: "button", "aria-label": accessibilityLabel, onClick: onPress, ...domProps(testID) },
         children,
-      ),
+      );
+    },
   };
 });
 vi.mock("react-native-safe-area-context", async () => {
@@ -166,6 +195,19 @@ function button(label: string): HTMLButtonElement | undefined {
   );
 }
 
+/** Style arrays are plain objects here: `StyleSheet.create` is the identity in the mock. */
+function flattenStyle(style: unknown): Record<string, unknown> {
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>(
+      (acc, part) => ({ ...acc, ...flattenStyle(part) }),
+      {},
+    );
+  }
+  return typeof style === "object" && style !== null
+    ? { ...(style as Record<string, unknown>) }
+    : {};
+}
+
 async function press(label: string) {
   const target = button(label);
   expect(target).toBeDefined();
@@ -186,6 +228,7 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  layout.styles.clear();
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -417,6 +460,48 @@ describe("мой вишлист: список", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
     expect(text()).toContain("Мой вишлист");
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
+  /**
+   * Review m4. `pointerEvents` is a View prop: in a style object react-native-web
+   * drops it, the full-width overlay then swallows touches meant for the screen.
+   * The toast is also lifted above the footer row, so «Выйти» is never covered
+   * (`DESIGN.md` → Toast: «снизу, над прилипшей кнопкой»).
+   */
+  it("toast: pointerEvents — проп, а не стиль, и «Выйти» под toast остаётся нажимаемой", async () => {
+    respond({ ok: false, network: true });
+    await mount();
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    const host = container.querySelector('[data-testid="toast-host"]');
+    expect(host).not.toBeNull();
+    // The touch-through overlay: the prop reaches the platform, the toast stays tappable.
+    expect(host?.getAttribute("data-pointer-events")).toBe("box-none");
+    const hostStyle = flattenStyle(layout.styles.get("toast-host"));
+    expect(hostStyle).not.toHaveProperty("pointerEvents");
+
+    // Geometry: the toast bottom sits at or above the top of the footer row.
+    const footerStyle = flattenStyle(layout.styles.get("wishlist-footer"));
+    const logoutStyle = flattenStyle(layout.styles.get("wishlist-logout"));
+    const footerHeight = Number(footerStyle.paddingBottom) + Number(logoutStyle.minHeight);
+    expect(footerHeight).toBeGreaterThan(0);
+    expect(Number(hostStyle.bottom)).toBeGreaterThanOrEqual(footerHeight);
+
+    // And the control still works while the toast is on screen.
+    api.apiRequest.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/api/v1/session"
+          ? { ok: true, data: { signedOut: true } }
+          : { ok: false, network: true },
+      ),
+    );
+    await press("Выйти");
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/" },
+    });
   });
 
   it("«Выйти» при живой сессии открывает вход", async () => {

@@ -12,16 +12,28 @@ export function ToastHost({
   message,
   tone = "error",
   onDismiss,
+  offsetBottom = 0,
 }: {
   message: string;
   tone?: "info" | "error";
   onDismiss: () => void;
+  /**
+   * Height of a sticky bottom control the toast must not cover — the screen lifts
+   * the toast above it (`DESIGN.md` → Toast: «над вкладками и над прилипшей кнопкой»).
+   */
+  offsetBottom?: number;
 }) {
   const t = useTranslations("app.toast");
   const palette = tone === "error" ? styles.error : styles.info;
 
   return (
-    <View style={styles.host}>
+    // `box-none` is a View prop, not a style key: the overlay lets touches through to
+    // the screen, the toast inside stays tappable. In a style object it is ignored.
+    <View
+      testID="toast-host"
+      pointerEvents="box-none"
+      style={[styles.host, { bottom: spacing["grid-gap"] + offsetBottom }]}
+    >
       <View
         accessibilityRole="alert"
         accessibilityLiveRegion="assertive"
@@ -47,9 +59,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: spacing["page-gutter"],
     right: spacing["page-gutter"],
-    bottom: spacing["grid-gap"],
     alignItems: "center",
-    pointerEvents: "box-none",
   },
   toast: {
     width: "100%",

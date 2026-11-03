@@ -11,7 +11,7 @@
 - [x] m1 Missing list / not_found rendered as empty wishlist
 - [x] m2 Contract parse failure shown as network error
 - [x] m3 Error screen always talks about network
-- [ ] m4 Toast pointerEvents in style instead of prop; toast covers "Выйти"
+- [x] m4 Toast pointerEvents in style instead of prop; toast covers "Выйти"
 - [ ] m5 No list/listitem accessibility roles
 - [ ] m6 Visibility chip has no icon
 - [ ] m7 Card grid width wrong on narrow screens / safe area

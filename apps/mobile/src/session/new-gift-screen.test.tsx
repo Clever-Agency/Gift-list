@@ -317,6 +317,18 @@ describe("новое желание: форма", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
+  it("пустое название: createGift не зовётся и ухода к списку нет", async () => {
+    signedIn();
+    await mount();
+
+    await press("Добавить желание");
+
+    // The form owns the rule; the screen must not reach the API without a title.
+    expect(gifts.createGift).not.toHaveBeenCalled();
+    expect(fieldText("Название")).toContain("Напишите, что вы хотите.");
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
   it("VALIDATION: ошибка появляется у поля, форма остаётся с введённым", async () => {
     signedIn();
     gifts.createGift.mockResolvedValue({

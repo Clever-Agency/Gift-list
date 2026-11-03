@@ -435,6 +435,55 @@ describe("изменение желания: сохранение", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
+  /**
+   * AD-25: the amount and its currency are all-or-nothing. Clearing the prefilled
+   * amount clears the stored currency with it, so the price disappears instead of
+   * keeping `RUB` next to a `null` amount.
+   */
+  it("очистка цены шлёт priceAmount: null и priceCurrency: null", async () => {
+    loaded();
+    gifts.updateGift.mockResolvedValue({
+      ok: true,
+      gift: { ...stored, priceAmount: null, priceCurrency: null },
+    });
+    await mount();
+
+    await type("Цена (необязательно)", "");
+    // An empty amount hides the currency choice (EXPERIENCE → Price field).
+    expect(text()).not.toContain("Валюта");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
+      title: "Наушники",
+      description: "Чёрные, с шумоподавлением",
+      priceAmount: null,
+      priceCurrency: null,
+      linkUrl: "https://example.com/x",
+      visibility: "FRIENDS",
+    });
+  });
+
+  /** D-25: an empty link clears the stored one instead of silently keeping it. */
+  it("очистка ссылки шлёт linkUrl: null", async () => {
+    loaded();
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: { ...stored, linkUrl: null } });
+    await mount();
+
+    await type("Ссылка (необязательно)", "");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
+      title: "Наушники",
+      description: "Чёрные, с шумоподавлением",
+      priceAmount: 25000,
+      priceCurrency: "RUB",
+      linkUrl: null,
+      visibility: "FRIENDS",
+    });
+  });
+
   it("VALIDATION: ошибка появляется у поля, форма остаётся с введённым", async () => {
     loaded();
     gifts.updateGift.mockResolvedValue({

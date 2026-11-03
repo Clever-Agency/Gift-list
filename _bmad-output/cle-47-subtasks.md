@@ -32,7 +32,7 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 - [x] 19. Replace `/gifts/new` placeholder with create screen (submit → back to list, list refresh)
 - [x] 20. Edit screen `/gifts/[id]/edit` (load, submit, not-found state)
 - [x] 21. Open edit from gift card on «Мой вишлист»
-- [ ] 22. Screen tests (create flow, edit flow, network/401 errors)
+- [x] 22. Screen tests (create flow, edit flow, network/401 errors)
 
 ## Wrap-up
 - [ ] 23. Full check: typecheck, lint, tests, build, check-boundaries

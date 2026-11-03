@@ -9,7 +9,17 @@ import MyWishlistScreen from "../../app/(app)/index";
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
-const navigation = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
+const navigation = vi.hoisted(() => ({
+  replace: vi.fn(),
+  push: vi.fn(),
+  setParams: vi.fn(),
+}));
+/**
+ * Search params stand-in: the create screen hands its «Добавлено в вишлист» notice
+ * over in `?toast=`, and `setParams` is where the list drops it again.
+ */
+const search = vi.hoisted(() => ({ params: {} as Record<string, string | undefined> }));
+
 /**
  * `useFocusEffect` stand-in: expo-router runs the callback while the screen is focused
  * and its cleanup when it blurs. `blur()`/`refocus()` walk the screen through that,
@@ -99,6 +109,7 @@ vi.mock("expo-router", async () => {
   return {
     router: navigation,
     Stack: { Screen: () => null },
+    useLocalSearchParams: () => search.params,
     useFocusEffect: (effect: () => void | (() => void)) => {
       const focused = React.useSyncExternalStore(
         focusStore.subscribe,
@@ -333,6 +344,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   layout.styles.clear();
   focusStore.reset();
+  search.params = {};
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -829,6 +841,49 @@ describe("мой вишлист: возврат на экран", () => {
 
     expect(text()).toContain("Наушники");
     expect(text()).not.toContain("Свитер");
+  });
+});
+
+/**
+ * Story 2.2: the create screen unmounts on the way back, so it hands its «Добавлено в
+ * вишлист» notice over in `?toast=gift_created` (the same hand-over the login screen
+ * gets in `?reason=`). The list shows it once and drops the param, so a refocus — and
+ * the refetch that comes with it — never replays it.
+ */
+describe("мой вишлист: весточка от формы создания", () => {
+  it("показывает «Добавлено в вишлист» из параметра и гасит параметр", async () => {
+    search.params = { toast: "gift_created" };
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(text()).toContain("Добавлено в вишлист");
+    // The list is loaded behind the toast, as usual.
+    expect(text()).toContain("Наушники");
+    // One-shot: the param is cleared right away (expo-router drops `undefined` keys).
+    expect(navigation.setParams).toHaveBeenCalledWith({ toast: undefined });
+  });
+
+  it("после «Закрыть» и возврата на экран подтверждение не повторяется", async () => {
+    search.params = { toast: "gift_created" };
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    await press("Закрыть");
+    expect(text()).not.toContain("Добавлено в вишлист");
+
+    await blur();
+    await refocus();
+
+    expect(listReads()).toBe(2);
+    expect(text()).not.toContain("Добавлено в вишлист");
+  });
+
+  it("без параметра подтверждения нет и параметр не трогается", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(text()).not.toContain("Добавлено в вишлист");
+    expect(navigation.setParams).not.toHaveBeenCalled();
   });
 });
 

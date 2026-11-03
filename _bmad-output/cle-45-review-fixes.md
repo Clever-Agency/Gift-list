@@ -22,4 +22,4 @@
 - [x] N1 Visibility filter should pass list.ownerId
 - [x] N2 "Every field" contract test should omit one field at a time
 - [x] N3 Hard-coded padding literal
-- [ ] N4 Ghost "Посмотреть подборки" button not needed yet
+- [x] N4 Ghost "Посмотреть подборки" button not needed yet

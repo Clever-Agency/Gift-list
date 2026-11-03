@@ -493,6 +493,10 @@ describe("мой вишлист: список", () => {
 
     expect(text()).toContain("Пока пусто");
     expect(text()).toContain("Добавьте первое желание — название и, по желанию, цену-ориентир.");
+    // Review N4: подборки вне объёма, поэтому в пустом состоянии нет ghost-кнопки —
+    // одна основная CTA (`DESIGN.md` → EmptyState: не больше одной кнопки).
+    expect(button("Посмотреть подборки")).toBeUndefined();
+    expect(text()).not.toContain("Посмотреть подборки");
     await press("Добавить желание");
     expect(navigation.push).toHaveBeenCalledWith("/gifts/new");
   });

@@ -19,7 +19,7 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 
 ## Mobile API (apps/mobile/src/api)
 - [x] 12. `createGift` client fn (contract re-check) + test
-- [ ] 13. `updateGift` / `fetchGift` client fns + tests
+- [x] 13. `updateGift` / `fetchGift` client fns + tests
 
 ## Mobile form
 - [ ] 14. `GiftForm` component skeleton (title, description) — extensible field list for 2.3/2.5

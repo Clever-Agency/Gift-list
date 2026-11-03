@@ -36,6 +36,21 @@ export const NO_RELATIONS: ViewerRelations = {
   viaListToken: false,
 };
 
+/**
+ * Port that answers the relation facts for one viewer/owner pair (AD-7, AD-10,
+ * AD-18, AD-19). The domain stays free of Prisma: the server adapter behind this
+ * interface owns every table lookup.
+ *
+ * `viaListToken` is deliberately absent — only the caller knows whether the
+ * viewer arrived through `/l/:publicToken`, so the caller adds that fact itself.
+ */
+export interface RelationshipReader {
+  relationsBetween(
+    viewerId: string | null,
+    ownerId: string,
+  ): Promise<Omit<ViewerRelations, "viaListToken">>;
+}
+
 /** The minimum gift data the gate needs; keeps Prisma rows out of the domain. */
 export type VisibilityGift = {
   readonly ownerId: string;

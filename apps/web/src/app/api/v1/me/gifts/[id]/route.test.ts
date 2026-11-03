@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { updateGift } = vi.hoisted(() => ({ updateGift: vi.fn() }));
+const { getGift, updateGift } = vi.hoisted(() => ({ getGift: vi.fn(), updateGift: vi.fn() }));
 
-vi.mock("@/actions/gifts", () => ({ updateGift }));
+vi.mock("@/actions/gifts", () => ({ getGift, updateGift }));
 
 const card = {
   id: "g7",
@@ -36,13 +36,74 @@ function patch(json: string, headers: Record<string, string> = {}) {
   });
 }
 
+function get(headers: Record<string, string> = {}) {
+  return new Request("http://x/api/v1/me/gifts/g7", { method: "GET", headers });
+}
+
 /** Next 16 hands the dynamic segment over as a promise. */
 function context(id = "g7") {
   return { params: Promise.resolve({ id }) };
 }
 
 beforeEach(() => {
+  getGift.mockReset();
   updateGift.mockReset();
+});
+
+describe("GET /api/v1/me/gifts/[id]", () => {
+  it("returns 200 with the card in the AD-12 envelope", async () => {
+    getGift.mockResolvedValue({ ok: true, data: card });
+    const { GET } = await import("./route");
+    const res = await GET(get({ authorization: "Bearer t" }), context());
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.json()).toEqual({ ok: true, data: card });
+  });
+
+  it("passes the route id and the request headers to getGift", async () => {
+    getGift.mockResolvedValue({ ok: true, data: card });
+    const { GET } = await import("./route");
+    await GET(get({ authorization: "Bearer t" }), context("g9"));
+
+    expect(getGift).toHaveBeenCalledWith(expect.any(Headers), "g9");
+    const headers = getGift.mock.calls[0][0] as Headers;
+    expect(headers.get("authorization")).toBe("Bearer t");
+  });
+
+  it("answers UNAUTHENTICATED with 401", async () => {
+    getGift.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    const { GET } = await import("./route");
+    const res = await GET(get(), context());
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+  });
+
+  it("maps NOT_FOUND to 404", async () => {
+    getGift.mockResolvedValue({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Gift not found",
+    });
+    const { GET } = await import("./route");
+    const res = await GET(get(), context());
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Gift not found",
+    });
+  });
 });
 
 describe("PATCH /api/v1/me/gifts/[id]", () => {
@@ -132,7 +193,7 @@ describe("PATCH /api/v1/me/gifts/[id]", () => {
     expect(updateGift).not.toHaveBeenCalled();
   });
 
-  it.each(["GET", "POST", "PUT", "DELETE"] as const)(
+  it.each(["POST", "PUT", "DELETE"] as const)(
     "%s is the NOT_FOUND envelope, not a read or a write",
     async (method) => {
       const handlers = await import("./route");
@@ -143,6 +204,7 @@ describe("PATCH /api/v1/me/gifts/[id]", () => {
       expect(res.status).toBe(404);
       expect(res.headers.get("cache-control")).toBe("private, no-store");
       expect(await res.json()).toEqual(notFound);
+      expect(getGift).not.toHaveBeenCalled();
       expect(updateGift).not.toHaveBeenCalled();
     },
   );

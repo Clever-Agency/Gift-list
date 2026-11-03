@@ -53,6 +53,25 @@ function validation(field?: string): ActionResult<GiftCard> {
 }
 
 /**
+ * Story 2.2 (FR-10, AD-1, AD-12): the edit screen loads one wish of the owner's
+ * single list. Ownership and "not archived" ride in the read's `where` (AD-6,
+ * AD-8), so a foreign or archived id matches nothing and answers NOT_FOUND
+ * without revealing that the gift exists.
+ */
+export async function getGift(headers: Headers, giftId: string): Promise<ActionResult<GiftCard>> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return unauthenticated;
+
+  const row = await prisma.gift.findFirst({
+    where: { id: giftId, archivedAt: null, list: { ownerId: session.user.id } },
+    select: ownerGiftSelect,
+  });
+  if (!row) return notFound;
+
+  return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
+}
+
+/**
  * Story 2.2 (FR-10, AD-1): the owner creates a wish in their single list (AD-6).
  * The body goes through `giftInputSchema`, so the defaults live in the contract:
  * visibility `PUBLIC` (ARCH-A17), currency `USD` when an amount has none (AD-25).

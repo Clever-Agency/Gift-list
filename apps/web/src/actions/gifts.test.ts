@@ -32,7 +32,7 @@ vi.mock("@/db/generated/client", () => ({ Prisma: { PrismaClientKnownRequestErro
 
 import { giftCardSchema } from "@gift-list/contracts";
 
-import { createGift, updateGift } from "./gifts";
+import { createGift, getGift, updateGift } from "./gifts";
 
 const headers = new Headers();
 
@@ -94,6 +94,65 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("getGift", () => {
+  it("requires a session and does not touch the db", async () => {
+    getSession.mockResolvedValue(null);
+
+    expect(await getGift(headers, "g1")).toMatchObject({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  /** AD-6/AD-8: ownership and "not archived" ride in the read's `where`. */
+  it("reads through the owner gate", async () => {
+    getSession.mockResolvedValue({ user: { id: "u2" }, session: { token: "t" } });
+    findFirst.mockResolvedValue(giftRow({ id: "g7" }));
+
+    await getGift(headers, "g7");
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: "g7", archivedAt: null, list: { ownerId: "u2" } },
+      select: expect.any(Object),
+    });
+  });
+
+  /** A foreign, archived or missing gift all match nothing, so all answer the same (AD-8). */
+  it("answers NOT_FOUND when the gift is not the owner's", async () => {
+    findFirst.mockResolvedValue(null);
+
+    expect(await getGift(headers, "g-other")).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("returns the card matching the AD-12 contract", async () => {
+    findFirst.mockResolvedValue(
+      giftRow({
+        id: "g7",
+        title: "Наушники",
+        visibility: "FRIENDS",
+        status: "RESERVED",
+        reservationPhase: "GIVEN",
+      }),
+    );
+
+    const card = okData(await getGift(headers, "g7"));
+
+    expect(giftCardSchema.safeParse(card).success).toBe(true);
+    expect(card).toMatchObject({
+      id: "g7",
+      title: "Наушники",
+      visibility: "FRIENDS",
+      status: "RESERVED",
+      reservedBy: null,
+      ownerAction: "CONFIRM_GIVEN",
+    });
+  });
 });
 
 describe("createGift", () => {

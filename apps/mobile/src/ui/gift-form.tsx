@@ -1,4 +1,4 @@
-import { CURRENCIES } from "@gift-list/contracts";
+import { CURRENCIES, VISIBILITIES } from "@gift-list/contracts";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslations } from "use-intl";
@@ -10,24 +10,31 @@ import { TextField } from "@/ui/text-field";
 /** Same caps as `giftInputSchema` in `packages/contracts/src/gift.ts`. */
 const TITLE_MAX = 120;
 const DESCRIPTION_MAX = 2000;
+const LINK_MAX = 2048;
 
 /** `CURRENCIES` is the closed set; `GiftInput["priceCurrency"]` is the same union. */
 type Currency = (typeof CURRENCIES)[number];
 
+/** `VISIBILITIES` is the closed set; `GiftInput["visibility"]` is the same union. */
+type Visibility = (typeof VISIBILITIES)[number];
+
 /** D-37: an amount without a picked currency is USD. */
 const DEFAULT_CURRENCY: Currency = "USD";
 
-/**
- * State of the fields Story 2.2 ships. Subtasks 16–17 add link and visibility,
- * so screens already talk to the form through a type.
- */
+/** ARCH-A17: a new wish is visible to everyone. */
+const DEFAULT_VISIBILITY: Visibility = "PUBLIC";
+
+/** The fields the form edits; screens map them onto `GiftInput` / `GiftUpdate`. */
 export type GiftFormValues = {
   title: string;
   description: string | null;
+  /** Trimmed link, or `null` when the field is empty (D-25). */
+  link: string | null;
   /** Integer minor units (two decimals), or `null` when the price field is empty (AD-25). */
   priceAmount: number | null;
   /** `null` exactly when `priceAmount` is `null`: an amount always carries a code (AD-25). */
   priceCurrency: Currency | null;
+  visibility: Visibility;
 };
 
 type GiftFormProps = {
@@ -35,7 +42,10 @@ type GiftFormProps = {
   initialValues?: Partial<GiftFormValues>;
   /** The screen is saving: the submit button is disabled, nothing else is locked. */
   submitting: boolean;
-  /** Receives the trimmed title and description, and the price as minor units, or `null` when empty. */
+  /**
+   * Receives the trimmed text fields, the price as minor units, and the choice of
+   * visibility. Empty description and link arrive as `null`.
+   */
   onSubmit: (values: GiftFormValues) => void;
   /** Create and edit pass their own label (`action.create` / `action.save`). */
   submitLabel?: string;
@@ -43,34 +53,42 @@ type GiftFormProps = {
 
 /**
  * Create/edit wish form (`EXPERIENCE.md` → Форма желания, `DESIGN.md` → Форма).
- * Story 2.2: title, description, and the optional price with its currency
- * (subtask 15); link and visibility arrive with subtask 16, inline errors with
- * subtask 17. State stays local and controlled, so later subtasks add
- * their inputs next to these without changing the screen contract.
+ * Story 2.2: title, description, the optional link (subtask 16), the optional
+ * price with its currency (subtask 15), and visibility (subtask 16); inline
+ * errors arrive with subtask 17. State stays local and controlled, so later
+ * subtasks add their inputs next to these without changing the screen contract.
  * Required fields are not marked, optional ones carry «(необязательно)» in the
  * label (`EXPERIENCE.md` → Accessibility Floor).
  */
 export function GiftForm({ initialValues, submitting, onSubmit, submitLabel }: GiftFormProps) {
   const t = useTranslations("app.giftForm");
+  const tVisibility = useTranslations("app.gift.visibility");
   const [title, setTitle] = useState(initialValues?.title ?? "");
   const [description, setDescription] = useState(initialValues?.description ?? "");
+  const [link, setLink] = useState(initialValues?.link ?? "");
   const [price, setPrice] = useState(initialPriceText(initialValues?.priceAmount));
   const [currency, setCurrency] = useState<Currency>(
     initialValues?.priceCurrency ?? DEFAULT_CURRENCY,
+  );
+  const [visibility, setVisibility] = useState<Visibility>(
+    initialValues?.visibility ?? DEFAULT_VISIBILITY,
   );
   // `EXPERIENCE.md` → Price field: an empty amount does not show a currency.
   const showCurrency = price.trim() !== "";
 
   function submit() {
     const trimmedDescription = description.trim();
+    const trimmedLink = link.trim();
     const priceAmount = parsePriceToMinor(price);
     // TODO(Story 2.2, subtask 17): show `error.priceInvalid` under the field.
     if (priceAmount === "invalid") return;
     onSubmit({
       title: title.trim(),
       description: trimmedDescription === "" ? null : trimmedDescription,
+      link: trimmedLink === "" ? null : trimmedLink,
       priceAmount,
       priceCurrency: priceAmount === null ? null : currency,
+      visibility,
     });
   }
 
@@ -101,6 +119,18 @@ export function GiftForm({ initialValues, submitting, onSubmit, submitLabel }: G
         }}
       />
       <TextField
+        label={t("field.link")}
+        value={link}
+        onChangeText={setLink}
+        input={{
+          placeholder: t("field.linkPlaceholder"),
+          keyboardType: "url",
+          autoCapitalize: "none",
+          autoCorrect: false,
+          maxLength: LINK_MAX,
+        }}
+      />
+      <TextField
         label={t("field.price")}
         value={price}
         onChangeText={setPrice}
@@ -112,8 +142,25 @@ export function GiftForm({ initialValues, submitting, onSubmit, submitLabel }: G
         }}
       />
       {showCurrency ? (
-        <CurrencyPicker label={t("field.currency")} value={currency} onChange={setCurrency} />
+        <ChoiceGroup
+          variant="chips"
+          label={t("field.currency")}
+          value={currency}
+          onChange={setCurrency}
+          options={CURRENCIES.map((code) => ({ value: code, label: code }))}
+        />
       ) : null}
+      <ChoiceGroup
+        variant="rows"
+        label={t("field.visibility")}
+        value={visibility}
+        onChange={setVisibility}
+        options={VISIBILITIES.map((code) => ({
+          value: code,
+          label: tVisibility(code),
+          hint: t(`field.visibilityHint.${code}`),
+        }))}
+      />
       <PrimaryButton
         label={submitLabel ?? t("action.save")}
         onPress={submit}
@@ -128,43 +175,77 @@ function initialPriceText(priceAmount: number | null | undefined): string {
   return priceAmount == null ? "" : formatMinorToPrice(priceAmount);
 }
 
+type ChoiceOption<T extends string> = {
+  value: T;
+  /** Visible text and the accessible name of its radio. */
+  label: string;
+  /** Second line under the label on `rows`, also the accessible hint. */
+  hint?: string;
+};
+
 /**
- * `DESIGN.md` → Форма: five codes, USD by default. `DESIGN.md` asks for a bottom
- * sheet with radios on a phone; until it exists (Story 2.3 builds the visibility
- * rows the same way) a row of pressed chips carries the same `radio` semantics:
- * one choice, the selected one is filled, and the code is the accessible name.
+ * The shared `radiogroup` behind the currency codes and the visibility choice
+ * (`DESIGN.md` → Форма: five codes; three radio rows with an explanation, «Всем»
+ * by default). `DESIGN.md` asks for a bottom sheet with radios on a phone; until
+ * it exists (Story 2.3 builds the visibility rows the same way) each variant
+ * keeps the same `radio` semantics: one choice, the selected one is marked, and
+ * the option label is the accessible name.
  */
-function CurrencyPicker({
+function ChoiceGroup<T extends string>({
   label,
   value,
+  options,
   onChange,
+  variant,
 }: {
   label: string;
-  value: Currency;
-  onChange: (currency: Currency) => void;
+  value: T;
+  options: readonly ChoiceOption<T>[];
+  onChange: (value: T) => void;
+  variant: "chips" | "rows";
 }) {
+  const rows = variant === "rows";
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <View accessibilityRole="radiogroup" accessibilityLabel={label} style={styles.codes}>
-        {CURRENCIES.map((code) => {
-          const selected = code === value;
+      <View
+        accessibilityRole="radiogroup"
+        accessibilityLabel={label}
+        style={rows ? styles.rows : styles.chips}
+      >
+        {options.map((option) => {
+          const selected = option.value === value;
           return (
             <Pressable
-              key={code}
+              key={option.value}
               accessibilityRole="radio"
-              accessibilityLabel={code}
+              accessibilityLabel={option.label}
+              accessibilityHint={option.hint}
               accessibilityState={{ checked: selected }}
-              onPress={() => onChange(code)}
+              onPress={() => onChange(option.value)}
               style={({ pressed }) => [
-                styles.code,
-                selected ? styles.codeSelected : null,
-                pressed ? styles.codePressed : null,
+                rows ? styles.row : styles.chip,
+                selected ? (rows ? styles.rowSelected : styles.chipSelected) : null,
+                pressed ? styles.pressed : null,
               ]}
             >
-              <Text style={[styles.codeLabel, selected ? styles.codeLabelSelected : null]}>
-                {code}
-              </Text>
+              {rows ? (
+                <>
+                  <View style={[styles.radio, selected ? styles.radioSelected : null]}>
+                    {selected ? <View style={styles.radioDot} /> : null}
+                  </View>
+                  <View style={styles.rowText}>
+                    <Text style={[styles.rowLabel, selected ? styles.rowLabelSelected : null]}>
+                      {option.label}
+                    </Text>
+                    {option.hint ? <Text style={styles.hint}>{option.hint}</Text> : null}
+                  </View>
+                </>
+              ) : (
+                <Text style={[styles.chipLabel, selected ? styles.chipLabelSelected : null]}>
+                  {option.label}
+                </Text>
+              )}
             </Pressable>
           );
         })}
@@ -188,12 +269,12 @@ const styles = StyleSheet.create({
     ...textStyle("label"),
     color: colors.foreground,
   },
-  codes: {
+  chips: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing["grid-gap"] / 2,
   },
-  code: {
+  chip: {
     minHeight: spacing["touch-target"],
     minWidth: spacing["touch-target"],
     alignItems: "center",
@@ -204,18 +285,71 @@ const styles = StyleSheet.create({
     borderRadius: rounded.sm,
     backgroundColor: colors.surface,
   },
-  codeSelected: {
+  chipSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  codePressed: {
-    opacity: 0.9,
-  },
-  codeLabel: {
+  chipLabel: {
     ...textStyle("label"),
     color: colors.foreground,
   },
-  codeLabelSelected: {
+  chipLabelSelected: {
     color: colors["primary-foreground"],
+  },
+  rows: {
+    gap: spacing["grid-gap"] / 2,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing["grid-gap"] / 2,
+    minHeight: spacing["touch-target"],
+    paddingVertical: spacing["grid-gap"] / 2,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors["border-strong"],
+    borderRadius: rounded.sm,
+    backgroundColor: colors.surface,
+  },
+  rowSelected: {
+    backgroundColor: colors.muted,
+    borderColor: colors.primary,
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: rounded.full,
+    borderWidth: 2,
+    borderColor: colors["border-strong"],
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  radioSelected: {
+    borderColor: colors.primary,
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: rounded.full,
+    backgroundColor: colors.primary,
+  },
+  rowText: {
+    flex: 1,
+    gap: 2,
+  },
+  rowLabel: {
+    ...textStyle("label"),
+    color: colors.foreground,
+  },
+  rowLabelSelected: {
+    color: colors.primary,
+  },
+  hint: {
+    ...textStyle("caption"),
+    color: colors["muted-foreground"],
+  },
+  pressed: {
+    opacity: 0.9,
   },
 });

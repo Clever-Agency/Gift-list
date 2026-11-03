@@ -5,7 +5,7 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 ## Contracts (packages/contracts)
 - [x] 1. `giftInputSchema` (create body): title required (trimmed, length limits), description/priceAmount/linkUrl optional, priceCurrency enum USD/EUR/CNY/BYN/RUB default USD when price set, visibility default PUBLIC
 - [x] 2. Contract tests for `giftInputSchema` (required title, optional fields, currency default, invalid currency/price/url)
-- [ ] 3. `giftUpdateSchema` (partial edit body) + tests
+- [x] 3. `giftUpdateSchema` (partial edit body) + tests
 - [ ] 4. Gift form i18n keys (ru/app.json): labels, placeholders, field errors, save/cancel
 
 ## Web use-case (apps/web)

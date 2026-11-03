@@ -9,7 +9,7 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 - [x] 4. Gift form i18n keys (ru/app.json): labels, placeholders, field errors, save/cancel
 
 ## Web use-case (apps/web)
-- [ ] 5. `createGift` action: session required, owner's single list, status OPEN, returns AD-12 gift card
+- [x] 5. `createGift` action: session required, owner's single list, status OPEN, returns AD-12 gift card
 - [ ] 6. Tests for `createGift` (401, validation errors, defaults PUBLIC/USD, OPEN, list ownership)
 - [ ] 7. `updateGift` action: owner only, same use-case module (AD-1), returns AD-12 card
 - [ ] 8. Tests for `updateGift` (401, not owner → NOT_FOUND/FORBIDDEN, partial update, validation)

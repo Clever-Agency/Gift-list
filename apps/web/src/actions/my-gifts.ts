@@ -1,32 +1,10 @@
 import "server-only";
 
-import {
-  listDataSchema,
-  type ActionResult,
-  type GiftCard,
-  type ListData,
-} from "@gift-list/contracts";
+import { listDataSchema, type ActionResult, type ListData } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
-import { VisibilityPolicy, type GiftVisibility } from "@/domain/visibility";
+import { toOwnerGiftCard } from "@/domain/owner-gift-card";
+import { VisibilityPolicy } from "@/domain/visibility";
 import { auth } from "@/lib/auth";
-
-/** Plain row the owner mapper reads; keeps Prisma types out of the mapping rules. */
-type OwnerGiftRow = {
-  id: string;
-  title: string;
-  description: string | null;
-  priceAmount: number | null;
-  priceCurrency: GiftCard["priceCurrency"];
-  linkUrl: string | null;
-  visibility: GiftVisibility;
-  quantity: GiftCard["quantity"];
-  expiresOn: Date | null;
-  archivedAt: Date | null;
-  status: GiftCard["status"];
-  reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
-  holderVisibleToOwner: boolean;
-  reservedBy: { id: string; nick: string; name: string } | null;
-};
 
 const unauthenticated = {
   ok: false as const,
@@ -85,52 +63,4 @@ export async function getMyGifts(headers: Headers): Promise<ActionResult<ListDat
     .map(toOwnerGiftCard);
 
   return { ok: true, data: listDataSchema.parse({ access: "gifts", gifts }) };
-}
-
-/**
- * Owner gift card (AD-7 read matrix, AD-12): no holder identity unless the holder
- * allowed it, no `bought`, `dueAt` or reservation label; the owner action comes
- * from the reservation phase instead. Tags arrive with Story 2.5. Closing keeps
- * `reserved*` for audit (AD-8), so a CLOSED gift keeps the holder when the
- * toggle is on and still hides it when off (FR-31).
- */
-function toOwnerGiftCard(row: OwnerGiftRow): GiftCard {
-  const holder = row.holderVisibleToOwner ? row.reservedBy : null;
-  return {
-    id: row.id,
-    title: row.title,
-    description: row.description,
-    priceAmount: row.priceAmount,
-    priceCurrency: row.priceCurrency,
-    linkUrl: row.linkUrl,
-    visibility: row.visibility,
-    quantity: row.quantity,
-    expiresOn: calendarDay(row.expiresOn),
-    archivedAt: row.archivedAt?.toISOString() ?? null,
-    tags: [],
-    status: row.status,
-    reservedBy: holder
-      ? { id: holder.id, nick: holder.nick, displayName: holder.name }
-      : null,
-    reservationLabel: null,
-    ownerAction: ownerAction(row),
-  };
-}
-
-/** The owner answers a finished reservation only while it is still open (AD-7). */
-function ownerAction(row: OwnerGiftRow): GiftCard["ownerAction"] {
-  if (row.status !== "RESERVED") return null;
-  switch (row.reservationPhase) {
-    case "AWAITING_OWNER":
-      return "EXPIRED_NO_REPLY";
-    case "GIVEN":
-      return "CONFIRM_GIVEN";
-    default:
-      return null;
-  }
-}
-
-/** `Gift.expiresOn` is a date column; the wire keeps a plain ISO calendar day. */
-function calendarDay(value: Date | null): string | null {
-  return value ? value.toISOString().slice(0, 10) : null;
 }

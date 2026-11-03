@@ -30,6 +30,9 @@ model User {
   sessions Session[]
   accounts Account[]
   lists    List[]
+
+  /// Gifts this user holds a reservation on (AD-9). Active reservations are `status=RESERVED`.
+  reservedGifts Gift[] @relation("GiftReservedBy")
 }
 
 model Session {
@@ -85,7 +88,102 @@ model List {
   publicToken String   @unique
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
-  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  gifts Gift[]
+}
+
+// Wishlist item (AD-8, AD-9). R1 keeps the reservation on `Gift`; there is no `Reservation` table.
+// `status`, reservation/close columns and `archivedAt` are written only by `GiftStatusService`.
+model Gift {
+  id            String         @id @default(cuid(2))
+  listId        String
+  title         String
+  description   String?
+  /// Integer minor units (two decimals); absent when the owner gave no price (D-36).
+  priceAmount   Int?
+  /// Non-empty price without a chosen currency is stored as `USD` (AD-25).
+  priceCurrency GiftCurrency?
+  linkUrl       String?
+  visibility    GiftVisibility @default(PUBLIC)
+  quantity      GiftQuantity   @default(SINGLE)
+  /// Local end-of-day date; drives the `wish-expiry` cron (D-26).
+  expiresOn     DateTime?      @db.Date
+  /// Manual or expiry archive; hidden from the active list (AD-8, D-26).
+  archivedAt    DateTime?      @db.Timestamptz(3)
+  status        GiftStatus     @default(OPEN)
+
+  // Reservation (AD-9). `reservation*` and `holderVisible*` exist while `status=RESERVED`.
+  reservedById           String?
+  reservedAt             DateTime?         @db.Timestamptz(3)
+  /// End of the chosen date in `reservationTimeZone`, computed on the server (ARCH-A14).
+  reservationDueAt       DateTime?         @db.Timestamptz(3)
+  /// IANA snapshot taken when the reservation was created; not a second source of the user's zone.
+  reservationTimeZone    String?
+  reservationPhase       ReservationPhase?
+  reservationPhaseAt     DateTime?         @db.Timestamptz(3)
+  reservationBought      Boolean           @default(false)
+  holderVisibleToOwner   Boolean           @default(false)
+  holderVisibleToOthers  Boolean           @default(true)
+  /// Title as it was when the gift was reserved; used by holder notifications and emails (A-14).
+  titleSnapshotOnReserve String?
+
+  // Closure (AD-8). `reserved*` are kept for audit; active reservations are `status=RESERVED` only.
+  closedAt         DateTime?             @db.Timestamptz(3)
+  closedFromStatus GiftClosedFromStatus?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  list       List  @relation(fields: [listId], references: [id], onDelete: Cascade)
+  /// Account deletion releases reservations through `GiftStatusService` first (AD-20); a raw
+  /// `onDelete` that would drop the holder silently is blocked here.
+  reservedBy User? @relation("GiftReservedBy", fields: [reservedById], references: [id], onDelete: Restrict)
+
+  @@index([listId])
+  /// "My reservations" (FR-25) and the reservation-card read matrix (AD-7).
+  @@index([reservedById, status])
+  /// Reservation timer cron scans (AD-9).
+  @@index([status, reservationPhase, reservationDueAt])
+  @@index([status, reservationPhase, reservationPhaseAt])
+}
+
+// Closed value sets from AD-7 / AD-8 / AD-9 / AD-25. `COLLECTION` is not part of R1 (AD-11).
+enum GiftStatus {
+  OPEN
+  RESERVED
+  CLOSED
+}
+
+enum GiftVisibility {
+  PUBLIC
+  FRIENDS
+  SECRET
+}
+
+enum GiftQuantity {
+  SINGLE
+  UNLIMITED
+}
+
+enum GiftCurrency {
+  USD
+  EUR
+  CNY
+  BYN
+  RUB
+}
+
+enum ReservationPhase {
+  ACTIVE
+  AWAITING_GIVER
+  AWAITING_OWNER
+  GIVEN
+}
+
+/// Status a gift returns to when the owner undoes a close inside `UNDO_WINDOW` (AD-8, D-43).
+enum GiftClosedFromStatus {
+  OPEN
+  RESERVED
 }
 
 // Fixed-window request counters (soft rate limit, R1). One row per `key`.

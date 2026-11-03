@@ -11,7 +11,7 @@ const { getSession, findUnique, findMany } = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
 
-import { VisibilityPolicy } from "@/domain/visibility";
+import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
 
 import { getMyGifts } from "./my-gifts";
 
@@ -128,11 +128,15 @@ describe("getMyGifts", () => {
   it("decides owner visibility from the list owner, not the session user", async () => {
     findUnique.mockResolvedValue({ id: "l1", ownerId: "u2" });
     findMany.mockResolvedValue([gift({ id: "g1", visibility: "SECRET" })]);
-    const resolve = vi.spyOn(VisibilityPolicy, "resolve");
+    const canSee = vi.spyOn(VisibilityPolicy, "canSee");
 
     const result = await getMyGifts(headers);
 
-    expect(resolve).toHaveBeenCalledWith({ id: "u1" }, { ownerId: "u2", visibility: "SECRET" });
+    expect(canSee).toHaveBeenCalledWith(
+      { id: "u1" },
+      NO_RELATIONS,
+      { ownerId: "u2", visibility: "SECRET", archivedAt: null },
+    );
     expect(giftsOf(result)).toEqual([]);
   });
 

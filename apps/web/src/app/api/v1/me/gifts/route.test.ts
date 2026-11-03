@@ -2,14 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUnique, findMany } = vi.hoisted(() => ({
+const { getSession, findUnique, findMany, createGift } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findUnique: vi.fn(),
   findMany: vi.fn(),
+  createGift: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
+vi.mock("@/actions/gifts", () => ({ createGift }));
 
 const row = {
   id: "g1",
@@ -42,6 +44,7 @@ beforeEach(() => {
   getSession.mockReset();
   findUnique.mockReset();
   findMany.mockReset();
+  createGift.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1", ownerId: "u1" });
   findMany.mockResolvedValue([row]);
@@ -154,5 +157,114 @@ describe("GET /api/v1/me/gifts", () => {
       const { viaAction, viaHttp } = await both();
       expect(viaHttp).toEqual(viaAction);
     }
+  });
+});
+
+const card = {
+  id: "g1",
+  title: "Наушники",
+  description: null,
+  priceAmount: null,
+  priceCurrency: null,
+  linkUrl: null,
+  visibility: "PUBLIC" as const,
+  quantity: "SINGLE" as const,
+  expiresOn: null,
+  archivedAt: null,
+  tags: [],
+  status: "OPEN" as const,
+  reservedBy: null,
+  reservationLabel: null,
+  ownerAction: null,
+};
+
+const input = { title: "Наушники", visibility: "PUBLIC" };
+
+function post(json: string, headers: Record<string, string> = {}) {
+  return new Request("http://x/api/v1/me/gifts", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: json,
+  });
+}
+
+describe("POST /api/v1/me/gifts", () => {
+  it("returns 201 with the created card in the AD-12 envelope", async () => {
+    createGift.mockResolvedValue({ ok: true, data: card });
+    const { POST } = await import("./route");
+    const res = await POST(post(JSON.stringify(input), { authorization: "Bearer t" }));
+
+    expect(res.status).toBe(201);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.json()).toEqual({ ok: true, data: card });
+    expect(createGift).toHaveBeenCalledWith(expect.any(Headers), input);
+    const headers = createGift.mock.calls[0][0] as Headers;
+    expect(headers.get("authorization")).toBe("Bearer t");
+  });
+
+  it("answers UNAUTHENTICATED with 401", async () => {
+    createGift.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    const { POST } = await import("./route");
+    const res = await POST(post(JSON.stringify(input)));
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+  });
+
+  it("maps VALIDATION to 400 and keeps the field", async () => {
+    createGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "title",
+    });
+    const { POST } = await import("./route");
+    const res = await POST(post(JSON.stringify(input)));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "title",
+    });
+  });
+
+  it("maps NOT_FOUND to 404", async () => {
+    createGift.mockResolvedValue({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Wishlist not found",
+    });
+    const { POST } = await import("./route");
+    const res = await POST(post(JSON.stringify(input)));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Wishlist not found",
+    });
+  });
+
+  it("answers malformed JSON with 400 without calling createGift", async () => {
+    const { POST } = await import("./route");
+    const res = await POST(post("{not json"));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+    });
+    expect(createGift).not.toHaveBeenCalled();
   });
 });

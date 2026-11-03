@@ -57,6 +57,6 @@ describe("unsupported methods on /api/v1", () => {
     await expectEnvelope(me.POST, "http://127.0.0.1:3000/api/v1/me", "POST");
     await expectEnvelope(session.GET, "http://127.0.0.1:3000/api/v1/session", "GET");
     await expectEnvelope(zone.GET, "http://127.0.0.1:3000/api/v1/me/time-zone", "GET");
-    await expectEnvelope(gifts.POST, "http://127.0.0.1:3000/api/v1/me/gifts", "POST");
+    await expectEnvelope(gifts.PUT, "http://127.0.0.1:3000/api/v1/me/gifts", "PUT");
   });
 });

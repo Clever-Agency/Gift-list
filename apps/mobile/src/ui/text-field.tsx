@@ -5,7 +5,9 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
   type TextInputProps,
+  type TextStyle,
 } from "react-native";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 
@@ -16,9 +18,19 @@ type FieldProps = {
   error?: string;
   hint?: string;
   input: TextInputProps;
+  /** Extra styles over the shared box, e.g. the taller multiline description input. */
+  inputStyle?: StyleProp<TextStyle>;
 };
 
-export function TextField({ label, value, onChangeText, error, hint, input }: FieldProps) {
+export function TextField({
+  label,
+  value,
+  onChangeText,
+  error,
+  hint,
+  input,
+  inputStyle,
+}: FieldProps) {
   const described = error ?? hint;
   return (
     <View style={styles.field}>
@@ -29,7 +41,7 @@ export function TextField({ label, value, onChangeText, error, hint, input }: Fi
         placeholderTextColor={colors["muted-foreground"]}
         accessibilityLabel={label}
         accessibilityHint={described}
-        style={[styles.input, error ? styles.inputError : null]}
+        style={[styles.input, error ? styles.inputError : null, inputStyle]}
         {...input}
       />
       {described ? (

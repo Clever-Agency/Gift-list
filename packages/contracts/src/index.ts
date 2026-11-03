@@ -1,6 +1,7 @@
 // Wire contract shared by apps/web and apps/mobile (AD-12, AD-26).
 // No React, Prisma or env here: the package must load in any client.
 import { z } from "zod";
+import { CURRENCIES, GIFT_STATUSES, OWNER_ACTIONS, QUANTITIES, RESERVATION_LABELS, VISIBILITIES } from "./enums";
 
 export const ERROR_CODES = [
   "UNAUTHENTICATED",
@@ -65,12 +66,14 @@ export const meSchema = z.strictObject({
 
 export type Me = z.infer<typeof meSchema>;
 
-export const CURRENCIES = ["USD", "EUR", "CNY", "BYN", "RUB"] as const;
-export const VISIBILITIES = ["PUBLIC", "FRIENDS", "SECRET"] as const;
-export const QUANTITIES = ["SINGLE", "UNLIMITED"] as const;
-export const GIFT_STATUSES = ["OPEN", "RESERVED", "CLOSED"] as const;
-export const RESERVATION_LABELS = ["BOUGHT", "GIVEN"] as const;
-export const OWNER_ACTIONS = ["CONFIRM_GIVEN", "EXPIRED_NO_REPLY"] as const;
+export {
+  CURRENCIES,
+  GIFT_STATUSES,
+  OWNER_ACTIONS,
+  QUANTITIES,
+  RESERVATION_LABELS,
+  VISIBILITIES,
+} from "./enums";
 
 // Closed set: unknown keys are rejected so nothing extra (e.g. `bought`) leaks to the owner (AD-15).
 export const giftCardSchema = z.strictObject({
@@ -129,6 +132,8 @@ export {
 } from "./auth";
 
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
+
+export { giftInputSchema, giftUpdateSchema, type GiftInput, type GiftUpdate } from "./gift";
 
 export {
   DEFAULT_LOCALE,

@@ -1,5 +1,5 @@
 import type { GiftCard } from "@gift-list/contracts";
-import { router, Stack, useFocusEffect } from "expo-router";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
@@ -14,6 +14,7 @@ import { useTranslations } from "use-intl";
 import { fetchMyGifts } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { paramValue } from "@/session/return-path";
 import { colors, spacing, textStyle } from "@/theme/tokens";
 import { AuthorLink } from "@/ui/author-link";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
@@ -38,6 +39,20 @@ type ScreenState =
 const SKELETON_CARDS = [0, 1, 2];
 
 /**
+ * One toast at a time: a failed read is destructive, the composer's «Добавлено в
+ * вишлист» confirmation is neutral.
+ */
+type ToastState = { message: string; tone: "info" | "error" };
+
+/**
+ * The one-shot params the form screens hand their success notices over in: the
+ * create screen says «Добавлено в вишлист», the edit screen «Изменения сохранены.».
+ * Both are neutral confirmations, so they show with the info tone.
+ */
+const CREATED_TOAST = "gift_created";
+const UPDATED_TOAST = "gift_updated";
+
+/**
  * The footer row («Выйти» + «Написать автору») is pinned to the bottom of the column.
  * The toast is lifted by exactly that row's height (`spacing.touch-target` plus
  * `spacing.page-gutter`), so it never covers «Выйти» (`DESIGN.md` → Toast: «снизу,
@@ -54,6 +69,7 @@ const FOOTER_CLEARANCE = spacing["touch-target"] + spacing["page-gutter"];
 export default function MyWishlistScreen() {
   const t = useTranslations("app");
   const wishlist = useTranslations("app.myWishlist");
+  const giftForm = useTranslations("app.giftForm");
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
@@ -63,9 +79,10 @@ export default function MyWishlistScreen() {
   const insets = useSafeAreaInsets();
   const grid = cardGrid(width, insets);
   const gutter = pageGutter(width);
+  const params = useLocalSearchParams<{ toast?: string }>();
   const [state, setState] = useState<ScreenState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   // Review m9: coming back to the screen (e.g. from the composer) refetches the list.
   // The mount effect owns the very first load, so the first focus right after mount is
@@ -73,6 +90,9 @@ export default function MyWishlistScreen() {
   // skeleton) and its answer is dropped if the screen blurred before it arrived.
   const focused = useRef(true);
   const firstFocus = useRef(true);
+  // The handed-over notice is one-shot: the param is cleared right after it is shown,
+  // and this ref keeps the same value from showing it twice before that lands.
+  const handledToast = useRef<string | null>(null);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -97,6 +117,33 @@ export default function MyWishlistScreen() {
       });
     }
   }, [auth.state.status, sessionExpired]);
+
+  // The create and edit screens set their confirmation here instead of on themselves:
+  // they unmount on the way back, so a toast of their own would never be seen (the same
+  // hand-over the login screen gets in `?reason=`). The param is read once and cleared
+  // right away, so a refocus — where the list refetches — does not show it again.
+  useEffect(() => {
+    const flash = paramValue(params.toast);
+    if (flash === undefined) {
+      // The param is gone (either cleared right after the notice, or never set): the
+      // last shown notice is forgotten, so the next hand-over of the same value is a
+      // new one. Without this the second create or edit in one list session is silent.
+      handledToast.current = null;
+      return;
+    }
+    if (
+      handledToast.current === flash ||
+      (flash !== CREATED_TOAST && flash !== UPDATED_TOAST)
+    ) {
+      return;
+    }
+    handledToast.current = flash;
+    setToast({
+      message: flash === CREATED_TOAST ? giftForm("toast.created") : giftForm("toast.saved"),
+      tone: "info",
+    });
+    router.setParams({ toast: undefined });
+  }, [params.toast, giftForm]);
 
   useEffect(() => {
     if (!ownerId) return;
@@ -123,7 +170,7 @@ export default function MyWishlistScreen() {
         if (!signedOut.ok && !cancelled && focused.current) {
           setSessionExpired(false);
           setState({ status: "error", kind: "network" });
-          setToast(t("form.network"));
+          setToast({ message: t("form.network"), tone: "error" });
         }
         return;
       }
@@ -143,13 +190,14 @@ export default function MyWishlistScreen() {
           ? current
           : { status: "error", kind: network ? "network" : "generic" },
       );
-      setToast(
-        network
+      setToast({
+        message: network
           ? t("form.network")
           : "invalid" in result
             ? common("errors.generic")
             : common(`errors.code.${result.code}`),
-      );
+        tone: "error",
+      });
     })();
     return () => {
       cancelled = true;
@@ -178,10 +226,15 @@ export default function MyWishlistScreen() {
     router.push("/gifts/new");
   }
 
+  function openEditor(id: string) {
+    // Story 2.2: the owner card is the way into the edit form.
+    router.push({ pathname: "/gifts/[id]/edit", params: { id } });
+  }
+
   function signOut() {
     void (async () => {
       const result = await auth.signOut();
-      if (!result.ok) setToast(t("form.network"));
+      if (!result.ok) setToast({ message: t("form.network"), tone: "error" });
     })();
   }
 
@@ -235,7 +288,12 @@ export default function MyWishlistScreen() {
                   role alias React Native forwards on web and maps on native. */}
               <View role="list" style={styles.grid}>
                 {state.gifts.map((gift) => (
-                  <WishCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                  <WishCard
+                    key={gift.id}
+                    gift={gift}
+                    width={grid.cardWidth}
+                    onPress={() => openEditor(gift.id)}
+                  />
                 ))}
               </View>
             </>
@@ -255,7 +313,12 @@ export default function MyWishlistScreen() {
         </View>
       </View>
       {toast ? (
-        <ToastHost message={toast} onDismiss={dismissToast} offsetBottom={FOOTER_CLEARANCE} />
+        <ToastHost
+          message={toast.message}
+          tone={toast.tone}
+          onDismiss={dismissToast}
+          offsetBottom={FOOTER_CLEARANCE}
+        />
       ) : null}
     </SafeAreaView>
   );

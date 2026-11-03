@@ -118,8 +118,8 @@ export function GiftForm({
   }
 
   function inlineError(field: GiftFormField): string | undefined {
-    if (errors[field]) return copyText(fieldErrorCopy(field));
-    return serverField === field ? copyText(fieldErrorCopy(field)) : undefined;
+    if (errors[field]) return copyText(fieldErrorCopy(field, { title }));
+    return serverField === field ? copyText(fieldErrorCopy(field, { title })) : undefined;
   }
 
   function clearError(field: GiftFormField) {
@@ -138,7 +138,7 @@ export function GiftForm({
     const first = firstErrorField(found);
     if (first !== null) {
       // `EXPERIENCE.md` → Accessibility Floor: announce the first error on submit.
-      AccessibilityInfo.announceForAccessibility(copyText(fieldErrorCopy(first)));
+      AccessibilityInfo.announceForAccessibility(copyText(fieldErrorCopy(first, { title })));
       return;
     }
     // `validateGiftForm` already reported it; this only narrows the type.

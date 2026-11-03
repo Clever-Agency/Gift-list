@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DESCRIPTION_MAX,
+  TITLE_MAX,
   fieldErrorCopy,
   firstErrorField,
   isHttpUrl,
@@ -102,6 +103,24 @@ describe("fieldErrorCopy", () => {
     expect(fieldErrorCopy("visibility")).toEqual({
       catalog: "common",
       key: "errors.code.VALIDATION",
+    });
+  });
+
+  it("reads a server title error as too long only past the title cap", () => {
+    const tooLong = { catalog: "giftForm", key: "error.titleTooLong", values: { max: TITLE_MAX } };
+    const required = { catalog: "giftForm", key: "error.titleRequired" };
+
+    expect(fieldErrorCopy("title", { title: "я".repeat(TITLE_MAX + 1) })).toEqual(tooLong);
+    // Trimmed first: outer spaces do not make a short title too long.
+    expect(fieldErrorCopy("title", { title: `  ${"я".repeat(TITLE_MAX)}  ` })).toEqual(required);
+    expect(fieldErrorCopy("title", { title: "" })).toEqual(required);
+    expect(fieldErrorCopy("title", {})).toEqual(required);
+  });
+
+  it("keeps the other fields independent of the title value", () => {
+    expect(fieldErrorCopy("price", { title: "я".repeat(TITLE_MAX + 1) })).toEqual({
+      catalog: "giftForm",
+      key: "error.priceInvalid",
     });
   });
 });

@@ -97,10 +97,25 @@ export type GiftFormErrorCopy =
   | { catalog: "giftForm"; key: string; values?: { max: number } }
   | { catalog: "common"; key: string };
 
-export function fieldErrorCopy(field: GiftFormField): GiftFormErrorCopy {
+/**
+ * Current values a copy depends on beyond the field itself: a server rejection
+ * of the title reads as "too long" when the text already exceeds `TITLE_MAX`,
+ * and as "required" otherwise (the client rule only rejects an empty title).
+ */
+export type GiftFormErrorContext = {
+  /** The title as typed; trimmed before the length check. */
+  title?: string;
+};
+
+export function fieldErrorCopy(
+  field: GiftFormField,
+  context: GiftFormErrorContext = {},
+): GiftFormErrorCopy {
   switch (field) {
     case "title":
-      return { catalog: "giftForm", key: "error.titleRequired" };
+      return (context.title ?? "").trim().length > TITLE_MAX
+        ? { catalog: "giftForm", key: "error.titleTooLong", values: { max: TITLE_MAX } }
+        : { catalog: "giftForm", key: "error.titleRequired" };
     case "description":
       return {
         catalog: "giftForm",

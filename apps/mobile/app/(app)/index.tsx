@@ -53,14 +53,19 @@ export default function MyWishlistScreen() {
   const [state, setState] = useState<ScreenState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
   useEffect(() => {
     if (auth.state.status === "anonymous") {
-      router.replace({ pathname: "/login", params: { next: "/" } });
+      // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
+      router.replace({
+        pathname: "/login",
+        params: sessionExpired ? { next: "/", reason: "session_expired" } : { next: "/" },
+      });
     }
-  }, [auth.state.status]);
+  }, [auth.state.status, sessionExpired]);
 
   useEffect(() => {
     if (!ownerId) return;
@@ -73,12 +78,13 @@ export default function MyWishlistScreen() {
         return;
       }
       if (!("network" in result) && result.code === "UNAUTHENTICATED") {
-        // The stored session is dead: say so, then `signOut` clears the token and
-        // marks the app anonymous, and the guard above opens login with `?next=/`.
-        setToast(t("session.expired"));
+        // The stored session is dead: `signOut` clears the token and marks the app
+        // anonymous, and the guard above opens login with `?next=/&reason=session_expired`.
+        setSessionExpired(true);
         const signedOut = await auth.signOut();
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
         if (!signedOut.ok && !cancelled) {
+          setSessionExpired(false);
           setState({ status: "error" });
           setToast(t("form.network"));
         }
@@ -97,8 +103,7 @@ export default function MyWishlistScreen() {
   }, [ownerId, attempt]);
 
   if (auth.state.status !== "ready") {
-    // The expired-session toast must outlive the sign-out that unmounts the list.
-    return toast ? <ToastHost message={toast} onDismiss={dismissToast} /> : null;
+    return null;
   }
 
   function retry() {

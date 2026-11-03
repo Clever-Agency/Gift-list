@@ -225,24 +225,24 @@ describe("мой вишлист: гейт сессии", () => {
     });
   });
 
-  it("сессия истекла при загрузке желаний — вход с возвратом на главную", async () => {
+  it("сессия истекла при загрузке желаний — вход с возвратом на главную и причиной", async () => {
     respond({ ok: false, code: "UNAUTHENTICATED", message: "" });
     await mount();
     expect(navigation.replace).toHaveBeenCalledWith({
       pathname: "/login",
-      params: { next: "/" },
+      params: { next: "/", reason: "session_expired" },
     });
   });
 
-  it("сессия истекла при загрузке желаний — toast и вход с возвратом", async () => {
+  it("сессия истекла при загрузке желаний — toast уходит на экран входа, не остаётся здесь", async () => {
     respond({ ok: false, code: "UNAUTHENTICATED", message: "" });
     await mount();
-    expect(text()).toContain("Сессия закончилась, войдите снова");
     expect(store.clearSessionToken).toHaveBeenCalled();
     expect(navigation.replace).toHaveBeenCalledWith({
       pathname: "/login",
-      params: { next: "/" },
+      params: { next: "/", reason: "session_expired" },
     });
+    expect(text()).not.toContain("Сессия закончилась, войдите снова");
   });
 });
 

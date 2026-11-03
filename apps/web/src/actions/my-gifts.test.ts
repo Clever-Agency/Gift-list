@@ -11,8 +11,6 @@ const { getSession, findUnique, findMany } = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
 
-import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
-
 import { getMyGifts } from "./my-gifts";
 
 const headers = new Headers();
@@ -124,20 +122,18 @@ describe("getMyGifts", () => {
     expect(giftsOf(result).map((card) => card.visibility)).toEqual(["SECRET", "FRIENDS", "PUBLIC"]);
   });
 
-  /** AD-7: owner visibility follows the list owner, never the session user id. */
-  it("decides owner visibility from the list owner, not the session user", async () => {
+  /**
+   * AD-7: owner visibility follows the list owner, never the session user id.
+   * A row owned by somebody else is not the caller's list, so the gate answers
+   * an empty wishlist and no gift of it is read at all (NFR-3).
+   */
+  it("answers nothing for a list row that belongs to another user", async () => {
     findUnique.mockResolvedValue({ id: "l1", ownerId: "u2" });
-    findMany.mockResolvedValue([gift({ id: "g1", visibility: "SECRET" })]);
-    const canSee = vi.spyOn(VisibilityPolicy, "canSee");
 
     const result = await getMyGifts(headers);
 
-    expect(canSee).toHaveBeenCalledWith(
-      { id: "u1" },
-      NO_RELATIONS,
-      { ownerId: "u2", visibility: "SECRET", archivedAt: null },
-    );
     expect(giftsOf(result)).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it("maps an owner card to the AD-12 contract", async () => {

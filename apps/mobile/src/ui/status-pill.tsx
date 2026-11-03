@@ -33,7 +33,9 @@ const styles = StyleSheet.create({
     minHeight: spacing["pill-height"],
     justifyContent: "center",
     borderRadius: rounded.full,
-    paddingHorizontal: 10,
+    // `DESIGN.md` → StatusPill: padding 0 10. `spacing` has no 10; the closest token
+    // is `grid-gap / 2` (8), the same horizontal inset as `VisibilityChip`.
+    paddingHorizontal: spacing["grid-gap"] / 2,
   },
   label: {
     ...textStyle("caption"),

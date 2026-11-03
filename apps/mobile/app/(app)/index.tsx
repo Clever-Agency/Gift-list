@@ -46,10 +46,6 @@ const SKELETON_CARDS = [0, 1, 2];
  */
 const FOOTER_CLEARANCE = spacing["touch-target"] + spacing["page-gutter"];
 
-// NOTE FOR UX: the 10 s cold-load deadline («Нет сети при загрузке», EXPERIENCE →
-// State Patterns) needs a request timeout in `api/client`; until then a hung fetch
-// keeps the skeleton. The error view below already matches the same pattern.
-
 /**
  * «Мой вишлист» (Story 2.1): AD-7 owner branch through `api/v1`, so every own wish
  * comes back, including `SECRET`. The gift card is the shared AD-12 contract; the

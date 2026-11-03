@@ -82,6 +82,18 @@ describe("getMyGifts", () => {
     );
   });
 
+  it("orders the caller's gifts newest first with a stable tie-break", async () => {
+    await getMyGifts(headers);
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { listId: "l1", archivedAt: null },
+        // Newest wish first; `id` keeps the order stable for equal timestamps.
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      }),
+    );
+  });
+
   it("answers an empty wishlist when the list row is missing", async () => {
     findUnique.mockResolvedValue(null);
     expect(await getMyGifts(headers)).toEqual({
@@ -165,6 +177,29 @@ describe("getMyGifts", () => {
     const [card] = giftsOf(await getMyGifts(headers));
     expect(card?.ownerAction).toBe("EXPIRED_NO_REPLY");
   });
+
+  /**
+   * AD-7: only a finished reservation asks the owner for something. While the
+   * reservation is still running (holder keeps it, or the giver has not answered
+   * yet), the shared holder name is shown but there is no owner action.
+   */
+  it.each(["ACTIVE", "AWAITING_GIVER"] as const)(
+    "shows the shared holder but no owner action in the %s phase",
+    async (phase) => {
+      findMany.mockResolvedValue([
+        gift({
+          status: "RESERVED",
+          reservationPhase: phase,
+          holderVisibleToOwner: true,
+          reservedBy: { id: "u2", nick: "anna", name: "Анна" },
+        }),
+      ]);
+
+      const [card] = giftsOf(await getMyGifts(headers));
+      expect(card?.ownerAction).toBeNull();
+      expect(card?.reservedBy).toEqual({ id: "u2", nick: "anna", displayName: "Анна" });
+    },
+  );
 
   it("offers no owner action and no holder on an open gift", async () => {
     findMany.mockResolvedValue([gift({ id: "g1", status: "OPEN" })]);

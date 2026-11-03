@@ -79,24 +79,52 @@ vi.mock("react-native", async () => {
     pointerEvents?: string;
     role?: string;
     style?: unknown;
+    accessible?: boolean;
+    accessibilityLabel?: string;
+    accessibilityState?: { busy?: boolean };
   };
   /** Keeps the style of a `testID` element; a real layout engine is not available here. */
   function record(testID: string | undefined, style: unknown) {
     if (testID) layout.styles.set(testID, style);
   }
-  function domProps(testID: string | undefined, pointerEvents?: string, role?: string) {
+  function domProps(
+    testID: string | undefined,
+    pointerEvents?: string,
+    role?: string,
+    accessible?: boolean,
+    accessibilityLabel?: string,
+    accessibilityState?: { busy?: boolean },
+  ) {
     return {
       ...(testID ? { "data-testid": testID } : {}),
       // Mirrors RN: `pointerEvents` is a View prop, not a style key.
       ...(pointerEvents ? { "data-pointer-events": pointerEvents } : {}),
       // `role` is a DOM-role prop on View, forwarded as-is by react-native-web.
       ...(role ? { role } : {}),
+      // react-native-web turns these three into the accessible region the screen
+      // reader announces: a labelled, busy box (the loading skeleton).
+      ...(accessible ? { "data-accessible": "true" } : {}),
+      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
+      ...(accessibilityState?.busy ? { "aria-busy": "true" } : {}),
     };
   }
   const element = (tag: string) =>
-    function Element({ children, testID, pointerEvents, role, style }: Props) {
+    function Element({
+      children,
+      testID,
+      pointerEvents,
+      role,
+      style,
+      accessible,
+      accessibilityLabel,
+      accessibilityState,
+    }: Props) {
       record(testID, style);
-      return React.createElement(tag, domProps(testID, pointerEvents, role), children);
+      return React.createElement(
+        tag,
+        domProps(testID, pointerEvents, role, accessible, accessibilityLabel, accessibilityState),
+        children,
+      );
     };
   return {
     StyleSheet: { create: (styles: unknown) => styles },
@@ -322,6 +350,21 @@ describe("мой вишлист: список", () => {
     expect(button("Добавить желание")).toBeUndefined();
   });
 
+  /**
+   * `EXPERIENCE.md` → State Patterns → «Загрузка»: the skeleton is one busy region
+   * with a name, not three anonymous boxes for a screen reader.
+   */
+  it("skeleton объявлен диктору: одна занятая область с подписью «Загружаем вишлист»", async () => {
+    respond(new Promise(() => {}));
+    await mount();
+
+    const region = container.querySelector('[aria-label="Загружаем вишлист"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("data-accessible")).toBe("true");
+    expect(region?.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
+  });
+
   it("показывает все свои желания, включая «секрет», с чипом видимости и статусом", async () => {
     respond(
       giftsAnswer([
@@ -534,6 +577,22 @@ describe("мой вишлист: список", () => {
       pathname: "/login",
       params: { next: "/" },
     });
+  });
+
+  /** The footer button goes through the auth context, which owns the session call. */
+  it("«Выйти» вызывает signOut контекста: DELETE /api/v1/session", async () => {
+    respond(giftsAnswer([]));
+    await mount();
+
+    api.apiRequest.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/api/v1/session" ? { ok: true, data: { signedOut: true } } : giftsAnswer([]),
+      ),
+    );
+    await press("Выйти");
+
+    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/session", { method: "DELETE" });
+    expect(store.clearSessionToken).toHaveBeenCalledTimes(1);
   });
 
   it("«Выйти» при живой сессии открывает вход", async () => {

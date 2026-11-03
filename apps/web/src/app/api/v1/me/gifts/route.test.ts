@@ -99,6 +99,36 @@ describe("GET /api/v1/me/gifts", () => {
     expect(viaHttp).toEqual({ ok: true, data: { access: "gifts", gifts: [] } });
   });
 
+  /**
+   * AD-7 owner branch: the list is resolved through the session user's `ownerId`,
+   * never through input. A hint in the query string must not widen the read to
+   * another person's wishlist.
+   */
+  it("reads only the session owner's list, never another user's", async () => {
+    // A second person's list exists: if the route ever resolved it, the read would
+    // return their gift instead of the owner's.
+    const otherRow = { ...row, id: "g-other", title: "Чужое желание" };
+    findUnique.mockImplementation(({ where }: { where: { ownerId: string } }) =>
+      Promise.resolve({ id: where.ownerId === "u1" ? "l1" : "l2" }),
+    );
+    findMany.mockImplementation(({ where }: { where: { listId: string } }) =>
+      Promise.resolve(where.listId === "l1" ? [row] : [otherRow]),
+    );
+
+    const { GET } = await import("./route");
+    const res = await GET(new Request("http://x/api/v1/me/gifts?ownerId=u2&listId=l2"));
+    const body = await res.json();
+
+    expect(findUnique).toHaveBeenCalledWith({ where: { ownerId: "u1" }, select: { id: true } });
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { listId: "l1", archivedAt: null } }),
+    );
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(body.data.gifts.map((card: { id: string }) => card.id)).toEqual(["g1"]);
+    expect(JSON.stringify(body)).not.toContain("Чужое желание");
+  });
+
   it("passes request headers to getSession", async () => {
     const { GET } = await import("./route");
     await GET(

@@ -49,12 +49,14 @@ describe("unknown /api paths", () => {
 });
 
 describe("unsupported methods on /api/v1", () => {
-  it("POST /api/v1/me and GET /api/v1/session are NOT_FOUND envelopes", async () => {
+  it("unsupported methods on known /api/v1 paths are NOT_FOUND envelopes", async () => {
     const me = await import("./v1/me/route");
     const session = await import("./v1/session/route");
     const zone = await import("./v1/me/time-zone/route");
+    const gifts = await import("./v1/me/gifts/route");
     await expectEnvelope(me.POST, "http://127.0.0.1:3000/api/v1/me", "POST");
     await expectEnvelope(session.GET, "http://127.0.0.1:3000/api/v1/session", "GET");
     await expectEnvelope(zone.GET, "http://127.0.0.1:3000/api/v1/me/time-zone", "GET");
+    await expectEnvelope(gifts.POST, "http://127.0.0.1:3000/api/v1/me/gifts", "POST");
   });
 });

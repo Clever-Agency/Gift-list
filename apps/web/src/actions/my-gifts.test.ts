@@ -166,11 +166,17 @@ describe("getMyGifts", () => {
     expect(card?.ownerAction).toBe("EXPIRED_NO_REPLY");
   });
 
-  it("offers no owner action and no holder on an open or closed gift", async () => {
+  it("offers no owner action and no holder on an open gift", async () => {
+    findMany.mockResolvedValue([gift({ id: "g1", status: "OPEN" })]);
+
+    const [card] = giftsOf(await getMyGifts(headers));
+    expect(card?.ownerAction).toBeNull();
+    expect(card?.reservedBy).toBeNull();
+  });
+
+  it("keeps the holder on a closed gift when they allowed the owner to see them", async () => {
     findMany.mockResolvedValue([
-      gift({ id: "g1", status: "OPEN" }),
       gift({
-        id: "g2",
         status: "CLOSED",
         reservationPhase: "GIVEN",
         holderVisibleToOwner: true,
@@ -178,8 +184,23 @@ describe("getMyGifts", () => {
       }),
     ]);
 
-    const cards = giftsOf(await getMyGifts(headers));
-    expect(cards.map((card) => card.ownerAction)).toEqual([null, null]);
-    expect(cards.map((card) => card.reservedBy)).toEqual([null, null]);
+    const [card] = giftsOf(await getMyGifts(headers));
+    expect(card?.reservedBy).toEqual({ id: "u2", nick: "anna", displayName: "Анна" });
+    expect(card?.ownerAction).toBeNull();
+  });
+
+  it("still hides the holder on a closed gift when the toggle is off", async () => {
+    findMany.mockResolvedValue([
+      gift({
+        status: "CLOSED",
+        reservationPhase: "GIVEN",
+        holderVisibleToOwner: false,
+        reservedBy: { id: "u2", nick: "anna", name: "Анна" },
+      }),
+    ]);
+
+    const [card] = giftsOf(await getMyGifts(headers));
+    expect(card?.reservedBy).toBeNull();
+    expect(card?.ownerAction).toBeNull();
   });
 });

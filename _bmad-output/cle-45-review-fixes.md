@@ -5,13 +5,13 @@
 - [x] M2 No fetch timeout; hung request = endless skeleton. Add AbortSignal.timeout(10_000) in apiRequest (client.ts)
 - [x] M3 401 does not show toast "Сессия закончилась, войдите снова"
 - [x] M4 Gift card ignores reservation phase / ownerAction, always shows "Берёт {name}" (gift-card.tsx:31-35)
-- [ ] M5 CLOSED gift drops reservedBy even when holderVisibleToOwner (my-gifts.ts:89-90)
+- [x] M5 CLOSED gift drops reservedBy even when holderVisibleToOwner (my-gifts.ts:89-90)
 
 ## Minor
-- [x] M1 Missing list / not_found rendered as empty wishlist
-- [x] M2 Contract parse failure shown as network error
-- [x] M3 Error screen always talks about network
-- [x] M4 Toast pointerEvents in style instead of prop; toast covers "Выйти"
+- [ ] m1 Missing list / not_found rendered as empty wishlist
+- [ ] m2 Contract parse failure shown as network error
+- [ ] m3 Error screen always talks about network
+- [ ] m4 Toast pointerEvents in style instead of prop; toast covers "Выйти"
 - [ ] m5 No list/listitem accessibility roles
 - [ ] m6 Visibility chip has no icon
 - [ ] m7 Card grid width wrong on narrow screens / safe area

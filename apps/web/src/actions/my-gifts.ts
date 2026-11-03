@@ -83,11 +83,12 @@ export async function getMyGifts(headers: Headers): Promise<ActionResult<ListDat
 /**
  * Owner gift card (AD-7 read matrix, AD-12): no holder identity unless the holder
  * allowed it, no `bought`, `dueAt` or reservation label; the owner action comes
- * from the reservation phase instead. Tags arrive with Story 2.5.
+ * from the reservation phase instead. Tags arrive with Story 2.5. Closing keeps
+ * `reserved*` for audit (AD-8), so a CLOSED gift keeps the holder when the
+ * toggle is on and still hides it when off (FR-31).
  */
 function toOwnerGiftCard(row: OwnerGiftRow): GiftCard {
-  const reservation = row.status === "RESERVED" ? row : null;
-  const holder = reservation?.holderVisibleToOwner ? reservation.reservedBy : null;
+  const holder = row.holderVisibleToOwner ? row.reservedBy : null;
   return {
     id: row.id,
     title: row.title,

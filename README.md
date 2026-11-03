@@ -73,7 +73,19 @@ PIN: `prisma` и `@prisma/client` — **7.10.0** (не ставьте bare `pris
 
 В настройках проекта Vercel Root Directory = `apps/web`. Команду установки задаёт `apps/web/vercel.json`: `cd ../.. && npm ci`. Из `apps/web` npm ставит только зависимости `@gift-list/web`, а сборке нужен и `expo` из `apps/mobile`: `scripts/sync-spa.mjs` экспортирует веб-версию приложения в `public/`.
 
-Сборка — `output: 'standalone'` с корнем трассировки в корне репозитория (AD-16), поэтому сервер лежит в `apps/web/.next/standalone/apps/web/server.js`. Вне Vercel (Docker) запускайте его через `node`, а не `next start`; рядом нужно положить `apps/web/.next/static` (в `.next/standalone/apps/web/.next/static`) и `apps/web/public`, если он появится.
+Сборка — `output: 'standalone'` с корнем трассировки в корне репозитория (AD-16), поэтому сервер лежит в `apps/web/.next/standalone/apps/web/server.js`. `apps/web/scripts/copy-standalone-assets.mjs` после сборки сам кладёт `.next/static` и `public` в `.next/standalone/apps/web`, вручную ничего копировать не нужно.
+
+### Деплой вне Vercel
+
+1. Соберите проект из корня: `npm run build`, не голый `next build`: удаление `.env*` и копирование статики и `public` в standalone делает `apps/web/scripts/copy-standalone-assets.mjs`.
+2. Доставьте на сервер (в образ) каталог `apps/web/.next/standalone`: статика и `public` уже внутри.
+3. Примените миграции до старта сервера: в standalone нет Prisma CLI и миграций, поэтому из полного чекаута или CI выполните `npm exec -w @gift-list/web -- prisma migrate deploy` с `DATABASE_URL` целевой базы.
+4. Запускайте `node apps/web/.next/standalone/apps/web/server.js` из корня репозитория, а не `next start`. Если в образ скопировано только содержимое `standalone`, запускайте `node apps/web/server.js` из этого каталога.
+5. Конфигурация и секреты рантайма — из окружения процесса, список переменных в `apps/web/.env.example`. Исключение: `BRAND_NAME` вшивается ещё при сборке в страницы, которые Next.js пререндерит (`/`, 404: `apps/web/src/app/layout.tsx` берёт `getBrandName()` в metadata), а `EXPO_PUBLIC_*` — в SPA в `public/` (`sync-spa`). Задайте их и в окружении сборки, с тем же значением, что в рантайме.
+
+`PORT` и `HOSTNAME` по умолчанию — `3000` и `0.0.0.0`. В Docker задайте `HOSTNAME=0.0.0.0` явно: Docker подставляет в `HOSTNAME` id контейнера, и сервер не будет слушать 127.0.0.1 внутри контейнера.
+
+Сборка удаляет из standalone все файлы `.env*`, которые туда копирует Next.js. Не кладите `.env` в образ: репозиторий публичный, секреты в нём не хранятся (D-17).
 
 ### Стек
 

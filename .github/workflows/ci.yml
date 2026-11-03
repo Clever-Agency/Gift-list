@@ -46,6 +46,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Create canary .env
+        run: echo "CI_ENV_FILE_CANARY=1" > apps/web/.env
+
       - name: Build
         run: npm run build
 
@@ -54,6 +57,16 @@ jobs:
         run: |
           if ! test -f apps/web/.next/standalone/apps/web/server.js; then
             echo "::error::Не найден apps/web/.next/standalone/apps/web/server.js после npm run build"
+            exit 1
+          fi
+
+      - name: Check no .env in standalone
+        shell: bash
+        run: |
+          found=$(find apps/web/.next/standalone -name '.env*' -not -path '*/node_modules/*')
+          if [ -n "$found" ]; then
+            echo "::error::В standalone попали файлы .env*:"
+            echo "$found"
             exit 1
           fi
 

@@ -3,6 +3,7 @@
 // list read (Story 2.1) and the create use-case (Story 2.2).
 
 import type { GiftCard } from "@gift-list/contracts";
+import { calendarDay } from "./calendar-day";
 import type { GiftVisibility } from "./visibility";
 
 /** Plain row the owner mapper reads; keeps Prisma types out of the mapping rules. */
@@ -64,9 +65,4 @@ function ownerAction(row: OwnerGiftRow): GiftCard["ownerAction"] {
     default:
       return null;
   }
-}
-
-/** `Gift.expiresOn` is a date column; the wire keeps a plain ISO calendar day. */
-function calendarDay(value: Date | null): string | null {
-  return value ? value.toISOString().slice(0, 10) : null;
 }

@@ -61,14 +61,37 @@ vi.mock("use-intl", async () => {
 });
 vi.mock("react-native", async () => {
   const React = await import("react");
-  type Props = { children?: React.ReactNode; style?: unknown };
+  type Props = {
+    children?: React.ReactNode;
+    style?: unknown;
+    role?: string;
+    accessibilityLabel?: string;
+    onPress?: () => void;
+  };
+  const domProps = (role?: string, accessibilityLabel?: string) => ({
+    ...(role ? { role } : {}),
+    ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
+  });
   return {
     StyleSheet: { create: (styles: unknown) => styles },
-    View: ({ children }: Props) => React.createElement("div", null, children),
+    View: ({ children, role, accessibilityLabel }: Props) =>
+      React.createElement("div", domProps(role, accessibilityLabel), children),
     Text: ({ children, style }: Props) => {
       if (typeof children === "string") ui.texts.push({ value: children, style });
       return React.createElement("span", null, children);
     },
+    // The card content is a button only when `onPress` is passed: the mock keeps
+    // the DOM role and name the screen reader would get from react-native-web.
+    Pressable: ({ children, role, accessibilityLabel, onPress }: Props) =>
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          onClick: onPress,
+          ...domProps(role ?? "button", accessibilityLabel),
+        },
+        children,
+      ),
   };
 });
 
@@ -127,9 +150,9 @@ afterEach(async () => {
   container.remove();
 });
 
-async function render(card: GiftCardData) {
+async function render(card: GiftCardData, onPress?: () => void) {
   await act(async () => {
-    host.render(<WishCard gift={card} width={343} />);
+    host.render(<WishCard gift={card} width={343} onPress={onPress} />);
   });
 }
 
@@ -195,5 +218,37 @@ describe("WishCard: цена", () => {
 
     expect(textNodes().some((value) => value.includes("BYN"))).toBe(false);
     expect(textNodes().some((value) => /\d/.test(value))).toBe(false);
+  });
+});
+
+/**
+ * Story 2.2: the card stays presentational — the list passes `onPress` to open the
+ * edit route, and only then is the content a button. The listitem wrapper stays
+ * outside either way, so a non-owner list can reuse the card without a handler.
+ */
+describe("WishCard: нажатие", () => {
+  it("с onPress контент — кнопка с подписью «Изменить «{title}»» и зовёт onPress", async () => {
+    const onPress = vi.fn();
+    await render(gift({ title: "Наушники" }), onPress);
+
+    const item = container.querySelector('[role="listitem"]');
+    expect(item).not.toBeNull();
+    const card = item?.querySelector('[role="button"]');
+    expect(card).not.toBeNull();
+    expect(card?.getAttribute("aria-label")).toBe("Изменить «Наушники»");
+
+    await act(async () => {
+      card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("без onPress карточка не кнопка, но listitem остаётся", async () => {
+    await render(gift({ title: "Свитер" }));
+
+    expect(container.querySelector('[role="listitem"]')).not.toBeNull();
+    expect(container.querySelector('[role="button"]')).toBeNull();
+    expect(container.querySelectorAll("button")).toHaveLength(0);
+    expect(textNodes()).toContain("Свитер");
   });
 });

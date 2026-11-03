@@ -77,7 +77,8 @@
     "ownerAction": {
       "CONFIRM_GIVEN": "Ждёт вашего подтверждения",
       "EXPIRED_NO_REPLY": "Срок брони истёк"
-    }
+    },
+    "edit": "Изменить «{title}»"
   },
   "toast": {
     "close": "Закрыть"

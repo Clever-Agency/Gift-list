@@ -226,6 +226,11 @@ export default function MyWishlistScreen() {
     router.push("/gifts/new");
   }
 
+  function openEditor(id: string) {
+    // Story 2.2: the owner card is the way into the edit form.
+    router.push({ pathname: "/gifts/[id]/edit", params: { id } });
+  }
+
   function signOut() {
     void (async () => {
       const result = await auth.signOut();
@@ -283,7 +288,12 @@ export default function MyWishlistScreen() {
                   role alias React Native forwards on web and maps on native. */}
               <View role="list" style={styles.grid}>
                 {state.gifts.map((gift) => (
-                  <WishCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                  <WishCard
+                    key={gift.id}
+                    gift={gift}
+                    width={grid.cardWidth}
+                    onPress={() => openEditor(gift.id)}
+                  />
                 ))}
               </View>
             </>

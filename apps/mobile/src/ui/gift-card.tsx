@@ -1,5 +1,5 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocale, useTranslations } from "use-intl";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 import { StatusPill } from "@/ui/status-pill";
@@ -12,11 +12,27 @@ import { VisibilityChip } from "@/ui/visibility-chip";
  * The reservation line follows `EXPERIENCE.md` → State Patterns → «Подписи брони»:
  * the owner sees the holder name only in an open reservation; `ownerAction`
  * replaces it with the phase label («Ждёт вашего подтверждения» / «Срок брони истёк»).
- * NOTE FOR UX: photo, tags, ⋯ and detail navigation arrive with Stories 2.5–2.7,
- * together with the one-phrase accessibility label of the card's main zone.
+ *
+ * The card stays presentational and reusable in non-owner lists: only a passed
+ * `onPress` makes the content a button (label from `app.gift.edit`), and without
+ * it the card is plain list content. The list item wrapper is always the outer
+ * element, so the list semantics of the grid survive the pressable inside it.
+ *
+ * NOTE FOR UX: photo, tags and ⋯ arrive with Stories 2.5–2.7, together with the
+ * `Link` main zone that `DESIGN.md` reserves for the detail route; for now the
+ * owner edit route is a button.
  */
-export function WishCard({ gift, width }: { gift: GiftCardData; width: number }) {
+export function WishCard({
+  gift,
+  width,
+  onPress,
+}: {
+  gift: GiftCardData;
+  width: number;
+  onPress?: () => void;
+}) {
   const t = useTranslations("app.myWishlist");
+  const tGift = useTranslations("app.gift");
   const tOwnerAction = useTranslations("app.gift.ownerAction");
   const locale = useLocale();
   const closed = gift.status === "CLOSED";
@@ -34,9 +50,10 @@ export function WishCard({ gift, width }: { gift: GiftCardData; width: number })
       ? t("reservedBy", { name: gift.reservedBy.displayName })
       : null;
 
-  return (
-    // Review m5: the card is a list item; the grid in «Мой вишлист» is its list.
-    <View role="listitem" style={[styles.card, { width }]}>
+  // The card content is built once and either sits in the pressable body or in a
+  // plain wrapper, so both variants stay the same card.
+  const body = (
+    <>
       <Text style={[styles.title, closed ? styles.closedText : null]} numberOfLines={2}>
         {gift.title}
       </Text>
@@ -46,6 +63,26 @@ export function WishCard({ gift, width }: { gift: GiftCardData; width: number })
       <View style={styles.footer}>
         <VisibilityChip visibility={gift.visibility} />
       </View>
+    </>
+  );
+
+  return (
+    // Review m5: the card is a list item; the grid in «Мой вишлист» is its list.
+    // Story 2.2: the owner edit route hangs off the card content, not the wrapper,
+    // so the outer element keeps the listitem role whatever the card is used for.
+    <View role="listitem" style={[styles.card, { width }]}>
+      {onPress ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={tGift("edit", { title: gift.title })}
+          onPress={onPress}
+          style={({ pressed }) => [styles.body, pressed ? styles.pressed : null]}
+        >
+          {body}
+        </Pressable>
+      ) : (
+        <View style={styles.body}>{body}</View>
+      )}
     </View>
   );
 }
@@ -56,8 +93,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: rounded.lg,
+  },
+  body: {
     padding: spacing["card-padding"],
     gap: spacing["grid-gap"] / 2,
+  },
+  // The same pressed feedback the other Pressables of the app give (DESIGN.md → App).
+  pressed: {
+    opacity: 0.9,
   },
   title: {
     ...textStyle("body-strong"),

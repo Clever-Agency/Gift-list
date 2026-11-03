@@ -499,6 +499,32 @@ describe("мой вишлист: список", () => {
     expect(items[1]?.textContent).toContain("Свитер");
   });
 
+  /**
+   * Story 2.2: the owner card is the way into the edit form. The pressable lives
+   * inside the listitem, so the list semantics above stay exactly as they were.
+   */
+  it("нажатие на карточку открывает редактирование желания, listitem остаётся", async () => {
+    respond(giftsAnswer([gift(), gift({ id: "g2", title: "Свитер" })]));
+    await mount();
+
+    const items = container.querySelectorAll('[role="list"] [role="listitem"]');
+    expect(items).toHaveLength(2);
+
+    // The label comes from `app.gift.edit`; the mock renders Pressable as a button.
+    const card = Array.from(container.querySelectorAll("button")).find(
+      (node) => node.getAttribute("aria-label") === "Изменить «Наушники»",
+    );
+    expect(card).toBeDefined();
+    await act(async () => {
+      card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
+  });
+
   it("пустой вишлист: «Пока пусто» и «Добавить желание» ведёт в форму", async () => {
     respond(giftsAnswer([]));
     await mount();

@@ -753,6 +753,57 @@ describe("мой вишлист: возврат на экран", () => {
     expect(button("Повторить")).toBeUndefined();
   });
 
+  /**
+   * Review m9 follow-up: a silent refresh that fails must not throw away the list the
+   * person is reading. The failure is reported by the toast alone; the retry view is
+   * reserved for a first load and for «Повторить» (both run from the skeleton).
+   */
+  it("обрыв сети при обновлении после возврата: карточки остаются, только toast", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    expect(text()).toContain("Наушники");
+
+    await blur();
+    respond({ ok: false, network: true });
+    await refocus();
+
+    expect(listReads()).toBe(2);
+    expect(text()).toContain("Наушники");
+    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(button("Повторить")).toBeUndefined();
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
+  it("ответ не по контракту после возврата: карточки остаются, общий toast", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    expect(text()).toContain("Наушники");
+
+    await blur();
+    respond(giftsAnswer([{ ...gift(), bought: true }]));
+    await refocus();
+
+    expect(text()).toContain("Наушники");
+    expect(text()).not.toContain("Не получилось загрузить. Попробуйте ещё раз.");
+    expect(text()).toContain("Не получилось. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
+  it("ошибка кода API после возврата: карточки остаются, toast с текстом кода", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    expect(text()).toContain("Наушники");
+
+    await blur();
+    respond({ ok: false, code: "FORBIDDEN", message: "" });
+    await refocus();
+
+    expect(text()).toContain("Наушники");
+    expect(text()).toContain("Нет доступа.");
+    expect(text()).not.toContain("Не получилось загрузить. Попробуйте ещё раз.");
+    expect(button("Повторить")).toBeUndefined();
+  });
+
   it("ответ обновления, пришедший после ухода с экрана, данные не меняет", async () => {
     respond(giftsAnswer([gift()]));
     await mount();

@@ -139,7 +139,14 @@ export default function MyWishlistScreen() {
       // UX-DR6: a failure is never silent — the retry view and a toast. A body that
       // breaks the contract is not a network problem, so it gets the generic text.
       const network = "network" in result;
-      setState({ status: "error", kind: network ? "network" : "generic" });
+      // A silent refocus refresh that fails keeps the list already on screen: the toast
+      // reports it, the cards stay (review m9 follow-up). A first load or «Повторить»
+      // reach this point with the skeleton up, so they still get the retry view.
+      setState((current) =>
+        current.status === "ready"
+          ? current
+          : { status: "error", kind: network ? "network" : "generic" },
+      );
       setToast(
         network
           ? t("form.network")

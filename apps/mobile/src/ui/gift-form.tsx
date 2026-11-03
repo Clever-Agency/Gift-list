@@ -57,6 +57,7 @@ export function GiftForm({ initialValues, submitting, onSubmit, submitLabel }: G
         value={title}
         onChangeText={setTitle}
         input={{
+          placeholder: t("field.titlePlaceholder"),
           maxLength: TITLE_MAX,
           autoCapitalize: "sentences",
         }}
@@ -67,6 +68,7 @@ export function GiftForm({ initialValues, submitting, onSubmit, submitLabel }: G
         onChangeText={setDescription}
         inputStyle={styles.descriptionInput}
         input={{
+          placeholder: t("field.descriptionPlaceholder"),
           multiline: true,
           numberOfLines: 4,
           maxLength: DESCRIPTION_MAX,

@@ -44,8 +44,13 @@ const SKELETON_CARDS = [0, 1, 2];
  */
 type ToastState = { message: string; tone: "info" | "error" };
 
-/** The one-shot param the create screen hands its success notice over in. */
+/**
+ * The one-shot params the form screens hand their success notices over in: the
+ * create screen says «Добавлено в вишлист», the edit screen «Изменения сохранены.».
+ * Both are neutral confirmations, so they show with the info tone.
+ */
 const CREATED_TOAST = "gift_created";
+const UPDATED_TOAST = "gift_updated";
 
 /**
  * The footer row («Выйти» + «Написать автору») is pinned to the bottom of the column.
@@ -113,15 +118,30 @@ export default function MyWishlistScreen() {
     }
   }, [auth.state.status, sessionExpired]);
 
-  // The create screen sets its «Добавлено в вишлист» notice here instead of on itself:
-  // it unmounts on the way back, so a toast of its own would never be seen (the same
+  // The create and edit screens set their confirmation here instead of on themselves:
+  // they unmount on the way back, so a toast of their own would never be seen (the same
   // hand-over the login screen gets in `?reason=`). The param is read once and cleared
   // right away, so a refocus — where the list refetches — does not show it again.
   useEffect(() => {
     const flash = paramValue(params.toast);
-    if (flash !== CREATED_TOAST || handledToast.current === flash) return;
+    if (flash === undefined) {
+      // The param is gone (either cleared right after the notice, or never set): the
+      // last shown notice is forgotten, so the next hand-over of the same value is a
+      // new one. Without this the second create or edit in one list session is silent.
+      handledToast.current = null;
+      return;
+    }
+    if (
+      handledToast.current === flash ||
+      (flash !== CREATED_TOAST && flash !== UPDATED_TOAST)
+    ) {
+      return;
+    }
     handledToast.current = flash;
-    setToast({ message: giftForm("toast.created"), tone: "info" });
+    setToast({
+      message: flash === CREATED_TOAST ? giftForm("toast.created") : giftForm("toast.saved"),
+      tone: "info",
+    });
     router.setParams({ toast: undefined });
   }, [params.toast, giftForm]);
 

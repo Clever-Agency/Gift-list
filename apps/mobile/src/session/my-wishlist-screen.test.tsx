@@ -863,6 +863,29 @@ describe("мой вишлист: весточка от формы создани
     expect(navigation.setParams).toHaveBeenCalledWith({ toast: undefined });
   });
 
+  it("вторая весточка в той же сессии списка снова показывает подтверждение", async () => {
+    search.params = { toast: "gift_created" };
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(text()).toContain("Добавлено в вишлист");
+    expect(navigation.setParams).toHaveBeenCalledWith({ toast: undefined });
+
+    // `setParams({ toast: undefined })` drops the param (expo-router does) and the
+    // screen re-renders on «Закрыть»: the notice and its value are both gone.
+    search.params = {};
+    await press("Закрыть");
+    expect(text()).not.toContain("Добавлено в вишлист");
+
+    // A second trip to the composer hands the same notice over again.
+    await blur();
+    search.params = { toast: "gift_created" };
+    await refocus();
+
+    expect(text()).toContain("Добавлено в вишлист");
+    expect(navigation.setParams).toHaveBeenCalledTimes(2);
+  });
+
   it("после «Закрыть» и возврата на экран подтверждение не повторяется", async () => {
     search.params = { toast: "gift_created" };
     respond(giftsAnswer([gift()]));
@@ -882,6 +905,50 @@ describe("мой вишлист: весточка от формы создани
     respond(giftsAnswer([gift()]));
     await mount();
 
+    expect(text()).not.toContain("Добавлено в вишлист");
+    expect(navigation.setParams).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Story 2.2: the edit screen hands its «Изменения сохранены.» notice over the same
+ * way in `?toast=gift_updated`. The list shows it once, as an info toast, and drops
+ * the param, so neither a refocus nor the refetch that comes with it replays it.
+ */
+describe("мой вишлист: весточка от формы редактирования", () => {
+  it("показывает «Изменения сохранены.» из параметра и гасит параметр", async () => {
+    search.params = { toast: "gift_updated" };
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(text()).toContain("Изменения сохранены.");
+    // The list is loaded behind the toast, as usual.
+    expect(text()).toContain("Наушники");
+    // One-shot: the param is cleared right away (expo-router drops `undefined` keys).
+    expect(navigation.setParams).toHaveBeenCalledWith({ toast: undefined });
+  });
+
+  it("после «Закрыть» и возврата на экран подтверждение не повторяется", async () => {
+    search.params = { toast: "gift_updated" };
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    await press("Закрыть");
+    expect(text()).not.toContain("Изменения сохранены.");
+
+    await blur();
+    await refocus();
+
+    expect(listReads()).toBe(2);
+    expect(text()).not.toContain("Изменения сохранены.");
+  });
+
+  it("незнакомый параметр toast ничего не показывает и не трогает параметр", async () => {
+    search.params = { toast: "gift_removed" };
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(text()).not.toContain("Изменения сохранены.");
     expect(text()).not.toContain("Добавлено в вишлист");
     expect(navigation.setParams).not.toHaveBeenCalled();
   });

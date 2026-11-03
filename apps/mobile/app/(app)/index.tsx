@@ -73,8 +73,9 @@ export default function MyWishlistScreen() {
         return;
       }
       if (!("network" in result) && result.code === "UNAUTHENTICATED") {
-        // The stored session is dead: `signOut` clears the token and marks the app
-        // anonymous, and the guard above opens the login screen with `?next=/`.
+        // The stored session is dead: say so, then `signOut` clears the token and
+        // marks the app anonymous, and the guard above opens login with `?next=/`.
+        setToast(t("session.expired"));
         const signedOut = await auth.signOut();
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
         if (!signedOut.ok && !cancelled) {
@@ -95,7 +96,10 @@ export default function MyWishlistScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId, attempt]);
 
-  if (auth.state.status !== "ready") return null;
+  if (auth.state.status !== "ready") {
+    // The expired-session toast must outlive the sign-out that unmounts the list.
+    return toast ? <ToastHost message={toast} onDismiss={dismissToast} /> : null;
+  }
 
   function retry() {
     setToast(null);

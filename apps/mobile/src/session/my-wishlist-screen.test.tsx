@@ -233,6 +233,17 @@ describe("мой вишлист: гейт сессии", () => {
       params: { next: "/" },
     });
   });
+
+  it("сессия истекла при загрузке желаний — toast и вход с возвратом", async () => {
+    respond({ ok: false, code: "UNAUTHENTICATED", message: "" });
+    await mount();
+    expect(text()).toContain("Сессия закончилась, войдите снова");
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/" },
+    });
+  });
 });
 
 describe("мой вишлист: список", () => {

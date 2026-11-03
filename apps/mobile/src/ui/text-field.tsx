@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type Ref } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -6,6 +6,7 @@ import {
   TextInput,
   View,
   type StyleProp,
+  type TextInputInstance,
   type TextInputProps,
   type TextStyle,
 } from "react-native";
@@ -20,6 +21,8 @@ type FieldProps = {
   input: TextInputProps;
   /** Extra styles over the shared box, e.g. the taller multiline description input. */
   inputStyle?: StyleProp<TextStyle>;
+  /** Lets the screen move focus back to the field, e.g. after a server-side error. */
+  inputRef?: Ref<TextInputInstance>;
 };
 
 export function TextField({
@@ -30,12 +33,14 @@ export function TextField({
   hint,
   input,
   inputStyle,
+  inputRef,
 }: FieldProps) {
   const described = error ?? hint;
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        ref={inputRef}
         value={value}
         onChangeText={onChangeText}
         placeholderTextColor={colors["muted-foreground"]}

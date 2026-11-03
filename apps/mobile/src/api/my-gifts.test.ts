@@ -30,7 +30,7 @@ describe("fetchMyGifts", () => {
     const result = await fetchMyGifts();
 
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/me/gifts");
-    expect(result).toEqual({ ok: true, gifts: [card] });
+    expect(result).toEqual({ ok: true, access: "gifts", gifts: [card] });
   });
 
   it("passes a network failure through", async () => {
@@ -71,9 +71,15 @@ describe("fetchMyGifts", () => {
     await expect(fetchMyGifts()).resolves.toEqual({ ok: false, network: true });
   });
 
-  it("treats a closed gate as an empty list", async () => {
+  it("reports a closed gate as a missing list, not an empty wishlist", async () => {
     api.apiRequest.mockResolvedValue({ ok: true, data: { access: "not_found", gifts: [] } });
 
-    await expect(fetchMyGifts()).resolves.toEqual({ ok: true, gifts: [] });
+    await expect(fetchMyGifts()).resolves.toEqual({ ok: true, access: "not_found" });
+  });
+
+  it("keeps an open gate with no gifts as an empty list", async () => {
+    api.apiRequest.mockResolvedValue({ ok: true, data: { access: "gifts", gifts: [] } });
+
+    await expect(fetchMyGifts()).resolves.toEqual({ ok: true, access: "gifts", gifts: [] });
   });
 });

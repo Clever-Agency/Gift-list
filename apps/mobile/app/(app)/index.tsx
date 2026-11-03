@@ -23,10 +23,14 @@ import { PrimaryButton } from "@/ui/primary-button";
 import { WishCardSkeleton } from "@/ui/skeleton";
 import { ToastHost } from "@/ui/toast";
 
-/** A failed read keeps the list empty and offers the retry view; UX-DR6 adds the toast. */
+/**
+ * A failed read offers the retry view; UX-DR6 adds the toast. A missing list is its
+ * own state: «Список не найден» is not an empty wishlist (EXPERIENCE → State Patterns).
+ */
 type ScreenState =
   | { status: "loading" }
   | { status: "ready"; gifts: GiftCard[] }
+  | { status: "missing" }
   | { status: "error" };
 
 const SKELETON_CARDS = [0, 1, 2];
@@ -74,7 +78,11 @@ export default function MyWishlistScreen() {
       const result = await fetchMyGifts();
       if (cancelled) return;
       if (result.ok) {
-        setState({ status: "ready", gifts: result.gifts });
+        setState(
+          result.access === "not_found"
+            ? { status: "missing" }
+            : { status: "ready", gifts: result.gifts },
+        );
         return;
       }
       if (!("network" in result) && result.code === "UNAUTHENTICATED") {
@@ -88,6 +96,11 @@ export default function MyWishlistScreen() {
           setState({ status: "error" });
           setToast(t("form.network"));
         }
+        return;
+      }
+      if (!("network" in result) && result.code === "NOT_FOUND") {
+        // The list behind the session is gone: «Список не найден», not an empty wishlist.
+        setState({ status: "missing" });
         return;
       }
       setState({ status: "error" });
@@ -152,6 +165,11 @@ export default function MyWishlistScreen() {
           ) : state.status === "error" ? (
             <View style={styles.retry}>
               <Text style={styles.retryText}>{wishlist("loadError")}</Text>
+              <PrimaryButton label={wishlist("retry")} onPress={retry} />
+            </View>
+          ) : state.status === "missing" ? (
+            <View style={styles.retry}>
+              <Text style={styles.retryText}>{wishlist("listNotFound")}</Text>
               <PrimaryButton label={wishlist("retry")} onPress={retry} />
             </View>
           ) : state.gifts.length === 0 ? (

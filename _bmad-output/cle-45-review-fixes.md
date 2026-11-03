@@ -8,7 +8,7 @@
 - [x] M5 CLOSED gift drops reservedBy even when holderVisibleToOwner (my-gifts.ts:89-90)
 
 ## Minor
-- [ ] m1 Missing list / not_found rendered as empty wishlist
+- [x] m1 Missing list / not_found rendered as empty wishlist
 - [ ] m2 Contract parse failure shown as network error
 - [ ] m3 Error screen always talks about network
 - [ ] m4 Toast pointerEvents in style instead of prop; toast covers "Выйти"

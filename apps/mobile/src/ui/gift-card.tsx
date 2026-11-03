@@ -35,7 +35,8 @@ export function WishCard({ gift, width }: { gift: GiftCardData; width: number })
       : null;
 
   return (
-    <View style={[styles.card, { width }]}>
+    // Review m5: the card is a list item; the grid in «Мой вишлист» is its list.
+    <View role="listitem" style={[styles.card, { width }]}>
       <Text style={[styles.title, closed ? styles.closedText : null]} numberOfLines={2}>
         {gift.title}
       </Text>

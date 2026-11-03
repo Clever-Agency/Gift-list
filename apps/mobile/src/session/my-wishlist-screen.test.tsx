@@ -69,23 +69,26 @@ vi.mock("react-native", async () => {
     children?: React.ReactNode;
     testID?: string;
     pointerEvents?: string;
+    role?: string;
     style?: unknown;
   };
   /** Keeps the style of a `testID` element; a real layout engine is not available here. */
   function record(testID: string | undefined, style: unknown) {
     if (testID) layout.styles.set(testID, style);
   }
-  function domProps(testID: string | undefined, pointerEvents?: string) {
+  function domProps(testID: string | undefined, pointerEvents?: string, role?: string) {
     return {
       ...(testID ? { "data-testid": testID } : {}),
       // Mirrors RN: `pointerEvents` is a View prop, not a style key.
       ...(pointerEvents ? { "data-pointer-events": pointerEvents } : {}),
+      // `role` is a DOM-role prop on View, forwarded as-is by react-native-web.
+      ...(role ? { role } : {}),
     };
   }
   const element = (tag: string) =>
-    function Element({ children, testID, pointerEvents, style }: Props) {
+    function Element({ children, testID, pointerEvents, role, style }: Props) {
       record(testID, style);
-      return React.createElement(tag, domProps(testID, pointerEvents), children);
+      return React.createElement(tag, domProps(testID, pointerEvents, role), children);
     };
   return {
     StyleSheet: { create: (styles: unknown) => styles },
@@ -348,6 +351,24 @@ describe("мой вишлист: список", () => {
     expect(text()).toContain("Берёт Олег");
     expect(text()).not.toContain("Пока пусто");
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
+  });
+
+  /**
+   * Review m5. Reviewers flagged the gift grid as a bare `View` tree: screen
+   * readers got no list semantics at all. The container is `role="list"` and every
+   * card wrapper is `role="listitem"` — RN's DOM role alias, which
+   * react-native-web forwards and native maps to the closest accessibility trait.
+   */
+  it("сетка карточек размечена как список: role list у сетки, role listitem у карточек", async () => {
+    respond(giftsAnswer([gift(), gift({ id: "g2", title: "Свитер" })]));
+    await mount();
+
+    const list = container.querySelector('[role="list"]');
+    expect(list).not.toBeNull();
+    const items = list?.querySelectorAll('[role="listitem"]') ?? [];
+    expect(items).toHaveLength(2);
+    expect(items[0]?.textContent).toContain("Наушники");
+    expect(items[1]?.textContent).toContain("Свитер");
   });
 
   it("пустой вишлист: «Пока пусто» и «Добавить желание» ведёт в форму", async () => {

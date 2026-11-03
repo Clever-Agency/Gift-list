@@ -206,7 +206,9 @@ export default function MyWishlistScreen() {
               <View style={width < spacing["bp-medium"] ? styles.addRow : styles.addRowWide}>
                 <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
               </View>
-              <View style={styles.grid}>
+              {/* Review m5: the grid is a list for assistive tech; `role` is the DOM
+                  role alias React Native forwards on web and maps on native. */}
+              <View role="list" style={styles.grid}>
                 {state.gifts.map((gift) => (
                   <WishCard key={gift.id} gift={gift} width={grid.cardWidth} />
                 ))}

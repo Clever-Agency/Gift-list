@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   loginBodySchema,
+  nickUpdateBodySchema,
   passwordForgotBodySchema,
   passwordResetBodySchema,
   registerBodySchema,
@@ -50,6 +51,27 @@ describe("registerBodySchema", () => {
       nick: "ан",
     });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("nickUpdateBodySchema", () => {
+  it("normalizes a padded nick the same way registration does", () => {
+    expect(nickUpdateBodySchema.parse({ nick: "  Anna_1 " })).toEqual({ nick: "anna_1" });
+  });
+
+  it("rejects a nick outside the pattern", () => {
+    for (const nick of ["ab", "a".repeat(25), "anna-1", "аня", ""]) {
+      expect(nickUpdateBodySchema.safeParse({ nick }).success).toBe(false);
+    }
+  });
+
+  it("rejects a body with no nick", () => {
+    expect(nickUpdateBodySchema.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts the shortest and the longest nick", () => {
+    expect(nickUpdateBodySchema.safeParse({ nick: "abc" }).success).toBe(true);
+    expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(24) }).success).toBe(true);
   });
 });
 

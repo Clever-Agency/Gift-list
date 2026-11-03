@@ -71,6 +71,10 @@
       "PUBLIC": "Всем",
       "FRIENDS": "Друзьям",
       "SECRET": "Секрет"
+    },
+    "ownerAction": {
+      "CONFIRM_GIVEN": "Ждёт вашего подтверждения",
+      "EXPIRED_NO_REPLY": "Срок брони истёк"
     }
   },
   "toast": {

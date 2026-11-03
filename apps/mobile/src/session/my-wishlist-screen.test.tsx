@@ -276,6 +276,7 @@ describe("мой вишлист: список", () => {
           priceCurrency: "BYN",
           visibility: "FRIENDS",
           status: "RESERVED",
+          // ACTIVE phase (no ownerAction) with the holder name shared (FR-31).
           reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
         }),
         gift({
@@ -415,5 +416,63 @@ describe("мой вишлист: список", () => {
       pathname: "/login",
       params: { next: "/" },
     });
+  });
+});
+
+/**
+ * `EXPERIENCE.md` → State Patterns → «Подписи брони» (owner column): the holder
+ * name appears only in an active reservation and only when shared; `ownerAction`
+ * replaces it with the phase label. The status pill stays the fallback label.
+ */
+describe("мой вишлист: подписи брони у владельца", () => {
+  const holder = { id: "u2", nick: "oleg", displayName: "Олег" };
+
+  it("ACTIVE с разрешённым именем: «Берёт {имя}»", async () => {
+    respond(giftsAnswer([gift({ status: "RESERVED", reservedBy: holder })]));
+    await mount();
+
+    expect(text()).toContain("Берёт Олег");
+    expect(text()).not.toContain("Ждёт вашего подтверждения");
+    expect(text()).not.toContain("Срок брони истёк");
+  });
+
+  it("ACTIVE без разрешения: pill «Забронирован» и никакого имени", async () => {
+    respond(giftsAnswer([gift({ status: "RESERVED", reservedBy: null })]));
+    await mount();
+
+    expect(text()).toContain("Забронирован");
+    expect(text()).not.toContain("Берёт");
+  });
+
+  it("AWAITING_OWNER (ownerAction EXPIRED_NO_REPLY): «Срок брони истёк»", async () => {
+    respond(
+      giftsAnswer([
+        gift({
+          status: "RESERVED",
+          reservedBy: holder,
+          ownerAction: "EXPIRED_NO_REPLY",
+        }),
+      ]),
+    );
+    await mount();
+
+    expect(text()).toContain("Срок брони истёк");
+    expect(text()).not.toContain("Берёт Олег");
+  });
+
+  it("GIVEN (ownerAction CONFIRM_GIVEN): «Ждёт вашего подтверждения»", async () => {
+    respond(
+      giftsAnswer([
+        gift({
+          status: "RESERVED",
+          reservedBy: holder,
+          ownerAction: "CONFIRM_GIVEN",
+        }),
+      ]),
+    );
+    await mount();
+
+    expect(text()).toContain("Ждёт вашего подтверждения");
+    expect(text()).not.toContain("Берёт Олег");
   });
 });

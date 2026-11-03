@@ -35,4 +35,4 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 - [x] 22. Screen tests (create flow, edit flow, network/401 errors)
 
 ## Wrap-up
-- [ ] 23. Full check: typecheck, lint, tests, build, check-boundaries
+- [x] 23. Full check: typecheck, lint, tests, build, check-boundaries

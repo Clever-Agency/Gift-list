@@ -26,7 +26,7 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 - [x] 15. Price field (minor units input) + currency picker (default USD)
 - [x] 16. Link field + visibility field (default PUBLIC)
 - [x] 17. Inline field errors per EXPERIENCE.md «Ошибки форм» + server error mapping
-- [ ] 18. GiftForm tests (required title, defaults, error display)
+- [x] 18. GiftForm tests (required title, defaults, error display)
 
 ## Mobile screens
 - [ ] 19. Replace `/gifts/new` placeholder with create screen (submit → back to list, list refresh)

@@ -22,7 +22,7 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 - [x] 13. `updateGift` / `fetchGift` client fns + tests
 
 ## Mobile form
-- [ ] 14. `GiftForm` component skeleton (title, description) — extensible field list for 2.3/2.5
+- [x] 14. `GiftForm` component skeleton (title, description) — extensible field list for 2.3/2.5
 - [ ] 15. Price field (minor units input) + currency picker (default USD)
 - [ ] 16. Link field + visibility field (default PUBLIC)
 - [ ] 17. Inline field errors per EXPERIENCE.md «Ошибки форм» + server error mapping

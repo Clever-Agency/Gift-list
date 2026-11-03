@@ -10,6 +10,33 @@ const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }));
+/**
+ * `useFocusEffect` stand-in: expo-router runs the callback while the screen is focused
+ * and its cleanup when it blurs. `blur()`/`refocus()` walk the screen through that,
+ * like a back navigation from `/gifts/new` would.
+ */
+const focusStore = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  return {
+    focused: true,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    snapshot: () => focusStore.focused,
+    set: (next: boolean) => {
+      focusStore.focused = next;
+      for (const listener of listeners) listener();
+    },
+    reset: () => {
+      listeners.clear();
+      focusStore.focused = true;
+    },
+  };
+});
+
 /** Style props per `testID`, so layout can be asserted without a real layout engine. */
 const layout = vi.hoisted(() => ({ styles: new Map<string, unknown>() }));
 
@@ -67,10 +94,25 @@ vi.mock("use-intl", async () => {
     useLocale: () => "ru",
   };
 });
-vi.mock("expo-router", () => ({
-  router: navigation,
-  Stack: { Screen: () => null },
-}));
+vi.mock("expo-router", async () => {
+  const React = await import("react");
+  return {
+    router: navigation,
+    Stack: { Screen: () => null },
+    useFocusEffect: (effect: () => void | (() => void)) => {
+      const focused = React.useSyncExternalStore(
+        focusStore.subscribe,
+        focusStore.snapshot,
+        focusStore.snapshot,
+      );
+      React.useEffect(() => {
+        if (!focused) return undefined;
+        // Like expo-router: re-runs when the callback identity changes, cleans up on blur.
+        return effect();
+      }, [effect, focused]);
+    },
+  };
+});
 vi.mock("react-native", async () => {
   const React = await import("react");
   type Props = {
@@ -258,6 +300,25 @@ async function press(label: string) {
   });
 }
 
+/** Leaves the screen for another route (the composer), as a push would. */
+async function blur() {
+  await act(async () => {
+    focusStore.set(false);
+  });
+}
+
+/** Comes back to the screen, as a back navigation from the composer would. */
+async function refocus() {
+  await act(async () => {
+    focusStore.set(true);
+  });
+}
+
+/** Every read of the owner list, so a refocus refetch is countable. */
+function listReads(): number {
+  return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
+}
+
 async function mount() {
   await act(async () => {
     root.render(
@@ -271,6 +332,7 @@ async function mount() {
 beforeEach(() => {
   vi.resetAllMocks();
   layout.styles.clear();
+  focusStore.reset();
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -634,6 +696,84 @@ describe("мой вишлист: список", () => {
       pathname: "/login",
       params: { next: "/" },
     });
+  });
+});
+
+/**
+ * Review m9: a returning screen must show the list as it is now. «Добавить желание»
+ * pushes the composer and comes back to this route, so the refetch hangs off focus.
+ */
+describe("мой вишлист: возврат на экран", () => {
+  it("первый показ не запрашивает список дважды", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(listReads()).toBe(1);
+  });
+
+  it("возврат на экран перезапрашивает список", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    expect(listReads()).toBe(1);
+
+    await blur();
+    await refocus();
+
+    expect(listReads()).toBe(2);
+  });
+
+  it("новые данные после возврата заменяют старые", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    expect(text()).toContain("Наушники");
+
+    await blur();
+    respond(giftsAnswer([gift({ id: "g2", title: "Свитер" })]));
+    await refocus();
+
+    expect(text()).toContain("Свитер");
+    expect(text()).not.toContain("Наушники");
+  });
+
+  it("тихое обновление не показывает skeleton: карточки остаются на месте", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    await blur();
+    // The refresh has not answered yet: the screen must keep the list it already shows.
+    api.apiRequest.mockImplementation((path: string) =>
+      path === "/api/v1/me" ? Promise.resolve({ ok: true, data: user }) : new Promise(() => {}),
+    );
+    await refocus();
+
+    expect(listReads()).toBe(2);
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
+    expect(text()).not.toContain("Загружаем вишлист");
+    expect(text()).toContain("Наушники");
+    expect(button("Повторить")).toBeUndefined();
+  });
+
+  it("ответ обновления, пришедший после ухода с экрана, данные не меняет", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    await blur();
+    let answer: (value: unknown) => void = () => {};
+    api.apiRequest.mockImplementation((path: string) =>
+      path === "/api/v1/me"
+        ? Promise.resolve({ ok: true, data: user })
+        : new Promise((resolve) => {
+            answer = resolve;
+          }),
+    );
+    await refocus();
+    await blur();
+    await act(async () => {
+      answer(giftsAnswer([gift({ id: "g2", title: "Свитер" })]));
+    });
+
+    expect(text()).toContain("Наушники");
+    expect(text()).not.toContain("Свитер");
   });
 });
 

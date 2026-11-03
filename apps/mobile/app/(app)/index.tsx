@@ -1,6 +1,6 @@
 import type { GiftCard } from "@gift-list/contracts";
-import { router, Stack } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, Stack, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -71,8 +71,26 @@ export default function MyWishlistScreen() {
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // Review m9: coming back to the screen (e.g. from the composer) refetches the list.
+  // The mount effect owns the very first load, so the first focus right after mount is
+  // not a reason to fetch again; a refocus refresh is silent (only `retry` shows the
+  // skeleton) and its answer is dropped if the screen blurred before it arrived.
+  const focused = useRef(true);
+  const firstFocus = useRef(true);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
+
+  useFocusEffect(
+    useCallback(() => {
+      const first = firstFocus.current;
+      firstFocus.current = false;
+      focused.current = true;
+      if (!first) setAttempt((value) => value + 1);
+      return () => {
+        focused.current = false;
+      };
+    }, []),
+  );
 
   useEffect(() => {
     if (auth.state.status === "anonymous") {
@@ -89,7 +107,9 @@ export default function MyWishlistScreen() {
     let cancelled = false;
     void (async () => {
       const result = await fetchMyGifts();
-      if (cancelled) return;
+      // A refocus refresh that lost the screen, or a first load that outlived it, never
+      // touches state (review m9).
+      if (cancelled || !focused.current) return;
       if (result.ok) {
         setState(
           result.access === "not_found"
@@ -104,7 +124,7 @@ export default function MyWishlistScreen() {
         setSessionExpired(true);
         const signedOut = await auth.signOut();
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
-        if (!signedOut.ok && !cancelled) {
+        if (!signedOut.ok && !cancelled && focused.current) {
           setSessionExpired(false);
           setState({ status: "error", kind: "network" });
           setToast(t("form.network"));

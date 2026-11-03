@@ -16,7 +16,7 @@
 - [x] m6 Visibility chip has no icon
 - [x] m7 Card grid width wrong on narrow screens / safe area
 - [x] m8 Test gaps
-- [ ] m9 List not refreshed on screen focus (useFocusEffect)
+- [x] m9 List not refreshed on screen focus (useFocusEffect)
 
 ## Nits
 - [ ] N1 Visibility filter should pass list.ownerId

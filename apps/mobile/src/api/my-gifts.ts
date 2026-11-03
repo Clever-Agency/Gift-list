@@ -1,9 +1,19 @@
-import { listDataSchema, type GiftCard } from "@gift-list/contracts";
+import {
+  giftCardSchema,
+  listDataSchema,
+  type GiftCard,
+  type GiftInput,
+} from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
 
 export type MyGiftsResult =
   | { ok: true; access: "gifts"; gifts: GiftCard[] }
   | { ok: true; access: "not_found" }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
+export type CreateGiftResult =
+  | { ok: true; gift: GiftCard }
   | { ok: false; invalid: true }
   | Exclude<ClientResult<unknown>, { ok: true }>;
 
@@ -26,4 +36,23 @@ export async function fetchMyGifts(): Promise<MyGiftsResult> {
   if (parsed.data.access === "not_found") return { ok: true, access: "not_found" };
 
   return { ok: true, access: "gifts", gifts: parsed.data.gifts };
+}
+
+/**
+ * Story 2.2 (FR-10): `POST /api/v1/me/gifts` creates the owner's wish and answers
+ * with the AD-12 card. The transport, timeout and envelope live in `apiRequest`;
+ * the card is re-checked with the shared contract (AD-12) like the list read, so
+ * an unexpected payload is `invalid`, not a broken connection.
+ */
+export async function createGift(input: GiftInput): Promise<CreateGiftResult> {
+  const result = await apiRequest<unknown>("/api/v1/me/gifts", {
+    method: "POST",
+    body: input,
+  });
+  if (!result.ok) return result;
+
+  const parsed = giftCardSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, gift: parsed.data };
 }

@@ -18,7 +18,7 @@ Source: epics.md → Epic 2 → Story 2.2; Linear CLE-47. FR-10, D-25, D-36, D-3
 - [x] 11. `GET /api/v1/me/gifts/[id]` (load one own gift for edit) + test
 
 ## Mobile API (apps/mobile/src/api)
-- [ ] 12. `createGift` client fn (contract re-check) + test
+- [x] 12. `createGift` client fn (contract re-check) + test
 - [ ] 13. `updateGift` / `fetchGift` client fns + tests
 
 ## Mobile form

@@ -85,7 +85,7 @@ export default function MyWishlistScreen() {
         );
         return;
       }
-      if (!("network" in result) && result.code === "UNAUTHENTICATED") {
+      if ("code" in result && result.code === "UNAUTHENTICATED") {
         // The stored session is dead: `signOut` clears the token and marks the app
         // anonymous, and the guard above opens login with `?next=/&reason=session_expired`.
         setSessionExpired(true);
@@ -98,14 +98,21 @@ export default function MyWishlistScreen() {
         }
         return;
       }
-      if (!("network" in result) && result.code === "NOT_FOUND") {
+      if ("code" in result && result.code === "NOT_FOUND") {
         // The list behind the session is gone: «Список не найден», not an empty wishlist.
         setState({ status: "missing" });
         return;
       }
       setState({ status: "error" });
-      // UX-DR6: a network failure is never silent — the retry view and a toast.
-      setToast("network" in result ? t("form.network") : common(`errors.code.${result.code}`));
+      // UX-DR6: a failure is never silent — the retry view and a toast. A body that
+      // breaks the contract is not a network problem, so it gets the generic text.
+      setToast(
+        "network" in result
+          ? t("form.network")
+          : "invalid" in result
+            ? common("errors.generic")
+            : common(`errors.code.${result.code}`),
+      );
     })();
     return () => {
       cancelled = true;

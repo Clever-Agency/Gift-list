@@ -387,12 +387,15 @@ describe("мой вишлист: список", () => {
     expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
   });
 
-  it("ответ не по контракту не рисуется и даёт тот же toast", async () => {
+  it("ответ не по контракту не рисуется и даёт общий toast, а не сетевой", async () => {
     respond(giftsAnswer([{ ...gift(), bought: true }]));
     await mount();
 
     expect(text()).not.toContain("Наушники");
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).toContain("Не получилось. Попробуйте ещё раз.");
+    expect(button("Повторить")).toBeDefined();
+    expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
   });
 
   it("«Выйти» при обрыве сети оставляет человека на экране и показывает toast", async () => {

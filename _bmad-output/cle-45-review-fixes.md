@@ -9,7 +9,7 @@
 
 ## Minor
 - [x] m1 Missing list / not_found rendered as empty wishlist
-- [ ] m2 Contract parse failure shown as network error
+- [x] m2 Contract parse failure shown as network error
 - [ ] m3 Error screen always talks about network
 - [ ] m4 Toast pointerEvents in style instead of prop; toast covers "Выйти"
 - [ ] m5 No list/listitem accessibility roles

@@ -59,7 +59,7 @@ describe("fetchMyGifts", () => {
       data: { access: "gifts", gifts: [{ ...card, bought: true }] },
     });
 
-    await expect(fetchMyGifts()).resolves.toEqual({ ok: false, network: true });
+    await expect(fetchMyGifts()).resolves.toEqual({ ok: false, invalid: true });
   });
 
   it("rejects a card with an unknown status", async () => {
@@ -68,7 +68,7 @@ describe("fetchMyGifts", () => {
       data: { access: "gifts", gifts: [{ ...card, status: "COLLECTION" }] },
     });
 
-    await expect(fetchMyGifts()).resolves.toEqual({ ok: false, network: true });
+    await expect(fetchMyGifts()).resolves.toEqual({ ok: false, invalid: true });
   });
 
   it("reports a closed gate as a missing list, not an empty wishlist", async () => {

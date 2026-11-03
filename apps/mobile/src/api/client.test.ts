@@ -109,6 +109,29 @@ describe("apiRequest envelope", () => {
     fetchMock.mockRejectedValue(new TypeError("offline"));
     expect(await apiRequest("/x")).toEqual({ ok: false, network: true });
   });
+
+  it("treats a timeout abort of a hanging fetch as network", async () => {
+    const controller = new AbortController();
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(controller.signal);
+    try {
+      fetchMock.mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () =>
+              reject(init.signal?.reason),
+            );
+          }),
+      );
+      const pending = apiRequest("/x");
+      controller.abort();
+      expect(await pending).toEqual({ ok: false, network: true });
+      expect(timeout).toHaveBeenCalledWith(10_000);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
 });
 
 describe("apiRequest envelope details", () => {

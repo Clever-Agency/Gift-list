@@ -92,6 +92,52 @@
     "pageTitle": "Приглашение — {brand}",
     "toHome": "Мой вишлист"
   },
+  "giftForm": {
+    "pageTitle": {
+      "create": "Новое желание — {brand}",
+      "edit": "Изменить желание — {brand}"
+    },
+    "title": {
+      "create": "Новое желание",
+      "edit": "Изменить желание"
+    },
+    "field": {
+      "title": "Название",
+      "titlePlaceholder": "Например, наушники Sony WH-1000XM5",
+      "description": "Описание (необязательно)",
+      "descriptionPlaceholder": "Чёрные, с шумоподавлением. Можно б/у в хорошем состоянии.",
+      "price": "Цена (необязательно)",
+      "pricePlaceholder": "250",
+      "priceHint": "Если не выбрать валюту, будет USD.",
+      "currency": "Валюта",
+      "link": "Ссылка (необязательно)",
+      "linkPlaceholder": "https://…",
+      "visibility": "Кто видит",
+      "visibilityHint": {
+        "PUBLIC": "по ссылке, подписчикам и в профиле",
+        "FRIENDS": "только друзья",
+        "SECRET": "только вы"
+      }
+    },
+    "action": {
+      "create": "Добавить желание",
+      "save": "Сохранить",
+      "cancel": "Отмена",
+      "saving": "Сохраняем…"
+    },
+    "error": {
+      "titleRequired": "Напишите, что вы хотите.",
+      "titleTooLong": "Название — до {max} символов.",
+      "descriptionTooLong": "Описание — до {max} символов.",
+      "priceInvalid": "Укажите цену числом, например 250.",
+      "linkInvalid": "Укажите ссылку вида https://…",
+      "form": "Не получилось сохранить. Попробуйте ещё раз."
+    },
+    "toast": {
+      "created": "Добавлено в вишлист",
+      "saved": "Изменения сохранены."
+    }
+  },
   "contractsOk": "Контракт на месте",
   "smoke": {
     "wishes": "{count, plural, one {# желание} few {# желания} many {# желаний} other {# желаний}}",

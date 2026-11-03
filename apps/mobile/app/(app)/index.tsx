@@ -56,11 +56,12 @@ const UPDATED_TOAST = "gift_updated";
 const DELETED_TOAST = "gift_deleted";
 
 /**
- * The footer row («Выйти» + «Написать автору») is pinned to the bottom of the column.
- * The toast is lifted by exactly that row's height (`spacing.touch-target` plus
- * `spacing.page-gutter`), so it never covers «Выйти» (`DESIGN.md` → Toast: «снизу,
- * над прилипшей кнопкой»). The safe-area inset is already outside this box: both
- * live inside `SafeAreaView`.
+ * The footer row («Выйти» + «Настройки» + «Написать автору») is pinned to the bottom
+ * of the column. The toast is lifted by exactly one row's height
+ * (`spacing.touch-target` plus `spacing.page-gutter`), so it never covers the controls
+ * (`DESIGN.md` → Toast: «снизу, над прилипшей кнопкой»). The row may wrap on a very
+ * narrow screen (see `styles.footer`); the clearance covers a single line.
+ * The safe-area inset is already outside this box: both live inside `SafeAreaView`.
  */
 const FOOTER_CLEARANCE = spacing["touch-target"] + spacing["page-gutter"];
 
@@ -371,6 +372,12 @@ export default function MyWishlistScreen() {
     }
   }
 
+  function openSettings() {
+    // NOTE FOR UX: временный вход в «Настройки» до Story 6.2, где они появятся
+    // в «Профиле» (DESIGN.md:443, UX-A13).
+    router.push("/settings");
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
@@ -445,6 +452,15 @@ export default function MyWishlistScreen() {
             style={({ pressed }) => [styles.logout, pressed ? styles.pressed : null]}
           >
             <Text style={styles.logoutLabel}>{wishlist("logout")}</Text>
+          </Pressable>
+          {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}
+          <Pressable
+            accessibilityRole="button"
+            testID="wishlist-settings"
+            onPress={openSettings}
+            style={({ pressed }) => [styles.link, pressed ? styles.pressed : null]}
+          >
+            <Text style={styles.linkLabel}>{wishlist("settings")}</Text>
           </Pressable>
           <AuthorLink />
         </View>
@@ -526,11 +542,17 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
     paddingBottom: spacing["page-gutter"],
   },
   logout: {
+    minHeight: spacing["touch-target"],
+    minWidth: spacing["touch-target"],
+    justifyContent: "center",
+  },
+  link: {
     minHeight: spacing["touch-target"],
     minWidth: spacing["touch-target"],
     justifyContent: "center",
@@ -541,5 +563,9 @@ const styles = StyleSheet.create({
   logoutLabel: {
     ...textStyle("button"),
     color: colors.destructive,
+  },
+  linkLabel: {
+    ...textStyle("button"),
+    color: colors.primary,
   },
 });

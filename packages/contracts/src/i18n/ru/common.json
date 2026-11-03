@@ -4,6 +4,7 @@
   "apiUnset": "не задан",
   "apiSet": "задан",
   "errors": {
+    "generic": "Не получилось. Попробуйте ещё раз.",
     "code": {
       "UNAUTHENTICATED": "Войдите в аккаунт.",
       "FORBIDDEN": "Нет доступа.",

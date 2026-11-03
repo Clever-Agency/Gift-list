@@ -79,6 +79,25 @@ describe("actionResultSchema", () => {
   });
 });
 
+// Required keys of `giftCardSchema`; the test below keeps this list in sync with the schema shape.
+const GIFT_CARD_FIELDS = [
+  "id",
+  "title",
+  "description",
+  "priceAmount",
+  "priceCurrency",
+  "linkUrl",
+  "visibility",
+  "quantity",
+  "expiresOn",
+  "archivedAt",
+  "tags",
+  "status",
+  "reservedBy",
+  "reservationLabel",
+  "ownerAction",
+] as const;
+
 describe("giftCardSchema", () => {
   it("accepts an AD-12 gift card with nullable fields", () => {
     expect(giftCardSchema.safeParse(giftCard).success).toBe(true);
@@ -109,6 +128,34 @@ describe("giftCardSchema", () => {
   it("rejects a currency outside the list", () => {
     expect(giftCardSchema.safeParse({ ...giftCard, priceAmount: 100, priceCurrency: "GBP" }).success).toBe(false);
   });
+
+  it("lists exactly the keys of the schema", () => {
+    expect([...GIFT_CARD_FIELDS].sort()).toEqual(Object.keys(giftCardSchema.shape).sort());
+  });
+
+  it.each(GIFT_CARD_FIELDS)("requires the %s field of the closed set", (field) => {
+    const withoutField = Object.fromEntries(Object.entries(giftCard).filter(([key]) => key !== field));
+    const result = giftCardSchema.safeParse(withoutField);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path[0])).toContain(field);
+  });
+
+  it("rejects statuses and labels outside the closed sets", () => {
+    expect(giftCardSchema.safeParse({ ...giftCard, status: "COLLECTION" }).success).toBe(false);
+    expect(giftCardSchema.safeParse({ ...giftCard, visibility: "FRIENDS_ONLY" }).success).toBe(false);
+    expect(giftCardSchema.safeParse({ ...giftCard, quantity: "MANY" }).success).toBe(false);
+    expect(giftCardSchema.safeParse({ ...giftCard, reservationLabel: "RETURNED" }).success).toBe(false);
+    expect(giftCardSchema.safeParse({ ...giftCard, ownerAction: "RELEASE" }).success).toBe(false);
+  });
+
+  it("accepts an owner card with an owner action and a hidden holder", () => {
+    const card = { ...giftCard, status: "RESERVED", reservedBy: null, ownerAction: "CONFIRM_GIVEN" };
+    expect(giftCardSchema.safeParse(card).success).toBe(true);
+    expect(giftCardSchema.safeParse({ ...card, status: "CLOSED", ownerAction: "EXPIRED_NO_REPLY" }).success).toBe(
+      true,
+    );
+  });
 });
 
 describe("listDataSchema", () => {
@@ -122,6 +169,15 @@ describe("listDataSchema", () => {
 
   it("accepts open access with gifts", () => {
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [giftCard] }).success).toBe(true);
+  });
+
+  it("accepts open access with an empty wishlist", () => {
+    expect(listDataSchema.safeParse({ access: "gifts", gifts: [] }).success).toBe(true);
+  });
+
+  it("rejects keys outside the list data and unknown access values", () => {
+    expect(listDataSchema.safeParse({ access: "gifts", gifts: [], total: 0 }).success).toBe(false);
+    expect(listDataSchema.safeParse({ access: "hidden", gifts: [] }).success).toBe(false);
   });
 });
 

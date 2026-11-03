@@ -81,6 +81,8 @@ export async function apiRequest<T>(
       headers,
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
       credentials: "include",
+      // A hanging request must end as a network error instead of leaving the screen loading.
+      signal: AbortSignal.timeout(10_000),
     });
   } catch {
     return { ok: false, network: true };

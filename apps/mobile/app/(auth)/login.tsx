@@ -12,19 +12,25 @@ import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { navLinkStyle } from "@/ui/nav-link";
 import { PasswordField, TextField } from "@/ui/text-field";
 import { PrimaryButton } from "@/ui/primary-button";
+import { ToastHost } from "@/ui/toast";
 import type { Me } from "@gift-list/contracts";
 
 export default function LoginScreen() {
   const t = useTranslations("app");
   const common = useTranslations("common");
   const brand = getBrandName();
-  const params = useLocalSearchParams<{ next?: string; email?: string }>();
+  const params = useLocalSearchParams<{ next?: string; email?: string; reason?: string }>();
   const next = returnPath(params.next);
   const auth = useAuth();
   const [email, setEmail] = useState(paramValue(params.email) ?? "");
   const [password, setPassword] = useState("");
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
+  // The my-wishlist screen signs out on an expired session and hands the notice over
+  // in `?reason=`, so it is still on screen after that screen unmounts.
+  const [toast, setToast] = useState<string | null>(
+    paramValue(params.reason) === "session_expired" ? t("session.expired") : null,
+  );
 
   function change(field: string, setValue: (value: string) => void) {
     return (value: string) => {
@@ -118,6 +124,7 @@ export default function LoginScreen() {
           {t("login.toRegister")}
         </Link>
       </AnonymousScreen>
+      {toast ? <ToastHost message={toast} onDismiss={() => setToast(null)} /> : null}
     </>
   );
 }

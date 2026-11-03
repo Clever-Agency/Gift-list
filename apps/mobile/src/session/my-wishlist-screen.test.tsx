@@ -352,11 +352,12 @@ describe("мой вишлист: список", () => {
     expect(text()).not.toContain("Список не найден.");
   });
 
-  it("ошибка сети — toast с повтором; после «Закрыть» toast уходит", async () => {
+  it("ошибка сети — сетевой текст тела и toast с повтором; после «Закрыть» toast уходит", async () => {
     respond({ ok: false, network: true });
     await mount();
 
     expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).not.toContain("Не получилось загрузить. Попробуйте ещё раз.");
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(button("Повторить")).toBeDefined();
 
@@ -366,12 +367,14 @@ describe("мой вишлист: список", () => {
     expect(button("Повторить")).toBeDefined();
   });
 
-  it("ошибка действия тоже показывается строкой каталога, а не молчит", async () => {
+  it("ошибка кода API — общее тело ошибки, а не сетевой текст", async () => {
     respond({ ok: false, code: "FORBIDDEN", message: "" });
     await mount();
 
     expect(text()).toContain("Нет доступа.");
-    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).toContain("Не получилось загрузить. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(button("Повторить")).toBeDefined();
   });
 
   it("«Повторить» перезагружает список и показывает карточки", async () => {
@@ -387,12 +390,13 @@ describe("мой вишлист: список", () => {
     expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
   });
 
-  it("ответ не по контракту не рисуется и даёт общий toast, а не сетевой", async () => {
+  it("ответ не по контракту не рисуется и даёт общее тело ошибки и общий toast, а не сетевые", async () => {
     respond(giftsAnswer([{ ...gift(), bought: true }]));
     await mount();
 
     expect(text()).not.toContain("Наушники");
-    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).toContain("Не получилось загрузить. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
     expect(text()).toContain("Не получилось. Попробуйте ещё раз.");
     expect(button("Повторить")).toBeDefined();
     expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");

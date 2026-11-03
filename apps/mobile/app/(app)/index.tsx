@@ -31,7 +31,9 @@ type ScreenState =
   | { status: "loading" }
   | { status: "ready"; gifts: GiftCard[] }
   | { status: "missing" }
-  | { status: "error" };
+  // Only a broken connection claims a network problem; other failed reads get the
+  // generic body (EXPERIENCE → State Patterns → «Нет сети при загрузке / ошибка загрузки»).
+  | { status: "error"; kind: "network" | "generic" };
 
 const SKELETON_CARDS = [0, 1, 2];
 
@@ -93,7 +95,7 @@ export default function MyWishlistScreen() {
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
         if (!signedOut.ok && !cancelled) {
           setSessionExpired(false);
-          setState({ status: "error" });
+          setState({ status: "error", kind: "network" });
           setToast(t("form.network"));
         }
         return;
@@ -103,11 +105,12 @@ export default function MyWishlistScreen() {
         setState({ status: "missing" });
         return;
       }
-      setState({ status: "error" });
       // UX-DR6: a failure is never silent — the retry view and a toast. A body that
       // breaks the contract is not a network problem, so it gets the generic text.
+      const network = "network" in result;
+      setState({ status: "error", kind: network ? "network" : "generic" });
       setToast(
-        "network" in result
+        network
           ? t("form.network")
           : "invalid" in result
             ? common("errors.generic")
@@ -171,7 +174,11 @@ export default function MyWishlistScreen() {
             </View>
           ) : state.status === "error" ? (
             <View style={styles.retry}>
-              <Text style={styles.retryText}>{wishlist("loadError")}</Text>
+              <Text style={styles.retryText}>
+                {state.kind === "network"
+                  ? wishlist("loadError")
+                  : wishlist("loadErrorGeneric")}
+              </Text>
               <PrimaryButton label={wishlist("retry")} onPress={retry} />
             </View>
           ) : state.status === "missing" ? (

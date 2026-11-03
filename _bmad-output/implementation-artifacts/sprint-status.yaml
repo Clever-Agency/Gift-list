@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-11-02'
+last_updated: '2026-11-04'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -56,9 +56,9 @@ development_status:
   2-7-фото-желания: backlog # нужен ARCH-A18 (хранилище фото)
   epic-2-retrospective: optional
 
-  epic-3: backlog
+  epic-3: in-progress
   3-1-смена-ника-в-настройках: backlog
-  3-2-visibilitypolicy-и-wire-dto-доступа: backlog
+  3-2-visibilitypolicy-и-wire-dto-доступа: done
   3-3-публичная-ссылка-l-publictoken: backlog
   3-4-профиль-u-nick: backlog
   3-5-поиск-пользователей-и-скрыть-из-поиска: backlog

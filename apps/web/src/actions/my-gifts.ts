@@ -47,7 +47,10 @@ export async function getMyGifts(headers: Headers): Promise<ActionResult<ListDat
   const ownerId = session.user.id;
   // AD-6 creates the list at registration; a missing row is an anomaly, and an
   // empty wishlist is safer on the owner's own screen than a gate error.
-  const list = await prisma.list.findUnique({ where: { ownerId }, select: { id: true } });
+  const list = await prisma.list.findUnique({
+    where: { ownerId },
+    select: { id: true, ownerId: true },
+  });
   if (!list) return { ok: true, data: { access: "gifts", gifts: [] } };
 
   const rows = await prisma.gift.findMany({
@@ -74,7 +77,11 @@ export async function getMyGifts(headers: Headers): Promise<ActionResult<ListDat
 
   const viewer = { id: ownerId };
   const gifts = rows
-    .filter((row) => VisibilityPolicy.resolve(viewer, { ownerId, visibility: row.visibility }).visible)
+    // AD-7: the owner branch is decided by the list owner, not by whoever the
+    // session claims to be.
+    .filter((row) =>
+      VisibilityPolicy.resolve(viewer, { ownerId: list.ownerId, visibility: row.visibility }).visible,
+    )
     .map(toOwnerGiftCard);
 
   return { ok: true, data: listDataSchema.parse({ access: "gifts", gifts }) };

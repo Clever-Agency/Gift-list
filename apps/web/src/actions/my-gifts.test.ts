@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -10,6 +10,8 @@ const { getSession, findUnique, findMany } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
+
+import { VisibilityPolicy } from "@/domain/visibility";
 
 import { getMyGifts } from "./my-gifts";
 
@@ -62,8 +64,12 @@ beforeEach(() => {
   findUnique.mockReset();
   findMany.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
-  findUnique.mockResolvedValue({ id: "l1" });
+  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1" });
   findMany.mockResolvedValue([]);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("getMyGifts", () => {
@@ -76,7 +82,10 @@ describe("getMyGifts", () => {
 
   it("reads the caller's own list and only the active gifts of it", async () => {
     await getMyGifts(headers);
-    expect(findUnique).toHaveBeenCalledWith({ where: { ownerId: "u1" }, select: { id: true } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { ownerId: "u1" },
+      select: { id: true, ownerId: true },
+    });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { listId: "l1", archivedAt: null } }),
     );
@@ -113,6 +122,18 @@ describe("getMyGifts", () => {
     const result = await getMyGifts(headers);
     expect(result).toMatchObject({ ok: true, data: { access: "gifts" } });
     expect(giftsOf(result).map((card) => card.visibility)).toEqual(["SECRET", "FRIENDS", "PUBLIC"]);
+  });
+
+  /** AD-7: owner visibility follows the list owner, never the session user id. */
+  it("decides owner visibility from the list owner, not the session user", async () => {
+    findUnique.mockResolvedValue({ id: "l1", ownerId: "u2" });
+    findMany.mockResolvedValue([gift({ id: "g1", visibility: "SECRET" })]);
+    const resolve = vi.spyOn(VisibilityPolicy, "resolve");
+
+    const result = await getMyGifts(headers);
+
+    expect(resolve).toHaveBeenCalledWith({ id: "u1" }, { ownerId: "u2", visibility: "SECRET" });
+    expect(giftsOf(result)).toEqual([]);
   });
 
   it("maps an owner card to the AD-12 contract", async () => {

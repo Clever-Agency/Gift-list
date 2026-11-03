@@ -43,7 +43,7 @@ beforeEach(() => {
   findUnique.mockReset();
   findMany.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
-  findUnique.mockResolvedValue({ id: "l1" });
+  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1" });
   findMany.mockResolvedValue([row]);
 });
 
@@ -109,7 +109,10 @@ describe("GET /api/v1/me/gifts", () => {
     // return their gift instead of the owner's.
     const otherRow = { ...row, id: "g-other", title: "Чужое желание" };
     findUnique.mockImplementation(({ where }: { where: { ownerId: string } }) =>
-      Promise.resolve({ id: where.ownerId === "u1" ? "l1" : "l2" }),
+      Promise.resolve({
+        id: where.ownerId === "u1" ? "l1" : "l2",
+        ownerId: where.ownerId,
+      }),
     );
     findMany.mockImplementation(({ where }: { where: { listId: string } }) =>
       Promise.resolve(where.listId === "l1" ? [row] : [otherRow]),
@@ -119,7 +122,10 @@ describe("GET /api/v1/me/gifts", () => {
     const res = await GET(new Request("http://x/api/v1/me/gifts?ownerId=u2&listId=l2"));
     const body = await res.json();
 
-    expect(findUnique).toHaveBeenCalledWith({ where: { ownerId: "u1" }, select: { id: true } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { ownerId: "u1" },
+      select: { id: true, ownerId: true },
+    });
     expect(findUnique).toHaveBeenCalledTimes(1);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { listId: "l1", archivedAt: null } }),

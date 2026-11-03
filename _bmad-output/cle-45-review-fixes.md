@@ -13,7 +13,7 @@
 - [x] m3 Error screen always talks about network
 - [x] m4 Toast pointerEvents in style instead of prop; toast covers "Выйти"
 - [x] m5 No list/listitem accessibility roles
-- [ ] m6 Visibility chip has no icon
+- [x] m6 Visibility chip has no icon
 - [ ] m7 Card grid width wrong on narrow screens / safe area
 - [ ] m8 Test gaps
 - [ ] m9 List not refreshed on screen focus (useFocusEffect)

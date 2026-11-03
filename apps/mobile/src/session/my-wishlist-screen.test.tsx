@@ -17,6 +17,14 @@ vi.mock("@/api/client", () => api);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
+// The visibility chip draws its icon with `expo-symbols`, which loads a symbol font
+// at runtime; the icon is decorative, so a stub is enough on the wishlist screen.
+vi.mock("expo-symbols", async () => {
+  const React = await import("react");
+  return {
+    SymbolView: () => React.createElement("span", { "data-testid": "visibility-icon" }),
+  };
+});
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
   const { dirname, join } = await import("node:path");

@@ -79,6 +79,25 @@ describe("actionResultSchema", () => {
   });
 });
 
+// Required keys of `giftCardSchema`; the test below keeps this list in sync with the schema shape.
+const GIFT_CARD_FIELDS = [
+  "id",
+  "title",
+  "description",
+  "priceAmount",
+  "priceCurrency",
+  "linkUrl",
+  "visibility",
+  "quantity",
+  "expiresOn",
+  "archivedAt",
+  "tags",
+  "status",
+  "reservedBy",
+  "reservationLabel",
+  "ownerAction",
+] as const;
+
 describe("giftCardSchema", () => {
   it("accepts an AD-12 gift card with nullable fields", () => {
     expect(giftCardSchema.safeParse(giftCard).success).toBe(true);
@@ -110,11 +129,16 @@ describe("giftCardSchema", () => {
     expect(giftCardSchema.safeParse({ ...giftCard, priceAmount: 100, priceCurrency: "GBP" }).success).toBe(false);
   });
 
-  it("requires every field of the closed set", () => {
-    const missingFields = Object.fromEntries(
-      Object.entries(giftCard).filter(([key]) => key !== "linkUrl" && key !== "tags"),
-    );
-    expect(giftCardSchema.safeParse(missingFields).success).toBe(false);
+  it("lists exactly the keys of the schema", () => {
+    expect([...GIFT_CARD_FIELDS].sort()).toEqual(Object.keys(giftCardSchema.shape).sort());
+  });
+
+  it.each(GIFT_CARD_FIELDS)("requires the %s field of the closed set", (field) => {
+    const withoutField = Object.fromEntries(Object.entries(giftCard).filter(([key]) => key !== field));
+    const result = giftCardSchema.safeParse(withoutField);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path[0])).toContain(field);
   });
 
   it("rejects statuses and labels outside the closed sets", () => {

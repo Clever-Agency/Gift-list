@@ -43,6 +43,7 @@ binds:
   - D-41
   - D-42
   - D-46
+  - D-47
   - A-24
 sources:
   - _bmad-output/planning-artifacts/prds/prd-gift-list-2026-09-30/prd.md
@@ -62,6 +63,7 @@ decisions_locked:
   - clients-expo-everywhere-D-40
   - monorepo-D-41
   - i18n-next-intl-use-intl-D-46
+  - shared-ui-tamagui-D-47
 ---
 
 # Architecture Spine — Gift List (MVP)
@@ -72,9 +74,10 @@ decisions_locked:
 
 | Слой | Каталог | Может зависеть от |
 |------|---------|-------------------|
-| Server pages + admin (Next.js) | `apps/web/src/app/` (кроме `api/`) | actions, components, `packages/contracts` |
-| App UI (Android, iOS, браузер) | `apps/mobile/` | только HTTP `api/v1` и `packages/contracts` |
+| Server pages + admin (Next.js) | `apps/web/src/app/` (кроме `api/`) | actions, components, `packages/contracts`, `packages/ui` |
+| App UI (Android, iOS, браузер) | `apps/mobile/` | только HTTP `api/v1`, `packages/contracts`, `packages/ui` |
 | Contract | `packages/contracts/` | только zod и JSON-каталоги переводов (без React, Prisma, env) |
+| UI kit | `packages/ui/` | только Tamagui и React; без API, Prisma, env, переводов |
 | HTTP / cron | `apps/web/src/app/api/` | те же use-case, что и actions |
 | Application | `apps/web/src/actions/`, `apps/web/src/lib/auth/` | domain, db |
 | Domain | `apps/web/src/domain/` | ничего внешнего (чистые правила + порты ошибок) |
@@ -101,11 +104,11 @@ flowchart TB
 - **Prevents:** бизнес-логика в UI; параллельный SQL из компонентов/cron в обход сервисов
 - **Rule:** Мутации продукта для веба — Server Actions. Нативный клиент вызывает Route Handlers `app/api/v1/*`. Cron и webhooks — Route Handlers `app/api/cron/*` и `app/api/webhooks/*`. Все три адаптера **вызывают те же domain/application методы** и не копируют правила. Набор use-case один; какой клиент показывает экран, решает D-40, а не сервер: метод `api/v1`, нужный только приложению, допустим, но правило в нём не дублируется. Domain не импортирует React/Next. Prisma — из `db/` и application/domain-writer сервисов по AD-8.
 
-### AD-2 — Starter и UI-стек `[ADOPTED UX-A1]`
+### AD-2 — UI-стек: общий пакет на Tamagui `[ADOPTED D-47]`
 
-- **Binds:** веб-frontend, design tokens
-- **Prevents:** расхождение UI-библиотеки веба; общий React-пакет с нативным клиентом
-- **Rule:** Веб уже поднят: Next.js App Router + shadcn + brand delta Forest Paper. UI приложения — отдельное приложение Expo на трёх платформах (AD-17) и **не** импортирует shadcn и `apps/web`; shadcn остаётся для серверных страниц и админки. Токены Forest Paper в мобильном клиенте — константы, не общий React-пакет: версии React расходятся.
+- **Binds:** весь UI `apps/mobile` и `apps/web`, design tokens
+- **Prevents:** два набора компонентов и две копии токенов; разный вид одной карточки в приложении и на `/l`
+- **Rule:** UI приложения Expo (Android, iOS, браузер) и Next-страниц — пакет `packages/ui` на Tamagui. Пакет отдаёт исходники TS без сборки, как `packages/contracts`, и транспилируется Next через `transpilePackages`. В пакете — тема Tamagui со значениями из frontmatter DESIGN.md (единственный источник токенов в коде) и компоненты; запросов к API, Prisma, env и переводов в нём нет — тексты приходят пропсами. Шрифты пакет не грузит: приложение передаёт имена начертаний expo-font, Next — CSS-переменные `next/font`. Next-страницы рендерятся на сервере, CSS Tamagui попадает в HTML (`useServerInsertedHTML`). Компоненты Tamagui импортируются только по подпутям (`@tamagui/core`, `@tamagui/stacks`, `tamagui/dialog` …), не из `"tamagui"` целиком. shadcn/ui, Tailwind и `@base-ui/react` в репозитории не используются. По API Tamagui v3 сверяться с `tamagui.dev/llms.txt` и `*.manifest.ts` компонентов.
 
 ### AD-3 — Аутентификация `[ASSUMPTION]`
 
@@ -298,8 +301,8 @@ flowchart TB
 ### AD-17 — Граница нативного клиента `[ADOPTED D-20]`
 
 - **Binds:** весь UI, AD-1, AD-2, AD-3, D-20
-- **Prevents:** Expo вызывает Server Actions; две копии доменных правил; общий UI-пакет на разных React
-- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Приложение — полный клиент на Android, iOS и в браузере (react-native-web, D-40). Платформенные модули (`expo-contacts`, `expo-secure-store`) подключаются через платформенные файлы; веб-сборка без них собирается, сверка контактов в браузере не предлагается. Next.js отдаёт только серверные страницы: `/l/:token` (первый показ анониму и мета-теги превью), `/i/:token`, `/unsubscribe/:token`, `/admin`, `.well-known`. Отдельного UI пользователя на Next.js нет. Выход iOS — шаг публикации и не меняет это правило. Общий код между клиентами — только `packages/contracts` (zod-схемы и каталоги переводов AD-27, без React); импорт `apps/web` из Expo запрещён. Проверено 2026-10-28: SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб в репозитории на React 19.2.8 — версии не выравнивать через общий UI. Отображаемое имя — AD-24, не строковый литерал в экранах.
+- **Prevents:** Expo вызывает Server Actions; две копии доменных правил
+- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Приложение — полный клиент на Android, iOS и в браузере (react-native-web, D-40). Платформенные модули (`expo-contacts`, `expo-secure-store`) подключаются через платформенные файлы; веб-сборка без них собирается, сверка контактов в браузере не предлагается. Next.js отдаёт только серверные страницы: `/l/:token` (первый показ анониму и мета-теги превью), `/i/:token`, `/unsubscribe/:token`, `/admin`, `.well-known`. Отдельного UI пользователя на Next.js нет. Выход iOS — шаг публикации и не меняет это правило. Общий код между клиентами — `packages/contracts` (zod-схемы и каталоги переводов AD-27, без React) и `packages/ui` (компоненты и тема, AD-2, без логики и данных); импорт `apps/web` из Expo запрещён. SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб — на той же версии React (AD-28). Отображаемое имя — AD-24, не строковый литерал в экранах.
 
 ### AD-18 — Сопоставление телефонной книги `[ADOPTED D-21, D-30]`
 
@@ -353,7 +356,7 @@ flowchart TB
 
 - **Binds:** весь репозиторий, AD-17, AD-14, FR-26, FR-27, FR-47
 - **Prevents:** второй репозиторий и рассинхрон типов; письмо, которое ведёт только в браузер или только в приложение; архитектура «на время без iOS»
-- **Rule:** Один репозиторий, npm workspaces: `apps/web` (Next.js: сервер, `api/v1`, cron, серверные страницы, `/admin`, Prisma, env; раздаёт веб-сборку приложения), `apps/mobile` (Expo), `packages/contracts` (zod-схемы AD-12, gift card, коды ошибок, каталоги переводов AD-27; без React, Prisma и env). Prisma и секреты живут только в `apps/web`. Общего UI-пакета нет (AD-2, AD-17). **Один домен.** Веб-сборка приложения (`expo export --platform web`, SPA) публикуется вместе с `apps/web`. Next.js обслуживает свои пути (`/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known`), всё остальное отдаёт SPA (fallback rewrite). Поэтому сессия в браузере — cookie того же домена, без CORS. `/l/:token` при наличии сессии или по «Куплю сам» передаёт пользователя на экран приложения `/wishlist/:token`; туда же ведёт `?next=` после входа; `?next=` принимает только относительный путь того же домена (иначе — главный экран). Этот путь отдаёт SPA fallback. App Links и Universal Links объявляют пути `/l/*`, `/i/*`, `/wishlist/*`. Next.js путь `/wishlist` не обслуживает (UX-A18). Все ссылки наружу (письма, копирование вишлиста, приглашение) — `https://{домен}/…`. Тот же домен объявлен для Android App Links (`assetlinks.json`) и iOS Universal Links (`apple-app-site-association`). При установленном приложении путь открывается в нём, иначе — тот же экран в браузере. Домен — конфигурация (Q-2); на этапе разработки — домен хостинга разработки. Флаг `IOS_APP_PUBLISHED` включает ссылку в App Store в подсказке «установите приложение» без правки кода. Деплой: веб-сборка приложения собирается в том же CI, что `apps/web`, и уходит на тот же хост (Vercel сейчас, Docker после переезда, AD-5).
+- **Rule:** Один репозиторий, npm workspaces: `apps/web` (Next.js: сервер, `api/v1`, cron, серверные страницы, `/admin`, Prisma, env; раздаёт веб-сборку приложения), `apps/mobile` (Expo), `packages/contracts` (zod-схемы AD-12, gift card, коды ошибок, каталоги переводов AD-27; без React, Prisma и env), `packages/ui` (Tamagui-компоненты и тема, AD-2). Prisma и секреты живут только в `apps/web`. **Один домен.** Веб-сборка приложения (`expo export --platform web`, SPA) публикуется вместе с `apps/web`. Next.js обслуживает свои пути (`/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known`), всё остальное отдаёт SPA (fallback rewrite). Поэтому сессия в браузере — cookie того же домена, без CORS. `/l/:token` при наличии сессии или по «Куплю сам» передаёт пользователя на экран приложения `/wishlist/:token`; туда же ведёт `?next=` после входа; `?next=` принимает только относительный путь того же домена (иначе — главный экран). Этот путь отдаёт SPA fallback. App Links и Universal Links объявляют пути `/l/*`, `/i/*`, `/wishlist/*`. Next.js путь `/wishlist` не обслуживает (UX-A18). Все ссылки наружу (письма, копирование вишлиста, приглашение) — `https://{домен}/…`. Тот же домен объявлен для Android App Links (`assetlinks.json`) и iOS Universal Links (`apple-app-site-association`). При установленном приложении путь открывается в нём, иначе — тот же экран в браузере. Домен — конфигурация (Q-2); на этапе разработки — домен хостинга разработки. Флаг `IOS_APP_PUBLISHED` включает ссылку в App Store в подсказке «установите приложение» без правки кода. Деплой: веб-сборка приложения собирается в том же CI, что `apps/web`, и уходит на тот же хост (Vercel сейчас, Docker после переезда, AD-5).
 
 ### AD-27 — Мультиязычность `[ADOPTED D-46]`
 
@@ -368,6 +371,12 @@ flowchart TB
   **Поиск и сортировка.** Поиск (AD-13) сравнивает только через `normalizeForSearch()`: NFC, нижний регистр, `ё → е`, `й` остаётся `й`; на сервере — нормализованная колонка, на клиенте — та же функция. `Intl.Collator` с `sensitivity: 'base'` для поиска запрещён; `Intl.Collator(locale).compare` — только сортировка.
   **Форматы.** `formatDate()` для дат без времени (ДР, личные даты, `expiresOn`) форматирует в `UTC`, чтобы день не съезжал; моменты — в `User.timeZone`. `formatPrice()` — `Intl.NumberFormat` с кодом валюты AD-25; вид валюты задаёт UX.
   **Hermes.** Только на Android и iOS, не в веб-сборке, первым импортом: `@formatjs/intl-pluralrules/polyfill-force.js`, затем `locale-data` для каждого из `SUPPORTED_LOCALES`. Остальные полифилы — только если smoke-тест падает, с версией в Stack. В приложении запрещены `RelativeTimeFormat`, `ListFormat`, `DisplayNames`, `formatRange`, compact-нотация и `signDisplay`, пока их не покрывает полифил. Smoke-тест на трёх платформах: «1 желание · 3 желания · 5 желаний · 21 желание», цена BYN и RUB, дата `ru`, сортировка «Алёна / Алена / Яна».
+
+### AD-28 — Версии и копии зависимостей UI `[ADOPTED D-47]`
+
+- **Binds:** корневой `package.json`, `package-lock.json`, AD-2, AD-17
+- **Prevents:** две копии React или `@tamagui/*` и разорванные React-контексты (портал, меню); падение на Android, которое не видно в браузере
+- **Rule:** React и `react-dom` в `apps/web` и `apps/mobile` — одна точная версия, та, на которую рассчитан Expo SDK; поднимать парой вместе с SDK. Корневой `package.json` держит `overrides` для `react` и `react-dom` на этой версии. Все `@tamagui/*` и `tamagui` — одна точная версия; `@tamagui/native` объявлен зависимостью корневого `package.json`, иначе npm раскладывает его вложенными копиями. Проверка в CI падает, если в дереве больше одной копии `react`, `react-dom`, `tamagui` или любого `@tamagui/*`. Metro — без правил подмены путей (`resolveRequest`) для React и Tamagui. Пакеты, у которых версия закреплена в одном месте и не закреплена в другом (как `@better-auth/core` при `better-auth`), закрепляются явно.
 
 ## Consistency Conventions
 
@@ -389,14 +398,13 @@ flowchart TB
 | Name | Version |
 | --- | --- |
 | Next.js (App Router) | 16.3.8 |
-| React (веб, как в репозитории) | 19.2.8 |
+| React (веб и Expo, одна версия, AD-28) | 19.3.0 |
 | Expo SDK | 58.0.20 (на 2026-10-29 есть патч 58.0.21) |
 | React Native (через SDK 58) | 0.88 |
 | expo-contacts | 58.0.9 |
 | @better-auth/expo | 1.7.6 (равна установленному better-auth; поднимать только парой) |
 | TypeScript | create-next-app default at scaffold |
-| Tailwind CSS | 4.3.3 |
-| shadcn/ui | CLI latest at scaffold |
+| Tamagui (`tamagui`, `@tamagui/*`) | 3.1.10 (одна версия всех пакетов, AD-28) |
 | Better Auth | 1.7.6 |
 | Prisma + `@prisma/client` | 7.10.0 (pin; не `latest` → 8 RC) |
 | PostgreSQL | 16+ managed |
@@ -434,7 +442,7 @@ apps/
         gift-status.ts
         friendship.ts
       db/
-      components/
+      components/             # компоненты только из packages/ui (AD-2)
       lib/
         auth.ts
         env.ts
@@ -442,6 +450,7 @@ apps/
 packages/
   contracts/                  # zod wire types AD-12, без React/Prisma/env
     src/i18n/                 # каталоги ru/*.json, SUPPORTED_LOCALES, negotiateLocale (AD-27)
+  ui/                         # Tamagui: тема из DESIGN.md + компоненты, AD-2
 ```
 
 ```mermaid

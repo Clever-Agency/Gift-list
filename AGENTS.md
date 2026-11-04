@@ -19,7 +19,8 @@
 - Репозиторий публичный до переезда с Vercel (D-17): не коммитьте секреты, `.env*` и реальные строки подключения; образец — `apps/web/.env.example`.
 - Prisma, `.env*` и секреты — только в `apps/web`.
 - Не используйте сервисы Vercel (Cron, Blob, KV, Edge Config) и API одной платформы (AD-16); задачи по расписанию — Route Handler в `app/api/cron/*` под секретом.
-- `apps/mobile` импортирует только `@gift-list/contracts`, импорт `apps/web` запрещён; общий UI-пакет не создавайте — React у веба и Expo разных версий (AD-17).
+- `apps/mobile` импортирует только `@gift-list/contracts` и `@gift-list/ui`, импорт `apps/web` запрещён (AD-17). UI обоих приложений — только из `packages/ui` на Tamagui (AD-2): импорт по подпутям, не из `"tamagui"`; по API v3 сверяйтесь с `https://tamagui.dev/llms.txt` и `*.manifest.ts` компонентов.
+- React в `apps/web` и `apps/mobile` — одна версия, по Expo SDK; все `@tamagui/*` — одна версия, `@tamagui/native` в корневом `package.json`. После обновления зависимостей проверка в CI ловит вложенные копии (AD-28).
 
 ## Where things are
 

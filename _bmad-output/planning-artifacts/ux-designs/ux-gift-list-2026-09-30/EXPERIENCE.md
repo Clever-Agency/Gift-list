@@ -2,7 +2,7 @@
 name: Gift List
 status: final
 created: 2026-09-30
-updated: 2026-10-28
+updated: 2026-11-04
 language: ru
 workflow: bmad-ux
 round: 1
@@ -12,7 +12,7 @@ sources:
   - "{planning_artifacts}/epics/epics-gift-list-2026-09-30/epics.md"
   - "{planning_artifacts}/briefs/brief-gift-list-2026-09-29/brief.md"
   - DESIGN.md
-ui_system: "React Native + react-native-web (приложение Expo); shadcn/ui на Next.js (4 серверные страницы)"
+ui_system: "packages/ui на Tamagui: приложение Expo (React Native + react-native-web) и 4 серверные страницы Next.js"
 form_factor: expo-app-android-ios-web
 decisions_locked:
   - mutual-friendship-D-10
@@ -35,7 +35,7 @@ decisions_locked:
 ## Foundation
 
 - **Форм-фактор (D-40):** одно приложение Expo на Android, iOS и в браузере — все потоки одинаковы. В браузере нет только сверки книги контактов: вместо неё поиск по нику и ненавязчивая подсказка установить приложение. Next.js отдаёт четыре свои страницы: `/l/{token}`, `/i/{token}`, `/unsubscribe/{token}`, `/admin`. Выход iOS — шаг публикации, поведение не меняет. Сначала Google Play, затем App Store. Имя продукта на экранах берётся из одной переменной, не из текста макета (D-35, AD-24).
-- **UI-система:** приложение — React Native (react-native-web в браузере) по разделу **App** в `DESIGN.md`: одна спека с адаптивными раскладками, отдельного дизайна для веба нет. Next-страницы — shadcn/ui на Next.js + Tailwind (UX-A1 принято в AD-2), раздел **Next-страницы**. Behavioral delta здесь, visual delta в `DESIGN.md`.
+- **UI-система:** приложение — React Native (react-native-web в браузере) по разделу **App** в `DESIGN.md`: одна спека с адаптивными раскладками, отдельного дизайна для веба нет. Next-страницы — те же компоненты `packages/ui` с серверным рендером (D-47, AD-2), раздел **Next-страницы**. Behavioral delta здесь, visual delta в `DESIGN.md`.
 - **Локаль:** пилот на русском; мультиязычность заложена (D-46) — правила в разделе «Локализация».
 - **Тема:** [ASSUMPTION: UX-A8] только light.
 - **Аутентификация:** бронь, друзья и свой вишлист — после сессии. Аноним на `/l/{token}` видит желания «всем» и кнопку «Куплю сам», которая ведёт на вход (D-29).
@@ -548,7 +548,7 @@ Behavioral; контраст и размеры — `DESIGN.md` → Colors и App
 
 | ID | Тема | Допущение UX | Нужно подтверждение? |
 |----|------|--------------|----------------------|
-| UX-A1 | Стек UI | Принято в AD-2: приложение — React Native (Expo, react-native-web); Next-страницы — shadcn + Tailwind | Нет |
+| UX-A1 | Стек UI | Пересмотрено D-47: один пакет `packages/ui` на Tamagui для приложения и Next-страниц | Нет |
 | UX-A2 / Q-1 | Жалобы | В MVP нет (D-34). «Написать автору» остаётся. Закон — чеклист перед публикацией | Нет для MVP |
 | UX-A3 / Q-2 | Бренд / палитра | Имя Gift List (до домена); **палитра C Forest Paper locked** | Имя/домен — да; палитра — нет |
 | UX-A4 / Q-3 | Удаление аккаунта | Кнопка в настройках обязательна (D-33). Что хранить после — Q-3 | Срок — да; кнопка — нет |

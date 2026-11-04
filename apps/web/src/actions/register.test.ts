@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { findFirst, create, signInEmail } = vi.hoisted(() => ({
+const { findFirst, create, signInEmail, consumeRateLimit, authRateLimit } = vi.hoisted(() => ({
   findFirst: vi.fn(),
   create: vi.fn(),
   signInEmail: vi.fn(),
+  consumeRateLimit: vi.fn(),
+  authRateLimit: vi.fn(),
 }));
 
 vi.mock("@/db/client", () => ({ prisma: { user: { findFirst, create } } }));
@@ -14,8 +16,9 @@ vi.mock("@/db/generated/client", () => ({
 }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { signInEmail } } }));
 vi.mock("@/lib/rate-limit", () => ({
-  REGISTER_LIMIT: { max: 5, windowSeconds: 3600 },
-  consumeRateLimit: async () => ({ allowed: true }),
+  DEFAULT_AUTH_RATE_LIMIT: { max: 5, windowSeconds: 3600 },
+  authRateLimit,
+  consumeRateLimit,
   clientIp: () => "127.0.0.1",
 }));
 
@@ -36,9 +39,13 @@ beforeEach(() => {
   findFirst.mockReset();
   create.mockReset();
   signInEmail.mockReset();
+  consumeRateLimit.mockReset();
+  authRateLimit.mockReset();
   findFirst.mockResolvedValue(null);
   create.mockResolvedValue({});
   signInEmail.mockResolvedValue(new Response(null, { status: 200 }));
+  authRateLimit.mockReturnValue({ max: 42, windowSeconds: 7 });
+  consumeRateLimit.mockResolvedValue({ allowed: true });
 });
 
 describe("registerUser", () => {
@@ -95,5 +102,14 @@ describe("registerUser", () => {
     const outcome = await registerUser(input, headers());
     expect(outcome.result).toMatchObject({ ok: false, code: "UNAUTHENTICATED" });
     expect(outcome.session).toBeUndefined();
+  });
+
+  it("spends the registration counter with the configured auth limit", async () => {
+    await registerUser(input, headers());
+    expect(authRateLimit).toHaveBeenCalled();
+    expect(consumeRateLimit).toHaveBeenCalledWith("register:127.0.0.1", {
+      max: 42,
+      windowSeconds: 7,
+    });
   });
 });

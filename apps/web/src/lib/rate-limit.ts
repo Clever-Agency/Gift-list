@@ -2,8 +2,18 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { prisma } from "@/db/client";
+import { DEFAULT_AUTH_RATE_LIMIT, getAuthRateLimit } from "@/lib/env";
 
-export const REGISTER_LIMIT = { max: 5, windowSeconds: 60 * 60 } as const;
+export { DEFAULT_AUTH_RATE_LIMIT };
+
+/**
+ * Attempts allowed per fixed window for registration, sign-in (by IP and by
+ * e-mail) and password reset. Configured by `AUTH_RATE_LIMIT_MAX` and
+ * `AUTH_RATE_LIMIT_WINDOW_SECONDS`; unset keeps five attempts per hour.
+ */
+export function authRateLimit(): { max: number; windowSeconds: number } {
+  return getAuthRateLimit();
+}
 
 /** Client IP as set by the hosting proxy (Vercel puts the real client first). */
 export function clientIp(h: Headers): string {

@@ -14,7 +14,7 @@ import {
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
 import { auth } from "@/lib/auth";
-import { REGISTER_LIMIT, clientIp, consumeRateLimit } from "@/lib/rate-limit";
+import { authRateLimit, clientIp, consumeRateLimit } from "@/lib/rate-limit";
 
 export type AuthPayload = { user: Me; next: string };
 
@@ -38,7 +38,7 @@ function validation(field?: string, reason?: "EMAIL_TAKEN" | "NICK_TAKEN"): Acti
  * then opens a Better Auth session. `accountId` matches `user.id` so `signInEmail` finds it.
  */
 export async function registerUser(input: RegisterBody, headers: Headers): Promise<AuthOutcome> {
-  const decision = await consumeRateLimit(`register:${clientIp(headers)}`, REGISTER_LIMIT);
+  const decision = await consumeRateLimit(`register:${clientIp(headers)}`, authRateLimit());
   if (!decision.allowed) {
     return {
       result: rateLimitedError("Too many registration attempts", decision.retryAfterSeconds),

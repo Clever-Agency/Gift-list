@@ -2,16 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { requestPasswordReset, resetPassword, consumeRateLimit } = vi.hoisted(() => ({
+const { requestPasswordReset, resetPassword, consumeRateLimit, authRateLimit } = vi.hoisted(() => ({
   requestPasswordReset: vi.fn(),
   resetPassword: vi.fn(),
   consumeRateLimit: vi.fn(),
+  authRateLimit: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { requestPasswordReset, resetPassword } } }));
 vi.mock("@/db/client", () => ({ prisma: {} }));
 vi.mock("@/lib/env", () => ({
   getEnv: () => ({ BETTER_AUTH_URL: "http://127.0.0.1:3000" }),
+  getAuthRateLimit: authRateLimit,
 }));
 vi.mock("@/lib/rate-limit", async () => {
   const actual = await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit");
@@ -35,7 +37,9 @@ beforeEach(() => {
   requestPasswordReset.mockReset();
   resetPassword.mockReset();
   consumeRateLimit.mockReset();
+  authRateLimit.mockReset();
   consumeRateLimit.mockResolvedValue({ allowed: true });
+  authRateLimit.mockReturnValue({ max: 5, windowSeconds: 60 * 60 });
   requestPasswordReset.mockResolvedValue({ status: true, message: providerMessage });
   resetPassword.mockResolvedValue({ status: true });
 });
@@ -68,6 +72,17 @@ describe("POST /api/v1/password/forgot", () => {
     expect(await res.json()).toMatchObject({ ok: false, code: "VALIDATION", field: "email" });
     expect(consumeRateLimit).not.toHaveBeenCalled();
     expect(requestPasswordReset).not.toHaveBeenCalled();
+  });
+
+  it("forgot-limit spends the counter with the configured auth limit", async () => {
+    authRateLimit.mockReturnValue({ max: 9, windowSeconds: 120 });
+    const res = await forgot(post("/api/v1/password/forgot", { email: "known@example.com" }));
+    expect(res.status).toBe(200);
+    expect(authRateLimit).toHaveBeenCalled();
+    expect(consumeRateLimit).toHaveBeenCalledWith("password-forgot:203.0.113.8", {
+      max: 9,
+      windowSeconds: 120,
+    });
   });
 
   it("forgot-limit stops the 6th request from one IP and does not send", async () => {

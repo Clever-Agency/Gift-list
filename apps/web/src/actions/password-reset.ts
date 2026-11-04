@@ -9,7 +9,7 @@ import {
 import { auth } from "@/lib/auth";
 import { getEnv } from "@/lib/env";
 import { passwordResetRedirectTo } from "@/lib/password-reset-mail";
-import { REGISTER_LIMIT, clientIp, consumeRateLimit } from "@/lib/rate-limit";
+import { authRateLimit, clientIp, consumeRateLimit } from "@/lib/rate-limit";
 
 const accepted = { ok: true as const, data: { accepted: true as const } };
 
@@ -42,7 +42,7 @@ export async function requestPasswordReset(
   input: PasswordForgotBody,
   headers: Headers,
 ): Promise<ActionResult<{ accepted: true }>> {
-  const decision = await consumeRateLimit(`password-forgot:${clientIp(headers)}`, REGISTER_LIMIT);
+  const decision = await consumeRateLimit(`password-forgot:${clientIp(headers)}`, authRateLimit());
   if (!decision.allowed) {
     return rateLimitedError("Too many password reset attempts", decision.retryAfterSeconds);
   }

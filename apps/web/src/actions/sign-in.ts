@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { rateLimitedError, safeNextPath, type LoginBody } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { auth } from "@/lib/auth";
-import { REGISTER_LIMIT, clientIp, consumeRateLimit } from "@/lib/rate-limit";
+import { authRateLimit, clientIp, consumeRateLimit } from "@/lib/rate-limit";
 import { storedTimeZone } from "@/lib/time-zone";
 import type { AuthOutcome } from "@/actions/register";
 
@@ -56,9 +56,10 @@ export async function signInUser(input: LoginBody, headers: Headers): Promise<Au
 }
 
 async function signInLimit(email: string, headers: Headers) {
-  const ip = await consumeRateLimit(`sign-in:${clientIp(headers)}`, REGISTER_LIMIT);
+  const limit = authRateLimit();
+  const ip = await consumeRateLimit(`sign-in:${clientIp(headers)}`, limit);
   if (!ip.allowed) return rateLimitedError("Too many sign-in attempts", ip.retryAfterSeconds);
-  const byEmail = await consumeRateLimit(signInEmailKey(email), REGISTER_LIMIT);
+  const byEmail = await consumeRateLimit(signInEmailKey(email), limit);
   if (!byEmail.allowed) return rateLimitedError("Too many sign-in attempts", byEmail.retryAfterSeconds);
   return undefined;
 }

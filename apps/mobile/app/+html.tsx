@@ -17,3 +17,5 @@ export default function Root({ children }: { children: ReactNode }) {
     </html>
   );
 }
+
+Root.displayName = "Root";

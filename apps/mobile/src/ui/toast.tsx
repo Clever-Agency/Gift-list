@@ -205,6 +205,8 @@ export function ToastHost({
   );
 }
 
+ToastHost.displayName = "ToastHost";
+
 const styles = StyleSheet.create({
   host: {
     position: "absolute",

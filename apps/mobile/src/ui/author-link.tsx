@@ -29,6 +29,8 @@ export function AuthorLink() {
   );
 }
 
+AuthorLink.displayName = "AuthorLink";
+
 const styles = StyleSheet.create({
   hit: {
     minHeight: spacing["touch-target"],

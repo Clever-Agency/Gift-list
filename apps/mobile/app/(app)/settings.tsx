@@ -59,6 +59,8 @@ export default function SettingsScreen() {
   return <SettingsForm user={auth.state.user} onSessionExpired={handleSessionExpired} />;
 }
 
+SettingsScreen.displayName = "SettingsScreen";
+
 /**
  * AD-13: the client checks the same 3–24 `[a-z0-9_]` rule as the server, so an
  * invalid nick never reaches the API. A nick equal to the current one is not a
@@ -245,6 +247,8 @@ function SettingsForm({
     </SafeAreaView>
   );
 }
+
+SettingsForm.displayName = "SettingsForm";
 
 const styles = StyleSheet.create({
   screen: {

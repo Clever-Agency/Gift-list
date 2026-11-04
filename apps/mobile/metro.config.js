@@ -14,8 +14,8 @@ config.resolver.nodeModulesPaths = [
 // Keep Expo on React 19.3.0 even when a hoisted package sits next to React 19.2.8.
 config.resolver.disableHierarchicalLookup = true;
 
-// CLE-64: keep function and class names in minified web exports so React DevTools
-// shows component names (WishCard, ToastHost, …) instead of Anonymous.
+// CLE-64: keeping function and class names in minified web exports lets React
+// DevTools show component names (WishCard, ToastHost, …) instead of Anonymous.
 function withKeptNames(options) {
   const kept = { keep_fnames: true, keep_classnames: true };
 
@@ -36,8 +36,24 @@ function withKeptNames(options) {
   };
 }
 
-config.transformer.minifierConfig = withKeptNames(
-  config.transformer.minifierConfig,
-);
+/** Opt-in local debug flag: unset means the default minifier config, untouched. */
+function keepFnamesEnabled() {
+  const flag = process.env.KEEP_FNAMES;
+  if (typeof flag !== "string") {
+    return false;
+  }
+
+  const value = flag.trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
+// CLE-64: KEEP_FNAMES=1 keeps all function and class names (libraries too) in the
+// minified web export, which costs ~10% more JS. It is a local debugging aid and
+// is never set on Vercel.
+if (keepFnamesEnabled()) {
+  config.transformer.minifierConfig = withKeptNames(
+    config.transformer.minifierConfig,
+  );
+}
 
 module.exports = config;

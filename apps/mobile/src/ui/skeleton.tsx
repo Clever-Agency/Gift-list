@@ -12,6 +12,8 @@ export function WishCardSkeleton({ width }: { width: number }) {
   );
 }
 
+WishCardSkeleton.displayName = "WishCardSkeleton";
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,

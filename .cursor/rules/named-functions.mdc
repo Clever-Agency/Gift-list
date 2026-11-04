@@ -24,7 +24,24 @@ export const GhostButton = forwardRef(function GhostButton(props, ref) {…});
 const MemoList = memo(function MemoList() {…});
 ```
 
-Если компонент создаётся фабрикой или HOC, задайте ему `displayName`.
+Сразу после компонента задайте `displayName`, равный имени функции (для generic — имени без параметров): прод-сборка минифицирует terser и переименовывает `function WishCard` в `function a`, поэтому без строки React DevTools показывает `Anonymous`.
+
+```tsx
+export function GiftCard() {…}
+GiftCard.displayName = "GiftCard";
+
+export const GhostButton = forwardRef(function GhostButton(props, ref) {…});
+GhostButton.displayName = "GhostButton";
+
+export function ChoiceGroup<T extends string>(props: Props<T>) {…}
+ChoiceGroup.displayName = "ChoiceGroup";
+```
+
+Правило действует для экспортируемых компонентов `src/ui`, экранов `app/` и неэкспортируемых компонентов в этих файлах; хуки (`useAuth`, `useLayerClosed`) и обычные хелперы строку не получают. Если компонент создаётся фабрикой или HOC, задайте ему `displayName`.
+
+## Флаг KEEP_FNAMES
+
+`KEEP_FNAMES=1` заставляет terser сохранять имена всех функций и классов (включая библиотеки) в web-экспорте — это локальная отладка, ~+10% JS, и на Vercel флаг никогда не ставится. Windows PowerShell: `$env:KEEP_FNAMES=1; node apps/web/scripts/sync-spa.mjs` (или `npm run build` в `apps/web`), затем `Remove-Item Env:KEEP_FNAMES`; bash: `KEEP_FNAMES=1 node apps/web/scripts/sync-spa.mjs`.
 
 ## Остальные функции
 
@@ -61,4 +78,4 @@ setCount((value) => value + 1);
 vi.fn(() => true);
 ```
 
-ESLint (`react/function-component-definition`, `react/display-name` в `apps/mobile` и `apps/web`) проверяет только компоненты; именование остальных функций — на ревью. Тест `apps/mobile/src/ui/component-names.test.tsx` падает, если экспортированный компонент `src/ui` безымянный.
+ESLint (`react/function-component-definition`, `react/display-name` в `apps/mobile` и `apps/web`) проверяет только компоненты; именование остальных функций — на ревью. Тест `apps/mobile/src/ui/component-names.test.tsx` падает, если у экспортированного компонента `src/ui` нет `displayName`, равного имени экспорта, или если у экрана `app/` `displayName` не совпадает с именем `default`-функции.

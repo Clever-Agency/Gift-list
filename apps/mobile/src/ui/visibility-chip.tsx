@@ -76,6 +76,8 @@ export function VisibilityChip({
   );
 }
 
+VisibilityChip.displayName = "VisibilityChip";
+
 /** `DESIGN.md` → VisibilityChip: the visual is 28 tall, the touch zone is 44. */
 const HIT_SLOP = (spacing["touch-target"] - spacing["chip-height"]) / 2;
 

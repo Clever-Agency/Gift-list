@@ -35,3 +35,5 @@ export default function WishlistReturnScreen() {
     </>
   );
 }
+
+WishlistReturnScreen.displayName = "WishlistReturnScreen";

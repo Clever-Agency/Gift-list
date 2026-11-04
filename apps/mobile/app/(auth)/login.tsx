@@ -139,3 +139,5 @@ export default function LoginScreen() {
     </>
   );
 }
+
+LoginScreen.displayName = "LoginScreen";

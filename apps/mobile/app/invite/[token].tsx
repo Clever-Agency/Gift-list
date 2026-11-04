@@ -35,3 +35,5 @@ export default function InviteReturnScreen() {
     </>
   );
 }
+
+InviteReturnScreen.displayName = "InviteReturnScreen";

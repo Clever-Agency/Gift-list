@@ -119,3 +119,5 @@ export default function ForgotScreen() {
     </>
   );
 }
+
+ForgotScreen.displayName = "ForgotScreen";

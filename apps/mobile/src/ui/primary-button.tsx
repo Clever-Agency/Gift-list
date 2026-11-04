@@ -24,6 +24,8 @@ export function PrimaryButton({
   );
 }
 
+PrimaryButton.displayName = "PrimaryButton";
+
 const styles = StyleSheet.create({
   button: {
     minHeight: spacing["control-height"],

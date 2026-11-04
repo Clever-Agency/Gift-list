@@ -514,6 +514,8 @@ export function ChoiceGroup<T extends string>({
   );
 }
 
+ChoiceGroup.displayName = "ChoiceGroup";
+
 const styles = StyleSheet.create({
   form: {
     gap: spacing["grid-gap"],

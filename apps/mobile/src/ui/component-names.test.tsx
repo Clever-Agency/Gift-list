@@ -18,8 +18,9 @@ import { VisibilityPicker } from "@/ui/visibility-picker";
  * CLE-64: «в React DevTools нет `Anonymous` для наших компонентов». DevTools takes
  * the name from the fiber type: a named function declaration, `displayName`, or
  * (for `forwardRef` / `memo`) the name of the wrapped render function. Every
- * component exported from `src/ui` is checked below, and the key ones are really
- * rendered — the review scenario is the info toast «Изменения сохранены.».
+ * component exported from `src/ui` is checked below (and each `app/` screen's
+ * `displayName` in the second suite), and the key ones are really rendered — the
+ * review scenario is the info toast «Изменения сохранены.».
  */
 
 /** The platform modules the UI imports; the test only needs the host tree, not layout. */
@@ -133,12 +134,91 @@ vi.mock("expo-symbols", async () => {
 
 vi.mock("expo-linking", () => ({ openURL: () => Promise.resolve() }));
 
+/**
+ * The app screens are only imported for their `default` export, so these platform
+ * modules stand in for the navigator, fonts and splash as they do for `react-native`
+ * above: nothing renders, nothing navigates.
+ */
+vi.mock("expo-font", () => ({ useFonts: () => [true, null] }));
+
+vi.mock("expo-localization", () => ({
+  getLocales: () => [{ languageTag: "ru" }],
+}));
+
+vi.mock("expo-splash-screen", () => ({
+  preventAutoHideAsync: () => Promise.resolve(),
+  hideAsync: () => Promise.resolve(),
+}));
+
+vi.mock("expo-status-bar", async () => {
+  const React = await import("react");
+  function StatusBar() {
+    return React.createElement("div");
+  }
+  return { StatusBar };
+});
+
+vi.mock("expo-router", async () => {
+  const React = await import("react");
+
+  function Link({ children }: { children?: React.ReactNode }) {
+    return React.createElement(React.Fragment, null, children);
+  }
+  function Screen() {
+    return null;
+  }
+  function Stack() {
+    return null;
+  }
+  Stack.Screen = Screen;
+  function useFocusEffect() {}
+  function useLocalSearchParams() {
+    return {};
+  }
+  const router = {
+    replace() {},
+    push() {},
+    back() {},
+    canGoBack() {
+      return false;
+    },
+    dismissTo() {},
+    setParams() {},
+  };
+
+  return { Link, router, Stack, useFocusEffect, useLocalSearchParams };
+});
+
+vi.mock("expo-router/html", async () => {
+  const React = await import("react");
+  function ScrollViewStyleReset() {
+    return React.createElement(React.Fragment, null);
+  }
+  return { ScrollViewStyleReset };
+});
+
+vi.mock("expo-router/react-navigation", () => ({ usePreventRemove() {} }));
+
+vi.mock("@expo-google-fonts/lora", () => ({ Lora_600SemiBold: {} }));
+
+vi.mock("@expo-google-fonts/manrope", () => ({
+  Manrope_400Regular: {},
+  Manrope_500Medium: {},
+  Manrope_600SemiBold: {},
+}));
+
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   function SafeAreaView({ children }: { children?: React.ReactNode }) {
     return React.createElement("div", null, children);
   }
-  return { SafeAreaView };
+  function SafeAreaProvider({ children }: { children?: React.ReactNode }) {
+    return React.createElement(React.Fragment, null, children);
+  }
+  function useSafeAreaInsets() {
+    return { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+  return { SafeAreaProvider, SafeAreaView, useSafeAreaInsets };
 });
 
 /** The copy is not under test here: a key stands for its own string. */
@@ -154,11 +234,19 @@ type ExportedComponent = {
   module: string;
   exportName: string;
   name: string;
+  /** The string `displayName` the module sets on this export, when it does. */
+  displayName?: string;
 };
 
 const modules = import.meta.glob(["./*.tsx", "!./*.test.tsx"], {
   eager: true,
 }) as Record<string, Record<string, unknown>>;
+
+/** Every screen module under `app/`, imported only for its `default` export. */
+const screens = import.meta.glob(
+  ["../../app/**/*.tsx", "!../../app/**/*.test.tsx"],
+  { eager: true },
+) as Record<string, Record<string, unknown>>;
 
 const FORWARD_REF = Symbol.for("react.forward_ref");
 const MEMO = Symbol.for("react.memo");
@@ -189,10 +277,26 @@ function componentName(value: unknown): string {
   return "";
 }
 
+/** The explicit string `displayName` of a function or a `forwardRef` / `memo` object. */
+function displayNameOf(value: unknown): string | undefined {
+  if (typeof value !== "function" && (typeof value !== "object" || value === null)) {
+    return undefined;
+  }
+  const displayName = (value as { displayName?: unknown }).displayName;
+  return typeof displayName === "string" ? displayName : undefined;
+}
+
 const components: ExportedComponent[] = Object.entries(modules).flatMap(([module, exports]) =>
   Object.entries(exports).flatMap(([exportName, value]) =>
     isComponentExport(exportName, value)
-      ? [{ module, exportName, name: componentName(value) }]
+      ? [
+          {
+            module,
+            exportName,
+            name: componentName(value),
+            displayName: displayNameOf(value),
+          },
+        ]
       : [],
   ),
 );
@@ -304,6 +408,17 @@ describe("CLE-64: имена компонентов в src/ui", () => {
     expect(anonymous).toEqual([]);
   });
 
+  it("у каждого экспортированного компонента displayName равен имени экспорта", () => {
+    const withoutDisplayName = components
+      .filter((component) => component.displayName !== component.exportName)
+      .map(
+        (component) =>
+          `${component.module} → ${component.exportName}: ${component.displayName ?? "нет"}`,
+      );
+
+    expect(withoutDisplayName).toEqual([]);
+  });
+
   it.each(samples)("$name рендерится в дерево React", async ({ name, element }) => {
     await act(async () => {
       host.render(element);
@@ -320,5 +435,25 @@ describe("CLE-64: имена компонентов в src/ui", () => {
     });
 
     expect(container.textContent).toContain("Изменения сохранены.");
+  });
+});
+
+describe("CLE-64: имена экранов app", () => {
+  it("находит экраны, а не пустой список", () => {
+    expect(Object.keys(screens).length).toBeGreaterThan(0);
+  });
+
+  it("у каждого экрана displayName одинаков с именем default-функции", () => {
+    const withoutDisplayName = Object.entries(screens).flatMap(([module, exports]) => {
+      const screen = exports.default as { displayName?: unknown; name?: unknown } | undefined;
+      if (typeof screen?.name !== "string" || screen.name.length === 0) {
+        return [`${module} → default: нет имени функции`];
+      }
+      return screen.displayName === screen.name
+        ? []
+        : [`${module} → displayName ${String(screen.displayName)} ≠ ${screen.name}`];
+    });
+
+    expect(withoutDisplayName).toEqual([]);
   });
 });

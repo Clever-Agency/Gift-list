@@ -177,3 +177,5 @@ export default function RegisterScreen() {
     </>
   );
 }
+
+RegisterScreen.displayName = "RegisterScreen";

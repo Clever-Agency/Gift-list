@@ -58,6 +58,8 @@ export function TextField({
   );
 }
 
+TextField.displayName = "TextField";
+
 export function PasswordField({
   label,
   value,
@@ -119,6 +121,8 @@ export function PasswordField({
     </View>
   );
 }
+
+PasswordField.displayName = "PasswordField";
 
 const styles = StyleSheet.create({
   field: {

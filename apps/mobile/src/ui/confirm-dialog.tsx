@@ -275,6 +275,8 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   );
 }
 
+ConfirmDialog.displayName = "ConfirmDialog";
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,

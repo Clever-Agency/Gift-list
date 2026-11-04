@@ -239,6 +239,8 @@ export default function NewGiftScreen() {
   );
 }
 
+NewGiftScreen.displayName = "NewGiftScreen";
+
 /** `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12). */
 function toGiftInput(values: GiftFormValues): GiftInput {
   return {

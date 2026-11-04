@@ -21,6 +21,8 @@ export function EmptyState({
   );
 }
 
+EmptyState.displayName = "EmptyState";
+
 const styles = StyleSheet.create({
   wrap: {
     width: "100%",

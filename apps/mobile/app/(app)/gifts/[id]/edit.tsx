@@ -522,6 +522,8 @@ export default function EditGiftScreen() {
   );
 }
 
+EditGiftScreen.displayName = "EditGiftScreen";
+
 /** The stored AD-12 card back into the fields the form edits. */
 function toFormValues(gift: GiftCard): GiftFormValues {
   return {

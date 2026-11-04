@@ -125,6 +125,8 @@ export function VisibilityPicker({
   );
 }
 
+VisibilityPicker.displayName = "VisibilityPicker";
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,

@@ -506,6 +506,8 @@ export default function MyWishlistScreen() {
   );
 }
 
+MyWishlistScreen.displayName = "MyWishlistScreen";
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,

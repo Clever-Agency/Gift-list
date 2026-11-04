@@ -18,6 +18,8 @@ export function StatusPill({ status }: { status: GiftCard["status"] }) {
   );
 }
 
+StatusPill.displayName = "StatusPill";
+
 const TONES = {
   OPEN: { background: { backgroundColor: colors.muted }, text: { color: colors["status-open"] } },
   RESERVED: {

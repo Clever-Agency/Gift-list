@@ -18,6 +18,13 @@ const blankToUndefined = (value: unknown) => {
 
 const optionalEnvString = z.preprocess(blankToUndefined, z.string().min(1).optional());
 
+/** A positive integer; a blank or missing value falls back to `fallback`. */
+const positiveIntEnv = (fallback: number) =>
+  z.preprocess(blankToUndefined, z.coerce.number().int().min(1).default(fallback));
+
+/** Production defaults for the shared auth rate limit: five attempts per hour. */
+export const DEFAULT_AUTH_RATE_LIMIT = { max: 5, windowSeconds: 60 * 60 } as const;
+
 /** An address, or a display name plus an address (`Имя <addr>`). */
 const emailFromSchema = z.string().trim().min(1).refine((value) => {
   const named = /^(.*)<([^<>]+)>\s*$/.exec(value);
@@ -50,9 +57,17 @@ const envSchema = z.object({
   APPLE_TEAM_ID: optionalEnvString,
   ANDROID_SHA256_CERT_FINGERPRINTS: optionalEnvString,
   AUTH_DEV_TRUSTED_ORIGINS: devTrustedOriginsSchema,
+  // Registration, sign-in (by IP and by e-mail) and password reset share one pair.
+  AUTH_RATE_LIMIT_MAX: positiveIntEnv(DEFAULT_AUTH_RATE_LIMIT.max),
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: positiveIntEnv(DEFAULT_AUTH_RATE_LIMIT.windowSeconds),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+const authRateLimitSchema = envSchema.pick({
+  AUTH_RATE_LIMIT_MAX: true,
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: true,
+});
 
 let cached: Env | undefined;
 
@@ -60,6 +75,19 @@ let cached: Env | undefined;
 export function getEnv(): Env {
   cached ??= envSchema.parse(process.env);
   return cached;
+}
+
+/**
+ * Shared auth rate limit. Reads only these two variables, so callers outside
+ * startup validation do not need the rest of env (same idea as `getBrandName`).
+ * Not cached: a changed env applies on the next attempt.
+ */
+export function getAuthRateLimit(): { max: number; windowSeconds: number } {
+  const env = authRateLimitSchema.parse({
+    AUTH_RATE_LIMIT_MAX: process.env.AUTH_RATE_LIMIT_MAX,
+    AUTH_RATE_LIMIT_WINDOW_SECONDS: process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+  });
+  return { max: env.AUTH_RATE_LIMIT_MAX, windowSeconds: env.AUTH_RATE_LIMIT_WINDOW_SECONDS };
 }
 
 /** Display name (AD-24). Blank and missing values use the schema default. Does not read secrets. */

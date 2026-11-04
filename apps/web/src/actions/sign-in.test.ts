@@ -2,16 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { findUnique, signInEmail, consumeRateLimit } = vi.hoisted(() => ({
+const { findUnique, signInEmail, consumeRateLimit, authRateLimit } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   signInEmail: vi.fn(),
   consumeRateLimit: vi.fn(),
+  authRateLimit: vi.fn(),
 }));
 
 vi.mock("@/db/client", () => ({ prisma: { user: { findUnique } } }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { signInEmail } } }));
 vi.mock("@/lib/rate-limit", () => ({
-  REGISTER_LIMIT: { max: 5, windowSeconds: 60 * 60 },
+  DEFAULT_AUTH_RATE_LIMIT: { max: 5, windowSeconds: 60 * 60 },
+  authRateLimit,
   consumeRateLimit,
   clientIp: () => "203.0.113.8",
 }));
@@ -25,7 +27,9 @@ beforeEach(() => {
   findUnique.mockReset();
   signInEmail.mockReset();
   consumeRateLimit.mockReset();
+  authRateLimit.mockReset();
   consumeRateLimit.mockResolvedValue({ allowed: true });
+  authRateLimit.mockReturnValue({ max: 42, windowSeconds: 7 });
 });
 
 describe("signInUser", () => {
@@ -73,6 +77,28 @@ describe("signInUser", () => {
     expect(JSON.stringify(unknown.result)).not.toContain("User not found");
     expect(JSON.stringify(wrong.result)).not.toContain("Invalid password");
     expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it("spends both counters with the configured auth limit", async () => {
+    signInEmail.mockResolvedValue(new Response(null, { status: 200 }));
+    findUnique.mockResolvedValue({
+      id: "u1",
+      email: "a@example.com",
+      name: "Анна",
+      nick: "anna",
+      timeZone: null,
+    });
+    await signInUser(input, headers);
+    expect(authRateLimit).toHaveBeenCalled();
+    expect(consumeRateLimit).toHaveBeenNthCalledWith(1, "sign-in:203.0.113.8", {
+      max: 42,
+      windowSeconds: 7,
+    });
+    expect(consumeRateLimit).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/^sign-in-email:[0-9a-f]{64}$/),
+      { max: 42, windowSeconds: 7 },
+    );
   });
 
   it("returns the same RATE_LIMITED body for any email and does not check the password", async () => {

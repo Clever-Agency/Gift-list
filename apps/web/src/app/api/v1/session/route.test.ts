@@ -17,7 +17,7 @@ vi.mock("@/lib/rate-limit", async () => {
 });
 
 import { POST } from "./route";
-import { REGISTER_LIMIT } from "@/lib/rate-limit";
+import { DEFAULT_AUTH_RATE_LIMIT } from "@/lib/rate-limit";
 
 function emailKey(email: string): string {
   return `sign-in-email:${createHash("sha256").update(email).digest("hex")}`;
@@ -60,8 +60,8 @@ describe("POST /api/v1/session", () => {
         next: "/wishlist/tok_1",
       },
     });
-    expect(consumeRateLimit).toHaveBeenNthCalledWith(1, "sign-in:203.0.113.8", REGISTER_LIMIT);
-    expect(consumeRateLimit).toHaveBeenNthCalledWith(2, emailKey("a@example.com"), REGISTER_LIMIT);
+    expect(consumeRateLimit).toHaveBeenNthCalledWith(1, "sign-in:203.0.113.8", DEFAULT_AUTH_RATE_LIMIT);
+    expect(consumeRateLimit).toHaveBeenNthCalledWith(2, emailKey("a@example.com"), DEFAULT_AUTH_RATE_LIMIT);
     expect(JSON.stringify(consumeRateLimit.mock.calls)).not.toContain("example.com");
     expect(signInEmail).toHaveBeenCalledTimes(1);
   });
@@ -77,7 +77,7 @@ describe("POST /api/v1/session", () => {
   it("answers 429 after 5 attempts from one IP, for a known or unknown email", async () => {
     const calls: string[] = [];
     consumeRateLimit.mockImplementation(async (key: string, limit: { max: number; windowSeconds: number }) => {
-      expect(limit).toEqual(REGISTER_LIMIT);
+      expect(limit).toEqual(DEFAULT_AUTH_RATE_LIMIT);
       calls.push(key);
       const used = calls.filter((item) => item === key).length;
       return used <= 5 ? { allowed: true } : { allowed: false, retryAfterSeconds: 125 };

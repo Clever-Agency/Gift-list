@@ -16,6 +16,8 @@ afterEach(() => {
   delete process.env.APPLE_TEAM_ID;
   delete process.env.ANDROID_SHA256_CERT_FINGERPRINTS;
   delete process.env.AUTH_DEV_TRUSTED_ORIGINS;
+  delete process.env.AUTH_RATE_LIMIT_MAX;
+  delete process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS;
 });
 
 function setRequiredEnv() {
@@ -117,5 +119,37 @@ describe("AUTH_DEV_TRUSTED_ORIGINS", () => {
   it("is an empty list for an empty string", async () => {
     process.env.AUTH_DEV_TRUSTED_ORIGINS = "";
     expect((await loadEnv()).AUTH_DEV_TRUSTED_ORIGINS).toEqual([]);
+  });
+});
+
+describe("AUTH_RATE_LIMIT_*", () => {
+  async function loadEnv() {
+    setRequiredEnv();
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    return getEnv();
+  }
+
+  it("defaults to five attempts per hour", async () => {
+    delete process.env.AUTH_RATE_LIMIT_MAX;
+    delete process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS;
+    const env = await loadEnv();
+    expect(env.AUTH_RATE_LIMIT_MAX).toBe(5);
+    expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(3600);
+  });
+
+  it("reads overrides and ignores blanks", async () => {
+    process.env.AUTH_RATE_LIMIT_MAX = "100";
+    process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS = " ";
+    const env = await loadEnv();
+    expect(env.AUTH_RATE_LIMIT_MAX).toBe(100);
+    expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(3600);
+  });
+
+  it.each(["abc", "0", "-1", "1.5"])("rejects %s as a limit value", async (value) => {
+    process.env.AUTH_RATE_LIMIT_MAX = value;
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    expect(() => getEnv()).toThrow(/AUTH_RATE_LIMIT_MAX/);
   });
 });

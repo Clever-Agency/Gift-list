@@ -119,3 +119,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-63-минимум-8-символов-пароля.md`
   summary: Ошибка поля не связана с вводом через `aria-invalid` и `aria-describedby`, фокус после отправки не переходит к первому полю, у ошибки нет иконки.
   evidence: `DESIGN.md` → Форма и `EXPERIENCE.md` → доступность описывают эту связь. `TextField` и `PasswordField` по-прежнему отдают только `accessibilityHint`. Так было до CLE-63; у пароля добавлен лишь `accessibilityRole="alert"` на текст ошибки.
+
+## Deferred from: Story 3.2 (CLE-48, 2026-11-04)
+
+- Отношения (Friendship, Block, Subscription, ContactMatch) отдаёт заглушка `apps/web/src/lib/relationships.ts` — «отношений нет» (fail-closed). Epic 4 (AD-10, AD-19) и Epic 8 (AD-18) подменяют адаптер; правила в `VisibilityPolicy` уже учитывают эти факты.
+- `readWishlist` по `publicToken` пока без маршрута — подключить в Story 3.3 (`/l/:token`) и 3.4 (`/u/:nick`).
+- Reservation card держателя (A-14, FR-25) — Epic 5; сейчас держатель видит обычную карточку с собой в `reservedBy`.

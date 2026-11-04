@@ -10,6 +10,7 @@ import {
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
+import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
 import { firstIssueField } from "@/lib/api-v1";
 import { auth } from "@/lib/auth";
 
@@ -43,6 +44,12 @@ const ownerGiftSelect = {
   reservedBy: { select: { id: true, nick: true, name: true } },
 } as const;
 
+/** The owner select plus the list owner, which `canSee` needs (AD-7). */
+const formGiftSelect = {
+  ...ownerGiftSelect,
+  list: { select: { ownerId: true } },
+} as const;
+
 function validation(field?: string): ActionResult<GiftCard> {
   return {
     ok: false,
@@ -57,6 +64,11 @@ function validation(field?: string): ActionResult<GiftCard> {
  * single list. Ownership and "not archived" ride in the read's `where` (AD-6,
  * AD-8), so a foreign or archived id matches nothing and answers NOT_FOUND
  * without revealing that the gift exists.
+ *
+ * AD-7: the form is the owner branch, and this read calls `canSee` like every
+ * other gift read. Ownership already narrows the `where`; the gate decides again
+ * so the policy stays the single place that answers visibility. Reading another
+ * person's wishes is `readWishlist`'s job, not this use-case's.
  */
 export async function getGift(headers: Headers, giftId: string): Promise<ActionResult<GiftCard>> {
   const session = await auth.api.getSession({ headers });
@@ -64,9 +76,16 @@ export async function getGift(headers: Headers, giftId: string): Promise<ActionR
 
   const row = await prisma.gift.findFirst({
     where: { id: giftId, archivedAt: null, list: { ownerId: session.user.id } },
-    select: ownerGiftSelect,
+    select: formGiftSelect,
   });
   if (!row) return notFound;
+
+  const visible = VisibilityPolicy.canSee({ id: session.user.id }, NO_RELATIONS, {
+    ownerId: row.list.ownerId,
+    visibility: row.visibility,
+    archivedAt: row.archivedAt,
+  });
+  if (!visible) return notFound;
 
   return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
 }

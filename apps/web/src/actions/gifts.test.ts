@@ -51,6 +51,7 @@ type Row = {
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
   holderVisibleToOwner: boolean;
   reservedBy: { id: string; nick: string; name: string } | null;
+  list: { ownerId: string };
 };
 
 /** A row of the shared owner select: the same shape create and update hand back. */
@@ -70,6 +71,7 @@ function giftRow(overrides: Partial<Row> = {}): Row {
     reservationPhase: null,
     holderVisibleToOwner: false,
     reservedBy: null,
+    list: { ownerId: "u1" },
     ...overrides,
   };
 }
@@ -110,7 +112,7 @@ describe("getGift", () => {
   /** AD-6/AD-8: ownership and "not archived" ride in the read's `where`. */
   it("reads through the owner gate", async () => {
     getSession.mockResolvedValue({ user: { id: "u2" }, session: { token: "t" } });
-    findFirst.mockResolvedValue(giftRow({ id: "g7" }));
+    findFirst.mockResolvedValue(giftRow({ id: "g7", list: { ownerId: "u2" } }));
 
     await getGift(headers, "g7");
 
@@ -118,6 +120,29 @@ describe("getGift", () => {
       where: { id: "g7", archivedAt: null, list: { ownerId: "u2" } },
       select: expect.any(Object),
     });
+  });
+
+  /** AD-7: the edit form is the owner branch, so the owner opens a SECRET wish. */
+  it("opens the owner's own SECRET gift", async () => {
+    findFirst.mockResolvedValue(giftRow({ id: "g7", visibility: "SECRET" }));
+
+    const card = okData(await getGift(headers, "g7"));
+
+    expect(card).toMatchObject({ id: "g7", visibility: "SECRET" });
+  });
+
+  /**
+   * AD-7: even if the `where` let a row through by mistake, the gate answers the
+   * same NOT_FOUND, so a foreign wish never leaks.
+   */
+  it("answers NOT_FOUND when the row belongs to another list", async () => {
+    findFirst.mockResolvedValue(giftRow({ id: "g7", list: { ownerId: "u-other" } }));
+
+    const result = await getGift(headers, "g7");
+
+    expect(result).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    expect(result).not.toHaveProperty("data");
+    expect(JSON.stringify(result)).not.toContain("Книга");
   });
 
   /** A foreign, archived or missing gift all match nothing, so all answer the same (AD-8). */

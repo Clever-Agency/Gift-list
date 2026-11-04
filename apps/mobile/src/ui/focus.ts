@@ -11,6 +11,19 @@ export type ChipNode = ComponentRef<typeof View>;
  * screen reader to jump to the node's accessibility handle instead.
  */
 export function restoreChipFocus(node: ChipNode | null | undefined): void {
+  moveFocus(node);
+}
+
+/**
+ * `EXPERIENCE.md` → Accessibility Floor «Шторка и диалог»: focus goes inside a layer
+ * as soon as it opens. The picker lands on the selected radio and the destructive
+ * confirm on «Отмена», so the safe choice is the first stop in the tab order.
+ */
+export function focusInLayer(node: ChipNode | null | undefined): void {
+  moveFocus(node);
+}
+
+function moveFocus(node: ChipNode | null | undefined): void {
   if (!node) return;
 
   if (Platform.OS === "web") {

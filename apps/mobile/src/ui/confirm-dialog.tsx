@@ -1,6 +1,8 @@
+import { useEffect, useRef, type ComponentRef } from "react";
 import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
+import { focusInLayer } from "@/ui/focus";
 
 /**
  * `DESIGN.md` → Dialog: a centered layer for a destructive confirmation. The
@@ -40,6 +42,14 @@ export function ConfirmDialog({
     Math.max(0, windowWidth - pageGutter(windowWidth) * 2),
   );
   const titleId = "confirm-dialog-title";
+  const cancelRef = useRef<ComponentRef<typeof Pressable>>(null);
+
+  // WAI-ARIA APG alertdialog: initial focus goes to the least destructive
+  // action, so Enter right after opening does not delete anything.
+  useEffect(() => {
+    if (!visible) return;
+    focusInLayer(cancelRef.current);
+  }, [visible]);
 
   return (
     <Modal
@@ -54,10 +64,15 @@ export function ConfirmDialog({
     >
       <View style={styles.overlay}>
         {/* The scrim closes the layer; it is decorative for screen readers —
-            «Отмена», Esc and Android «назад» do the same. */}
+            «Отмена», Esc and Android «назад» do the same. It stays out of the
+            Tab order and out of the dialog's initial focus: `tabIndex={-1}` and
+            `focusable={false}` keep the pointer handler without making the
+            backdrop an interactive stop. */}
         <Pressable
           style={[StyleSheet.absoluteFill, styles.scrim]}
           onPress={onCancel}
+          focusable={false}
+          {...{ tabIndex: -1 }}
           aria-hidden
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
@@ -69,6 +84,7 @@ export function ConfirmDialog({
           <Text style={styles.body}>{body}</Text>
           <View style={styles.actions}>
             <Pressable
+              ref={cancelRef}
               accessibilityRole="button"
               accessibilityLabel={cancelLabel}
               onPress={onCancel}

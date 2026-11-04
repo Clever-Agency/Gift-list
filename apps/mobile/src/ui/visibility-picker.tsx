@@ -62,10 +62,15 @@ export function VisibilityPicker({
     >
       <View style={styles.overlay}>
         {/* The scrim closes the layer; it is decorative for screen readers —
-            «Отмена», Esc and Android «назад» do the same. */}
+            «Отмена», Esc and Android «назад» do the same. It stays out of the
+            Tab order and out of the dialog's initial focus: `tabIndex={-1}` and
+            `focusable={false}` keep the pointer handler without making the
+            backdrop an interactive stop. */}
         <Pressable
           style={[StyleSheet.absoluteFill, styles.scrim]}
           onPress={onClose}
+          focusable={false}
+          {...{ tabIndex: -1 }}
           aria-hidden
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
@@ -80,6 +85,9 @@ export function VisibilityPicker({
             label={heading}
             labelHidden
             value={value}
+            // Focus lands on the radio that shows the current value while the
+            // dialog is open (EXPERIENCE.md → «Шторка и диалог»).
+            autoFocusValue={visible ? value : undefined}
             onChange={(next) => {
               // Picking the current value is a no-op: the dialog just closes.
               if (next === value) onClose();

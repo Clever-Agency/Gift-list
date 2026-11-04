@@ -1,8 +1,9 @@
 import { CURRENCIES, VISIBILITIES } from "@gift-list/contracts";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslations } from "use-intl";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
+import { focusInLayer } from "@/ui/focus";
 import {
   DESCRIPTION_MAX,
   LINK_MAX,
@@ -288,6 +289,10 @@ type ChoiceOption<T extends string> = {
  *
  * `labelHidden` keeps the accessible name of the group while the visible heading
  * comes from the surrounding layer (the picker title is a header of its own).
+ *
+ * `autoFocusValue` is only set by `VisibilityPicker`: when the dialog appears,
+ * focus moves to the radio holding the current value instead of staying on the
+ * scrim the layer was opened from.
  */
 export function ChoiceGroup<T extends string>({
   label,
@@ -298,6 +303,7 @@ export function ChoiceGroup<T extends string>({
   error,
   labelHidden,
   disabled = false,
+  autoFocusValue,
 }: {
   label: string;
   value: T;
@@ -310,8 +316,17 @@ export function ChoiceGroup<T extends string>({
   labelHidden?: boolean;
   /** Shows the stored value but does not let it change; every radio reads as disabled. */
   disabled?: boolean;
+  /** Focus this option when the group appears; no other usage passes it. */
+  autoFocusValue?: T;
 }) {
   const rows = variant === "rows";
+  const autoFocusRef = useRef<ComponentRef<typeof Pressable>>(null);
+
+  useEffect(() => {
+    if (autoFocusValue === undefined) return;
+    focusInLayer(autoFocusRef.current);
+  }, [autoFocusValue]);
+
   return (
     <View style={styles.field}>
       {labelHidden ? null : <Text style={styles.label}>{label}</Text>}
@@ -326,6 +341,7 @@ export function ChoiceGroup<T extends string>({
           return (
             <Pressable
               key={option.value}
+              ref={option.value === autoFocusValue ? autoFocusRef : undefined}
               accessibilityRole="radio"
               accessibilityLabel={option.label}
               accessibilityHint={option.hint}

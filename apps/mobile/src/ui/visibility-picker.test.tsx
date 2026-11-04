@@ -85,6 +85,9 @@ vi.mock("react-native", async () => {
     accessibilityRole?: string;
     accessibilityLabel?: string;
     accessibilityState?: { checked?: boolean };
+    "aria-hidden"?: boolean;
+    focusable?: boolean;
+    tabIndex?: number;
   };
 
   function View({
@@ -120,18 +123,28 @@ vi.mock("react-native", async () => {
     );
   }
 
-  function Pressable({
-    children,
-    onPress,
-    accessibilityRole,
-    accessibilityLabel,
-    accessibilityState,
-  }: PressableProps) {
+  const Pressable = React.forwardRef<HTMLButtonElement, PressableProps>(function Pressable(
+    {
+      children,
+      onPress,
+      accessibilityRole,
+      accessibilityLabel,
+      accessibilityState,
+      "aria-hidden": ariaHidden,
+      focusable,
+      tabIndex,
+    },
+    ref,
+  ) {
     return React.createElement(
       "button",
       {
         type: "button",
+        ref,
         onClick: onPress,
+        ...(tabIndex !== undefined ? { tabIndex } : {}),
+        ...(ariaHidden ? { "aria-hidden": "true" } : {}),
+        ...(focusable !== undefined ? { focusable: String(focusable) } : {}),
         ...(accessibilityRole ? { role: accessibilityRole } : {}),
         ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
         ...(accessibilityState && "checked" in accessibilityState
@@ -140,7 +153,7 @@ vi.mock("react-native", async () => {
       },
       children,
     );
-  }
+  });
 
   function Modal({
     visible,
@@ -171,6 +184,10 @@ vi.mock("react-native", async () => {
     Text,
     Pressable,
     Modal,
+    // The focus helper reads the platform; on web it only moves DOM focus.
+    Platform: { OS: "web" },
+    AccessibilityInfo: { setAccessibilityFocus: vi.fn() },
+    findNodeHandle: () => null,
     useWindowDimensions: () => ({ width: 1024, height: 800 }),
   };
 });
@@ -300,5 +317,41 @@ describe("VisibilityPicker: закрытие", () => {
 
     expect(container.innerHTML).toBe("");
     expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+/**
+ * CLE-51: the scrim closes the layer with a tap but is not a tab stop, and the
+ * dialog opens with focus on the radio that shows the current value.
+ */
+describe("VisibilityPicker: фокус в диалоге", () => {
+  it("подложка не фокусируется и не попадает в порядок Tab", async () => {
+    await render();
+
+    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
+    expect(scrim).not.toBeNull();
+    expect(scrim?.tabIndex).toBe(-1);
+    expect(scrim?.getAttribute("focusable")).toBe("false");
+  });
+
+  it("после открытия фокус на выбранном варианте", async () => {
+    await render({ value: "FRIENDS" });
+
+    const selected = container.querySelector<HTMLElement>(
+      `[role="radio"][aria-label="${labels.FRIENDS}"]`,
+    );
+    expect(selected).not.toBeNull();
+    expect(document.activeElement).toBe(selected);
+  });
+
+  it("клик по подложке по-прежнему закрывает диалог", async () => {
+    const { onClose } = await render();
+
+    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
+    await act(async () => {
+      scrim?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

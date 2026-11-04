@@ -26,6 +26,9 @@ vi.mock("react-native", async () => {
     accessibilityRole?: string;
     accessibilityLabel?: string;
     accessibilityState?: { disabled?: boolean; busy?: boolean };
+    "aria-hidden"?: boolean;
+    focusable?: boolean;
+    tabIndex?: number;
   };
 
   function View({
@@ -58,18 +61,28 @@ vi.mock("react-native", async () => {
     );
   }
 
-  function Pressable({
-    children,
-    onPress,
-    disabled,
-    accessibilityRole,
-    accessibilityLabel,
-    accessibilityState,
-  }: PressableProps) {
+  const Pressable = React.forwardRef<HTMLButtonElement, PressableProps>(function Pressable(
+    {
+      children,
+      onPress,
+      disabled,
+      accessibilityRole,
+      accessibilityLabel,
+      accessibilityState,
+      "aria-hidden": ariaHidden,
+      focusable,
+      tabIndex,
+    },
+    ref,
+  ) {
     return React.createElement(
       "button",
       {
         type: "button",
+        ref,
+        ...(tabIndex !== undefined ? { tabIndex } : {}),
+        ...(ariaHidden ? { "aria-hidden": "true" } : {}),
+        ...(focusable !== undefined ? { focusable: String(focusable) } : {}),
         ...(accessibilityRole ? { role: accessibilityRole } : {}),
         ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
         ...(accessibilityState?.disabled ? { "aria-disabled": "true" } : {}),
@@ -79,7 +92,7 @@ vi.mock("react-native", async () => {
       },
       children,
     );
-  }
+  });
 
   function Modal({
     visible,
@@ -110,6 +123,10 @@ vi.mock("react-native", async () => {
     Text,
     Pressable,
     Modal,
+    // The focus helper reads the platform; on web it only moves DOM focus.
+    Platform: { OS: "web" },
+    AccessibilityInfo: { setAccessibilityFocus: vi.fn() },
+    findNodeHandle: () => null,
     useWindowDimensions: () => ({ width: 1024, height: 800 }),
   };
 });
@@ -228,5 +245,38 @@ describe("ConfirmDialog: действия", () => {
 
     expect(container.innerHTML).toBe("");
     expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+/**
+ * CLE-51: the scrim closes the dialog with a click but is not a tab stop, and
+ * the alertdialog opens with focus on «Отмена», the safe action.
+ */
+describe("ConfirmDialog: фокус в диалоге", () => {
+  it("подложка не фокусируется и не попадает в порядок Tab", async () => {
+    await render();
+
+    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
+    expect(scrim).not.toBeNull();
+    expect(scrim?.tabIndex).toBe(-1);
+    expect(scrim?.getAttribute("focusable")).toBe("false");
+  });
+
+  it("после открытия фокус на «Отмена», а не на «Удалить»", async () => {
+    await render();
+
+    expect(document.activeElement).toBe(button("Отмена"));
+  });
+
+  it("клик по подложке по-прежнему зовёт onCancel", async () => {
+    const { onConfirm, onCancel } = await render();
+
+    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
+    await act(async () => {
+      scrim?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });

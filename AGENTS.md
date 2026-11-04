@@ -44,6 +44,13 @@
 
 <!-- /bmad:context -->
 
+## Code style: named functions
+
+- **Компоненты React — только именованные функции.** `export function GiftCard() {}`, `export default function Screen() {}`. Анонимные компоненты запрещены: никаких `const X = () => <…/>`, `export default () => <…/>`, `memo(() => …)`, `forwardRef((props, ref) => …)` — передавайте именованную функцию: `forwardRef(function GhostButton(props, ref) {…})`.
+- **Фабрики и HOC.** Если компонент создаётся фабрикой или HOC, задайте ему `displayName`.
+- **Прочие функции — тоже именованные.** Хелперы, обработчики событий и колбэки эффектов, где это разумно, объявляйте функциями: `function handlePress() {}`. Стрелки допустимы только для однострочных style-колбэков `Pressable` (`style={({ pressed }) => [...]}`) и простых колбэков методов массивов (`.map(x => …)`, `.filter(…)`).
+- **Правило проверяет ESLint:** `react/function-component-definition` и `react/display-name` в `apps/mobile` и `apps/web`.
+
 ## Epic acceptance testing
 
 - Когда все истории эпика в `sprint-status.yaml` переходят в `done`, проведите итоговое приёмочное тестирование эпика в отдельной сессии агента, до ретроспективы и до перевода эпика в `done`. Промпт — `_bmad-output/implementation-artifacts/epic-N-qa-prompt.md` по образцу `epic-1-qa-prompt.md`: критерии приёмки всех историй эпика из `epics.md`, проверки CI, сквозные сценарии и известные долги из `deferred-work.md`. Агент только проверяет, код не меняет; отчёт — `epic-N-qa-report.md` рядом с промптом. Дефекты из отчёта заводите задачами в Linear.

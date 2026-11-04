@@ -1,0 +1,62 @@
+---
+description: Именованные функции в React-коде Gift List — компоненты объявляем только именованными функциями, анонимные запрещены. Применять при правке .ts и .tsx в apps и packages.
+globs: apps/**/*.ts,apps/**/*.tsx,packages/**/*.ts
+alwaysApply: false
+---
+
+# Именованные функции
+
+Компоненты — только именованные функции; анонимные компоненты запрещены. Прочие функции (хелперы, обработчики событий, колбэки эффектов, где это разумно) — тоже именованные.
+
+## Компоненты
+
+```tsx
+// плохо
+export default () => <Screen />;
+const GiftCard = () => <View />;
+const GhostButton = forwardRef((props, ref) => <Pressable ref={ref} {...props} />);
+const MemoList = memo(() => <View />);
+
+// хорошо
+export default function Screen() {…}
+export function GiftCard() {…}
+export const GhostButton = forwardRef(function GhostButton(props, ref) {…});
+const MemoList = memo(function MemoList() {…});
+```
+
+Если компонент создаётся фабрикой или HOC, задайте ему `displayName`.
+
+## Остальные функции
+
+```tsx
+// плохо
+const handlePress = () => save(item);
+useEffect(() => {
+  load();
+}, []);
+
+// хорошо
+function handlePress() {…}
+useEffect(function loadOnMount() {
+  load();
+}, []);
+useEffect(function subscribeToUpdates() {
+  const subscription = updates.subscribe();
+  return function stopListening() {
+    subscription.remove();
+  };
+}, []);
+```
+
+Эффект принимает именованную function expression, а не стрелку и не готовую функцию напрямую: переданная напрямую функция может случайно вернуть значение, и React примет его за cleanup. Cleanup тоже оформляйте именованной функцией (`return function stopListening() {…};`), чтобы в стеке было видно, что останавливается.
+
+Стрелки допустимы только для однострочных style-колбэков `Pressable` и простых колбэков методов массивов:
+
+```tsx
+<Pressable style={({ pressed }) => [styles.base, pressed && styles.pressed]} />
+items.map(toRow);
+items.map((item) => item.id);
+items.filter((item) => item.visible);
+```
+
+Правило проверяет ESLint: `react/function-component-definition` и `react/display-name` в `apps/mobile` и `apps/web`.

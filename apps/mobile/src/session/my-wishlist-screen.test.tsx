@@ -1204,8 +1204,33 @@ describe("мой вишлист: смена видимости с чипа", () 
     await chooseInDialog("Друзьям");
 
     expect(chip("Всем")).toBeDefined();
-    expect(text()).toContain("Проверьте введённые данные.");
+    expect(text()).toContain("Желание уже забронировано — видимость не изменить.");
+    expect(text()).not.toContain("Проверьте введённые данные.");
     // The status under the optimistic chip may have changed: the list reloads silently.
+    expect(listReads()).toBe(reads + 1);
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
+  });
+
+  it("NOT_FOUND: откат, прежний текст ошибки и тихая перезагрузка списка", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(chip("Друзьям")).toBeUndefined();
+    expect(text()).toContain("Не найдено.");
+    expect(text()).not.toContain("Желание уже забронировано — видимость не изменить.");
     expect(listReads()).toBe(reads + 1);
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
   });

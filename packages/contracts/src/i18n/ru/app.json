@@ -90,7 +90,8 @@
     },
     "edit": "Изменить «{title}»",
     "toast": {
-      "visibility": "Видимость: {value}"
+      "visibility": "Видимость: {value}",
+      "visibilityLocked": "Желание уже забронировано — видимость не изменить."
     }
   },
   "toast": {

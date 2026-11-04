@@ -342,8 +342,13 @@ export default function MyWishlistScreen() {
         if (!signedOut) setToast({ message: t("form.network"), tone: "error" });
         return;
       }
-      if ("code" in result && (result.code === "VALIDATION" || result.code === "NOT_FOUND")) {
-        setToast({ message: common(`errors.code.${result.code}`), tone: "error" });
+      if ("code" in result && result.code === "VALIDATION") {
+        setToast({ message: t("gift.toast.visibilityLocked"), tone: "error" });
+        setAttempt((value) => value + 1);
+        return;
+      }
+      if ("code" in result && result.code === "NOT_FOUND") {
+        setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
         setAttempt((value) => value + 1);
         return;
       }

@@ -74,11 +74,24 @@
       "FRIENDS": "Друзьям",
       "SECRET": "Секрет"
     },
+    "visibilityLower": {
+      "PUBLIC": "всем",
+      "FRIENDS": "друзьям",
+      "SECRET": "секрет"
+    },
+    "visibilityChipLabel": "Видимость: {value}. Изменить",
+    "visibilityPicker": {
+      "title": "Кто видит «{title}»",
+      "cancel": "Отмена"
+    },
     "ownerAction": {
       "CONFIRM_GIVEN": "Ждёт вашего подтверждения",
       "EXPIRED_NO_REPLY": "Срок брони истёк"
     },
-    "edit": "Изменить «{title}»"
+    "edit": "Изменить «{title}»",
+    "toast": {
+      "visibility": "Видимость: {value}"
+    }
   },
   "toast": {
     "close": "Закрыть"
@@ -118,7 +131,16 @@
         "PUBLIC": "по ссылке, подписчикам и в профиле",
         "FRIENDS": "только друзья",
         "SECRET": "только вы"
-      }
+      },
+      "visibilityLocked": "Видимость меняется только у открытого желания."
+    },
+    "delete": {
+      "action": "Удалить желание",
+      "confirmTitle": "Удалить «{title}»?",
+      "confirmBody": "Желание исчезнет из вишлиста. Это нельзя отменить.",
+      "confirm": "Удалить",
+      "cancel": "Отмена",
+      "deleting": "Удаляем…"
     },
     "action": {
       "create": "Добавить желание",
@@ -136,7 +158,8 @@
     },
     "toast": {
       "created": "Добавлено в вишлист",
-      "saved": "Изменения сохранены."
+      "saved": "Изменения сохранены.",
+      "deleted": "Желание удалено."
     },
     "loading": "Загружаем желание",
     "loadError": "Не получилось загрузить. Проверьте сеть.",

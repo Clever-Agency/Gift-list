@@ -24,6 +24,11 @@ export type GiftResult =
 
 export type CreateGiftResult = GiftResult;
 
+export type DeleteGiftResult =
+  | { ok: true }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
 /**
  * AD-7 owner branch behind `/api/v1/me/gifts` (AD-17: the app talks only to `api/v1`).
  * The payload is re-checked with the shared contract (AD-12): `listDataSchema` is
@@ -81,6 +86,32 @@ export async function fetchGift(id: string): Promise<GiftResult> {
   if (!parsed.success) return { ok: false, invalid: true };
 
   return { ok: true, gift: parsed.data };
+}
+
+/**
+ * Story 2.3 (FR-10): `DELETE /api/v1/me/gifts/{id}` removes an open wish of the
+ * owner's list and answers with the deleted id. The id is a path segment, hence
+ * encoded; a body that does not echo the same id is `invalid` rather than a
+ * broken connection. The server answers NOT_FOUND for a foreign, archived or
+ * missing wish and CONFLICT for a reserved or closed one (AD-6…AD-8).
+ */
+export async function deleteGift(id: string): Promise<DeleteGiftResult> {
+  const result = await apiRequest<unknown>(
+    `/api/v1/me/gifts/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  if (!result.ok) return result;
+
+  const data = result.data;
+  if (typeof data !== "object" || data === null) {
+    return { ok: false, invalid: true };
+  }
+  const record = data as Record<string, unknown>;
+  if (typeof record.id !== "string" || record.id !== id) {
+    return { ok: false, invalid: true };
+  }
+
+  return { ok: true };
 }
 
 /**

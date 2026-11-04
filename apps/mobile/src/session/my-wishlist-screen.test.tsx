@@ -603,6 +603,8 @@ describe("мой вишлист: список", () => {
   /**
    * Story 2.2: the owner card is the way into the edit form. The pressable lives
    * inside the listitem, so the list semantics above stay exactly as they were.
+   * CLE-65: the press zone is the whole card, and the chip is a sibling layer over
+   * the reserved footer, not a nested button.
    */
   it("нажатие на карточку открывает редактирование желания, listitem остаётся", async () => {
     respond(giftsAnswer([gift(), gift({ id: "g2", title: "Свитер" })]));
@@ -616,8 +618,38 @@ describe("мой вишлист: список", () => {
       (node) => node.getAttribute("aria-label") === "Изменить «Наушники»",
     );
     expect(card).toBeDefined();
+    // The chip sits next to the card button, never inside it; its layer is
+    // transparent to presses outside the chip.
+    expect(chip("Всем")).toBeDefined();
+    expect(card?.contains(chip("Всем") ?? null)).toBe(false);
+    expect(chip("Всем")?.parentElement?.getAttribute("data-pointer-events")).toBe("box-none");
     await act(async () => {
       card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
+  });
+
+  /**
+   * CLE-65 reproduction: a click on the empty footer space next to the «Всем» chip
+   * did nothing. That space is the card's reserved footer spacer — the last box of
+   * the card button — so the press now opens the editor.
+   */
+  it("нажатие на пустое место рядом с чипом открывает редактирование", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    const card = Array.from(container.querySelectorAll("button")).find(
+      (node) => node.getAttribute("aria-label") === "Изменить «Наушники»",
+    );
+    const spacer = card?.lastElementChild as HTMLElement | null;
+    expect(spacer).not.toBeNull();
+    expect(spacer?.getAttribute("aria-label")).toBeNull();
+    await act(async () => {
+      spacer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
     expect(navigation.push).toHaveBeenCalledWith({

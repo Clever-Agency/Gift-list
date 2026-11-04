@@ -1,10 +1,35 @@
 // @vitest-environment happy-dom
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { colors } from "@/theme/tokens";
 import { WishCard } from "@/ui/gift-card";
+
+/** The same catalogue the app ships, so the accessible name is not copied here. */
+const app = JSON.parse(
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../..",
+      "packages/contracts/src/i18n/ru/app.json",
+    ),
+    "utf8",
+  ),
+) as {
+  gift: {
+    visibilityLower: Record<string, string>;
+    visibilityChipLabel: string;
+  };
+};
+
+/** `app.gift.visibilityChipLabel` with the lower-case visibility word. */
+function chipLabel(visibility: GiftCardData["visibility"]): string {
+  return app.gift.visibilityChipLabel.replace("{value}", app.gift.visibilityLower[visibility]);
+}
 
 /** Every `Text` the card rendered, with its style, so the markup stays a plain DOM tree. */
 const ui = vi.hoisted(() => ({
@@ -65,8 +90,10 @@ vi.mock("react-native", async () => {
     children?: React.ReactNode;
     style?: unknown;
     role?: string;
+    accessibilityRole?: string;
     accessibilityLabel?: string;
     onPress?: () => void;
+    "aria-haspopup"?: string;
   };
   const domProps = (role?: string, accessibilityLabel?: string) => ({
     ...(role ? { role } : {}),
@@ -82,13 +109,21 @@ vi.mock("react-native", async () => {
     },
     // The card content is a button only when `onPress` is passed: the mock keeps
     // the DOM role and name the screen reader would get from react-native-web.
-    Pressable: ({ children, role, accessibilityLabel, onPress }: Props) =>
+    Pressable: ({
+      children,
+      role,
+      accessibilityRole,
+      accessibilityLabel,
+      onPress,
+      "aria-haspopup": ariaHaspopup,
+    }: Props) =>
       React.createElement(
         "button",
         {
           type: "button",
           onClick: onPress,
-          ...domProps(role ?? "button", accessibilityLabel),
+          ...domProps(role ?? accessibilityRole ?? "button", accessibilityLabel),
+          ...(ariaHaspopup ? { "aria-haspopup": ariaHaspopup } : {}),
         },
         children,
       ),
@@ -150,9 +185,20 @@ afterEach(async () => {
   container.remove();
 });
 
-async function render(card: GiftCardData, onPress?: () => void) {
+async function render(
+  card: GiftCardData,
+  onPress?: () => void,
+  onVisibilityPress?: () => void,
+) {
   await act(async () => {
-    host.render(<WishCard gift={card} width={343} onPress={onPress} />);
+    host.render(
+      <WishCard
+        gift={card}
+        width={343}
+        onPress={onPress}
+        onVisibilityPress={onVisibilityPress}
+      />,
+    );
   });
 }
 
@@ -250,5 +296,56 @@ describe("WishCard: нажатие", () => {
     expect(container.querySelector('[role="button"]')).toBeNull();
     expect(container.querySelectorAll("button")).toHaveLength(0);
     expect(textNodes()).toContain("Свитер");
+  });
+});
+
+/**
+ * Story 2.3 (`DESIGN.md` → VisibilityChip, `EXPERIENCE.md` → Visibility chip):
+ * the chip is a button of its own only on an `OPEN` wish, and it never sits
+ * inside the card body's button.
+ */
+describe("WishCard: чип видимости", () => {
+  it("OPEN + onVisibilityPress: чип — отдельная кнопка, зовёт обработчик и не открывает правку", async () => {
+    const onPress = vi.fn();
+    const onVisibilityPress = vi.fn();
+    await render(
+      gift({ title: "Наушники", status: "OPEN", visibility: "PUBLIC" }),
+      onPress,
+      onVisibilityPress,
+    );
+
+    const item = container.querySelector('[role="listitem"]');
+    const edit = item?.querySelector(`button[aria-label="Изменить «Наушники»"]`);
+    const chip = item?.querySelector(`button[aria-label="${chipLabel("PUBLIC")}"]`);
+    expect(edit).not.toBeNull();
+    expect(chip).not.toBeNull();
+    // Two separate siblings: the chip lives outside the edit button.
+    expect(chip).not.toBe(edit);
+    expect(edit?.contains(chip ?? null)).toBe(false);
+    expect(chip?.getAttribute("aria-haspopup")).toBe("dialog");
+
+    await act(async () => {
+      chip?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onVisibilityPress).toHaveBeenCalledTimes(1);
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { status: "RESERVED" as const, pill: "Забронирован" },
+    { status: "CLOSED" as const, pill: "Получен" },
+  ])("$status: чип не кнопка, статус и видимость на месте", async ({ status, pill }) => {
+    const onVisibilityPress = vi.fn();
+    await render(
+      gift({ status, visibility: "FRIENDS" }),
+      undefined,
+      onVisibilityPress,
+    );
+
+    // No button at all: neither the card (no onPress) nor the chip.
+    expect(container.querySelectorAll("button")).toHaveLength(0);
+    expect(container.querySelector(`[aria-label="${chipLabel("FRIENDS")}"]`)).toBeNull();
+    expect(textNodes()).toContain(pill);
+    expect(textNodes()).toContain("Друзьям");
   });
 });

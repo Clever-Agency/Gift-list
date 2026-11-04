@@ -46,10 +46,10 @@ development_status:
   1-8-часовой-пояс-пользователя: done
   epic-1-retrospective: optional
 
-  epic-2: backlog
+  epic-2: in-progress
   2-1-экран-мой-вишлист-с-gift-card-и-status-pill: backlog
   2-2-создание-и-редактирование-желания: backlog
-  2-3-видимость-и-удаление-желания: backlog
+  2-3-видимость-и-удаление-желания: done
   2-4-копирование-ссылки-на-вишлист: backlog
   2-5-тип-желания-и-теги: backlog
   2-6-срок-жизни-желания-и-архив: backlog

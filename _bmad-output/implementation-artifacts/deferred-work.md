@@ -125,3 +125,11 @@
 - Отношения (Friendship, Block, Subscription, ContactMatch) отдаёт заглушка `apps/web/src/lib/relationships.ts` — «отношений нет» (fail-closed). Epic 4 (AD-10, AD-19) и Epic 8 (AD-18) подменяют адаптер; правила в `VisibilityPolicy` уже учитывают эти факты.
 - `readWishlist` по `publicToken` пока без маршрута — подключить в Story 3.3 (`/l/:token`) и 3.4 (`/u/:nick`).
 - Reservation card держателя (A-14, FR-25) — Epic 5; сейчас держатель видит обычную карточку с собой в `reservedBy`.
+
+## Story 2.3 (CLE-51)
+
+- Меню ⋯ на карточке (редактировать / видимость / удалить) — не сделано: удаление живёт на экране правки, видимость — на чипе; ⋯ придёт вместе с остальными действиями (Stories 2.5–2.7, 5.x).
+- Удаление `RESERVED` (сильный confirm, уведомление держателю) — Story 5.4; сервер отвечает CONFLICT.
+- Удаление `CLOSED` из секции «Получено» — Story 2.6; сервер отвечает CONFLICT.
+- Выбор видимости и confirm удаления — диалог по центру на всех ширинах; шторка снизу на compact (DESIGN.md BottomSheet) — когда появится общий BottomSheet.
+- Ветка основана на неслитой ветке Story 3.2 (CLE-48).

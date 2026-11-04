@@ -2,8 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUnique, create, findFirst, update, PrismaClientKnownRequestError } =
-  vi.hoisted(() => {
+const {
+  getSession,
+  findUnique,
+  create,
+  findFirst,
+  update,
+  deleteMany,
+  PrismaClientKnownRequestError,
+} = vi.hoisted(() => {
     /** Stands in for the generated class, so a test can shape the `code` the use-cases read. */
     class PrismaClientKnownRequestError extends Error {
       code: string;
@@ -20,19 +27,20 @@ const { getSession, findUnique, create, findFirst, update, PrismaClientKnownRequ
       create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+      deleteMany: vi.fn(),
       PrismaClientKnownRequestError,
     };
   });
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({
-  prisma: { list: { findUnique }, gift: { create, findFirst, update } },
+  prisma: { list: { findUnique }, gift: { create, findFirst, update, deleteMany } },
 }));
 vi.mock("@/db/generated/client", () => ({ Prisma: { PrismaClientKnownRequestError } }));
 
 import { giftCardSchema } from "@gift-list/contracts";
 
-import { createGift, getGift, updateGift } from "./gifts";
+import { createGift, deleteGift, getGift, updateGift } from "./gifts";
 
 const headers = new Headers();
 
@@ -87,11 +95,13 @@ beforeEach(() => {
   create.mockReset();
   findFirst.mockReset();
   update.mockReset();
+  deleteMany.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1" });
   create.mockResolvedValue(giftRow());
   findFirst.mockResolvedValue(null);
   update.mockResolvedValue(giftRow());
+  deleteMany.mockResolvedValue({ count: 0 });
 });
 
 afterEach(() => {
@@ -397,7 +407,7 @@ describe("updateGift", () => {
 
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
-      select: { priceAmount: true },
+      select: { priceAmount: true, status: true, visibility: true },
     });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { priceCurrency: "EUR" } }),
@@ -476,5 +486,147 @@ describe("updateGift", () => {
     update.mockRejectedValue(error);
 
     await expect(updateGift(headers, "g1", { title: "Книга" })).rejects.toBe(error);
+  });
+
+  /** Story 2.3/AD-8: an OPEN wish takes a new visibility, written while still OPEN. */
+  it("changes the visibility of an OPEN wish", async () => {
+    findFirst.mockResolvedValue({ priceAmount: null, status: "OPEN", visibility: "PUBLIC" });
+    update.mockResolvedValue(giftRow({ visibility: "SECRET" }));
+
+    const card = okData(await updateGift(headers, "g1", { visibility: "SECRET" }));
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" }, status: "OPEN" },
+      data: { visibility: "SECRET" },
+      select: expect.any(Object),
+    });
+    expect(card).toMatchObject({ visibility: "SECRET" });
+  });
+
+  /** Story 2.3/AD-8: a reserved wish rejects a new visibility and writes nothing. */
+  it.each(["RESERVED", "CLOSED"] as const)(
+    "answers VALIDATION when changing the visibility of a %s wish",
+    async (status) => {
+      findFirst.mockResolvedValue({ priceAmount: null, status, visibility: "PUBLIC" });
+
+      expect(await updateGift(headers, "g1", { visibility: "FRIENDS" })).toMatchObject({
+        ok: false,
+        code: "VALIDATION",
+        message: "Invalid input",
+        field: "visibility",
+      });
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+
+  /** The reserved wish's form resends the stored value; that is not a change. */
+  it("ignores an unchanged visibility and still saves the other fields", async () => {
+    findFirst.mockResolvedValue({ priceAmount: null, status: "RESERVED", visibility: "PUBLIC" });
+    update.mockResolvedValue(giftRow({ title: "Новое название", status: "RESERVED" }));
+
+    const card = okData(
+      await updateGift(headers, "g1", { title: "Новое название", visibility: "PUBLIC" }),
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
+      data: { title: "Новое название" },
+      select: expect.any(Object),
+    });
+    expect(card.title).toBe("Новое название");
+  });
+
+  /** AD-8: the write's `status: "OPEN"` loses to a reservation made after the read. */
+  it("answers VALIDATION when the wish is reserved before the guarded write lands", async () => {
+    findFirst
+      .mockResolvedValueOnce({ priceAmount: null, status: "OPEN", visibility: "PUBLIC" })
+      .mockResolvedValueOnce({ status: "RESERVED" });
+    update.mockRejectedValue(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+
+    expect(await updateGift(headers, "g1", { visibility: "SECRET" })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "visibility",
+    });
+  });
+
+  /** The guarded write can also lose to an archive or a foreign list: NOT_FOUND. */
+  it("answers NOT_FOUND when the guarded write finds no owned row", async () => {
+    findFirst
+      .mockResolvedValueOnce({ priceAmount: null, status: "OPEN", visibility: "PUBLIC" })
+      .mockResolvedValueOnce(null);
+    update.mockRejectedValue(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+
+    expect(await updateGift(headers, "g1", { visibility: "SECRET" })).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("answers NOT_FOUND without writing when a visibility change targets a foreign gift", async () => {
+    findFirst.mockResolvedValue(null);
+
+    expect(await updateGift(headers, "g-other", { visibility: "SECRET" })).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteGift", () => {
+  it("requires a session and does not touch the db", async () => {
+    getSession.mockResolvedValue(null);
+
+    expect(await deleteGift(headers, "g1")).toMatchObject({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  /** Story 2.3: the delete carries ownership, "not archived" and the OPEN status. */
+  it("deletes an OPEN wish of the owner's list", async () => {
+    deleteMany.mockResolvedValue({ count: 1 });
+
+    expect(await deleteGift(headers, "g1")).toEqual({ ok: true, data: { id: "g1" } });
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: "g1",
+        archivedAt: null,
+        status: "OPEN",
+        list: { ownerId: "u1" },
+      },
+    });
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  /** Story 2.3: RESERVED is Story 5.4 and CLOSED is Story 2.6, so both conflict here. */
+  it.each(["RESERVED", "CLOSED"] as const)(
+    "answers CONFLICT and keeps a %s wish",
+    async (status) => {
+      findFirst.mockResolvedValue({ status });
+
+      expect(await deleteGift(headers, "g1")).toMatchObject({
+        ok: false,
+        code: "CONFLICT",
+        message: "Only an open wish can be deleted here",
+      });
+    },
+  );
+
+  /** AD-7: a foreign, archived or missing gift answers one and the same NOT_FOUND. */
+  it("answers NOT_FOUND for a foreign, archived or missing gift", async () => {
+    findFirst.mockResolvedValue(null);
+
+    expect(await deleteGift(headers, "g-other")).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
   });
 });

@@ -1,8 +1,9 @@
 import { CURRENCIES, VISIBILITIES } from "@gift-list/contracts";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslations } from "use-intl";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
+import { focusInLayer } from "@/ui/focus";
 import {
   DESCRIPTION_MAX,
   LINK_MAX,
@@ -72,6 +73,12 @@ type GiftFormProps = {
    * submit.
    */
   serverError?: GiftFormServerError | null;
+  /**
+   * The wish is no longer open: visibility is frozen by the server, so the rows
+   * show the stored value but cannot change it (`EXPERIENCE.md` → Правка
+   * забронированного желания).
+   */
+  visibilityLocked?: boolean;
 };
 
 /**
@@ -93,6 +100,7 @@ export function GiftForm({
   onSubmit,
   submitLabel,
   serverError,
+  visibilityLocked = false,
 }: GiftFormProps) {
   const t = useTranslations("app.giftForm");
   const tVisibility = useTranslations("app.gift.visibility");
@@ -230,12 +238,16 @@ export function GiftForm({
         value={visibility}
         onChange={setVisibility}
         error={inlineError("visibility")}
+        disabled={visibilityLocked}
         options={VISIBILITIES.map((code) => ({
           value: code,
           label: tVisibility(code),
           hint: t(`field.visibilityHint.${code}`),
         }))}
       />
+      {visibilityLocked ? (
+        <Text style={styles.lockedHint}>{t("field.visibilityLocked")}</Text>
+      ) : null}
       {formError ? (
         <Text
           style={styles.formError}
@@ -270,18 +282,28 @@ type ChoiceOption<T extends string> = {
 /**
  * The shared `radiogroup` behind the currency codes and the visibility choice
  * (`DESIGN.md` → Форма: five codes; three radio rows with an explanation, «Всем»
- * by default). `DESIGN.md` asks for a bottom sheet with radios on a phone; until
- * it exists (Story 2.3 builds the visibility rows the same way) each variant
- * keeps the same `radio` semantics: one choice, the selected one is marked, and
- * the option label is the accessible name.
+ * by default). `DESIGN.md` asks for a bottom sheet with radios on a phone; the
+ * same rows are reused by `VisibilityPicker` (Story 2.3). Each variant keeps the
+ * same `radio` semantics: one choice, the selected one is marked, and the option
+ * label is the accessible name.
+ *
+ * `labelHidden` keeps the accessible name of the group while the visible heading
+ * comes from the surrounding layer (the picker title is a header of its own).
+ *
+ * `autoFocusValue` is only set by `VisibilityPicker`: when the dialog appears,
+ * focus moves to the radio holding the current value instead of staying on the
+ * scrim the layer was opened from.
  */
-function ChoiceGroup<T extends string>({
+export function ChoiceGroup<T extends string>({
   label,
   value,
   options,
   onChange,
   variant,
   error,
+  labelHidden,
+  disabled = false,
+  autoFocusValue,
 }: {
   label: string;
   value: T;
@@ -290,11 +312,24 @@ function ChoiceGroup<T extends string>({
   variant: "chips" | "rows";
   /** Inline error under the group, e.g. a server `visibility` rejection. */
   error?: string;
+  /** The group is named for screen readers, but the visible copy is rendered elsewhere. */
+  labelHidden?: boolean;
+  /** Shows the stored value but does not let it change; every radio reads as disabled. */
+  disabled?: boolean;
+  /** Focus this option when the group appears; no other usage passes it. */
+  autoFocusValue?: T;
 }) {
   const rows = variant === "rows";
+  const autoFocusRef = useRef<ComponentRef<typeof Pressable>>(null);
+
+  useEffect(() => {
+    if (autoFocusValue === undefined) return;
+    focusInLayer(autoFocusRef.current);
+  }, [autoFocusValue]);
+
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      {labelHidden ? null : <Text style={styles.label}>{label}</Text>}
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel={label}
@@ -306,14 +341,19 @@ function ChoiceGroup<T extends string>({
           return (
             <Pressable
               key={option.value}
+              ref={option.value === autoFocusValue ? autoFocusRef : undefined}
               accessibilityRole="radio"
               accessibilityLabel={option.label}
               accessibilityHint={option.hint}
-              accessibilityState={{ checked: selected }}
-              onPress={() => onChange(option.value)}
+              accessibilityState={{ checked: selected, disabled }}
+              disabled={disabled}
+              onPress={() => {
+                if (!disabled) onChange(option.value);
+              }}
               style={({ pressed }) => [
                 rows ? styles.row : styles.chip,
                 selected ? (rows ? styles.rowSelected : styles.chipSelected) : null,
+                disabled ? styles.disabled : null,
                 pressed ? styles.pressed : null,
               ]}
             >
@@ -441,6 +481,13 @@ const styles = StyleSheet.create({
   hint: {
     ...textStyle("caption"),
     color: colors["muted-foreground"],
+  },
+  lockedHint: {
+    ...textStyle("caption"),
+    color: colors["muted-foreground"],
+  },
+  disabled: {
+    opacity: 0.6,
   },
   error: {
     ...textStyle("caption"),

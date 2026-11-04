@@ -133,8 +133,9 @@ vi.mock("react-native", async () => {
     role?: string;
     style?: unknown;
     accessible?: boolean;
+    accessibilityRole?: string;
     accessibilityLabel?: string;
-    accessibilityState?: { busy?: boolean };
+    accessibilityState?: { busy?: boolean; checked?: boolean };
   };
   /** Keeps the style of a `testID` element; a real layout engine is not available here. */
   function record(testID: string | undefined, style: unknown) {
@@ -179,33 +180,102 @@ vi.mock("react-native", async () => {
         children,
       );
     };
+  function Modal({
+    visible,
+    children,
+    onDismiss,
+    onRequestClose,
+    "aria-labelledby": ariaLabelledBy,
+  }: {
+    visible?: boolean;
+    children?: React.ReactNode;
+    onDismiss?: () => void;
+    onRequestClose?: () => void;
+    "aria-labelledby"?: string;
+  }) {
+    // react-native-web keeps the layer until the fade-out ends and only then reports
+    // `onDismiss`; here the layer is gone in the same commit and the report follows.
+    const wasVisible = React.useRef(visible);
+    React.useEffect(() => {
+      if (wasVisible.current && !visible) onDismiss?.();
+      wasVisible.current = visible;
+    }, [visible, onDismiss]);
+    // Esc, like react-native-web's ModalContent, arrives as `onRequestClose`.
+    React.useEffect(() => {
+      if (!visible) return undefined;
+      function closeOnEscape(event: KeyboardEvent) {
+        if (event.key === "Escape") onRequestClose?.();
+      }
+      document.addEventListener("keyup", closeOnEscape);
+      return () => document.removeEventListener("keyup", closeOnEscape);
+    }, [visible, onRequestClose]);
+    if (!visible) return null;
+    // react-native-web's Modal renders the dialog container itself and forwards
+    // `aria-labelledby` to it (the same stub the VisibilityPicker tests use).
+    return React.createElement(
+      "div",
+      {
+        role: "dialog",
+        "aria-modal": "true",
+        ...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {}),
+      },
+      children,
+    );
+  }
+  const Pressable = React.forwardRef<
+    HTMLButtonElement,
+    Props & { onPress?: () => void; "aria-hidden"?: boolean }
+  >(function Pressable(
+    {
+      children,
+      onPress,
+      accessibilityRole,
+      accessibilityLabel,
+      accessibilityState,
+      testID,
+      style,
+      "aria-hidden": ariaHidden,
+    },
+    ref,
+  ) {
+    // Pressable takes `({ pressed }) => style`, the resting state is enough here.
+    record(
+      testID,
+      typeof style === "function"
+        ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
+        : style,
+    );
+    return React.createElement(
+      "button",
+      {
+        type: "button",
+        ref,
+        ...(accessibilityRole ? { role: accessibilityRole } : {}),
+        ...(ariaHidden ? { "aria-hidden": "true" } : {}),
+        ...(accessibilityState && "checked" in accessibilityState
+          ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
+          : {}),
+        "aria-label": accessibilityLabel,
+        onClick: onPress,
+        ...domProps(testID),
+      },
+      children,
+    );
+  });
   return {
-    StyleSheet: { create: (styles: unknown) => styles },
+    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
     Text: element("span"),
     View: element("div"),
     ScrollView: element("div"),
+    Modal,
+    // The focus helper reads the platform and the screen-reader call; on web it only
+    // moves DOM focus, so the accessibility stub is never used here.
+    Platform: { OS: "web" },
+    AccessibilityInfo: { setAccessibilityFocus: vi.fn() },
+    findNodeHandle: () => null,
     // One column, like a phone in the browser (DESIGN.md → columns).
     useWindowDimensions: () => ({ width: 375, height: 800 }),
-    Pressable: ({
-      children,
-      onPress,
-      accessibilityLabel,
-      testID,
-      style,
-    }: Props & { onPress?: () => void; accessibilityLabel?: string }) => {
-      // Pressable takes `({ pressed }) => style`, the resting state is enough here.
-      record(
-        testID,
-        typeof style === "function"
-          ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
-          : style,
-      );
-      return React.createElement(
-        "button",
-        { type: "button", "aria-label": accessibilityLabel, onClick: onPress, ...domProps(testID) },
-        children,
-      );
-    },
+    Pressable,
   };
 });
 vi.mock("react-native-safe-area-context", async () => {
@@ -328,6 +398,37 @@ async function refocus() {
 /** Every read of the owner list, so a refocus refetch is countable. */
 function listReads(): number {
   return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
+}
+
+/**
+ * The visibility chip is a button only on an open wish; its accessible name starts
+ * with `app.gift.visibilityChipLabel` and the visible word is the chip value.
+ */
+function chip(value: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll("button")).find(
+    (node) =>
+      (node.getAttribute("aria-label") ?? "").startsWith("Видимость:") &&
+      (node.textContent ?? "").includes(value),
+  );
+}
+
+/** The PATCH calls to the first wish, so an optimistic save is countable. */
+function patchCalls(): unknown[][] {
+  return api.apiRequest.mock.calls.filter(
+    ([path, init]) =>
+      path === "/api/v1/me/gifts/g1" &&
+      typeof init === "object" &&
+      init !== null &&
+      (init as { method?: string }).method === "PATCH",
+  );
+}
+
+async function chooseInDialog(label: string) {
+  const option = container.querySelector<HTMLElement>(`[role="radio"][aria-label="${label}"]`);
+  expect(option).not.toBeNull();
+  await act(async () => {
+    option?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
 }
 
 async function mount() {
@@ -981,6 +1082,21 @@ describe("мой вишлист: весточка от формы редакти
 });
 
 /**
+ * Story 2.3: the edit screen hands «Желание удалено.» over in
+ * `?toast=gift_deleted`, the same one-shot hand-over the other form screens use.
+ */
+describe("мой вишлист: весточка об удалении", () => {
+  it("показывает «Желание удалено.» из параметра и гасит параметр", async () => {
+    search.params = { toast: "gift_deleted" };
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(text()).toContain("Желание удалено.");
+    expect(navigation.setParams).toHaveBeenCalledWith({ toast: undefined });
+  });
+});
+
+/**
  * `EXPERIENCE.md` → State Patterns → «Подписи брони» (owner column): the holder
  * name appears only in an active reservation and only when shared; `ownerAction`
  * replaces it with the phase label. The status pill stays the fallback label.
@@ -1035,5 +1151,237 @@ describe("мой вишлист: подписи брони у владельца
 
     expect(text()).toContain("Ждёт вашего подтверждения");
     expect(text()).not.toContain("Берёт Олег");
+  });
+});
+
+/**
+ * `EXPERIENCE.md` → Visibility chip: on an open wish the choice is saved at once
+ * (optimistic), a failure rolls the chip back, and a reserved wish keeps a plain
+ * value chip. The dialog returns focus to the chip it was opened from.
+ */
+describe("мой вишлист: смена видимости с чипа", () => {
+  it("выбор «Друзьям» виден сразу, затем toast и ответ сервера", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    await press("Всем");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(text()).toContain("Кто видит «Наушники»");
+
+    // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
+    let answer: (value: unknown) => void = () => {};
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return new Promise((resolve) => {
+          answer = resolve;
+        });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Друзьям")).toBeDefined();
+    expect(text()).not.toContain("Кто видит «Наушники»");
+    expect(patchCalls()).toHaveLength(1);
+    expect(patchCalls()[0]?.[1]).toEqual({
+      method: "PATCH",
+      body: { visibility: "FRIENDS" },
+    });
+
+    await act(async () => {
+      answer({ ok: true, data: gift({ visibility: "FRIENDS" }) });
+    });
+
+    expect(text()).toContain("Видимость: друзьям");
+    expect(chip("Друзьям")).toBeDefined();
+  });
+
+  it("обрыв сети: чип откатывается ко «Всем» и toast о соединении", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(chip("Друзьям")).toBeUndefined();
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Видимость: друзьям");
+  });
+
+  it("сеть: откат чипа и тост «Нет соединения»", async () => {
+    respond(giftsAnswer([gift({ visibility: "SECRET" })]));
+    await mount();
+    expect(chip("Секрет")?.getAttribute("aria-label")).toBe("Видимость: секрет. Изменить");
+    await press("Секрет");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
+      return Promise.resolve(giftsAnswer([gift({ visibility: "SECRET" })]));
+    });
+
+    await chooseInDialog("Всем");
+
+    expect(chip("Секрет")).toBeDefined();
+    expect(chip("Всем")).toBeUndefined();
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    // Only the optimistic value changed: a network failure does not refetch the list.
+    expect(listReads()).toBe(reads);
+
+    // The in-flight flag is cleared, so the chip opens the dialog again.
+    await press("Секрет");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
+  it("VALIDATION: откат, текст ошибки и тихая перезагрузка списка", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: false, code: "VALIDATION", message: "" });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(text()).toContain("Желание уже забронировано — видимость не изменить.");
+    expect(text()).not.toContain("Проверьте введённые данные.");
+    // The status under the optimistic chip may have changed: the list reloads silently.
+    expect(listReads()).toBe(reads + 1);
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
+  });
+
+  it("NOT_FOUND: откат, прежний текст ошибки и тихая перезагрузка списка", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(chip("Друзьям")).toBeUndefined();
+    expect(text()).toContain("Не найдено.");
+    expect(text()).not.toContain("Желание уже забронировано — видимость не изменить.");
+    expect(listReads()).toBe(reads + 1);
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
+  });
+
+  it("у RESERVED-карточки чип только показывает значение", async () => {
+    respond(giftsAnswer([gift({ status: "RESERVED", visibility: "FRIENDS" })]));
+    await mount();
+
+    expect(text()).toContain("Друзьям");
+    expect(chip("Друзьям")).toBeUndefined();
+    expect(patchCalls()).toHaveLength(0);
+  });
+
+  it("«Отмена» в диалоге не меняет видимость и не зовёт API", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+
+    await press("Отмена");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(chip("Всем")).toBeDefined();
+    expect(patchCalls()).toHaveLength(0);
+    expect(text()).not.toContain("Видимость: друзьям");
+  });
+});
+
+/**
+ * CLE-51: focus returns to the chip the dialog was opened from, and it does so only
+ * after the layer has really left the tree — react-native-web keeps it mounted while
+ * it fades out, and its focus trap pulls an early `focus()` back into the dialog.
+ */
+describe("мой вишлист: возврат фокуса на чип", () => {
+  /** Opens the picker on the only wish and returns the chip that opened it. */
+  async function openPicker(): Promise<HTMLButtonElement> {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    const trigger = chip("Всем");
+    expect(trigger).toBeDefined();
+    await press("Всем");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    // The dialog opens on the selected radio, not on the trigger behind it.
+    expect(document.activeElement).not.toBe(trigger);
+    return trigger as HTMLButtonElement;
+  }
+
+  it("«Отмена»: фокус на чипе, который открыл диалог", async () => {
+    const trigger = await openPicker();
+
+    await press("Отмена");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("Esc: фокус на чипе, который открыл диалог", async () => {
+    const trigger = await openPicker();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape" }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("тап по подложке: фокус на чипе, который открыл диалог", async () => {
+    const trigger = await openPicker();
+
+    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
+    await act(async () => {
+      scrim?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("выбор другого значения тоже возвращает фокус на чип", async () => {
+    const trigger = await openPicker();
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: true, data: gift({ visibility: "FRIENDS" }) });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    // Never `<body>`: the layer hands focus back instead of dropping it.
+    expect(document.activeElement).not.toBe(document.body);
   });
 });

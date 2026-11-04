@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getGift, updateGift } = vi.hoisted(() => ({ getGift: vi.fn(), updateGift: vi.fn() }));
+const { getGift, updateGift, deleteGift } = vi.hoisted(() => ({
+  getGift: vi.fn(),
+  updateGift: vi.fn(),
+  deleteGift: vi.fn(),
+}));
 
-vi.mock("@/actions/gifts", () => ({ getGift, updateGift }));
+vi.mock("@/actions/gifts", () => ({ getGift, updateGift, deleteGift }));
 
 const card = {
   id: "g7",
@@ -40,6 +44,10 @@ function get(headers: Record<string, string> = {}) {
   return new Request("http://x/api/v1/me/gifts/g7", { method: "GET", headers });
 }
 
+function remove(headers: Record<string, string> = {}) {
+  return new Request("http://x/api/v1/me/gifts/g7", { method: "DELETE", headers });
+}
+
 /** Next 16 hands the dynamic segment over as a promise. */
 function context(id = "g7") {
   return { params: Promise.resolve({ id }) };
@@ -48,6 +56,7 @@ function context(id = "g7") {
 beforeEach(() => {
   getGift.mockReset();
   updateGift.mockReset();
+  deleteGift.mockReset();
 });
 
 describe("GET /api/v1/me/gifts/[id]", () => {
@@ -193,7 +202,7 @@ describe("PATCH /api/v1/me/gifts/[id]", () => {
     expect(updateGift).not.toHaveBeenCalled();
   });
 
-  it.each(["POST", "PUT", "DELETE"] as const)(
+  it.each(["POST", "PUT"] as const)(
     "%s is the NOT_FOUND envelope, not a read or a write",
     async (method) => {
       const handlers = await import("./route");
@@ -206,6 +215,80 @@ describe("PATCH /api/v1/me/gifts/[id]", () => {
       expect(await res.json()).toEqual(notFound);
       expect(getGift).not.toHaveBeenCalled();
       expect(updateGift).not.toHaveBeenCalled();
+      expect(deleteGift).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("DELETE /api/v1/me/gifts/[id]", () => {
+  it("returns 200 with the deleted id in the AD-12 envelope", async () => {
+    deleteGift.mockResolvedValue({ ok: true, data: { id: "g7" } });
+    const { DELETE } = await import("./route");
+    const res = await DELETE(remove({ authorization: "Bearer t" }), context());
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.json()).toEqual({ ok: true, data: { id: "g7" } });
+  });
+
+  it("passes the route id and the request headers to deleteGift", async () => {
+    deleteGift.mockResolvedValue({ ok: true, data: { id: "g9" } });
+    const { DELETE } = await import("./route");
+    await DELETE(remove({ authorization: "Bearer t" }), context("g9"));
+
+    expect(deleteGift).toHaveBeenCalledWith(expect.any(Headers), "g9");
+    const headers = deleteGift.mock.calls[0][0] as Headers;
+    expect(headers.get("authorization")).toBe("Bearer t");
+  });
+
+  it("answers UNAUTHENTICATED with 401", async () => {
+    deleteGift.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    const { DELETE } = await import("./route");
+    const res = await DELETE(remove(), context());
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+  });
+
+  it("maps CONFLICT to 409 without deleting a reserved wish", async () => {
+    deleteGift.mockResolvedValue({
+      ok: false,
+      code: "CONFLICT",
+      message: "Only an open wish can be deleted here",
+    });
+    const { DELETE } = await import("./route");
+    const res = await DELETE(remove(), context());
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "Only an open wish can be deleted here",
+    });
+  });
+
+  it("maps NOT_FOUND to 404", async () => {
+    deleteGift.mockResolvedValue({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Gift not found",
+    });
+    const { DELETE } = await import("./route");
+    const res = await DELETE(remove(), context());
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Gift not found",
+    });
+  });
 });

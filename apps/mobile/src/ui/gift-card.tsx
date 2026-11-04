@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocale, useTranslations } from "use-intl";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 import { StatusPill } from "@/ui/status-pill";
-import { VisibilityChip } from "@/ui/visibility-chip";
+import { VisibilityChip, type VisibilityChipRef } from "@/ui/visibility-chip";
 
 /**
  * Gift card from AD-12 (`DESIGN.md` → WishCard). The shape comes from
@@ -18,6 +18,11 @@ import { VisibilityChip } from "@/ui/visibility-chip";
  * it the card is plain list content. The list item wrapper is always the outer
  * element, so the list semantics of the grid survive the pressable inside it.
  *
+ * Story 2.3: the visibility chip is a button of its own only when
+ * `onVisibilityPress` is passed and the wish is `OPEN` (`DESIGN.md` → VisibilityChip;
+ * `EXPERIENCE.md` → Visibility chip). It sits next to the card body, not inside it,
+ * so no pressable is nested in another and the chip's press cannot open the edit route.
+ *
  * NOTE FOR UX: photo, tags and ⋯ arrive with Stories 2.5–2.7, together with the
  * `Link` main zone that `DESIGN.md` reserves for the detail route; for now the
  * owner edit route is a button.
@@ -26,10 +31,16 @@ export function WishCard({
   gift,
   width,
   onPress,
+  onVisibilityPress,
+  visibilityChipRef,
 }: {
   gift: GiftCardData;
   width: number;
   onPress?: () => void;
+  /** Opens the visibility picker; only `OPEN` wishes get a pressable chip. */
+  onVisibilityPress?: () => void;
+  /** Where focus returns when the visibility layer closes (Story 2.3). */
+  visibilityChipRef?: VisibilityChipRef;
 }) {
   const t = useTranslations("app.myWishlist");
   const tGift = useTranslations("app.gift");
@@ -49,6 +60,9 @@ export function WishCard({
     : gift.reservedBy
       ? t("reservedBy", { name: gift.reservedBy.displayName })
       : null;
+  // `DESIGN.md` → VisibilityChip: the chip is a button only on an open wish.
+  const visibilityPress =
+    onVisibilityPress !== undefined && gift.status === "OPEN" ? onVisibilityPress : undefined;
 
   // The card content is built once and either sits in the pressable body or in a
   // plain wrapper, so both variants stay the same card.
@@ -60,10 +74,19 @@ export function WishCard({
       {price ? <Text style={styles.price}>{price}</Text> : null}
       <StatusPill status={gift.status} />
       {reservation ? <Text style={styles.reservation}>{reservation}</Text> : null}
-      <View style={styles.footer}>
-        <VisibilityChip visibility={gift.visibility} />
-      </View>
     </>
+  );
+  // `DESIGN.md` → WishCard: the chip is a sibling of the main zone, never inside
+  // it. The footer keeps the paddings the body used to give it, so the card looks
+  // the same as when the chip lived at the end of the body.
+  const footer = (
+    <View style={styles.footer}>
+      <VisibilityChip
+        visibility={gift.visibility}
+        onPress={visibilityPress}
+        chipRef={visibilityChipRef}
+      />
+    </View>
   );
 
   return (
@@ -83,6 +106,7 @@ export function WishCard({
       ) : (
         <View style={styles.body}>{body}</View>
       )}
+      {footer}
     </View>
   );
 }
@@ -96,6 +120,8 @@ const styles = StyleSheet.create({
   },
   body: {
     padding: spacing["card-padding"],
+    // The footer carries the bottom padding once it sits outside the body.
+    paddingBottom: 0,
     gap: spacing["grid-gap"] / 2,
   },
   // The same pressed feedback the other Pressables of the app give (DESIGN.md → App).
@@ -118,6 +144,9 @@ const styles = StyleSheet.create({
     color: colors["status-reserved"],
   },
   footer: {
-    marginTop: spacing["grid-gap"] / 4,
+    // The body gap (grid-gap / 2) plus the old footer margin (grid-gap / 4).
+    marginTop: (spacing["grid-gap"] * 3) / 4,
+    paddingHorizontal: spacing["card-padding"],
+    paddingBottom: spacing["card-padding"],
   },
 });

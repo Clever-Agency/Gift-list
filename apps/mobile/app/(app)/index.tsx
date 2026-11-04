@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
-import { fetchMyGifts } from "@/api/my-gifts";
+import { fetchMyGifts, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
@@ -19,10 +19,12 @@ import { colors, spacing, textStyle } from "@/theme/tokens";
 import { AuthorLink } from "@/ui/author-link";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
+import { restoreFocus, type ChipNode } from "@/ui/focus";
 import { WishCard } from "@/ui/gift-card";
 import { PrimaryButton } from "@/ui/primary-button";
 import { WishCardSkeleton } from "@/ui/skeleton";
 import { ToastHost } from "@/ui/toast";
+import { VisibilityPicker } from "@/ui/visibility-picker";
 
 /**
  * A failed read offers the retry view; UX-DR6 adds the toast. A missing list is its
@@ -51,6 +53,7 @@ type ToastState = { message: string; tone: "info" | "error" };
  */
 const CREATED_TOAST = "gift_created";
 const UPDATED_TOAST = "gift_updated";
+const DELETED_TOAST = "gift_deleted";
 
 /**
  * The footer row («Выйти» + «Написать автору») is pinned to the bottom of the column.
@@ -71,6 +74,7 @@ export default function MyWishlistScreen() {
   const wishlist = useTranslations("app.myWishlist");
   const giftForm = useTranslations("app.giftForm");
   const common = useTranslations("common");
+  const tLower = useTranslations("app.gift.visibilityLower");
   const brand = getBrandName();
   const auth = useAuth();
   const { width } = useWindowDimensions();
@@ -84,6 +88,14 @@ export default function MyWishlistScreen() {
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // Story 2.3: the chip of an open wish opens the visibility dialog over the list.
+  const [picker, setPicker] = useState<{ gift: GiftCard } | null>(null);
+  // A second tap on the same chip while its PATCH is in flight is ignored.
+  const saving = useRef(new Set<string>());
+  // The chip node of every wish, so focus can return there after the dialog closes.
+  const chipNodes = useRef(new Map<string, ChipNode | null>());
+  // The chip that should get focus once the closed dialog has left the tree.
+  const pendingFocus = useRef<string | null>(null);
   // Review m9: coming back to the screen (e.g. from the composer) refetches the list.
   // The mount effect owns the very first load, so the first focus right after mount is
   // not a reason to fetch again; a refocus refresh is silent (only `retry` shows the
@@ -133,17 +145,35 @@ export default function MyWishlistScreen() {
     }
     if (
       handledToast.current === flash ||
-      (flash !== CREATED_TOAST && flash !== UPDATED_TOAST)
+      (flash !== CREATED_TOAST && flash !== UPDATED_TOAST && flash !== DELETED_TOAST)
     ) {
       return;
     }
     handledToast.current = flash;
     setToast({
-      message: flash === CREATED_TOAST ? giftForm("toast.created") : giftForm("toast.saved"),
+      message:
+        flash === CREATED_TOAST
+          ? giftForm("toast.created")
+          : flash === UPDATED_TOAST
+            ? giftForm("toast.saved")
+            : giftForm("toast.deleted"),
       tone: "info",
     });
     router.setParams({ toast: undefined });
   }, [params.toast, giftForm]);
+
+  /**
+   * The stored session is dead: `signOut` clears the token and marks the app anonymous,
+   * and the guard above opens login with `?next=/&reason=session_expired`. A failed
+   * sign-out leaves the screen mounted and returns `false`, so the caller decides what
+   * to show.
+   */
+  async function expireSession(): Promise<boolean> {
+    setSessionExpired(true);
+    const signedOut = await auth.signOut();
+    if (!signedOut.ok) setSessionExpired(false);
+    return signedOut.ok;
+  }
 
   useEffect(() => {
     if (!ownerId) return;
@@ -162,13 +192,9 @@ export default function MyWishlistScreen() {
         return;
       }
       if ("code" in result && result.code === "UNAUTHENTICATED") {
-        // The stored session is dead: `signOut` clears the token and marks the app
-        // anonymous, and the guard above opens login with `?next=/&reason=session_expired`.
-        setSessionExpired(true);
-        const signedOut = await auth.signOut();
+        const signedOut = await expireSession();
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
-        if (!signedOut.ok && !cancelled && focused.current) {
-          setSessionExpired(false);
+        if (!signedOut && !cancelled && focused.current) {
           setState({ status: "error", kind: "network" });
           setToast({ message: t("form.network"), tone: "error" });
         }
@@ -238,6 +264,113 @@ export default function MyWishlistScreen() {
     })();
   }
 
+  function openVisibilityPicker(gift: GiftCard) {
+    // A second tap while the save is in flight must not open the dialog again over
+    // the optimistic value.
+    if (saving.current.has(gift.id)) return;
+    setPicker({ gift });
+  }
+
+  function closePicker(id: string) {
+    // The focus call itself waits for the dialog's own `onClosed`: the layer is still
+    // in the tree while it fades out (see `useLayerClosed`).
+    pendingFocus.current = id;
+    setPicker(null);
+  }
+
+  /**
+   * `DESIGN.md` → VisibilityChip: the dialog reports its closing, and the chip that
+   * opened it gets focus back. Every close goes through `closePicker`, so the target is
+   * always known; a repeated report finds nothing pending and changes nothing.
+   */
+  function returnFocusToChip() {
+    const id = pendingFocus.current;
+    if (id === null) return;
+    pendingFocus.current = null;
+    restoreFocus(chipNodes.current.get(id));
+  }
+
+  function cancelPicker() {
+    if (picker) closePicker(picker.gift.id);
+  }
+
+  /** Touches only this card, so a focus refetch that landed meanwhile keeps the list. */
+  function setGiftVisibility(id: string, visibility: GiftCard["visibility"]) {
+    setState((current) =>
+      current.status === "ready"
+        ? {
+            ...current,
+            gifts: current.gifts.map((item) =>
+              item.id === id ? { ...item, visibility } : item,
+            ),
+          }
+        : current,
+    );
+  }
+
+  function replaceGift(gift: GiftCard) {
+    setState((current) =>
+      current.status === "ready"
+        ? {
+            ...current,
+            gifts: current.gifts.map((item) => (item.id === gift.id ? gift : item)),
+          }
+        : current,
+    );
+  }
+
+  /**
+   * `EXPERIENCE.md` → Visibility chip: the choice is saved at once (optimistic), the
+   * success toast names the new value, and a failure rolls the chip back. The wish is
+   * frozen once reserved (VALIDATION) or gone (NOT_FOUND): then the list reloads
+   * silently so the card shows its real status.
+   */
+  async function changeVisibility(gift: GiftCard, next: GiftCard["visibility"]) {
+    if (saving.current.has(gift.id)) return;
+    saving.current.add(gift.id);
+    const previous = gift.visibility;
+    closePicker(gift.id);
+    setGiftVisibility(gift.id, next);
+    try {
+      const result = await updateGift(gift.id, { visibility: next });
+      if (result.ok) {
+        replaceGift(result.gift);
+        setToast({
+          message: t("gift.toast.visibility", { value: tLower(next) }),
+          tone: "info",
+        });
+        return;
+      }
+      setGiftVisibility(gift.id, previous);
+      if ("code" in result && result.code === "UNAUTHENTICATED") {
+        const signedOut = await expireSession();
+        if (!signedOut) setToast({ message: t("form.network"), tone: "error" });
+        return;
+      }
+      if ("code" in result && result.code === "VALIDATION") {
+        setToast({ message: t("gift.toast.visibilityLocked"), tone: "error" });
+        setAttempt((value) => value + 1);
+        return;
+      }
+      if ("code" in result && result.code === "NOT_FOUND") {
+        setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
+        setAttempt((value) => value + 1);
+        return;
+      }
+      setToast({
+        message:
+          "network" in result
+            ? t("form.network")
+            : "invalid" in result
+              ? common("errors.generic")
+              : common(`errors.code.${result.code}`),
+        tone: "error",
+      });
+    } finally {
+      saving.current.delete(gift.id);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
@@ -293,6 +426,10 @@ export default function MyWishlistScreen() {
                     gift={gift}
                     width={grid.cardWidth}
                     onPress={() => openEditor(gift.id)}
+                    onVisibilityPress={() => openVisibilityPicker(gift)}
+                    visibilityChipRef={(node) => {
+                      chipNodes.current.set(gift.id, node);
+                    }}
                   />
                 ))}
               </View>
@@ -312,6 +449,16 @@ export default function MyWishlistScreen() {
           <AuthorLink />
         </View>
       </View>
+      <VisibilityPicker
+        visible={picker !== null}
+        title={picker?.gift.title ?? ""}
+        value={picker?.gift.visibility ?? "PUBLIC"}
+        onSelect={(next) => {
+          if (picker) void changeVisibility(picker.gift, next);
+        }}
+        onClose={cancelPicker}
+        onClosed={returnFocusToChip}
+      />
       {toast ? (
         <ToastHost
           message={toast.message}

@@ -77,6 +77,11 @@ export function PasswordField({
 }) {
   const [visible, setVisible] = useState(false);
   const described = error ?? hint;
+
+  function handleToggleVisibility() {
+    setVisible((current) => !current);
+  }
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -95,7 +100,7 @@ export function PasswordField({
           accessibilityRole="button"
           accessibilityLabel={showLabel}
           accessibilityState={{ selected: visible }}
-          onPress={() => setVisible((current) => !current)}
+          onPress={handleToggleVisibility}
           style={styles.reveal}
         >
           <Text style={styles.revealText}>{showLabel}</Text>

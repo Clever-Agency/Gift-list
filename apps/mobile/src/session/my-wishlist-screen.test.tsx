@@ -133,8 +133,9 @@ vi.mock("react-native", async () => {
     role?: string;
     style?: unknown;
     accessible?: boolean;
+    accessibilityRole?: string;
     accessibilityLabel?: string;
-    accessibilityState?: { busy?: boolean };
+    accessibilityState?: { busy?: boolean; checked?: boolean };
   };
   /** Keeps the style of a `testID` element; a real layout engine is not available here. */
   function record(testID: string | undefined, style: unknown) {
@@ -179,20 +180,50 @@ vi.mock("react-native", async () => {
         children,
       );
     };
+  function Modal({
+    visible,
+    children,
+    "aria-labelledby": ariaLabelledBy,
+  }: {
+    visible?: boolean;
+    children?: React.ReactNode;
+    "aria-labelledby"?: string;
+  }) {
+    if (!visible) return null;
+    // react-native-web's Modal renders the dialog container itself and forwards
+    // `aria-labelledby` to it (the same stub the VisibilityPicker tests use).
+    return React.createElement(
+      "div",
+      {
+        role: "dialog",
+        "aria-modal": "true",
+        ...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {}),
+      },
+      children,
+    );
+  }
   return {
-    StyleSheet: { create: (styles: unknown) => styles },
+    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
     Text: element("span"),
     View: element("div"),
     ScrollView: element("div"),
+    Modal,
+    // The focus helper reads the platform and the screen-reader call; on web it only
+    // moves DOM focus, so the accessibility stub is never used here.
+    Platform: { OS: "web" },
+    AccessibilityInfo: { setAccessibilityFocus: vi.fn() },
+    findNodeHandle: () => null,
     // One column, like a phone in the browser (DESIGN.md → columns).
     useWindowDimensions: () => ({ width: 375, height: 800 }),
     Pressable: ({
       children,
       onPress,
+      accessibilityRole,
       accessibilityLabel,
+      accessibilityState,
       testID,
       style,
-    }: Props & { onPress?: () => void; accessibilityLabel?: string }) => {
+    }: Props & { onPress?: () => void }) => {
       // Pressable takes `({ pressed }) => style`, the resting state is enough here.
       record(
         testID,
@@ -202,7 +233,16 @@ vi.mock("react-native", async () => {
       );
       return React.createElement(
         "button",
-        { type: "button", "aria-label": accessibilityLabel, onClick: onPress, ...domProps(testID) },
+        {
+          type: "button",
+          ...(accessibilityRole ? { role: accessibilityRole } : {}),
+          ...(accessibilityState && "checked" in accessibilityState
+            ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
+            : {}),
+          "aria-label": accessibilityLabel,
+          onClick: onPress,
+          ...domProps(testID),
+        },
         children,
       );
     },
@@ -328,6 +368,37 @@ async function refocus() {
 /** Every read of the owner list, so a refocus refetch is countable. */
 function listReads(): number {
   return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
+}
+
+/**
+ * The visibility chip is a button only on an open wish; its accessible name starts
+ * with `app.gift.visibilityChipLabel` and the visible word is the chip value.
+ */
+function chip(value: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll("button")).find(
+    (node) =>
+      (node.getAttribute("aria-label") ?? "").startsWith("Видимость:") &&
+      (node.textContent ?? "").includes(value),
+  );
+}
+
+/** The PATCH calls to the first wish, so an optimistic save is countable. */
+function patchCalls(): unknown[][] {
+  return api.apiRequest.mock.calls.filter(
+    ([path, init]) =>
+      path === "/api/v1/me/gifts/g1" &&
+      typeof init === "object" &&
+      init !== null &&
+      (init as { method?: string }).method === "PATCH",
+  );
+}
+
+async function chooseInDialog(label: string) {
+  const option = container.querySelector<HTMLElement>(`[role="radio"][aria-label="${label}"]`);
+  expect(option).not.toBeNull();
+  await act(async () => {
+    option?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
 }
 
 async function mount() {
@@ -1035,5 +1106,114 @@ describe("мой вишлист: подписи брони у владельца
 
     expect(text()).toContain("Ждёт вашего подтверждения");
     expect(text()).not.toContain("Берёт Олег");
+  });
+});
+
+/**
+ * `EXPERIENCE.md` → Visibility chip: on an open wish the choice is saved at once
+ * (optimistic), a failure rolls the chip back, and a reserved wish keeps a plain
+ * value chip. The dialog returns focus to the chip it was opened from.
+ */
+describe("мой вишлист: смена видимости с чипа", () => {
+  it("выбор «Друзьям» виден сразу, затем toast и ответ сервера", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    await press("Всем");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(text()).toContain("Кто видит «Наушники»");
+
+    // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
+    let answer: (value: unknown) => void = () => {};
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return new Promise((resolve) => {
+          answer = resolve;
+        });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Друзьям")).toBeDefined();
+    expect(text()).not.toContain("Кто видит «Наушники»");
+    expect(patchCalls()).toHaveLength(1);
+    expect(patchCalls()[0]?.[1]).toEqual({
+      method: "PATCH",
+      body: { visibility: "FRIENDS" },
+    });
+
+    await act(async () => {
+      answer({ ok: true, data: gift({ visibility: "FRIENDS" }) });
+    });
+
+    expect(text()).toContain("Видимость: друзьям");
+    expect(chip("Друзьям")).toBeDefined();
+  });
+
+  it("обрыв сети: чип откатывается ко «Всем» и toast о соединении", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(chip("Друзьям")).toBeUndefined();
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Видимость: друзьям");
+  });
+
+  it("VALIDATION: откат, текст ошибки и тихая перезагрузка списка", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: false, code: "VALIDATION", message: "" });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(text()).toContain("Проверьте введённые данные.");
+    // The status under the optimistic chip may have changed: the list reloads silently.
+    expect(listReads()).toBe(reads + 1);
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
+  });
+
+  it("у RESERVED-карточки чип только показывает значение", async () => {
+    respond(giftsAnswer([gift({ status: "RESERVED", visibility: "FRIENDS" })]));
+    await mount();
+
+    expect(text()).toContain("Друзьям");
+    expect(chip("Друзьям")).toBeUndefined();
+    expect(patchCalls()).toHaveLength(0);
+  });
+
+  it("«Отмена» в диалоге не меняет видимость и не зовёт API", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+
+    await press("Отмена");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(chip("Всем")).toBeDefined();
+    expect(patchCalls()).toHaveLength(0);
+    expect(text()).not.toContain("Видимость: друзьям");
   });
 });

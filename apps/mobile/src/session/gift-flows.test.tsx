@@ -255,16 +255,32 @@ vi.mock("react-native", async () => {
     return React.createElement("input", props);
   }
 
+  // The owner list always mounts the visibility dialog; `visible={false}` keeps it
+  // out of the tree here, so the flows never open it.
+  function Modal({
+    visible,
+    children,
+  }: {
+    visible?: boolean;
+    children?: React.ReactNode;
+  }) {
+    if (!visible) return null;
+    return React.createElement("div", { role: "dialog" }, children);
+  }
+
   return {
-    StyleSheet: { create: (styles: unknown) => styles },
+    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
     Text,
     View,
     ScrollView,
     TextInput,
     Pressable,
+    Modal,
     // One column, like a phone in the browser (`DESIGN.md` → columns).
     useWindowDimensions: () => ({ width: 375, height: 800 }),
-    AccessibilityInfo: { announceForAccessibility: vi.fn() },
+    Platform: { OS: "web" },
+    AccessibilityInfo: { announceForAccessibility: vi.fn(), setAccessibilityFocus: vi.fn() },
+    findNodeHandle: () => null,
   };
 });
 vi.mock("react-native-safe-area-context", async () => {

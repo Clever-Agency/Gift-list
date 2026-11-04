@@ -31,11 +31,13 @@ describe("toResponse", () => {
 
 describe("parseJsonBody", () => {
   const schema = z.object({ email: z.string(), n: z.number() });
-  const req = (body: string) => new Request("http://x/", {
+  function req(body: string) {
+    return new Request("http://x/", {
       method: "POST",
       body,
       headers: { "content-type": "application/json; charset=utf-8" },
     });
+  }
 
   it("returns data when valid", async () => {
     expect(await parseJsonBody(req('{"email":"a","n":1}'), schema)).toEqual({

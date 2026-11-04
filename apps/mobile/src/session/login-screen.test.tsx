@@ -69,10 +69,11 @@ vi.mock("expo-router", async () => {
 vi.mock("react-native", async () => {
   const React = await import("react");
   type Props = { children?: React.ReactNode; testID?: string };
-  const element = (tag: string) =>
-    function Element({ children, testID }: Props) {
+  function element(tag: string) {
+    return function Element({ children, testID }: Props) {
       return React.createElement(tag, testID ? { "data-testid": testID } : null, children);
     };
+  }
   return {
     StyleSheet: { create: (styles: unknown) => styles },
     Text: element("span"),

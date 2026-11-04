@@ -162,8 +162,8 @@ vi.mock("react-native", async () => {
       ...(accessibilityState?.busy ? { "aria-busy": "true" } : {}),
     };
   }
-  const element = (tag: string) =>
-    function Element({
+  function element(tag: string) {
+    return function Element({
       children,
       testID,
       pointerEvents,
@@ -180,6 +180,7 @@ vi.mock("react-native", async () => {
         children,
       );
     };
+  }
   function Modal({
     visible,
     children,
@@ -1004,7 +1005,7 @@ describe("мой вишлист: возврат на экран", () => {
     await mount();
 
     await blur();
-    let answer: (value: unknown) => void = () => {};
+    let answer: (value: unknown) => void = function pendingAnswer() {};
     api.apiRequest.mockImplementation((path: string) =>
       path === "/api/v1/me"
         ? Promise.resolve({ ok: true, data: user })
@@ -1221,7 +1222,7 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(text()).toContain("Кто видит «Наушники»");
 
     // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
-    let answer: (value: unknown) => void = () => {};
+    let answer: (value: unknown) => void = function pendingAnswer() {};
     api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (init?.method === "PATCH") {

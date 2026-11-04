@@ -267,20 +267,22 @@ async function renderConfirm(overrides: Partial<DestructiveConfirmDialogProps> =
   const onConfirm = vi.fn();
   const onCancel = vi.fn();
   const onClosed = vi.fn();
-  const element = (next: Partial<DestructiveConfirmDialogProps> = {}) => (
-    <ConfirmDialog
-      visible
-      title="Удалить «Наушники»?"
-      body="Желание исчезнет из вишлиста. Это нельзя отменить."
-      confirmLabel="Удалить"
-      cancelLabel="Отмена"
-      onConfirm={onConfirm}
-      onCancel={onCancel}
-      onClosed={onClosed}
-      {...overrides}
-      {...next}
-    />
-  );
+  function element(next: Partial<DestructiveConfirmDialogProps> = {}) {
+    return (
+      <ConfirmDialog
+        visible
+        title="Удалить «Наушники»?"
+        body="Желание исчезнет из вишлиста. Это нельзя отменить."
+        confirmLabel="Удалить"
+        cancelLabel="Отмена"
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        onClosed={onClosed}
+        {...overrides}
+        {...next}
+      />
+    );
+  }
   await act(async () => {
     host.render(element());
   });
@@ -303,22 +305,24 @@ async function renderDiscard(overrides: Partial<DiscardConfirmDialogProps> = {})
   const onDecline = vi.fn();
   const onClose = vi.fn();
   const onClosed = vi.fn();
-  const element = (next: Partial<DiscardConfirmDialogProps> = {}) => (
-    <ConfirmDialog
-      visible
-      variant="discard"
-      title={discard.title}
-      confirmLabel={discard.confirm}
-      declineLabel={discard.decline}
-      closeLabel={closeLabel}
-      onConfirm={onConfirm}
-      onDecline={onDecline}
-      onClose={onClose}
-      onClosed={onClosed}
-      {...overrides}
-      {...next}
-    />
-  );
+  function element(next: Partial<DiscardConfirmDialogProps> = {}) {
+    return (
+      <ConfirmDialog
+        visible
+        variant="discard"
+        title={discard.title}
+        confirmLabel={discard.confirm}
+        declineLabel={discard.decline}
+        closeLabel={closeLabel}
+        onConfirm={onConfirm}
+        onDecline={onDecline}
+        onClose={onClose}
+        onClosed={onClosed}
+        {...overrides}
+        {...next}
+      />
+    );
+  }
   await act(async () => {
     host.render(element());
   });

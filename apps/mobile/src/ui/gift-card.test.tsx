@@ -113,10 +113,12 @@ vi.mock("react-native", async () => {
       ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
       : style;
   }
-  const domProps = (role?: string, accessibilityLabel?: string) => ({
-    ...(role ? { role } : {}),
-    ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-  });
+  function domProps(role?: string, accessibilityLabel?: string) {
+    return {
+      ...(role ? { role } : {}),
+      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
+    };
+  }
   return {
     StyleSheet: { create: (styles: unknown) => styles },
     View: ({ children, role, accessibilityLabel, pointerEvents, style }: Props) =>

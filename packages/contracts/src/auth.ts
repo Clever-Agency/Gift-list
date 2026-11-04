@@ -5,15 +5,24 @@ export const NICK_PATTERN = /^[a-z0-9_]{3,24}$/;
 
 const emailSchema = z.string().trim().toLowerCase().pipe(z.email());
 
+/** Registration and nick change validate the same way (AD-13). */
+const nickSchema = z.string().trim().toLowerCase().pipe(z.string().regex(NICK_PATTERN));
+
 export const registerBodySchema = z.object({
   email: emailSchema,
   password: z.string().min(8).max(128),
   displayName: z.string().trim().min(1).max(50),
-  nick: z.string().trim().toLowerCase().pipe(z.string().regex(NICK_PATTERN)),
+  nick: nickSchema,
   next: z.string().optional(),
 });
 
 export type RegisterBody = z.infer<typeof registerBodySchema>;
+
+export const nickUpdateBodySchema = z.object({
+  nick: nickSchema,
+});
+
+export type NickUpdateBody = z.infer<typeof nickUpdateBodySchema>;
 
 export const loginBodySchema = z.object({
   email: emailSchema,

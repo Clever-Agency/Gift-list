@@ -1,0 +1,292 @@
+import { NICK_PATTERN, type Me } from "@gift-list/contracts";
+import { router, Stack } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type TextInputInstance,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useTranslations } from "use-intl";
+import { updateNick } from "@/api/me";
+import { getBrandName } from "@/config/env";
+import { useAuth } from "@/session/auth-context";
+import { formIssue } from "@/session/form-issue";
+import { colors, spacing, textStyle } from "@/theme/tokens";
+import { pageGutter } from "@/ui/card-grid";
+import { PrimaryButton } from "@/ui/primary-button";
+import { TextField } from "@/ui/text-field";
+import { ToastHost } from "@/ui/toast";
+
+/** One toast at a time; the saved notice is neutral, a failed save is destructive. */
+type ToastState = { message: string; tone: "info" | "error" };
+
+/**
+ * «Настройки» (Story 3.1): the nick block only. The full set of settings arrives
+ * with Story 6.3 and the navigation with Story 6.2.
+ *
+ * The screen guards the session like the other `(app)` screens: an anonymous
+ * visitor leaves for login with a return to these settings. The form itself is a
+ * child so its field starts from the loaded user; it mounts only once `/me` has
+ * answered.
+ */
+export default function SettingsScreen() {
+  const auth = useAuth();
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  useEffect(() => {
+    if (auth.state.status === "anonymous") {
+      // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
+      router.replace({
+        pathname: "/login",
+        params: sessionExpired
+          ? { next: "/settings", reason: "session_expired" }
+          : { next: "/settings" },
+      });
+    }
+  }, [auth.state.status, sessionExpired]);
+
+  if (auth.state.status !== "ready") return null;
+
+  return (
+    <SettingsForm
+      user={auth.state.user}
+      onSessionExpired={(expired) => setSessionExpired(expired)}
+    />
+  );
+}
+
+/**
+ * AD-13: the client checks the same 3–24 `[a-z0-9_]` rule as the server, so an
+ * invalid nick never reaches the API. A nick equal to the current one is not a
+ * change either: the screen says so inline and sends nothing.
+ */
+function SettingsForm({
+  user,
+  onSessionExpired,
+}: {
+  user: Me;
+  onSessionExpired: (expired: boolean) => void;
+}) {
+  const t = useTranslations("app");
+  const common = useTranslations("common");
+  const brand = getBrandName();
+  const auth = useAuth();
+  const { width } = useWindowDimensions();
+  const gutter = pageGutter(width);
+  const nickInput = useRef<TextInputInstance | null>(null);
+
+  const [nick, setNick] = useState(user.nick);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [unchanged, setUnchanged] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  // The disabled button follows a state update, which flushes after the handler:
+  // a second tap in the same frame must not send a second PUT.
+  const inFlight = useRef(false);
+
+  const normalized = nick.trim().toLowerCase();
+  const valid = NICK_PATTERN.test(normalized);
+  const hint = unchanged
+    ? t("settings.nickUnchanged")
+    : valid
+      ? t("form.nickPreview", { nick: normalized })
+      : t("settings.nickHint");
+
+  function focusNick() {
+    nickInput.current?.focus();
+  }
+
+  function changeNick(value: string) {
+    setNick(value);
+    setFieldError(null);
+    setUnchanged(false);
+  }
+
+  function goBack() {
+    // A direct link has no history behind it: fall back to the wishlist.
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  }
+
+  function save() {
+    if (inFlight.current) return;
+    if (!valid) {
+      // The rules stay in the catalog and sit under the field, like on register.
+      setFieldError(t("settings.nickHint"));
+      setUnchanged(false);
+      focusNick();
+      return;
+    }
+    if (normalized === user.nick.trim().toLowerCase()) {
+      setFieldError(null);
+      setUnchanged(true);
+      focusNick();
+      return;
+    }
+    void submit();
+  }
+
+  async function submit() {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setPending(true);
+    setFieldError(null);
+    setUnchanged(false);
+
+    const result = await updateNick(nick);
+
+    inFlight.current = false;
+    setPending(false);
+
+    if (result.ok) {
+      // The saved nick is what the server normalized it to, not what was typed.
+      setNick(result.data.nick);
+      auth.setUser(result.data);
+      setToast({ message: t("settings.nickSaved"), tone: "info" });
+      return;
+    }
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      // Same as the other `(app)` screens: clear the dead session and let the guard
+      // open login with the reason and a return to these settings.
+      onSessionExpired(true);
+      const signedOut = await auth.signOut();
+      // A failed sign-out leaves the screen mounted: report it like any other
+      // network failure instead of silently pretending the session is gone.
+      if (!signedOut.ok) {
+        onSessionExpired(false);
+        setToast({ message: t("form.network"), tone: "error" });
+      }
+      return;
+    }
+    const issue = formIssue(result, t, common, "register");
+    if (issue.reason === "NICK_TAKEN") {
+      setFieldError(issue.text);
+      focusNick();
+      return;
+    }
+    if (issue.field === "nick") {
+      setFieldError(t("settings.nickHint"));
+      focusNick();
+      return;
+    }
+    if (issue.field) {
+      setFieldError(issue.text);
+      focusNick();
+      return;
+    }
+    setToast({ message: issue.text, tone: "error" });
+  }
+
+  return (
+    <SafeAreaView style={styles.screen}>
+      <Stack.Screen options={{ title: t("settings.pageTitle", { brand }) }} />
+      <View style={[styles.column, { paddingHorizontal: gutter }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("settings.back")}
+          onPress={goBack}
+          style={({ pressed }) => [styles.back, pressed ? styles.pressed : null]}
+        >
+          <Text style={styles.backLabel}>{t("settings.back")}</Text>
+        </Pressable>
+        <Text style={styles.logo}>{common("brandName", { brand })}</Text>
+        <Text accessibilityRole="header" style={styles.title}>
+          {t("settings.title")}
+        </Text>
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.form}>
+            <TextField
+              label={t("form.nick")}
+              value={nick}
+              onChangeText={changeNick}
+              error={fieldError ?? undefined}
+              hint={hint}
+              inputRef={nickInput}
+              input={{
+                autoCapitalize: "none",
+                autoComplete: "nickname",
+                autoCorrect: false,
+                editable: !pending,
+                textContentType: "nickname",
+                onSubmitEditing: save,
+              }}
+            />
+            <PrimaryButton label={t("settings.save")} onPress={save} disabled={pending} />
+          </View>
+        </ScrollView>
+      </View>
+      {toast ? (
+        <ToastHost
+          message={toast.message}
+          tone={toast.tone}
+          onDismiss={() => setToast(null)}
+        />
+      ) : null}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  column: {
+    flex: 1,
+    width: "100%",
+    // A form reads best narrow: `DESIGN.md` → Layout → max-form.
+    maxWidth: spacing["max-form"],
+    alignSelf: "center",
+    paddingTop: spacing["page-gutter"],
+    gap: spacing["grid-gap"] / 2,
+  },
+  back: {
+    minHeight: spacing["touch-target"],
+    minWidth: spacing["touch-target"],
+    alignSelf: "flex-start",
+    justifyContent: "center",
+  },
+  pressed: {
+    opacity: 0.9,
+  },
+  backLabel: {
+    ...textStyle("button"),
+    color: colors.primary,
+  },
+  logo: {
+    ...textStyle("display-sm"),
+    color: colors.primary,
+    textAlign: "center",
+  },
+  title: {
+    ...textStyle("heading"),
+    color: colors.foreground,
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scroll: {
+    paddingTop: spacing["grid-gap"] / 2,
+    paddingBottom: spacing["section-gap"],
+  },
+  form: {
+    gap: spacing["grid-gap"],
+  },
+});

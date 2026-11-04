@@ -840,6 +840,26 @@ describe("мой вишлист: список", () => {
       params: { next: "/" },
     });
   });
+
+  /**
+   * Story 3.1 creates «Настройки» before Story 6.2 gives them a place in the
+   * navigation (Профиль → Настройки), so the wishlist footer carries a temporary
+   * entry point.
+   */
+  it("в подвале есть «Настройки», нажатие открывает /settings", async () => {
+    respond(giftsAnswer([]));
+    await mount();
+
+    const footer = container.querySelector('[data-testid="wishlist-footer"]');
+    const settings = footer?.querySelector('[data-testid="wishlist-settings"]');
+    expect(settings?.textContent).toContain("Настройки");
+
+    await act(async () => {
+      settings?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(navigation.push).toHaveBeenCalledWith("/settings");
+  });
 });
 
 /**

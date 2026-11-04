@@ -126,6 +126,17 @@ describe("AuthProvider", () => {
     });
   });
 
+  it("setUser заменяет текущего пользователя без запроса к API", async () => {
+    api.apiRequest.mockResolvedValue({ ok: true, data: user });
+    await mount();
+    const changed = { ...user, nick: "newnick" };
+
+    await act(async () => auth().setUser(changed));
+
+    expect(auth().state).toEqual({ status: "ready", user: changed });
+    expect(api.apiRequest).toHaveBeenCalledTimes(1);
+  });
+
   it("signOut: удаляет сессию, очищает токен и переводит в anonymous", async () => {
     api.apiRequest.mockResolvedValue({ ok: true, data: user });
     await mount();

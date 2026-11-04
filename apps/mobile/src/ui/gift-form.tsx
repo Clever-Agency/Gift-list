@@ -270,18 +270,22 @@ type ChoiceOption<T extends string> = {
 /**
  * The shared `radiogroup` behind the currency codes and the visibility choice
  * (`DESIGN.md` → Форма: five codes; three radio rows with an explanation, «Всем»
- * by default). `DESIGN.md` asks for a bottom sheet with radios on a phone; until
- * it exists (Story 2.3 builds the visibility rows the same way) each variant
- * keeps the same `radio` semantics: one choice, the selected one is marked, and
- * the option label is the accessible name.
+ * by default). `DESIGN.md` asks for a bottom sheet with radios on a phone; the
+ * same rows are reused by `VisibilityPicker` (Story 2.3). Each variant keeps the
+ * same `radio` semantics: one choice, the selected one is marked, and the option
+ * label is the accessible name.
+ *
+ * `labelHidden` keeps the accessible name of the group while the visible heading
+ * comes from the surrounding layer (the picker title is a header of its own).
  */
-function ChoiceGroup<T extends string>({
+export function ChoiceGroup<T extends string>({
   label,
   value,
   options,
   onChange,
   variant,
   error,
+  labelHidden,
 }: {
   label: string;
   value: T;
@@ -290,11 +294,13 @@ function ChoiceGroup<T extends string>({
   variant: "chips" | "rows";
   /** Inline error under the group, e.g. a server `visibility` rejection. */
   error?: string;
+  /** The group is named for screen readers, but the visible copy is rendered elsewhere. */
+  labelHidden?: boolean;
 }) {
   const rows = variant === "rows";
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      {labelHidden ? null : <Text style={styles.label}>{label}</Text>}
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel={label}

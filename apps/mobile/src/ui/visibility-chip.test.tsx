@@ -12,11 +12,16 @@ import { VisibilityChip } from "@/ui/visibility-chip";
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 /** The same catalogue the app ships, so the word is asserted without a copy of it. */
-const labels = (
-  JSON.parse(readFileSync(join(root, "packages/contracts/src/i18n/ru/app.json"), "utf8")) as {
-    gift: { visibility: Record<GiftCard["visibility"], string> };
-  }
-).gift.visibility;
+const app = JSON.parse(
+  readFileSync(join(root, "packages/contracts/src/i18n/ru/app.json"), "utf8"),
+) as {
+  gift: {
+    visibility: Record<GiftCard["visibility"], string>;
+    visibilityLower: Record<GiftCard["visibility"], string>;
+    visibilityChipLabel: string;
+  };
+};
+const labels = app.gift.visibility;
 
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
@@ -25,23 +30,35 @@ vi.mock("use-intl", async () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
   const app = JSON.parse(
     readFileSync(join(root, "packages/contracts/src/i18n/ru/app.json"), "utf8"),
-  ) as { gift: { visibility: Record<string, string> } };
+  ) as Record<string, unknown>;
+
+  function lookup(catalog: unknown, key: string, values?: Record<string, unknown>): string {
+    let node = catalog;
+    for (const part of key.split(".")) {
+      if (typeof node !== "object" || node == null || !(part in node)) return key;
+      node = (node as Record<string, unknown>)[part];
+    }
+    if (typeof node !== "string") return key;
+    return node.replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name] ?? ""));
+  }
 
   return {
-    // `app.gift.visibility` → `app.gift.visibility[<key>]`.
-    useTranslations: (namespace: string) => (key: string) => {
-      const labels = namespace
-        .split(".")
-        .slice(1)
-        .reduce<unknown>(
-          (node, part) =>
-            typeof node === "object" && node !== null
-              ? (node as Record<string, unknown>)[part]
-              : undefined,
-          app,
-        );
-      return (labels as Record<string, string> | undefined)?.[key] ?? key;
-    },
+    useTranslations:
+      (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+        lookup(
+          namespace
+            .split(".")
+            .slice(1)
+            .reduce<unknown>(
+              (node, part) =>
+                typeof node === "object" && node !== null
+                  ? (node as Record<string, unknown>)[part]
+                  : undefined,
+              app,
+            ),
+          key,
+          values,
+        ),
   };
 });
 
@@ -81,7 +98,13 @@ vi.mock("expo-symbols", async () => {
 
 vi.mock("react-native", async () => {
   const React = await import("react");
-  type Props = { children?: React.ReactNode };
+  type Props = {
+    children?: React.ReactNode;
+    onPress?: () => void;
+    accessibilityRole?: string;
+    accessibilityLabel?: string;
+    "aria-haspopup"?: string;
+  };
   const element = (tag: string) =>
     function Element({ children }: Props) {
       return React.createElement(tag, null, children);
@@ -90,6 +113,24 @@ vi.mock("react-native", async () => {
     StyleSheet: { create: (styles: unknown) => styles },
     Text: element("span"),
     View: element("div"),
+    Pressable: ({
+      children,
+      onPress,
+      accessibilityRole,
+      accessibilityLabel,
+      "aria-haspopup": ariaHaspopup,
+    }: Props) =>
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          onClick: onPress,
+          ...(accessibilityRole ? { role: accessibilityRole } : {}),
+          ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
+          ...(ariaHaspopup ? { "aria-haspopup": ariaHaspopup } : {}),
+        },
+        children,
+      ),
   };
 });
 
@@ -109,9 +150,9 @@ afterEach(async () => {
   container.remove();
 });
 
-async function render(visibility: GiftCard["visibility"]) {
+async function render(visibility: GiftCard["visibility"], onPress?: () => void) {
   await act(async () => {
-    host.render(<VisibilityChip visibility={visibility} />);
+    host.render(<VisibilityChip visibility={visibility} onPress={onPress} />);
   });
   return container.querySelector('[data-testid="visibility-icon"]');
 }
@@ -142,5 +183,36 @@ describe("VisibilityChip: иконка и слово", () => {
     expect(icon?.getAttribute("data-aria-hidden")).toBe("true");
     expect(icon?.getAttribute("data-elements-hidden")).toBe("true");
     expect(icon?.getAttribute("data-important-for-accessibility")).toBe("no-hide-descendants");
+  });
+});
+
+/**
+ * `DESIGN.md` → VisibilityChip: on an `OPEN` wish the chip is a button
+ * (`aria-haspopup="dialog"`, «Видимость: всем. Изменить»); otherwise it only
+ * shows the value.
+ */
+describe("VisibilityChip: нажатие", () => {
+  it("без onPress чип не кнопка", async () => {
+    await render("PUBLIC");
+
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("с onPress — кнопка с подписью «Видимость: всем. Изменить», нажатие зовёт onPress", async () => {
+    const onPress = vi.fn();
+    await render("PUBLIC", onPress);
+
+    const button = container.querySelector("button");
+    expect(button).not.toBeNull();
+    expect(button?.getAttribute("role")).toBe("button");
+    expect(button?.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(button?.getAttribute("aria-label")).toBe(
+      app.gift.visibilityChipLabel.replace("{value}", app.gift.visibilityLower.PUBLIC),
+    );
+
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 });

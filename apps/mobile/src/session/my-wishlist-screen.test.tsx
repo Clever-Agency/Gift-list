@@ -1187,6 +1187,33 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(text()).not.toContain("Видимость: друзьям");
   });
 
+  it("сеть: откат чипа и тост «Нет соединения»", async () => {
+    respond(giftsAnswer([gift({ visibility: "SECRET" })]));
+    await mount();
+    expect(chip("Секрет")?.getAttribute("aria-label")).toBe("Видимость: секрет. Изменить");
+    await press("Секрет");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
+      return Promise.resolve(giftsAnswer([gift({ visibility: "SECRET" })]));
+    });
+
+    await chooseInDialog("Всем");
+
+    expect(chip("Секрет")).toBeDefined();
+    expect(chip("Всем")).toBeUndefined();
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    // Only the optimistic value changed: a network failure does not refetch the list.
+    expect(listReads()).toBe(reads);
+
+    // The in-flight flag is cleared, so the chip opens the dialog again.
+    await press("Секрет");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+
   it("VALIDATION: откат, текст ошибки и тихая перезагрузка списка", async () => {
     respond(giftsAnswer([gift()]));
     await mount();

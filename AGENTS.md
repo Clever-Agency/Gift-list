@@ -48,8 +48,8 @@
 
 - **Компоненты React — только именованные функции.** `export function GiftCard() {}`, `export default function Screen() {}`. Анонимные компоненты запрещены: никаких `const X = () => <…/>`, `export default () => <…/>`, `memo(() => …)`, `forwardRef((props, ref) => …)` — передавайте именованную функцию: `forwardRef(function GhostButton(props, ref) {…})`.
 - **Фабрики и HOC.** Если компонент создаётся фабрикой или HOC, задайте ему `displayName`.
-- **Прочие функции — тоже именованные.** Хелперы, обработчики событий и колбэки эффектов, где это разумно, объявляйте функциями: `function handlePress() {}`. Стрелки допустимы только для однострочных style-колбэков `Pressable` (`style={({ pressed }) => [...]}`) и простых колбэков методов массивов (`.map(x => …)`, `.filter(…)`).
-- **Правило проверяет ESLint:** `react/function-component-definition` и `react/display-name` в `apps/mobile` и `apps/web`.
+- **Прочие функции — тоже именованные.** Хелперы, обработчики событий и колбэки эффектов, где это разумно, объявляйте функциями: `function handlePress() {}`. Стрелки допустимы только для однострочных style-колбэков `Pressable` (`style={({ pressed }) => [...]}`), простых колбэков методов массивов (`.map(x => …)`, `.filter(…)`), однострочных апдейтеров состояния (`setCount((value) => value + 1)`) и однострочных заглушек в моках тестов (`vi.fn(() => true)`, `vi.mock(…)`).
+- **Что проверяет линтер.** ESLint (`react/function-component-definition`, `react/display-name` в `apps/mobile` и `apps/web`) проверяет только компоненты; именование остальных функций — на ревью. Тест `apps/mobile/src/ui/component-names.test.tsx` падает, если экспортированный компонент `src/ui` безымянный.
 
 ## Epic acceptance testing
 

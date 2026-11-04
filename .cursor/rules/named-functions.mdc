@@ -50,13 +50,15 @@ useEffect(function subscribeToUpdates() {
 
 Эффект принимает именованную function expression, а не стрелку и не готовую функцию напрямую: переданная напрямую функция может случайно вернуть значение, и React примет его за cleanup. Cleanup тоже оформляйте именованной функцией (`return function stopListening() {…};`), чтобы в стеке было видно, что останавливается.
 
-Стрелки допустимы только для однострочных style-колбэков `Pressable` и простых колбэков методов массивов:
+Стрелки допустимы только для однострочных style-колбэков `Pressable`, простых колбэков методов массивов, однострочных апдейтеров состояния и однострочных заглушек в моках тестов:
 
 ```tsx
 <Pressable style={({ pressed }) => [styles.base, pressed && styles.pressed]} />
 items.map(toRow);
 items.map((item) => item.id);
 items.filter((item) => item.visible);
+setCount((value) => value + 1);
+vi.fn(() => true);
 ```
 
-Правило проверяет ESLint: `react/function-component-definition` и `react/display-name` в `apps/mobile` и `apps/web`.
+ESLint (`react/function-component-definition`, `react/display-name` в `apps/mobile` и `apps/web`) проверяет только компоненты; именование остальных функций — на ревью. Тест `apps/mobile/src/ui/component-names.test.tsx` падает, если экспортированный компонент `src/ui` безымянный.

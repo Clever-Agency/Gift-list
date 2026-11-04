@@ -58,6 +58,12 @@ export function VisibilityPicker({
   const heading = t("title", { title });
   const handleDismiss = useLayerClosed(visible, onClosed);
 
+  function handleSelect(next: Visibility) {
+    // Picking the current value is a no-op: the dialog just closes.
+    if (next === value) onClose();
+    else onSelect(next);
+  }
+
   return (
     <Modal
       visible={visible}
@@ -98,11 +104,7 @@ export function VisibilityPicker({
             // Focus lands on the radio that shows the current value while the
             // dialog is open (EXPERIENCE.md → «Шторка и диалог»).
             autoFocusValue={visible ? value : undefined}
-            onChange={(next) => {
-              // Picking the current value is a no-op: the dialog just closes.
-              if (next === value) onClose();
-              else onSelect(next);
-            }}
+            onChange={handleSelect}
             options={VISIBILITIES.map((code) => ({
               value: code,
               label: tVisibility(code),
@@ -122,6 +124,8 @@ export function VisibilityPicker({
     </Modal>
   );
 }
+
+VisibilityPicker.displayName = "VisibilityPicker";
 
 const styles = StyleSheet.create({
   overlay: {

@@ -26,6 +26,8 @@ export function AnonymousScreen({ title, children }: { title: string; children?:
   );
 }
 
+AnonymousScreen.displayName = "AnonymousScreen";
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,

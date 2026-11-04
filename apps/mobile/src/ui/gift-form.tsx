@@ -154,14 +154,16 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const tVisibility = useTranslations("app.gift.visibility");
   const common = useTranslations("common");
   // Read once, like the field states below: `initialValues` prefills the edit form.
-  const [initial] = useState<GiftFormDirtyValues>(() => ({
-    title: initialValues?.title ?? "",
-    description: initialValues?.description ?? "",
-    link: initialValues?.link ?? "",
-    price: initialPriceText(initialValues?.priceAmount),
-    currency: initialValues?.priceCurrency ?? DEFAULT_CURRENCY,
-    visibility: initialValues?.visibility ?? DEFAULT_VISIBILITY,
-  }));
+  const [initial] = useState<GiftFormDirtyValues>(function readInitialValues() {
+    return {
+      title: initialValues?.title ?? "",
+      description: initialValues?.description ?? "",
+      link: initialValues?.link ?? "",
+      price: initialPriceText(initialValues?.priceAmount),
+      currency: initialValues?.priceCurrency ?? DEFAULT_CURRENCY,
+      visibility: initialValues?.visibility ?? DEFAULT_VISIBILITY,
+    };
+  });
   const [title, setTitle] = useState(initialValues?.title ?? "");
   const [description, setDescription] = useState(initialValues?.description ?? "");
   const [link, setLink] = useState(initialValues?.link ?? "");
@@ -176,14 +178,16 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const cancelRef = useRef<ViewInstance>(null);
   useImperativeHandle(
     ref,
-    () => ({
-      focusCancel() {
-        // react-native-web host nodes are DOM elements with `focus()`; native ones
-        // are not, and there `Modal` keeps owning focus.
-        const node = cancelRef.current as unknown as { focus?: () => void } | null;
-        node?.focus?.();
-      },
-    }),
+    function createFormHandle() {
+      return {
+        focusCancel() {
+          // react-native-web host nodes are DOM elements with `focus()`; native ones
+          // are not, and there `Modal` keeps owning focus.
+          const node = cancelRef.current as unknown as { focus?: () => void } | null;
+          node?.focus?.();
+        },
+      };
+    },
     [],
   );
   // `EXPERIENCE.md` → Price field: an empty amount does not show a currency.
@@ -201,14 +205,14 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   // Report only flips: the screen listens for «стал грязным» / «снова чистый», not
   // for every keystroke. The first render is not a flip, so nothing fires on mount.
   const lastDirty = useRef(dirty);
-  useEffect(() => {
+  useEffect(function reportDirtyChange() {
     if (lastDirty.current === dirty) return;
     lastDirty.current = dirty;
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
   // The discard dialog's «Сохранить» asks for the form's own submit: run it once per bump.
   const handledRequest = useRef(submitRequest ?? 0);
-  useEffect(() => {
+  useEffect(function runSubmitRequest() {
     if (submitRequest === undefined || submitRequest === handledRequest.current) return;
     handledRequest.current = submitRequest;
     submit();
@@ -254,15 +258,27 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     });
   }
 
+  function handleTitleChange(value: string) {
+    setTitle(value);
+    clearError("title");
+  }
+
+  function handleLinkChange(value: string) {
+    setLink(value);
+    clearError("link");
+  }
+
+  function handlePriceChange(value: string) {
+    setPrice(value);
+    clearError("price");
+  }
+
   return (
     <View style={styles.form}>
       <TextField
         label={t("field.title")}
         value={title}
-        onChangeText={(value) => {
-          setTitle(value);
-          clearError("title");
-        }}
+        onChangeText={handleTitleChange}
         error={inlineError("title")}
         input={{
           placeholder: t("field.titlePlaceholder"),
@@ -288,10 +304,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       <TextField
         label={t("field.link")}
         value={link}
-        onChangeText={(value) => {
-          setLink(value);
-          clearError("link");
-        }}
+        onChangeText={handleLinkChange}
         error={inlineError("link")}
         input={{
           placeholder: t("field.linkPlaceholder"),
@@ -304,10 +317,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       <TextField
         label={t("field.price")}
         value={price}
-        onChangeText={(value) => {
-          setPrice(value);
-          clearError("price");
-        }}
+        onChangeText={handlePriceChange}
         error={inlineError("price")}
         hint={showCurrency ? t("field.priceHint") : undefined}
         input={{
@@ -436,7 +446,7 @@ export function ChoiceGroup<T extends string>({
   const rows = variant === "rows";
   const autoFocusRef = useRef<ViewInstance>(null);
 
-  useEffect(() => {
+  useEffect(function focusCurrentOption() {
     if (autoFocusValue === undefined) return;
     focusInLayer(autoFocusRef.current);
   }, [autoFocusValue]);
@@ -452,6 +462,11 @@ export function ChoiceGroup<T extends string>({
       >
         {options.map((option) => {
           const selected = option.value === value;
+
+          function handlePress() {
+            if (!disabled) onChange(option.value);
+          }
+
           return (
             <Pressable
               key={option.value}
@@ -461,9 +476,7 @@ export function ChoiceGroup<T extends string>({
               accessibilityHint={option.hint}
               accessibilityState={{ checked: selected, disabled }}
               disabled={disabled}
-              onPress={() => {
-                if (!disabled) onChange(option.value);
-              }}
+              onPress={handlePress}
               style={({ pressed }) => [
                 rows ? styles.row : styles.chip,
                 selected ? (rows ? styles.rowSelected : styles.chipSelected) : null,
@@ -500,6 +513,8 @@ export function ChoiceGroup<T extends string>({
     </View>
   );
 }
+
+ChoiceGroup.displayName = "ChoiceGroup";
 
 const styles = StyleSheet.create({
   form: {

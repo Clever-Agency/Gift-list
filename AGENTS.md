@@ -44,6 +44,15 @@
 
 <!-- /bmad:context -->
 
+## Code style: named functions
+
+- **Компоненты React — только именованные функции.** `export function WishCard() {}`, `export default function Screen() {}`. Анонимные компоненты запрещены: никаких `const X = () => <…/>`, `export default () => <…/>`, `memo(() => …)`, `forwardRef((props, ref) => …)` — передавайте именованную функцию: `forwardRef(function GhostButton(props, ref) {…})`.
+- **`displayName` рядом с компонентом.** Сразу после компонента — `X.displayName = "X";`, строка равна имени функции (для generic — имени без параметров: `ChoiceGroup.displayName = "ChoiceGroup";`). Прод-сборка минифицирует terser и переименовывает `function WishCard` в `function a`, поэтому без строки React DevTools показывает `Anonymous`. Правило действует для экспортируемых компонентов `src/ui`, экранов `app/` и неэкспортируемых компонентов в этих файлах; хуки (`useAuth`, `useLayerClosed`) и обычные хелперы строка не трогает.
+- **Фабрики и HOC.** Если компонент создаётся фабрикой или HOC, задайте ему `displayName`.
+- **Прочие функции — тоже именованные.** Хелперы, обработчики событий и колбэки эффектов, где это разумно, объявляйте функциями: `function handlePress() {}`. Стрелки допустимы только для однострочных style-колбэков `Pressable` (`style={({ pressed }) => [...]}`), простых колбэков методов массивов (`.map(x => …)`, `.filter(…)`), однострочных апдейтеров состояния (`setCount((value) => value + 1)`) и однострочных заглушек в моках тестов (`vi.fn(() => true)`, `vi.mock(…)`).
+- **Что проверяет линтер.** ESLint (`react/function-component-definition`, `react/display-name` в `apps/mobile` и `apps/web`) проверяет только компоненты; именование остальных функций — на ревью. Тест `apps/mobile/src/ui/component-names.test.tsx` падает, если у экспортированного компонента `src/ui` нет `displayName`, равного имени экспорта, или если у экрана `app/` `displayName` не совпадает с именем `default`-функции.
+- **`KEEP_FNAMES` для локальной отладки.** `KEEP_FNAMES=1` заставляет terser сохранять имена всех функций и классов (включая библиотеки) в web-экспорте, чтобы в DevTools были имена из минифицированного бандла; это ~+10% JS, и на Vercel флаг никогда не ставится. Windows PowerShell: `$env:KEEP_FNAMES=1; node apps/web/scripts/sync-spa.mjs` (или `npm run build` в `apps/web`), затем `Remove-Item Env:KEEP_FNAMES`; bash: `KEEP_FNAMES=1 node apps/web/scripts/sync-spa.mjs`.
+
 ## Epic acceptance testing
 
 - Когда все истории эпика в `sprint-status.yaml` переходят в `done`, проведите итоговое приёмочное тестирование эпика в отдельной сессии агента, до ретроспективы и до перевода эпика в `done`. Промпт — `_bmad-output/implementation-artifacts/epic-N-qa-prompt.md` по образцу `epic-1-qa-prompt.md`: критерии приёмки всех историй эпика из `epics.md`, проверки CI, сквозные сценарии и известные долги из `deferred-work.md`. Агент только проверяет, код не меняет; отчёт — `epic-N-qa-report.md` рядом с промптом. Дефекты из отчёта заводите задачами в Linear.

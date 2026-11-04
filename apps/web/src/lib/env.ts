@@ -1,47 +1,57 @@
 import { z } from "zod";
 
+function normalizeBrandName(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 const brandNameSchema = z.preprocess(
-  (value) => {
-    if (typeof value !== "string") return value;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  },
+  normalizeBrandName,
   z.string().min(1).default("Gift List"),
 );
 
-const blankToUndefined = (value: unknown) => {
+function blankToUndefined(value: unknown): unknown {
   if (value == null) return undefined;
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-};
+}
 
 const optionalEnvString = z.preprocess(blankToUndefined, z.string().min(1).optional());
 
 /** A positive integer; a blank or missing value falls back to `fallback`. */
-const positiveIntEnv = (fallback: number) =>
-  z.preprocess(blankToUndefined, z.coerce.number().int().min(1).default(fallback));
+function positiveIntEnv(fallback: number) {
+  return z.preprocess(blankToUndefined, z.coerce.number().int().min(1).default(fallback));
+}
 
 /** Production defaults for the shared auth rate limit: five attempts per hour. */
 export const DEFAULT_AUTH_RATE_LIMIT = { max: 5, windowSeconds: 60 * 60 } as const;
 
 /** An address, or a display name plus an address (`Имя <addr>`). */
-const emailFromSchema = z.string().trim().min(1).refine((value) => {
+function isEmailFrom(value: string): boolean {
   const named = /^(.*)<([^<>]+)>\s*$/.exec(value);
   const address = (named?.[2] ?? value).trim();
   return z.email().safeParse(address).success && (named == null || (named[1] ?? "").trim().length > 0);
-}, "EMAIL_FROM must be an address or Name <address>");
+}
+
+const emailFromSchema = z.string().trim().min(1).refine(
+  isEmailFrom,
+  "EMAIL_FROM must be an address or Name <address>",
+);
 
 // Только для разработки: Expo Go и dev client. Список через запятую; пусто или не задано — [].
+function parseTrustedOrigins(value: unknown): unknown {
+  if (value === undefined) return [];
+  if (typeof value !== "string") return value;
+  return value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+}
+
 const devTrustedOriginsSchema = z.preprocess(
-  (value) => {
-    if (value === undefined) return [];
-    if (typeof value !== "string") return value;
-    return value
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter((origin) => origin.length > 0);
-  },
+  parseTrustedOrigins,
   z.array(z.string()),
 );
 

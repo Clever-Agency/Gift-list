@@ -109,9 +109,9 @@ export async function readWishlist(
   if (resolved.access === "not_found") return listDataSchema.parse(notFound);
 
   const role = resolved.role;
-  const gifts = resolved.gifts.map((gift) =>
-    role === "owner" ? toOwnerGiftCard(gift) : toViewerGiftCard(gift, viewerId),
-  );
+  const gifts = resolved.gifts.map(function toListGiftCard(gift) {
+    return role === "owner" ? toOwnerGiftCard(gift) : toViewerGiftCard(gift, viewerId);
+  });
 
   return listDataSchema.parse({ access: "gifts", gifts });
 }

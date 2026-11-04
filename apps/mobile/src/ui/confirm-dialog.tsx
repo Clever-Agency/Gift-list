@@ -127,19 +127,25 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   const answered = useRef(false);
   const handleDismiss = useLayerClosed(visible, onClosed);
 
-  useEffect(() => {
-    // A new opening is a new question: the first press counts again.
-    if (visible) answered.current = false;
-  }, [visible]);
+  useEffect(
+    function resetAnswerOnOpen() {
+      // A new opening is a new question: the first press counts again.
+      if (visible) answered.current = false;
+    },
+    [visible],
+  );
 
-  useEffect(() => {
-    if (!visible) return;
-    // `EXPERIENCE.md` → Accessibility Floor «Шторка и диалог»: focus enters the
-    // layer as soon as it opens. The destructive confirm lands on the safe
-    // «Отмена», the discard step on its title (`tabIndex={-1}` keeps the title
-    // out of the tab order while letting the layer focus it).
-    focusInLayer(discard ? titleRef.current : cancelRef.current);
-  }, [visible, discard]);
+  useEffect(
+    function focusLayerOnOpen() {
+      if (!visible) return;
+      // `EXPERIENCE.md` → Accessibility Floor «Шторка и диалог»: focus enters the
+      // layer as soon as it opens. The destructive confirm lands on the safe
+      // «Отмена», the discard step on its title (`tabIndex={-1}` keeps the title
+      // out of the tab order while letting the layer focus it).
+      focusInLayer(discard ? titleRef.current : cancelRef.current);
+    },
+    [visible, discard],
+  );
 
   function confirm(): void {
     if (answered.current || busy) return;
@@ -268,6 +274,8 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     </Modal>
   );
 }
+
+ConfirmDialog.displayName = "ConfirmDialog";
 
 const styles = StyleSheet.create({
   overlay: {

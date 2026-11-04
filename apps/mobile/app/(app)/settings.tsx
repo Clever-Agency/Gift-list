@@ -38,7 +38,7 @@ export default function SettingsScreen() {
   const auth = useAuth();
   const [sessionExpired, setSessionExpired] = useState(false);
 
-  useEffect(() => {
+  useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous") {
       // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
       router.replace({
@@ -50,15 +50,16 @@ export default function SettingsScreen() {
     }
   }, [auth.state.status, sessionExpired]);
 
+  function handleSessionExpired(expired: boolean) {
+    setSessionExpired(expired);
+  }
+
   if (auth.state.status !== "ready") return null;
 
-  return (
-    <SettingsForm
-      user={auth.state.user}
-      onSessionExpired={(expired) => setSessionExpired(expired)}
-    />
-  );
+  return <SettingsForm user={auth.state.user} onSessionExpired={handleSessionExpired} />;
 }
+
+SettingsScreen.displayName = "SettingsScreen";
 
 /**
  * AD-13: the client checks the same 3–24 `[a-z0-9_]` rule as the server, so an
@@ -190,6 +191,10 @@ function SettingsForm({
     setToast({ message: issue.text, tone: "error" });
   }
 
+  function dismissToast() {
+    setToast(null);
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ title: t("settings.pageTitle", { brand }) }} />
@@ -236,12 +241,14 @@ function SettingsForm({
         <ToastHost
           message={toast.message}
           tone={toast.tone}
-          onDismiss={() => setToast(null)}
+          onDismiss={dismissToast}
         />
       ) : null}
     </SafeAreaView>
   );
 }
+
+SettingsForm.displayName = "SettingsForm";
 
 const styles = StyleSheet.create({
   screen: {

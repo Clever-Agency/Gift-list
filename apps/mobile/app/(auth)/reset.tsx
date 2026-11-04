@@ -80,6 +80,10 @@ export default function ResetScreen() {
     setSaved(true);
   }
 
+  function handleSubmit() {
+    void submit();
+  }
+
   return (
     <>
       <Stack.Screen options={{ title: t("reset.pageTitle", { brand }) }} />
@@ -122,13 +126,15 @@ export default function ResetScreen() {
                 autoComplete: "new-password",
                 autoCorrect: false,
                 textContentType: "newPassword",
-                onSubmitEditing: () => void submit(),
+                onSubmitEditing: handleSubmit,
               }}
             />
-            <PrimaryButton label={t("reset.submit")} onPress={() => void submit()} disabled={pending} />
+            <PrimaryButton label={t("reset.submit")} onPress={handleSubmit} disabled={pending} />
           </>
         ) : null}
       </AnonymousScreen>
     </>
   );
 }
+
+ResetScreen.displayName = "ResetScreen";

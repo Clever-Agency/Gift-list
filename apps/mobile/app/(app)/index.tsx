@@ -110,18 +110,18 @@ export default function MyWishlistScreen() {
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
   useFocusEffect(
-    useCallback(() => {
+    useCallback(function refreshOnFocus() {
       const first = firstFocus.current;
       firstFocus.current = false;
       focused.current = true;
       if (!first) setAttempt((value) => value + 1);
-      return () => {
+      return function markBlurred() {
         focused.current = false;
       };
     }, []),
   );
 
-  useEffect(() => {
+  useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous") {
       // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
       router.replace({
@@ -135,7 +135,7 @@ export default function MyWishlistScreen() {
   // they unmount on the way back, so a toast of their own would never be seen (the same
   // hand-over the login screen gets in `?reason=`). The param is read once and cleared
   // right away, so a refocus — where the list refetches — does not show it again.
-  useEffect(() => {
+  useEffect(function showHandedOverToast() {
     const flash = paramValue(params.toast);
     if (flash === undefined) {
       // The param is gone (either cleared right after the notice, or never set): the
@@ -176,10 +176,11 @@ export default function MyWishlistScreen() {
     return signedOut.ok;
   }
 
-  useEffect(() => {
+  useEffect(function loadGifts() {
     if (!ownerId) return;
     let cancelled = false;
-    void (async () => {
+
+    async function requestGifts() {
       const result = await fetchMyGifts();
       // A refocus refresh that lost the screen, or a first load that outlived it, never
       // touches state (review m9).
@@ -225,8 +226,10 @@ export default function MyWishlistScreen() {
             : common(`errors.code.${result.code}`),
         tone: "error",
       });
-    })();
-    return () => {
+    }
+
+    void requestGifts();
+    return function stopLoad() {
       cancelled = true;
     };
     // `auth` is only read on the expired-session branch; re-running the fetch on
@@ -258,11 +261,13 @@ export default function MyWishlistScreen() {
     router.push({ pathname: "/gifts/[id]/edit", params: { id } });
   }
 
+  async function endSession() {
+    const result = await auth.signOut();
+    if (!result.ok) setToast({ message: t("form.network"), tone: "error" });
+  }
+
   function signOut() {
-    void (async () => {
-      const result = await auth.signOut();
-      if (!result.ok) setToast({ message: t("form.network"), tone: "error" });
-    })();
+    void endSession();
   }
 
   function openVisibilityPicker(gift: GiftCard) {
@@ -378,6 +383,10 @@ export default function MyWishlistScreen() {
     router.push("/settings");
   }
 
+  function handleVisibilitySelect(next: GiftCard["visibility"]) {
+    if (picker) void changeVisibility(picker.gift, next);
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
@@ -427,18 +436,30 @@ export default function MyWishlistScreen() {
               {/* Review m5: the grid is a list for assistive tech; `role` is the DOM
                   role alias React Native forwards on web and maps on native. */}
               <View role="list" style={styles.grid}>
-                {state.gifts.map((gift) => (
-                  <WishCard
-                    key={gift.id}
-                    gift={gift}
-                    width={grid.cardWidth}
-                    onPress={() => openEditor(gift.id)}
-                    onVisibilityPress={() => openVisibilityPicker(gift)}
-                    visibilityChipRef={(node) => {
-                      chipNodes.current.set(gift.id, node);
-                    }}
-                  />
-                ))}
+                {state.gifts.map((gift) => {
+                  function handlePress() {
+                    openEditor(gift.id);
+                  }
+
+                  function handleVisibilityPress() {
+                    openVisibilityPicker(gift);
+                  }
+
+                  function setChipNode(node: ChipNode | null) {
+                    chipNodes.current.set(gift.id, node);
+                  }
+
+                  return (
+                    <WishCard
+                      key={gift.id}
+                      gift={gift}
+                      width={grid.cardWidth}
+                      onPress={handlePress}
+                      onVisibilityPress={handleVisibilityPress}
+                      visibilityChipRef={setChipNode}
+                    />
+                  );
+                })}
               </View>
             </>
           )}
@@ -469,9 +490,7 @@ export default function MyWishlistScreen() {
         visible={picker !== null}
         title={picker?.gift.title ?? ""}
         value={picker?.gift.visibility ?? "PUBLIC"}
-        onSelect={(next) => {
-          if (picker) void changeVisibility(picker.gift, next);
-        }}
+        onSelect={handleVisibilitySelect}
         onClose={cancelPicker}
         onClosed={returnFocusToChip}
       />
@@ -486,6 +505,8 @@ export default function MyWishlistScreen() {
     </SafeAreaView>
   );
 }
+
+MyWishlistScreen.displayName = "MyWishlistScreen";
 
 const styles = StyleSheet.create({
   screen: {

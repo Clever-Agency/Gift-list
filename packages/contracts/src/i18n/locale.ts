@@ -25,7 +25,7 @@ export function preferredFromAcceptLanguage(header: string | null): string[] {
   if (header == null || header.trim() === "") return [];
 
   const parsed: { tag: string; q: number; index: number }[] = [];
-  header.split(",").forEach((part, index) => {
+  header.split(",").forEach(function collectLanguageRange(part, index) {
     const [rawTag, ...params] = part.trim().split(";");
     const tag = rawTag?.trim() ?? "";
     if (tag === "" || tag === "*") return;
@@ -42,6 +42,8 @@ export function preferredFromAcceptLanguage(header: string | null): string[] {
     parsed.push({ tag, q, index });
   });
 
-  parsed.sort((left, right) => right.q - left.q || left.index - right.index);
+  parsed.sort(function compareLanguageRanges(left, right) {
+    return right.q - left.q || left.index - right.index;
+  });
   return parsed.map((item) => item.tag);
 }

@@ -16,7 +16,7 @@ export default function InviteReturnScreen() {
   const token = paramValue(params.token) ?? "";
   const auth = useAuth();
 
-  useEffect(() => {
+  useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous") {
       router.replace({ pathname: "/register", params: { next: `/invite/${token}` } });
     }
@@ -35,3 +35,5 @@ export default function InviteReturnScreen() {
     </>
   );
 }
+
+InviteReturnScreen.displayName = "InviteReturnScreen";

@@ -1,0 +1,81 @@
+---
+description: Именованные функции в React-коде Gift List — компоненты объявляем только именованными функциями, анонимные запрещены. Применять при правке .ts и .tsx в apps и packages.
+globs: apps/**/*.ts,apps/**/*.tsx,packages/**/*.ts
+alwaysApply: false
+---
+
+# Именованные функции
+
+Компоненты — только именованные функции; анонимные компоненты запрещены. Прочие функции (хелперы, обработчики событий, колбэки эффектов, где это разумно) — тоже именованные.
+
+## Компоненты
+
+```tsx
+// плохо
+export default () => <Screen />;
+const WishCard = () => <View />;
+const GhostButton = forwardRef((props, ref) => <Pressable ref={ref} {...props} />);
+const MemoList = memo(() => <View />);
+
+// хорошо
+export default function Screen() {…}
+export function WishCard() {…}
+export const GhostButton = forwardRef(function GhostButton(props, ref) {…});
+const MemoList = memo(function MemoList() {…});
+```
+
+Сразу после компонента задайте `displayName`, равный имени функции (для generic — имени без параметров): прод-сборка минифицирует terser и переименовывает `function WishCard` в `function a`, поэтому без строки React DevTools показывает `Anonymous`.
+
+```tsx
+export function WishCard() {…}
+WishCard.displayName = "WishCard";
+
+export const GhostButton = forwardRef(function GhostButton(props, ref) {…});
+GhostButton.displayName = "GhostButton";
+
+export function ChoiceGroup<T extends string>(props: Props<T>) {…}
+ChoiceGroup.displayName = "ChoiceGroup";
+```
+
+Правило действует для экспортируемых компонентов `src/ui`, экранов `app/` и неэкспортируемых компонентов в этих файлах; хуки (`useAuth`, `useLayerClosed`) и обычные хелперы строку не получают. Если компонент создаётся фабрикой или HOC, задайте ему `displayName`.
+
+## Флаг KEEP_FNAMES
+
+`KEEP_FNAMES=1` заставляет terser сохранять имена всех функций и классов (включая библиотеки) в web-экспорте — это локальная отладка, ~+10% JS, и на Vercel флаг никогда не ставится. Windows PowerShell: `$env:KEEP_FNAMES=1; node apps/web/scripts/sync-spa.mjs` (или `npm run build` в `apps/web`), затем `Remove-Item Env:KEEP_FNAMES`; bash: `KEEP_FNAMES=1 node apps/web/scripts/sync-spa.mjs`.
+
+## Остальные функции
+
+```tsx
+// плохо
+const handlePress = () => save(item);
+useEffect(() => {
+  load();
+}, []);
+
+// хорошо
+function handlePress() {…}
+useEffect(function loadOnMount() {
+  load();
+}, []);
+useEffect(function subscribeToUpdates() {
+  const subscription = updates.subscribe();
+  return function stopListening() {
+    subscription.remove();
+  };
+}, []);
+```
+
+Эффект принимает именованную function expression, а не стрелку и не готовую функцию напрямую: переданная напрямую функция может случайно вернуть значение, и React примет его за cleanup. Cleanup тоже оформляйте именованной функцией (`return function stopListening() {…};`), чтобы в стеке было видно, что останавливается.
+
+Стрелки допустимы только для однострочных style-колбэков `Pressable`, простых колбэков методов массивов, однострочных апдейтеров состояния и однострочных заглушек в моках тестов:
+
+```tsx
+<Pressable style={({ pressed }) => [styles.base, pressed && styles.pressed]} />
+items.map(toRow);
+items.map((item) => item.id);
+items.filter((item) => item.visible);
+setCount((value) => value + 1);
+vi.fn(() => true);
+```
+
+ESLint (`react/function-component-definition`, `react/display-name` в `apps/mobile` и `apps/web`) проверяет только компоненты; именование остальных функций — на ревью. Тест `apps/mobile/src/ui/component-names.test.tsx` падает, если у экспортированного компонента `src/ui` нет `displayName`, равного имени экспорта, или если у экрана `app/` `displayName` не совпадает с именем `default`-функции.

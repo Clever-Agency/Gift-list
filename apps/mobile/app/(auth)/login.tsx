@@ -33,13 +33,13 @@ export default function LoginScreen() {
   );
 
   function change(field: string, setValue: (value: string) => void) {
-    return (value: string) => {
+    return function handleFieldChange(value: string) {
       setValue(value);
       setIssue((current) => (current?.field === field ? null : current));
     };
   }
 
-  useEffect(() => {
+  useEffect(function redirectWhenReady() {
     if (auth.state.status === "ready") router.replace(next as "/");
   }, [auth.state.status, next]);
 
@@ -72,7 +72,18 @@ export default function LoginScreen() {
     router.replace(safeNextPath(result.data.next) as "/");
   }
 
-  const fieldError = (name: string) => (issue?.field === name ? issue.text : undefined);
+  function handleSubmit() {
+    void submit();
+  }
+
+  function dismissToast() {
+    setToast(null);
+  }
+
+  function fieldError(name: string) {
+    return issue?.field === name ? issue.text : undefined;
+  }
+
   const carry = { pathname: "/register" as const, params: { ...(next !== "/" ? { next } : {}), ...(email ? { email } : {}) } };
 
   return (
@@ -109,10 +120,10 @@ export default function LoginScreen() {
             autoComplete: "current-password",
             autoCorrect: false,
             textContentType: "password",
-            onSubmitEditing: () => void submit(),
+            onSubmitEditing: handleSubmit,
           }}
         />
-        <PrimaryButton label={t("form.submitLogin")} onPress={() => void submit()} disabled={pending} />
+        <PrimaryButton label={t("form.submitLogin")} onPress={handleSubmit} disabled={pending} />
         <Link
           href={{ pathname: "/forgot", params: carry.params }}
           style={navLinkStyle}
@@ -124,7 +135,9 @@ export default function LoginScreen() {
           {t("login.toRegister")}
         </Link>
       </AnonymousScreen>
-      {toast ? <ToastHost message={toast} onDismiss={() => setToast(null)} /> : null}
+      {toast ? <ToastHost message={toast} onDismiss={dismissToast} /> : null}
     </>
   );
 }
+
+LoginScreen.displayName = "LoginScreen";

@@ -34,13 +34,13 @@ export default function RegisterScreen() {
   const [pending, setPending] = useState(false);
 
   function change(field: string, setValue: (value: string) => void) {
-    return (value: string) => {
+    return function handleFieldChange(value: string) {
       setValue(value);
       setIssue((current) => (current?.field === field ? null : current));
     };
   }
 
-  useEffect(() => {
+  useEffect(function redirectWhenReady() {
     if (auth.state.status === "ready") router.replace(next as "/");
   }, [auth.state.status, next]);
 
@@ -88,7 +88,14 @@ export default function RegisterScreen() {
     router.replace(safeNextPath(result.data.next) as "/");
   }
 
-  const fieldError = (name: string) => (issue?.field === name ? issue.text : undefined);
+  function handleSubmit() {
+    void submit();
+  }
+
+  function fieldError(name: string) {
+    return issue?.field === name ? issue.text : undefined;
+  }
+
   const loginHref = {
     pathname: "/login" as const,
     params: { ...(next !== "/" ? { next } : {}), ...(email ? { email } : {}) },
@@ -155,12 +162,12 @@ export default function RegisterScreen() {
             autoComplete: "nickname",
             autoCorrect: false,
             textContentType: "nickname",
-            onSubmitEditing: () => void submit(),
+            onSubmitEditing: handleSubmit,
           }}
         />
         <PrimaryButton
           label={t("form.submitRegister")}
-          onPress={() => void submit()}
+          onPress={handleSubmit}
           disabled={pending}
         />
         <Link href={loginHref} style={navLinkStyle} accessibilityRole="link">
@@ -170,3 +177,5 @@ export default function RegisterScreen() {
     </>
   );
 }
+
+RegisterScreen.displayName = "RegisterScreen";

@@ -36,7 +36,7 @@ export default function ForgotScreen() {
     setIssue((current) => (current?.field === "email" ? null : current));
   }
 
-  useEffect(() => {
+  useEffect(function redirectWhenReady() {
     if (auth.state.status === "ready") router.replace(next as "/");
   }, [auth.state.status, next]);
 
@@ -75,6 +75,10 @@ export default function ForgotScreen() {
     setSent(true);
   }
 
+  function handleSubmit() {
+    void submit();
+  }
+
   const loginHref = {
     pathname: "/login" as const,
     params: { ...(next !== "/" ? { next } : {}), ...(email ? { email } : {}) },
@@ -104,10 +108,10 @@ export default function ForgotScreen() {
             inputMode: "email",
             keyboardType: "email-address",
             textContentType: "username",
-            onSubmitEditing: () => void submit(),
+            onSubmitEditing: handleSubmit,
           }}
         />
-        <PrimaryButton label={t("forgot.submit")} onPress={() => void submit()} disabled={pending} />
+        <PrimaryButton label={t("forgot.submit")} onPress={handleSubmit} disabled={pending} />
         <Link href={loginHref} style={navLinkStyle} accessibilityRole="link">
           {t("forgot.toLogin")}
         </Link>
@@ -115,3 +119,5 @@ export default function ForgotScreen() {
     </>
   );
 }
+
+ForgotScreen.displayName = "ForgotScreen";

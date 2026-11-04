@@ -67,9 +67,9 @@ export default function NewGiftScreen() {
   const formRef = useRef<GiftFormHandle>(null);
   // System back (Android hardware key, swipe) asks before a dirty draft is lost.
   // Our own ways out open the guard's synchronous bypass instead of touching this.
-  const guard = useDiscardGuard(dirty && !submitting, () => setDiscardOpen(true));
+  const guard = useDiscardGuard(dirty && !submitting, openDiscard);
 
-  useEffect(() => {
+  useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous") {
       router.replace({
         pathname: "/login",
@@ -150,13 +150,18 @@ export default function NewGiftScreen() {
     router.dismissTo({ pathname: "/" });
   }
 
+  /** System back asked to leave a dirty draft: the question opens. */
+  function openDiscard() {
+    setDiscardOpen(true);
+  }
+
   function cancel() {
     // A clean form loses nothing: no dialog (EXPERIENCE → Esc / scrim / «назад»).
     if (!dirty) {
       leave();
       return;
     }
-    setDiscardOpen(true);
+    openDiscard();
   }
 
   /** «Сохранить»: the form's own submit runs; a successful save leaves by itself. */
@@ -178,6 +183,15 @@ export default function NewGiftScreen() {
   function closeDiscard() {
     setDiscardOpen(false);
     guard.cancel();
+  }
+
+  function dismissToast() {
+    setToast(null);
+  }
+
+  /** The layer has left the tree: the form's «Отмена» gets focus back. */
+  function restoreFormFocus() {
+    formRef.current?.focusCancel();
   }
 
   return (
@@ -206,7 +220,7 @@ export default function NewGiftScreen() {
         </ScrollView>
       </View>
       {toast ? (
-        <ToastHost message={toast} onDismiss={() => setToast(null)} />
+        <ToastHost message={toast} onDismiss={dismissToast} />
       ) : null}
       <ConfirmDialog
         variant="discard"
@@ -219,11 +233,13 @@ export default function NewGiftScreen() {
         onConfirm={saveDiscard}
         onDecline={leaveDiscard}
         onClose={closeDiscard}
-        onClosed={() => formRef.current?.focusCancel()}
+        onClosed={restoreFormFocus}
       />
     </SafeAreaView>
   );
 }
+
+NewGiftScreen.displayName = "NewGiftScreen";
 
 /** `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12). */
 function toGiftInput(values: GiftFormValues): GiftInput {

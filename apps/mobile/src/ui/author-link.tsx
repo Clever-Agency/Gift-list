@@ -18,18 +18,18 @@ export function AuthorLink() {
     );
   }
 
+  function handlePress() {
+    void Linking.openURL(url).catch(function ignoreOpenError() {});
+  }
+
   return (
-    <Pressable
-      accessibilityRole="link"
-      onPress={() => {
-        void Linking.openURL(url).catch(() => {});
-      }}
-      style={styles.hit}
-    >
+    <Pressable accessibilityRole="link" onPress={handlePress} style={styles.hit}>
       <Text style={styles.label}>{label}</Text>
     </Pressable>
   );
 }
+
+AuthorLink.displayName = "AuthorLink";
 
 const styles = StyleSheet.create({
   hit: {

@@ -128,6 +128,8 @@ export function WishCard({
   );
 }
 
+WishCard.displayName = "WishCard";
+
 const styles = StyleSheet.create({
   card: {
     // The chip layer is positioned against the card (web needs it spelled out).

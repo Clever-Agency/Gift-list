@@ -21,7 +21,7 @@ import { colors } from "@/theme/tokens";
 void contactsAvailable();
 void secureStoreAvailable();
 
-SplashScreen.preventAutoHideAsync().catch(() => {
+SplashScreen.preventAutoHideAsync().catch(function ignoreNoSplash() {
   // Web and fast refresh have no native splash to hold.
 });
 
@@ -33,9 +33,9 @@ export default function RootLayout() {
     "Manrope-600": Manrope_600SemiBold,
   });
 
-  useEffect(() => {
+  useEffect(function hideSplashWhenLoaded() {
     if (loaded || error) {
-      SplashScreen.hideAsync().catch(() => {});
+      SplashScreen.hideAsync().catch(function ignoreHideError() {});
     }
   }, [loaded, error]);
 
@@ -62,3 +62,5 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+RootLayout.displayName = "RootLayout";

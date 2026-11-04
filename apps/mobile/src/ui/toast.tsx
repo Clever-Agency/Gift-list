@@ -76,7 +76,7 @@ export function ToastHost({
   const paused = hovered || focused;
   const autoHide = !stays && !(hasAction && screenReader);
 
-  useEffect(() => {
+  useEffect(function detectScreenReader() {
     // Диктор важен только тосту с действием: без действия тост ничего не прячет.
     if (!hasAction) return;
     const api = screenReaderApi();
@@ -85,16 +85,19 @@ export function ToastHost({
     let live = true;
     api
       .isScreenReaderEnabled()
-      .then((enabled) => {
+      .then(function applyScreenReaderState(enabled) {
         if (live) setScreenReader(enabled);
       })
-      .catch(() => {
+      .catch(function ignoreScreenReaderError() {
         // Не знаем — считаем, что диктор выключен: тост с действием тогда скроется.
       });
-    const subscription = api.addEventListener?.("screenReaderChanged", (enabled) => {
-      if (live) setScreenReader(enabled);
-    });
-    return () => {
+    const subscription = api.addEventListener?.(
+      "screenReaderChanged",
+      function applyScreenReaderChange(enabled) {
+        if (live) setScreenReader(enabled);
+      },
+    );
+    return function stopScreenReaderSync() {
       live = false;
       subscription?.remove();
     };
@@ -106,11 +109,11 @@ export function ToastHost({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismiss = useRef(onDismiss);
 
-  useEffect(() => {
+  useEffect(function syncDismissHandler() {
     dismiss.current = onDismiss;
   }, [onDismiss]);
 
-  useEffect(() => {
+  useEffect(function runCountdown() {
     // Новый текст — новый тост: отсчёт начинается с его собственной длительности.
     if (remaining.current.message !== message) {
       remaining.current = { message, ms: duration };
@@ -118,12 +121,12 @@ export function ToastHost({
     if (!autoHide || paused) return;
 
     const startedAt = Date.now();
-    timer.current = setTimeout(() => {
+    timer.current = setTimeout(function hideToast() {
       timer.current = null;
       dismiss.current();
     }, remaining.current.ms);
 
-    return () => {
+    return function pauseCountdown() {
       if (timer.current !== null) {
         clearTimeout(timer.current);
         timer.current = null;
@@ -134,6 +137,22 @@ export function ToastHost({
       };
     };
   }, [autoHide, duration, message, paused]);
+
+  function handlePointerEnter() {
+    setHovered(true);
+  }
+
+  function handlePointerLeave() {
+    setHovered(false);
+  }
+
+  function handleFocus() {
+    setFocused(true);
+  }
+
+  function handleBlur() {
+    setFocused(false);
+  }
 
   return (
     // `box-none` is a View prop, not a style key: the overlay lets touches through to
@@ -152,8 +171,8 @@ export function ToastHost({
         // `onHoverIn` живёт только на Pressable, а Pressable вокруг кнопок ломает
         // порядок целей; в react-native-web указательные события пробрасываются и
         // на View, ими и ловим hover мыши.
-        onPointerEnter={() => setHovered(true)}
-        onPointerLeave={() => setHovered(false)}
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
         style={[styles.toast, palette]}
       >
         <Text style={[styles.message, tone === "error" ? styles.errorText : styles.infoText]}>
@@ -164,8 +183,8 @@ export function ToastHost({
             accessibilityRole="button"
             accessibilityLabel={action.label}
             onPress={action.onPress}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             style={({ pressed }) => [styles.dismiss, pressed ? styles.pressed : null]}
           >
             <Text style={styles.dismissLabel}>{action.label}</Text>
@@ -175,8 +194,8 @@ export function ToastHost({
           accessibilityRole="button"
           accessibilityLabel={t("close")}
           onPress={onDismiss}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           style={({ pressed }) => [styles.dismiss, pressed ? styles.pressed : null]}
         >
           <Text style={styles.dismissLabel}>{t("close")}</Text>
@@ -185,6 +204,8 @@ export function ToastHost({
     </View>
   );
 }
+
+ToastHost.displayName = "ToastHost";
 
 const styles = StyleSheet.create({
   host: {

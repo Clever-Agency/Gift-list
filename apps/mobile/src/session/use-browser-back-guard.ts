@@ -70,11 +70,11 @@ export function useBrowserBackGuard(
   // on native and when the guard is closed.
   const unload = useRef<{ attach(): void; detach(): void } | null>(null);
 
-  useEffect(() => {
+  useEffect(function syncBlockedHandler() {
     blocked.current = onBlocked;
   }, [onBlocked]);
 
-  useEffect(() => {
+  useEffect(function guardBrowserBack() {
     if (!enabled || Platform.OS !== "web") return;
 
     const history = window.history;
@@ -134,7 +134,7 @@ export function useBrowserBackGuard(
     window.addEventListener("popstate", onPopState);
     unloadGuard.attach();
 
-    return () => {
+    return function releaseGuard() {
       window.removeEventListener("popstate", onPopState);
       unloadGuard.detach();
       unload.current = null;

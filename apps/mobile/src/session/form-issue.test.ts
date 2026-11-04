@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { formIssue, issueFromError, passwordFieldIssue } from "./form-issue";
 
-const t = (key: string) => key;
-const common = (key: string, values?: Record<string, string | number>) =>
-  values ? `common:${key}:${values.unit}:${values.count}` : `common:${key}`;
+function t(key: string) {
+  return key;
+}
+function common(key: string, values?: Record<string, string | number>) {
+  return values ? `common:${key}:${values.unit}:${values.count}` : `common:${key}`;
+}
 
 describe("issueFromError", () => {
   it("keeps RESET_LINK_STALE so the reset screen can offer a new letter", () => {
@@ -48,8 +51,12 @@ describe("issueFromError", () => {
   });
 });
 
-const fake = (key: string) => key;
-const err = (extra: Record<string, unknown>) => ({ ok: false, message: "", ...extra }) as never;
+function fake(key: string) {
+  return key;
+}
+function err(extra: Record<string, unknown>) {
+  return { ok: false, message: "", ...extra } as never;
+}
 
 describe("formIssue", () => {
   it("network", () => {

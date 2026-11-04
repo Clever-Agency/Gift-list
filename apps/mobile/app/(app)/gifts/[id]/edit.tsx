@@ -85,9 +85,9 @@ export default function EditGiftScreen() {
   // The guard sends a dead session back here after login, so the id travels along.
   const returnTo = `/gifts/${id}/edit`;
 
-  const [state, setState] = useState<ScreenState>(() =>
-    id === "" ? { status: "missing" } : { status: "loading" },
-  );
+  const [state, setState] = useState<ScreenState>(function initialScreenState() {
+    return id === "" ? { status: "missing" } : { status: "loading" };
+  });
   const [attempt, setAttempt] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<GiftFormServerError | null>(null);
@@ -116,13 +116,11 @@ export default function EditGiftScreen() {
   // System back (Android hardware key, swipe, the browser's Back) asks before a
   // dirty draft is lost. The delete step owns the back while it is open, so the
   // guard sleeps then: its own modal closes like any other layer.
-  const guard = useDiscardGuard(dirty && !submitting && !confirmingDelete, () =>
-    setDiscardOpen(true),
-  );
+  const guard = useDiscardGuard(dirty && !submitting && !confirmingDelete, openDiscard);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
-  useEffect(() => {
+  useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous") {
       router.replace({
         pathname: "/login",
@@ -133,10 +131,11 @@ export default function EditGiftScreen() {
     }
   }, [auth.state.status, sessionExpired, returnTo]);
 
-  useEffect(() => {
+  useEffect(function loadGift() {
     if (!ownerId || id === "") return;
     let cancelled = false;
-    void (async () => {
+
+    async function requestGift() {
       const result = await fetchGift(id);
       if (cancelled) return;
       if (result.ok) {
@@ -173,8 +172,10 @@ export default function EditGiftScreen() {
             : common(`errors.code.${result.code}`),
         tone: "error",
       });
-    })();
-    return () => {
+    }
+
+    void requestGift();
+    return function stopLoad() {
       cancelled = true;
     };
     // `auth` is only read on the expired-session branch; re-running the fetch on
@@ -274,6 +275,11 @@ export default function EditGiftScreen() {
     router.dismissTo({ pathname: "/" });
   }
 
+  /** System back asked to leave a dirty draft: the question opens. */
+  function openDiscard() {
+    setDiscardOpen(true);
+  }
+
   function cancel() {
     // A clean form loses nothing: no dialog (EXPERIENCE → Esc / scrim / «назад»).
     if (!dirty) {
@@ -367,6 +373,11 @@ export default function EditGiftScreen() {
     setToast({ message: common(`errors.code.${result.code}`), tone: "error" });
   }
 
+  /** The confirm step's «Удалить»: the DELETE runs and reports its outcome. */
+  function confirmDelete() {
+    void remove();
+  }
+
   function cancelDelete() {
     if (deleting) return;
     setConfirmingDelete(false);
@@ -391,6 +402,15 @@ export default function EditGiftScreen() {
     if (!pendingDeleteFocus.current) return;
     pendingDeleteFocus.current = false;
     restoreFocus(deleteButtonRef.current);
+  }
+
+  function dismissToast() {
+    setToast(null);
+  }
+
+  /** The discard layer has left the tree: the form's «Отмена» gets focus back. */
+  function restoreFormFocus() {
+    formRef.current?.focusCancel();
   }
 
   return (
@@ -473,7 +493,7 @@ export default function EditGiftScreen() {
           confirmLabel={deleting ? giftForm("delete.deleting") : giftForm("delete.confirm")}
           cancelLabel={giftForm("delete.cancel")}
           busy={deleting}
-          onConfirm={() => void remove()}
+          onConfirm={confirmDelete}
           onCancel={cancelDelete}
           onClosed={restoreDeleteFocus}
         />
@@ -482,7 +502,7 @@ export default function EditGiftScreen() {
         <ToastHost
           message={toast.message}
           tone={toast.tone}
-          onDismiss={() => setToast(null)}
+          onDismiss={dismissToast}
         />
       ) : null}
       <ConfirmDialog
@@ -496,11 +516,13 @@ export default function EditGiftScreen() {
         onConfirm={saveDiscard}
         onDecline={leaveDiscard}
         onClose={closeDiscard}
-        onClosed={() => formRef.current?.focusCancel()}
+        onClosed={restoreFormFocus}
       />
     </SafeAreaView>
   );
 }
+
+EditGiftScreen.displayName = "EditGiftScreen";
 
 /** The stored AD-12 card back into the fields the form edits. */
 function toFormValues(gift: GiftCard): GiftFormValues {

@@ -26,7 +26,7 @@ export function isNextOwnedPath(pathname: string): boolean {
  * The negative lookahead is the path-to-regexp form of those prefixes.
  */
 export function spaFallbackRewriteSources(): string[] {
-  const alternatives = NEXT_OWNED_PREFIXES.map((prefix) => {
+  const alternatives = NEXT_OWNED_PREFIXES.map(function toRewritePattern(prefix) {
     const body = prefix.slice(1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return `${body}(?:/|$)`;
   }).join("|");

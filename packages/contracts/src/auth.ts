@@ -48,7 +48,7 @@ export const passwordResetBodySchema = z
     token: z.string().optional(),
     password: z.string().optional(),
   })
-  .superRefine((value, ctx) => {
+  .superRefine(function validatePasswordReset(value, ctx) {
     if (typeof value.token !== "string" || value.token.trim().length === 0) {
       ctx.addIssue({ code: "custom", path: ["token"], message: "Reset link is stale" });
       return;
@@ -57,10 +57,12 @@ export const passwordResetBodySchema = z
       ctx.addIssue({ code: "custom", path: ["password"], message: "Invalid input" });
     }
   })
-  .transform((value) => ({
-    token: value.token as string,
-    password: value.password as string,
-  }));
+  .transform(function toPasswordResetBody(value) {
+    return {
+      token: value.token as string,
+      password: value.password as string,
+    };
+  });
 
 export type PasswordResetBody = z.infer<typeof passwordResetBodySchema>;
 

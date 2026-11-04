@@ -33,6 +33,11 @@ export const GhostButton = forwardRef<ViewInstance, GhostButtonProps>(function G
 ) {
   const isDisabled = Boolean(disabled);
 
+  function handlePress() {
+    if (isDisabled) return;
+    onPress();
+  }
+
   return (
     <Pressable
       ref={ref}
@@ -41,10 +46,7 @@ export const GhostButton = forwardRef<ViewInstance, GhostButtonProps>(function G
       accessibilityState={{ disabled: isDisabled }}
       aria-disabled={isDisabled}
       testID={testID}
-      onPress={() => {
-        if (isDisabled) return;
-        onPress();
-      }}
+      onPress={handlePress}
       style={({ pressed }) => [
         styles.button,
         pressed && !isDisabled ? styles.pressed : null,

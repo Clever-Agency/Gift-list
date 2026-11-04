@@ -105,10 +105,11 @@ vi.mock("react-native", async () => {
     accessibilityLabel?: string;
     "aria-haspopup"?: string;
   };
-  const element = (tag: string) =>
-    function Element({ children }: Props) {
+  function element(tag: string) {
+    return function Element({ children }: Props) {
       return React.createElement(tag, null, children);
     };
+  }
   return {
     StyleSheet: { create: (styles: unknown) => styles },
     Text: element("span"),

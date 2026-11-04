@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "r
 import { useTranslations } from "use-intl";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
+import { useLayerClosed } from "@/ui/focus";
 import { ChoiceGroup } from "@/ui/gift-form";
 
 type Visibility = GiftCard["visibility"];
@@ -17,6 +18,10 @@ type Visibility = GiftCard["visibility"];
  * Android «назад» arrives as `onRequestClose`, and react-native-web turns Esc
  * into the same callback — the scrim and «Отмена» close it too.
  *
+ * `onClosed` runs once the layer has really gone, so the screen can put focus back on
+ * the chip it was opened from (see `useLayerClosed` for why an effect on `visible` is
+ * too early on the web).
+ *
  * NOTE FOR UX: `DESIGN.md` puts the visibility layer in a dialog at medium and
  * wider; compact would be a bottom sheet (`EXPERIENCE.md` → «Шторка vs диалог»).
  * This microtask draws one centered dialog at every width; the sheet chrome can
@@ -28,6 +33,7 @@ export function VisibilityPicker({
   value,
   onSelect,
   onClose,
+  onClosed,
 }: {
   visible: boolean;
   /** The wish title, substituted into «Кто видит «{title}»». */
@@ -35,6 +41,8 @@ export function VisibilityPicker({
   value: Visibility;
   onSelect: (visibility: Visibility) => void;
   onClose: () => void;
+  /** The layer has left the tree: the screen can return focus to the chip. */
+  onClosed: () => void;
 }) {
   const t = useTranslations("app.gift.visibilityPicker");
   const tVisibility = useTranslations("app.gift.visibility");
@@ -48,6 +56,7 @@ export function VisibilityPicker({
   );
   const titleId = "visibility-picker-title";
   const heading = t("title", { title });
+  const handleDismiss = useLayerClosed(visible, onClosed);
 
   return (
     <Modal
@@ -55,6 +64,7 @@ export function VisibilityPicker({
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      onDismiss={handleDismiss}
       // react-native-web's Modal already renders `role="dialog"` and
       // `aria-modal="true"` and forwards the labelling to that element; on the
       // phone the platform modal is modal on its own.

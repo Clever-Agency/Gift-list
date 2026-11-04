@@ -183,12 +183,32 @@ vi.mock("react-native", async () => {
   function Modal({
     visible,
     children,
+    onDismiss,
+    onRequestClose,
     "aria-labelledby": ariaLabelledBy,
   }: {
     visible?: boolean;
     children?: React.ReactNode;
+    onDismiss?: () => void;
+    onRequestClose?: () => void;
     "aria-labelledby"?: string;
   }) {
+    // react-native-web keeps the layer until the fade-out ends and only then reports
+    // `onDismiss`; here the layer is gone in the same commit and the report follows.
+    const wasVisible = React.useRef(visible);
+    React.useEffect(() => {
+      if (wasVisible.current && !visible) onDismiss?.();
+      wasVisible.current = visible;
+    }, [visible, onDismiss]);
+    // Esc, like react-native-web's ModalContent, arrives as `onRequestClose`.
+    React.useEffect(() => {
+      if (!visible) return undefined;
+      function closeOnEscape(event: KeyboardEvent) {
+        if (event.key === "Escape") onRequestClose?.();
+      }
+      document.addEventListener("keyup", closeOnEscape);
+      return () => document.removeEventListener("keyup", closeOnEscape);
+    }, [visible, onRequestClose]);
     if (!visible) return null;
     // react-native-web's Modal renders the dialog container itself and forwards
     // `aria-labelledby` to it (the same stub the VisibilityPicker tests use).
@@ -202,6 +222,46 @@ vi.mock("react-native", async () => {
       children,
     );
   }
+  const Pressable = React.forwardRef<
+    HTMLButtonElement,
+    Props & { onPress?: () => void; "aria-hidden"?: boolean }
+  >(function Pressable(
+    {
+      children,
+      onPress,
+      accessibilityRole,
+      accessibilityLabel,
+      accessibilityState,
+      testID,
+      style,
+      "aria-hidden": ariaHidden,
+    },
+    ref,
+  ) {
+    // Pressable takes `({ pressed }) => style`, the resting state is enough here.
+    record(
+      testID,
+      typeof style === "function"
+        ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
+        : style,
+    );
+    return React.createElement(
+      "button",
+      {
+        type: "button",
+        ref,
+        ...(accessibilityRole ? { role: accessibilityRole } : {}),
+        ...(ariaHidden ? { "aria-hidden": "true" } : {}),
+        ...(accessibilityState && "checked" in accessibilityState
+          ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
+          : {}),
+        "aria-label": accessibilityLabel,
+        onClick: onPress,
+        ...domProps(testID),
+      },
+      children,
+    );
+  });
   return {
     StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
     Text: element("span"),
@@ -215,37 +275,7 @@ vi.mock("react-native", async () => {
     findNodeHandle: () => null,
     // One column, like a phone in the browser (DESIGN.md → columns).
     useWindowDimensions: () => ({ width: 375, height: 800 }),
-    Pressable: ({
-      children,
-      onPress,
-      accessibilityRole,
-      accessibilityLabel,
-      accessibilityState,
-      testID,
-      style,
-    }: Props & { onPress?: () => void }) => {
-      // Pressable takes `({ pressed }) => style`, the resting state is enough here.
-      record(
-        testID,
-        typeof style === "function"
-          ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
-          : style,
-      );
-      return React.createElement(
-        "button",
-        {
-          type: "button",
-          ...(accessibilityRole ? { role: accessibilityRole } : {}),
-          ...(accessibilityState && "checked" in accessibilityState
-            ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
-            : {}),
-          "aria-label": accessibilityLabel,
-          onClick: onPress,
-          ...domProps(testID),
-        },
-        children,
-      );
-    },
+    Pressable,
   };
 });
 vi.mock("react-native-safe-area-context", async () => {
@@ -1282,5 +1312,76 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(chip("Всем")).toBeDefined();
     expect(patchCalls()).toHaveLength(0);
     expect(text()).not.toContain("Видимость: друзьям");
+  });
+});
+
+/**
+ * CLE-51: focus returns to the chip the dialog was opened from, and it does so only
+ * after the layer has really left the tree — react-native-web keeps it mounted while
+ * it fades out, and its focus trap pulls an early `focus()` back into the dialog.
+ */
+describe("мой вишлист: возврат фокуса на чип", () => {
+  /** Opens the picker on the only wish and returns the chip that opened it. */
+  async function openPicker(): Promise<HTMLButtonElement> {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    const trigger = chip("Всем");
+    expect(trigger).toBeDefined();
+    await press("Всем");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    // The dialog opens on the selected radio, not on the trigger behind it.
+    expect(document.activeElement).not.toBe(trigger);
+    return trigger as HTMLButtonElement;
+  }
+
+  it("«Отмена»: фокус на чипе, который открыл диалог", async () => {
+    const trigger = await openPicker();
+
+    await press("Отмена");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("Esc: фокус на чипе, который открыл диалог", async () => {
+    const trigger = await openPicker();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape" }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("тап по подложке: фокус на чипе, который открыл диалог", async () => {
+    const trigger = await openPicker();
+
+    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
+    await act(async () => {
+      scrim?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("выбор другого значения тоже возвращает фокус на чип", async () => {
+    const trigger = await openPicker();
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: true, data: gift({ visibility: "FRIENDS" }) });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    // Never `<body>`: the layer hands focus back instead of dropping it.
+    expect(document.activeElement).not.toBe(document.body);
   });
 });

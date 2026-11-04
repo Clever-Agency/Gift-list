@@ -19,7 +19,7 @@ import { colors, spacing, textStyle } from "@/theme/tokens";
 import { AuthorLink } from "@/ui/author-link";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
-import { restoreChipFocus, type ChipNode } from "@/ui/focus";
+import { restoreFocus, type ChipNode } from "@/ui/focus";
 import { WishCard } from "@/ui/gift-card";
 import { PrimaryButton } from "@/ui/primary-button";
 import { WishCardSkeleton } from "@/ui/skeleton";
@@ -233,14 +233,6 @@ export default function MyWishlistScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId, attempt]);
 
-  // Focus returns to the chip only after the render where the dialog is gone.
-  useEffect(() => {
-    if (picker !== null || pendingFocus.current === null) return;
-    const id = pendingFocus.current;
-    pendingFocus.current = null;
-    restoreChipFocus(chipNodes.current.get(id));
-  }, [picker]);
-
   if (auth.state.status !== "ready") {
     return null;
   }
@@ -280,9 +272,22 @@ export default function MyWishlistScreen() {
   }
 
   function closePicker(id: string) {
-    // The focus call itself waits for the render without the dialog (the effect above).
+    // The focus call itself waits for the dialog's own `onClosed`: the layer is still
+    // in the tree while it fades out (see `useLayerClosed`).
     pendingFocus.current = id;
     setPicker(null);
+  }
+
+  /**
+   * `DESIGN.md` → VisibilityChip: the dialog reports its closing, and the chip that
+   * opened it gets focus back. Every close goes through `closePicker`, so the target is
+   * always known; a repeated report finds nothing pending and changes nothing.
+   */
+  function returnFocusToChip() {
+    const id = pendingFocus.current;
+    if (id === null) return;
+    pendingFocus.current = null;
+    restoreFocus(chipNodes.current.get(id));
   }
 
   function cancelPicker() {
@@ -452,6 +457,7 @@ export default function MyWishlistScreen() {
           if (picker) void changeVisibility(picker.gift, next);
         }}
         onClose={cancelPicker}
+        onClosed={returnFocusToChip}
       />
       {toast ? (
         <ToastHost

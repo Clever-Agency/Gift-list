@@ -3,7 +3,7 @@ import { VISIBILITIES, type GiftCard } from "@gift-list/contracts";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VisibilityPicker } from "@/ui/visibility-picker";
@@ -158,12 +158,21 @@ vi.mock("react-native", async () => {
   function Modal({
     visible,
     children,
+    onDismiss,
     "aria-labelledby": ariaLabelledBy,
   }: {
     visible?: boolean;
     children?: React.ReactNode;
+    onDismiss?: () => void;
     "aria-labelledby"?: string;
   }) {
+    // react-native-web keeps the layer until the fade-out ends and only then reports
+    // `onDismiss`; here the layer is gone in the same commit and the report follows.
+    const wasVisible = React.useRef(visible);
+    React.useEffect(() => {
+      if (wasVisible.current && !visible) onDismiss?.();
+      wasVisible.current = visible;
+    }, [visible, onDismiss]);
     if (!visible) return null;
     // react-native-web's Modal renders the dialog container itself and forwards
     // `aria-labelledby` to it.
@@ -213,11 +222,13 @@ async function render({
   value = "PUBLIC",
   onSelect = vi.fn(),
   onClose = vi.fn(),
+  onClosed = vi.fn(),
 }: {
   visible?: boolean;
   value?: GiftCard["visibility"];
   onSelect?: (visibility: GiftCard["visibility"]) => void;
   onClose?: () => void;
+  onClosed?: () => void;
 } = {}) {
   await act(async () => {
     host.render(
@@ -227,10 +238,11 @@ async function render({
         value={value}
         onSelect={onSelect}
         onClose={onClose}
+        onClosed={onClosed}
       />,
     );
   });
-  return { onSelect, onClose };
+  return { onSelect, onClose, onClosed };
 }
 
 /**
@@ -353,5 +365,78 @@ describe("VisibilityPicker: фокус в диалоге", () => {
     });
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * CLE-51: focus goes back to the chip only once the layer has really closed, so the
+ * picker reports the dismissal separately from `onClose` (which only asks the screen
+ * to close it).
+ */
+describe("VisibilityPicker: слой закрылся", () => {
+  it("после «Отмена» сообщает onClosed, когда диалога уже нет", async () => {
+    const onClosed = vi.fn();
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <VisibilityPicker
+          visible={open}
+          title="Наушники"
+          value="PUBLIC"
+          onSelect={vi.fn()}
+          onClose={() => setOpen(false)}
+          onClosed={onClosed}
+        />
+      );
+    }
+
+    await act(async () => {
+      host.render(<Harness />);
+    });
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    // Opening is not closing: the report fires only after the layer is gone.
+    expect(onClosed).not.toHaveBeenCalled();
+
+    const cancel = container.querySelector<HTMLElement>(
+      `[role="button"][aria-label="${picker.cancel}"]`,
+    );
+    await act(async () => {
+      cancel?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(onClosed).toHaveBeenCalledTimes(1);
+  });
+
+  it("видимость не менялась — закрытие не зовёт onSelect", async () => {
+    const onSelect = vi.fn();
+    const onClosed = vi.fn();
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <VisibilityPicker
+          visible={open}
+          title="Наушники"
+          value="PUBLIC"
+          onSelect={onSelect}
+          onClose={() => setOpen(false)}
+          onClosed={onClosed}
+        />
+      );
+    }
+
+    await act(async () => {
+      host.render(<Harness />);
+    });
+    await act(async () => {
+      container
+        .querySelector<HTMLElement>(`[role="button"][aria-label="${picker.cancel}"]`)
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onClosed).toHaveBeenCalledTimes(1);
   });
 });

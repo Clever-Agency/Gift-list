@@ -1,6 +1,6 @@
 import type { GiftCard, GiftUpdate } from "@gift-list/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
 import {
   Pressable,
   ScrollView,
@@ -18,6 +18,7 @@ import { paramValue } from "@/session/return-path";
 import { colors, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { restoreFocus } from "@/ui/focus";
 import { GiftForm, type GiftFormServerError, type GiftFormValues } from "@/ui/gift-form";
 import { PrimaryButton } from "@/ui/primary-button";
 import { WishCardSkeleton } from "@/ui/skeleton";
@@ -83,6 +84,10 @@ export default function EditGiftScreen() {
   const inFlight = useRef(false);
   // Same guard for DELETE: two taps before the first answer must delete once.
   const deleteInFlight = useRef(false);
+  // The button the confirm layer was opened from, and whether focus should go back to
+  // it when the layer closes: a successful delete leaves the screen, so it must not.
+  const deleteButtonRef = useRef<ComponentRef<typeof Pressable>>(null);
+  const pendingDeleteFocus = useRef(false);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -235,6 +240,8 @@ export default function EditGiftScreen() {
     setConfirmingDelete(false);
 
     if (result.ok) {
+      // The wish is gone and the screen leaves for the list: nothing to return to.
+      pendingDeleteFocus.current = false;
       router.dismissTo({ pathname: "/", params: { toast: "gift_deleted" } });
       return;
     }
@@ -280,7 +287,21 @@ export default function EditGiftScreen() {
 
   function startDelete() {
     setToast(null);
+    // «Удалить желание» gets focus back once the confirm layer has closed — unless the
+    // delete goes through and the screen leaves for the list.
+    pendingDeleteFocus.current = true;
     setConfirmingDelete(true);
+  }
+
+  /**
+   * `DESIGN.md` → Dialog: the confirm layer reports its closing, the «Удалить желание»
+   * button gets focus back. A failed delete keeps the form on screen, so the button is
+   * still there to return to.
+   */
+  function restoreDeleteFocus() {
+    if (!pendingDeleteFocus.current) return;
+    pendingDeleteFocus.current = false;
+    restoreFocus(deleteButtonRef.current);
   }
 
   return (
@@ -334,6 +355,7 @@ export default function EditGiftScreen() {
               {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
               {state.gift.status === "OPEN" ? (
                 <Pressable
+                  ref={deleteButtonRef}
                   accessibilityRole="button"
                   accessibilityLabel={giftForm("delete.action")}
                   onPress={startDelete}
@@ -361,6 +383,7 @@ export default function EditGiftScreen() {
           busy={deleting}
           onConfirm={() => void remove()}
           onCancel={cancelDelete}
+          onClosed={restoreDeleteFocus}
         />
       ) : null}
       {toast ? (

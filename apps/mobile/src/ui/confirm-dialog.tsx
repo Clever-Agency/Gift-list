@@ -2,7 +2,7 @@ import { useEffect, useRef, type ComponentRef } from "react";
 import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
-import { focusInLayer } from "@/ui/focus";
+import { focusInLayer, useLayerClosed } from "@/ui/focus";
 
 /**
  * `DESIGN.md` → Dialog: a centered layer for a destructive confirmation. The
@@ -12,6 +12,9 @@ import { focusInLayer } from "@/ui/focus";
  * `visible={false}` renders nothing; the transparency and fade come from
  * `Modal`. Android «назад» arrives as `onRequestClose`, and react-native-web
  * turns Esc into the same callback — the scrim and «Отмена» close it too.
+ *
+ * `onClosed` runs once the layer has really gone, so the screen can put focus back on
+ * the control it was opened from (see `useLayerClosed`).
  */
 export function ConfirmDialog({
   visible,
@@ -22,6 +25,7 @@ export function ConfirmDialog({
   busy = false,
   onConfirm,
   onCancel,
+  onClosed,
 }: {
   visible: boolean;
   title: string;
@@ -33,6 +37,8 @@ export function ConfirmDialog({
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** The layer has left the tree: the screen can return focus to the trigger. */
+  onClosed: () => void;
 }) {
   const { width: windowWidth } = useWindowDimensions();
   // `DESIGN.md` → dialog: up to `dialog-width`; on a narrow window the page
@@ -43,6 +49,7 @@ export function ConfirmDialog({
   );
   const titleId = "confirm-dialog-title";
   const cancelRef = useRef<ComponentRef<typeof Pressable>>(null);
+  const handleDismiss = useLayerClosed(visible, onClosed);
 
   // WAI-ARIA APG alertdialog: initial focus goes to the least destructive
   // action, so Enter right after opening does not delete anything.
@@ -57,6 +64,7 @@ export function ConfirmDialog({
       transparent
       animationType="fade"
       onRequestClose={onCancel}
+      onDismiss={handleDismiss}
       // react-native-web's Modal already renders `role="dialog"` and
       // `aria-modal="true"` and forwards the labelling to that element; on the
       // phone the platform modal is modal on its own.

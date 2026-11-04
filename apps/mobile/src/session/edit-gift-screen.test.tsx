@@ -93,6 +93,7 @@ vi.mock("react-native", async () => {
     accessibilityRole?: string;
     accessibilityLabel?: string;
     accessibilityState?: { checked?: boolean; disabled?: boolean; busy?: boolean };
+    "aria-hidden"?: boolean;
   };
   type InputProps = {
     value?: string;
@@ -131,15 +132,14 @@ vi.mock("react-native", async () => {
   function ScrollView({ children }: ChildrenProps) {
     return React.createElement("div", null, children);
   }
-  function Pressable({
-    children,
-    onPress,
-    disabled,
-    accessibilityLabel,
-    accessibilityState,
-  }: PressableProps) {
-    const props: React.ButtonHTMLAttributes<HTMLButtonElement> = {
+  const Pressable = React.forwardRef<HTMLButtonElement, PressableProps>(function Pressable(
+    { children, onPress, disabled, accessibilityLabel, accessibilityState, "aria-hidden": ariaHidden },
+    ref,
+  ) {
+    const props: React.ComponentPropsWithRef<"button"> = {
       type: "button",
+      ref,
+      ...(ariaHidden ? { "aria-hidden": "true" } : {}),
       ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
       ...(accessibilityState && "checked" in accessibilityState
         ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
@@ -149,16 +149,36 @@ vi.mock("react-native", async () => {
       ...(disabled ? {} : { onClick: onPress }),
     };
     return React.createElement("button", props, children);
-  }
+  });
   function Modal({
     visible,
     children,
+    onDismiss,
+    onRequestClose,
     "aria-labelledby": ariaLabelledBy,
   }: {
     visible?: boolean;
     children?: React.ReactNode;
+    onDismiss?: () => void;
+    onRequestClose?: () => void;
     "aria-labelledby"?: string;
   }) {
+    // react-native-web keeps the layer until the fade-out ends and only then reports
+    // `onDismiss`; here the layer is gone in the same commit and the report follows.
+    const wasVisible = React.useRef(visible);
+    React.useEffect(() => {
+      if (wasVisible.current && !visible) onDismiss?.();
+      wasVisible.current = visible;
+    }, [visible, onDismiss]);
+    // Esc, like react-native-web's ModalContent, arrives as `onRequestClose`.
+    React.useEffect(() => {
+      if (!visible) return undefined;
+      function closeOnEscape(event: KeyboardEvent) {
+        if (event.key === "Escape") onRequestClose?.();
+      }
+      document.addEventListener("keyup", closeOnEscape);
+      return () => document.removeEventListener("keyup", closeOnEscape);
+    }, [visible, onRequestClose]);
     if (!visible) return null;
     // react-native-web's Modal renders the dialog container itself and forwards
     // `aria-labelledby` to it (the same stub the VisibilityPicker tests use).
@@ -199,7 +219,14 @@ vi.mock("react-native", async () => {
     Modal,
     // One column, like a phone in the browser (`DESIGN.md` → columns).
     useWindowDimensions: () => ({ width: 375, height: 800 }),
-    AccessibilityInfo: { announceForAccessibility: vi.fn() },
+    // The focus helper reads the platform and the screen-reader call; on web it only
+    // moves DOM focus, so the accessibility stub is never used here.
+    Platform: { OS: "web" },
+    AccessibilityInfo: {
+      announceForAccessibility: vi.fn(),
+      setAccessibilityFocus: vi.fn(),
+    },
+    findNodeHandle: () => null,
   };
 });
 vi.mock("react-native-safe-area-context", async () => {
@@ -752,5 +779,77 @@ describe("изменение желания: видимость и удален�
       busy?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(gifts.deleteGift).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * CLE-51: «Удалить желание» gets focus back after the confirm layer closes — but only
+ * once the layer has really left the tree, and never when the delete goes through and
+ * the screen leaves for the list.
+ */
+describe("изменение желания: возврат фокуса после confirm", () => {
+  /** Opens the confirm layer and returns the button that opened it. */
+  async function openConfirm(): Promise<HTMLButtonElement> {
+    loaded();
+    await mount();
+
+    const trigger = button("Удалить желание");
+    expect(trigger).toBeDefined();
+    await press("Удалить желание");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    // The dialog opens on «Отмена», not on the trigger behind it.
+    expect(document.activeElement).not.toBe(trigger);
+    return trigger as HTMLButtonElement;
+  }
+
+  it("«Отмена»: фокус на «Удалить желание»", async () => {
+    const trigger = await openConfirm();
+
+    await pressExact("Отмена");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("Esc: фокус на «Удалить желание»", async () => {
+    const trigger = await openConfirm();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape" }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("тап по подложке: фокус на «Удалить желание»", async () => {
+    const trigger = await openConfirm();
+
+    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
+    await act(async () => {
+      scrim?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    // Never `<body>`: the layer hands focus back instead of dropping it.
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("успешное удаление не возвращает фокус на кнопку: экран уходит к списку", async () => {
+    loaded();
+    gifts.deleteGift.mockResolvedValue({ ok: true });
+    await mount();
+
+    const trigger = button("Удалить желание");
+    await press("Удалить желание");
+    await pressExact("Удалить");
+
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_deleted" },
+    });
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).not.toBe(trigger);
   });
 });

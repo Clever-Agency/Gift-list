@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
@@ -97,12 +97,21 @@ vi.mock("react-native", async () => {
   function Modal({
     visible,
     children,
+    onDismiss,
     "aria-labelledby": ariaLabelledBy,
   }: {
     visible?: boolean;
     children?: React.ReactNode;
+    onDismiss?: () => void;
     "aria-labelledby"?: string;
   }) {
+    // react-native-web keeps the layer until the fade-out ends and only then reports
+    // `onDismiss`; here the layer is gone in the same commit and the report follows.
+    const wasVisible = React.useRef(visible);
+    React.useEffect(() => {
+      if (wasVisible.current && !visible) onDismiss?.();
+      wasVisible.current = visible;
+    }, [visible, onDismiss]);
     if (!visible) return null;
     // react-native-web's Modal renders the dialog container itself and forwards
     // `aria-labelledby` to it.
@@ -152,11 +161,13 @@ async function render({
   busy = false,
   onConfirm = vi.fn(),
   onCancel = vi.fn(),
+  onClosed = vi.fn(),
 }: {
   visible?: boolean;
   busy?: boolean;
   onConfirm?: () => void;
   onCancel?: () => void;
+  onClosed?: () => void;
 } = {}) {
   await act(async () => {
     host.render(
@@ -169,10 +180,11 @@ async function render({
         busy={busy}
         onConfirm={onConfirm}
         onCancel={onCancel}
+        onClosed={onClosed}
       />,
     );
   });
-  return { onConfirm, onCancel };
+  return { onConfirm, onCancel, onClosed };
 }
 
 function button(label: string): HTMLButtonElement | undefined {
@@ -278,5 +290,49 @@ describe("ConfirmDialog: фокус в диалоге", () => {
 
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * CLE-51: focus goes back to «Удалить желание» only once the layer has really closed,
+ * so the dialog reports the dismissal separately from `onCancel` (which only asks the
+ * screen to close it).
+ */
+describe("ConfirmDialog: слой закрылся", () => {
+  it("после «Отмена» сообщает onClosed, когда диалога уже нет", async () => {
+    const onClosed = vi.fn();
+    const onCancel = vi.fn();
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <ConfirmDialog
+          visible={open}
+          title="Удалить «Наушники»?"
+          body="Желание исчезнет из вишлиста. Это нельзя отменить."
+          confirmLabel="Удалить"
+          cancelLabel="Отмена"
+          onConfirm={vi.fn()}
+          onCancel={() => {
+            onCancel();
+            setOpen(false);
+          }}
+          onClosed={onClosed}
+        />
+      );
+    }
+
+    await act(async () => {
+      host.render(<Harness />);
+    });
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    // Opening is not closing: the report fires only after the layer is gone.
+    expect(onClosed).not.toHaveBeenCalled();
+
+    await press("Отмена");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onClosed).toHaveBeenCalledTimes(1);
   });
 });

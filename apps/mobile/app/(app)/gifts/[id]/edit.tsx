@@ -15,11 +15,17 @@ import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
+import { useDiscardGuard } from "@/session/use-discard-guard";
 import { colors, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { restoreFocus } from "@/ui/focus";
-import { GiftForm, type GiftFormServerError, type GiftFormValues } from "@/ui/gift-form";
+import {
+  GiftForm,
+  type GiftFormHandle,
+  type GiftFormServerError,
+  type GiftFormValues,
+} from "@/ui/gift-form";
 import { PrimaryButton } from "@/ui/primary-button";
 import { WishCardSkeleton } from "@/ui/skeleton";
 import { ToastHost } from "@/ui/toast";
@@ -53,6 +59,17 @@ type ToastState = { message: string; tone: "info" | "error" };
  * A successful save leaves for the list with `?toast=gift_updated`: this screen
  * unmounts on the way back, so a toast set here would never be seen (the same
  * hand-over the create screen does with `?toast=gift_created`).
+ *
+ * «Отмена» leaves immediately while the form is unchanged and asks «Сохранить
+ * изменения?» once it differs from the wish it opened with; the same step offers
+ * «Сохранить» (the form's own submit) and «Не сохранять», while the cross, Esc
+ * and the scrim return to the form. The system back is caught by
+ * `useDiscardGuard` and asks the same question. A save never asks.
+ *
+ * Story 2.3 lives next to it as a second, independent step: an open wish offers
+ * «Удалить желание», which confirms in the same dialog of this form; a wish that
+ * is no longer open keeps its visibility frozen and offers no delete. Only one of
+ * the two steps can be open at a time.
  */
 export default function EditGiftScreen() {
   const t = useTranslations("app");
@@ -76,6 +93,12 @@ export default function EditGiftScreen() {
   const [serverError, setServerError] = useState<GiftFormServerError | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // `GiftForm` reports only flips, so this mirrors «черновик отличается от исходного».
+  const [dirty, setDirty] = useState(false);
+  // «Сохранить изменения?» is shown before a dirty draft is thrown away.
+  const [discardOpen, setDiscardOpen] = useState(false);
+  // Bumped when the dialog's «Сохранить» asks the form to run its own submit.
+  const [submitRequest, setSubmitRequest] = useState(0);
   // Story 2.3: deleting is a confirm step of this form, not a separate layer.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -88,6 +111,14 @@ export default function EditGiftScreen() {
   // it when the layer closes: a successful delete leaves the screen, so it must not.
   const deleteButtonRef = useRef<ComponentRef<typeof Pressable>>(null);
   const pendingDeleteFocus = useRef(false);
+  // The form's «Отмена» opened the discard step, so focus goes back to it afterwards.
+  const formRef = useRef<GiftFormHandle>(null);
+  // System back (Android hardware key, swipe, the browser's Back) asks before a
+  // dirty draft is lost. The delete step owns the back while it is open, so the
+  // guard sleeps then: its own modal closes like any other layer.
+  const guard = useDiscardGuard(dirty && !submitting && !confirmingDelete, () =>
+    setDiscardOpen(true),
+  );
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -163,7 +194,10 @@ export default function EditGiftScreen() {
 
   function backToList() {
     // `dismissTo` pops back to the list without leaving a duplicate behind, and
-    // replaces this screen when a direct link left nothing to pop.
+    // replaces this screen when a direct link left nothing to pop. The form is
+    // already gone (missing wish), so a draft the user can no longer see must not
+    // hold this exit: the bypass goes on like any other deliberate way out.
+    guard.allowNextLeave();
     router.dismissTo({ pathname: "/" });
   }
 
@@ -182,6 +216,9 @@ export default function EditGiftScreen() {
 
     if (result.ok) {
       // The list shows the confirmation from the param and refetches on focus.
+      // The saved draft is gone with the request, so this exit must never be met
+      // with the question.
+      guard.allowNextLeave();
       router.dismissTo({ pathname: "/", params: { toast: "gift_updated" } });
       return;
     }
@@ -196,9 +233,12 @@ export default function EditGiftScreen() {
     }
     if (result.code === "UNAUTHENTICATED") {
       // Same as on load: clear the dead session and let the guard open login.
+      guard.allowNextLeave();
       setSessionExpired(true);
       const signedOut = await auth.signOut();
       if (!signedOut.ok) {
+        // No hand-over happened: guard the still mounted form again.
+        guard.revokeLeave();
         setSessionExpired(false);
         setToast({ message: t("form.network"), tone: "error" });
       }
@@ -223,6 +263,49 @@ export default function EditGiftScreen() {
     void save(values);
   }
 
+  /** Leaves the form: back when something is behind, the list otherwise. */
+  function leave() {
+    // The user accepted the loss (or lost nothing): the guard lets this exit pass.
+    guard.allowNextLeave();
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.dismissTo({ pathname: "/" });
+  }
+
+  function cancel() {
+    // A clean form loses nothing: no dialog (EXPERIENCE → Esc / scrim / «назад»).
+    if (!dirty) {
+      leave();
+      return;
+    }
+    // The delete step is the only layer of this form at a time.
+    setConfirmingDelete(false);
+    setDiscardOpen(true);
+  }
+
+  /** «Сохранить»: the form's own submit runs; a successful save leaves by itself. */
+  function saveDiscard() {
+    setDiscardOpen(false);
+    // The blocked system-back action must not replay on top of the save.
+    guard.cancel();
+    setSubmitRequest((value) => value + 1);
+  }
+
+  /** «Не сохранять»: the draft goes and the way out the user asked for is repeated. */
+  function leaveDiscard() {
+    setDiscardOpen(false);
+    // A system back repeats its own action; the form's «Отмена» opened the step without one.
+    if (!guard.proceed()) leave();
+  }
+
+  /** Cross, Esc, scrim and Android back: back to the form, draft kept. */
+  function closeDiscard() {
+    setDiscardOpen(false);
+    guard.cancel();
+  }
+
   /**
    * Story 2.3: only an open wish can be deleted (`EXPERIENCE.md` → Правка
    * забронированного желания, Story 5.4 owns `RESERVED`). The request runs from
@@ -240,8 +323,10 @@ export default function EditGiftScreen() {
     setConfirmingDelete(false);
 
     if (result.ok) {
-      // The wish is gone and the screen leaves for the list: nothing to return to.
+      // The wish is gone and the screen leaves for the list: nothing to return to,
+      // and the draft guard must not hold that exit.
       pendingDeleteFocus.current = false;
+      guard.allowNextLeave();
       router.dismissTo({ pathname: "/", params: { toast: "gift_deleted" } });
       return;
     }
@@ -256,9 +341,11 @@ export default function EditGiftScreen() {
     }
     if (result.code === "UNAUTHENTICATED") {
       // Same as save: clear the dead session and let the guard open login.
+      guard.allowNextLeave();
       setSessionExpired(true);
       const signedOut = await auth.signOut();
       if (!signedOut.ok) {
+        guard.revokeLeave();
         setSessionExpired(false);
         setToast({ message: t("form.network"), tone: "error" });
       }
@@ -287,6 +374,8 @@ export default function EditGiftScreen() {
 
   function startDelete() {
     setToast(null);
+    // Only one step of this form is open at a time.
+    setDiscardOpen(false);
     // «Удалить желание» gets focus back once the confirm layer has closed — unless the
     // delete goes through and the screen leaves for the list.
     pendingDeleteFocus.current = true;
@@ -345,11 +434,15 @@ export default function EditGiftScreen() {
               <GiftForm
                 // `GiftForm` reads `initialValues` once, so another wish needs a remount.
                 key={state.gift.id}
+                ref={formRef}
                 initialValues={toFormValues(state.gift)}
                 submitting={submitting}
                 onSubmit={submit}
                 submitLabel={giftForm("action.save")}
                 serverError={serverError}
+                submitRequest={submitRequest}
+                onDirtyChange={setDirty}
+                onCancel={cancel}
                 visibilityLocked={state.gift.status !== "OPEN"}
               />
               {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
@@ -373,12 +466,11 @@ export default function EditGiftScreen() {
       </View>
       {state.status === "ready" ? (
         <ConfirmDialog
+          variant="confirm"
           visible={confirmingDelete}
           title={giftForm("delete.confirmTitle", { title: state.gift.title })}
           body={giftForm("delete.confirmBody")}
-          confirmLabel={
-            deleting ? giftForm("delete.deleting") : giftForm("delete.confirm")
-          }
+          confirmLabel={deleting ? giftForm("delete.deleting") : giftForm("delete.confirm")}
           cancelLabel={giftForm("delete.cancel")}
           busy={deleting}
           onConfirm={() => void remove()}
@@ -393,6 +485,19 @@ export default function EditGiftScreen() {
           onDismiss={() => setToast(null)}
         />
       ) : null}
+      <ConfirmDialog
+        variant="discard"
+        visible={discardOpen}
+        title={giftForm("discard.title")}
+        confirmLabel={giftForm("discard.confirm")}
+        declineLabel={giftForm("discard.decline")}
+        closeLabel={t("toast.close")}
+        busy={submitting}
+        onConfirm={saveDiscard}
+        onDecline={leaveDiscard}
+        onClose={closeDiscard}
+        onClosed={() => formRef.current?.focusCancel()}
+      />
     </SafeAreaView>
   );
 }

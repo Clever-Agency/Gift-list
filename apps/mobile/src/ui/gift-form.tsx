@@ -1,9 +1,17 @@
 import { CURRENCIES, VISIBILITIES } from "@gift-list/contracts";
-import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  AccessibilityInfo,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewInstance,
+} from "react-native";
 import { useTranslations } from "use-intl";
 import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 import { focusInLayer } from "@/ui/focus";
+import { isGiftFormDirty, type GiftFormDirtyValues } from "@/ui/gift-form-dirty";
 import {
   DESCRIPTION_MAX,
   LINK_MAX,
@@ -16,6 +24,7 @@ import {
   type GiftFormErrors,
   type GiftFormField,
 } from "@/ui/gift-form-validation";
+import { GhostButton } from "@/ui/ghost-button";
 import { formatMinorToPrice, parsePriceToMinor } from "@/ui/gift-price";
 import { PrimaryButton } from "@/ui/primary-button";
 import { TextField } from "@/ui/text-field";
@@ -58,7 +67,10 @@ export type GiftFormServerError = {
 type GiftFormProps = {
   /** Prefills the edit form; read once, so remount with `key` to load another wish. */
   initialValues?: Partial<GiftFormValues>;
-  /** The screen is saving: the submit button is disabled, nothing else is locked. */
+  /**
+   * The screen is saving: the submit button is disabled, and so is the cancel
+   * button when there is one — leaving mid-request would drop the outcome.
+   */
   submitting: boolean;
   /**
    * Receives the trimmed text fields, the price as minor units, and the choice of
@@ -74,11 +86,40 @@ type GiftFormProps = {
    */
   serverError?: GiftFormServerError | null;
   /**
+   * A counter the screen bumps to run the form's own submit. The discard
+   * dialog's «Сохранить» uses it, so saving goes through the same validation
+   * and the same `onSubmit` as the form's button.
+   */
+  submitRequest?: number;
+  /**
+   * Tells the screen whether the draft differs from the values it opened with,
+   * so leaving can ask «Сохранить изменения?» (`EXPERIENCE.md` → Esc / scrim /
+   * системное «назад»). Called only when the flag flips, never on mount.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Adds a ghost «Отмена» next to the submit button. The screen owns what leaving
+   * means and whether a dirty draft asks «Сохранить изменения?» first; without
+   * this prop the form renders exactly as before.
+   */
+  onCancel?: () => void;
+  /** Overrides the cancel label; `action.cancel` («Отмена») by default. */
+  cancelLabel?: string;
+  /**
    * The wish is no longer open: visibility is frozen by the server, so the rows
    * show the stored value but cannot change it (`EXPERIENCE.md` → Правка
    * забронированного желания).
    */
   visibilityLocked?: boolean;
+};
+
+/**
+ * What a screen can ask of the form from the outside: after the discard step
+ * closes, focus goes back to the element that opened it — the form's «Отмена»
+ * (`DESIGN.md` → App → Доступность «Куда уходит фокус»).
+ */
+export type GiftFormHandle = {
+  focusCancel(): void;
 };
 
 /**
@@ -94,17 +135,33 @@ type GiftFormProps = {
  * as that field is edited, and the first error is announced for the screen
  * reader (`EXPERIENCE.md` → Ошибки форм, → Accessibility Floor).
  */
-export function GiftForm({
-  initialValues,
-  submitting,
-  onSubmit,
-  submitLabel,
-  serverError,
-  visibilityLocked = false,
-}: GiftFormProps) {
+export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftForm(
+  {
+    initialValues,
+    submitting,
+    onSubmit,
+    submitLabel,
+    serverError,
+    submitRequest,
+    onDirtyChange,
+    onCancel,
+    cancelLabel,
+    visibilityLocked = false,
+  },
+  ref,
+) {
   const t = useTranslations("app.giftForm");
   const tVisibility = useTranslations("app.gift.visibility");
   const common = useTranslations("common");
+  // Read once, like the field states below: `initialValues` prefills the edit form.
+  const [initial] = useState<GiftFormDirtyValues>(() => ({
+    title: initialValues?.title ?? "",
+    description: initialValues?.description ?? "",
+    link: initialValues?.link ?? "",
+    price: initialPriceText(initialValues?.priceAmount),
+    currency: initialValues?.priceCurrency ?? DEFAULT_CURRENCY,
+    visibility: initialValues?.visibility ?? DEFAULT_VISIBILITY,
+  }));
   const [title, setTitle] = useState(initialValues?.title ?? "");
   const [description, setDescription] = useState(initialValues?.description ?? "");
   const [link, setLink] = useState(initialValues?.link ?? "");
@@ -116,10 +173,46 @@ export function GiftForm({
     initialValues?.visibility ?? DEFAULT_VISIBILITY,
   );
   const [errors, setErrors] = useState<GiftFormErrors>({});
+  const cancelRef = useRef<ViewInstance>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusCancel() {
+        // react-native-web host nodes are DOM elements with `focus()`; native ones
+        // are not, and there `Modal` keeps owning focus.
+        const node = cancelRef.current as unknown as { focus?: () => void } | null;
+        node?.focus?.();
+      },
+    }),
+    [],
+  );
   // `EXPERIENCE.md` → Price field: an empty amount does not show a currency.
   const showCurrency = price.trim() !== "";
   const serverField = serverErrorField(serverError?.field);
   const formError = serverError != null && serverField === null ? t("error.form") : null;
+  const dirty = isGiftFormDirty(initial, {
+    title,
+    description,
+    link,
+    price,
+    currency,
+    visibility,
+  });
+  // Report only flips: the screen listens for «стал грязным» / «снова чистый», not
+  // for every keystroke. The first render is not a flip, so nothing fires on mount.
+  const lastDirty = useRef(dirty);
+  useEffect(() => {
+    if (lastDirty.current === dirty) return;
+    lastDirty.current = dirty;
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  // The discard dialog's «Сохранить» asks for the form's own submit: run it once per bump.
+  const handledRequest = useRef(submitRequest ?? 0);
+  useEffect(() => {
+    if (submitRequest === undefined || submitRequest === handledRequest.current) return;
+    handledRequest.current = submitRequest;
+    submit();
+  });
 
   function copyText(copy: GiftFormErrorCopy): string {
     return copy.catalog === "giftForm" ? t(copy.key, copy.values) : common(copy.key);
@@ -257,14 +350,32 @@ export function GiftForm({
           {formError}
         </Text>
       ) : null}
-      <PrimaryButton
-        label={submitLabel ?? t("action.save")}
-        onPress={submit}
-        disabled={submitting}
-      />
+      {onCancel ? (
+        <View style={styles.actions}>
+          <GhostButton
+            ref={cancelRef}
+            label={cancelLabel ?? t("action.cancel")}
+            onPress={onCancel}
+            disabled={submitting}
+          />
+          <PrimaryButton
+            label={submitLabel ?? t("action.save")}
+            onPress={submit}
+            disabled={submitting}
+          />
+        </View>
+      ) : (
+        <PrimaryButton
+          label={submitLabel ?? t("action.save")}
+          onPress={submit}
+          disabled={submitting}
+        />
+      )}
     </View>
   );
-}
+});
+
+GiftForm.displayName = "GiftForm";
 
 /** The stored amount back as editable text: `25000` → `"250"`, `25050` → `"250.50"`. */
 function initialPriceText(priceAmount: number | null | undefined): string {
@@ -289,6 +400,9 @@ type ChoiceOption<T extends string> = {
  *
  * `labelHidden` keeps the accessible name of the group while the visible heading
  * comes from the surrounding layer (the picker title is a header of its own).
+ *
+ * `disabled` shows the stored value without letting it change (a wish that is no
+ * longer open keeps its visibility frozen).
  *
  * `autoFocusValue` is only set by `VisibilityPicker`: when the dialog appears,
  * focus moves to the radio holding the current value instead of staying on the
@@ -320,7 +434,7 @@ export function ChoiceGroup<T extends string>({
   autoFocusValue?: T;
 }) {
   const rows = variant === "rows";
-  const autoFocusRef = useRef<ComponentRef<typeof Pressable>>(null);
+  const autoFocusRef = useRef<ViewInstance>(null);
 
   useEffect(() => {
     if (autoFocusValue === undefined) return;
@@ -390,6 +504,13 @@ export function ChoiceGroup<T extends string>({
 const styles = StyleSheet.create({
   form: {
     gap: spacing["grid-gap"],
+  },
+  /** Cancel on the left of the save button, the pair flush right (`DESIGN.md` → Форма). */
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing["grid-gap"] / 2,
   },
   descriptionInput: {
     minHeight: spacing["control-height"] * 2,

@@ -10,10 +10,64 @@ const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const gifts = vi.hoisted(() => ({ createGift: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
+const platform = vi.hoisted(() => ({ os: "android" as "android" | "web" }));
 const navigation = vi.hoisted(() => ({
   replace: vi.fn(),
   dismissTo: vi.fn(),
+  back: vi.fn(),
+  canGoBack: vi.fn(),
 }));
+/**
+ * The vendored React Navigation contract the discard guard sits on. The navigator
+ * keeps the `enabled` and the callback of the LAST COMMITTED render, so a state
+ * update in the same tick is too late: a blocked removal stays blocked until that
+ * value changes, and only the callback's `repeat` lets the action through at
+ * once. `router.back()`, `dismissTo` and `replace` all remove this screen, so the
+ * router mock asks this guard before a removal runs.
+ */
+const guard = vi.hoisted(() => {
+  type Action = { type: string; payload?: unknown };
+  type Callback = (event: { data: { action: Action }; repeat: () => void }) => void;
+
+  let enabled = false;
+  let callback: Callback | null = null;
+  const dispatched: Action[] = [];
+
+  function attemptRemove(action: Action): void {
+    if (!enabled) {
+      dispatched.push(action);
+      return;
+    }
+    if (!callback) throw new Error("removePrevented без callback");
+    callback({
+      data: { action },
+      repeat: () => {
+        // The real hook turns prevention off synchronously, so the replay runs.
+        enabled = false;
+        dispatched.push(action);
+      },
+    });
+  }
+
+  return {
+    register(nextEnabled: boolean, nextCallback: Callback): void {
+      enabled = nextEnabled;
+      callback = nextCallback;
+    },
+    useNavigation() {
+      return { dispatch: attemptRemove };
+    },
+    attemptRemove,
+    enabled: () => enabled,
+    /** The removals that really went through, in order. */
+    dispatched: () => dispatched,
+    reset(): void {
+      enabled = false;
+      callback = null;
+      dispatched.length = 0;
+    },
+  };
+});
 
 vi.mock("@/api/client", () => api);
 // The screen under test is the create flow only: the api module's own mapping is
@@ -21,6 +75,13 @@ vi.mock("@/api/client", () => api);
 vi.mock("@/api/my-gifts", () => gifts);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+// The discard dialog draws its close cross with `expo-symbols`; decorative.
+vi.mock("expo-symbols", async () => {
+  const React = await import("react");
+  return {
+    SymbolView: () => React.createElement("span", { "data-testid": "close-icon" }),
+  };
+});
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
   const { dirname, join } = await import("node:path");
@@ -66,6 +127,13 @@ vi.mock("expo-router", () => ({
   router: navigation,
   Stack: { Screen: () => null },
 }));
+// `usePreventRemove` is mocked to the navigator's own contract: every render
+// reports the current `enabled` and the callback a blocked removal calls, and the
+// router's removals go through `guard.attemptRemove`.
+vi.mock("expo-router/react-navigation", () => ({
+  usePreventRemove: guard.register,
+  useNavigation: guard.useNavigation,
+}));
 vi.mock("react-native", async () => {
   const React = await import("react");
   type ChildrenProps = { children?: React.ReactNode };
@@ -73,7 +141,15 @@ vi.mock("react-native", async () => {
     accessibilityRole?: string;
     accessibilityLiveRegion?: string;
   };
+  type ViewProps = ChildrenProps & {
+    ref?: React.Ref<HTMLDivElement>;
+    role?: string;
+    accessibilityRole?: string;
+    nativeID?: string;
+    tabIndex?: number;
+  };
   type PressableProps = ChildrenProps & {
+    ref?: React.Ref<HTMLButtonElement>;
     onPress?: () => void;
     disabled?: boolean;
     accessibilityRole?: string;
@@ -92,20 +168,69 @@ vi.mock("react-native", async () => {
     const role = accessibilityRole as React.AriaRole | undefined;
     return React.createElement("span", role ? { role } : null, children);
   }
-  function View({ children }: ChildrenProps) {
-    return React.createElement("div", null, children);
+  function View({ ref, children, role, accessibilityRole, nativeID, tabIndex }: ViewProps) {
+    const props: Record<string, unknown> = {
+      ref,
+      ...(role ?? accessibilityRole ? { role: role ?? accessibilityRole } : {}),
+      ...(nativeID ? { id: nativeID } : {}),
+      // The discard step's title is the layer's focus target on the web.
+      ...(tabIndex != null ? { tabIndex } : {}),
+    };
+    return React.createElement("div", props, children);
   }
   function ScrollView({ children }: ChildrenProps) {
     return React.createElement("div", null, children);
   }
+  /**
+   * `Modal` mounts its children only while visible, like the platform, reports the
+   * end of the fade-out through `onDismiss`, and takes Esc through `onRequestClose`.
+   */
+  function Modal({
+    visible,
+    children,
+    onDismiss,
+    onRequestClose,
+    "aria-labelledby": ariaLabelledBy,
+  }: ChildrenProps & {
+    visible?: boolean;
+    onDismiss?: () => void;
+    onRequestClose?: () => void;
+    "aria-labelledby"?: string;
+  }) {
+    // react-native-web keeps the layer until the fade-out ends and only then reports
+    // `onDismiss`; here the layer is gone in the same commit and the report follows.
+    const wasVisible = React.useRef(visible);
+    React.useEffect(() => {
+      if (wasVisible.current && !visible) onDismiss?.();
+      wasVisible.current = visible;
+    }, [visible, onDismiss]);
+    if (!visible) return null;
+    // react-native-web's Modal renders the dialog container itself and forwards
+    // `aria-labelledby` to it.
+    return React.createElement(
+      "div",
+      {
+        "data-testid": "modal",
+        role: "dialog",
+        "aria-modal": "true",
+        ...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {}),
+        onKeyDown: (event: React.KeyboardEvent) => {
+          if (event.key === "Escape") onRequestClose?.();
+        },
+      },
+      children,
+    );
+  }
   function Pressable({
+    ref,
     children,
     onPress,
     disabled,
     accessibilityLabel,
     accessibilityState,
   }: PressableProps) {
-    const props: React.ButtonHTMLAttributes<HTMLButtonElement> = {
+    const props: React.ComponentPropsWithRef<"button"> = {
+      ref,
       type: "button",
       ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
       ...(accessibilityState && "checked" in accessibilityState
@@ -141,9 +266,20 @@ vi.mock("react-native", async () => {
     ScrollView,
     TextInput,
     Pressable,
+    Modal,
+    // The discard guard asks the platform before it touches the browser's history.
+    Platform: {
+      get OS() {
+        return platform.os;
+      },
+    },
     // One column, like a phone in the browser (`DESIGN.md` → columns).
     useWindowDimensions: () => ({ width: 375, height: 800 }),
-    AccessibilityInfo: { announceForAccessibility: vi.fn() },
+    AccessibilityInfo: {
+      announceForAccessibility: vi.fn(),
+      setAccessibilityFocus: vi.fn(),
+    },
+    findNodeHandle: () => null,
   };
 });
 vi.mock("react-native-safe-area-context", async () => {
@@ -191,6 +327,19 @@ function signedIn() {
   );
 }
 
+/** The session is alive, but the sign-out request has no connection. */
+function signOutFails() {
+  api.apiRequest.mockImplementation((path: string) =>
+    Promise.resolve(
+      path === "/api/v1/session"
+        ? { ok: false, network: true }
+        : path === "/api/v1/me"
+          ? { ok: true, data: user }
+          : { ok: true, data: { signedOut: true } },
+    ),
+  );
+}
+
 let root: Root;
 let container: HTMLElement;
 
@@ -234,6 +383,49 @@ async function press(label: string) {
   });
 }
 
+/** A button inside the open confirm dialog: «Отмена» exists twice on a dirty form. */
+function dialogButton(label: string): HTMLButtonElement | undefined {
+  const dialog = container.querySelector('[role="dialog"]');
+  if (!dialog) return undefined;
+  return Array.from(dialog.querySelectorAll("button")).find((node) =>
+    (node.textContent ?? "").includes(label),
+  );
+}
+
+async function pressInDialog(label: string) {
+  const target = dialogButton(label);
+  expect(target, `кнопка «${label}» в диалоге`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+/** A dialog button by its accessible name: the close cross has no visible text. */
+function dialogLabeled(label: string): HTMLButtonElement | undefined {
+  const dialog = container.querySelector('[role="dialog"]');
+  if (!dialog) return undefined;
+  return Array.from(dialog.querySelectorAll("button")).find(
+    (node) => node.getAttribute("aria-label") === label,
+  );
+}
+
+async function pressInDialogLabeled(label: string) {
+  const target = dialogLabeled(label);
+  expect(target, `кнопка «${label}» в диалоге`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+/** Esc reaches the dialog's `onRequestClose`, as on react-native-web. */
+async function escapeDialog() {
+  await act(async () => {
+    container
+      .querySelector('[data-testid="modal"]')
+      ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+}
+
 async function mount() {
   await act(async () => {
     root.render(
@@ -244,9 +436,63 @@ async function mount() {
   });
 }
 
+/** A blocked navigation action, as the navigator hands it to `usePreventRemove`. */
+const goBack = { type: "GO_BACK" };
+
+/** System back: the navigator tries to remove the screen and the guard sees it. */
+async function systemBack() {
+  await act(async () => guard.attemptRemove(goBack));
+}
+
+/** The browser's own Back: it changes the entry first, then the page hears about it. */
+async function browserBack() {
+  await act(async () => {
+    window.history.back();
+  });
+}
+
+/**
+ * expo-router after the browser's Back has moved the page to the list: it
+ * restores that entry's saved screen, which removes this one, so the navigator
+ * asks the guard first. A refused removal puts the browser back on the form's
+ * entry — the "съеденный" exit this suite guards against.
+ */
+async function routerRestoresPreviousPage() {
+  const before = guard.dispatched().length;
+  await act(async () => {
+    guard.attemptRemove({ type: "POP" });
+  });
+  if (guard.dispatched().length > before) return;
+  await act(async () => {
+    window.history.go(1);
+  });
+}
+
+/**
+ * `/gifts/new` opened from the list in the browser: the form's entry sits on top
+ * of the list's. The guard's own copy is pushed on top when the form turns dirty.
+ */
+function listThenForm() {
+  platform.os = "web";
+  window.history.replaceState({ id: "list" }, "", "/");
+  window.history.pushState({ id: "form" }, "", "/gifts/new");
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
+  guard.reset();
+  platform.os = "android";
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
+  // A direct link left nothing to go back to: the screen replaces itself with the list.
+  navigation.canGoBack.mockReturnValue(false);
+  // A router call that removes this screen is a removal like the system back.
+  navigation.back.mockImplementation(() => guard.attemptRemove({ type: "GO_BACK" }));
+  navigation.dismissTo.mockImplementation((target: unknown) =>
+    guard.attemptRemove({ type: "POP_TO", payload: target }),
+  );
+  navigation.replace.mockImplementation((target: unknown) =>
+    guard.attemptRemove({ type: "REPLACE", payload: target }),
+  );
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -407,6 +653,490 @@ describe("новое желание: форма", () => {
     await act(async () => {
       submit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
+    expect(gifts.createGift).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("новое желание: отмена", () => {
+  it("чистая форма: сразу назад, без вопроса", async () => {
+    signedIn();
+    navigation.canGoBack.mockReturnValue(true);
+    await mount();
+
+    await press("Отмена");
+
+    expect(guard.dispatched()).toEqual([{ type: "GO_BACK" }]);
+    expect(navigation.back).toHaveBeenCalledTimes(1);
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+    expect(text()).not.toContain("Сохранить изменения?");
+  });
+
+  it("чистая форма без истории: уводит к списку", async () => {
+    signedIn();
+    await mount();
+
+    await press("Отмена");
+
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).toHaveBeenCalledWith({ pathname: "/" });
+    expect(guard.dispatched()).toEqual([{ type: "POP_TO", payload: { pathname: "/" } }]);
+    expect(text()).not.toContain("Сохранить изменения?");
+  });
+
+  it("после правки отмена спрашивает и не уводит", async () => {
+    signedIn();
+    navigation.canGoBack.mockReturnValue(true);
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Отмена");
+
+    expect(text()).toContain("Сохранить изменения?");
+    expect(field("Название").value).toBe("Наушники");
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("крестик «Закрыть» прячет вопрос и оставляет введённое", async () => {
+    signedIn();
+    navigation.canGoBack.mockReturnValue(true);
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Отмена");
+    await pressInDialogLabeled("Закрыть");
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(field("Название").value).toBe("Наушники");
+    expect(button("Добавить желание")).toBeDefined();
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("«Не сохранять» уводит назад и не спрашивает снова", async () => {
+    signedIn();
+    navigation.canGoBack.mockReturnValue(true);
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Отмена");
+    // The navigator still holds the guarded registration of the last render: the
+    // dialog's answer must not be stopped by it a second time.
+    expect(guard.enabled()).toBe(true);
+    await pressInDialog("Не сохранять");
+
+    expect(guard.dispatched()).toEqual([{ type: "GO_BACK" }]);
+    expect(navigation.back).toHaveBeenCalledTimes(1);
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(gifts.createGift).not.toHaveBeenCalled();
+  });
+
+  it("«Не сохранять» без истории уводит к списку и не спрашивает снова", async () => {
+    signedIn();
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Отмена");
+    expect(guard.enabled()).toBe(true);
+    await pressInDialog("Не сохранять");
+
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).toHaveBeenCalledWith({ pathname: "/" });
+    expect(guard.dispatched()).toEqual([{ type: "POP_TO", payload: { pathname: "/" } }]);
+    expect(text()).not.toContain("Сохранить изменения?");
+  });
+
+  it("пока запрос идёт, отмена не спрашивает и не уводит", async () => {
+    signedIn();
+    navigation.canGoBack.mockReturnValue(true);
+    gifts.createGift.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Добавить желание");
+    await press("Отмена");
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("сохранение уводит к списку с toast и без вопроса", async () => {
+    signedIn();
+    navigation.canGoBack.mockReturnValue(true);
+    gifts.createGift.mockResolvedValue({ ok: true, gift: created });
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Добавить желание");
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_created" },
+    });
+    // The saved draft leaves without a question, whatever the guard last saw.
+    expect(guard.dispatched()).toEqual([
+      { type: "POP_TO", payload: { pathname: "/", params: { toast: "gift_created" } } },
+    ]);
+    expect(navigation.back).not.toHaveBeenCalled();
+  });
+
+  it("истёкшая сессия уводит на вход, не спрашивая о черновике", async () => {
+    signedIn();
+    navigation.canGoBack.mockReturnValue(true);
+    gifts.createGift.mockResolvedValue({ ok: false, code: "UNAUTHENTICATED", message: "" });
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Добавить желание");
+
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/gifts/new", reason: "session_expired" },
+    });
+    // The hand-over is our own exit: it goes through, it does not ask.
+    expect(text()).not.toContain("Сохранить изменения?");
+  });
+
+  it("истёкшая сессия без связи: вход не открылся, черновик снова под защитой", async () => {
+    signOutFails();
+    gifts.createGift.mockResolvedValue({ ok: false, code: "UNAUTHENTICATED", message: "" });
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Добавить желание");
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(navigation.replace).not.toHaveBeenCalled();
+    // The hand-over never happened, so the form must ask about the draft again.
+    expect(guard.enabled()).toBe(true);
+    await systemBack();
+    expect(text()).toContain("Сохранить изменения?");
+    expect(guard.dispatched()).toEqual([]);
+  });
+});
+
+describe("новое желание: системное «назад»", () => {
+  it("чистая форма: возврат не перехватывается", async () => {
+    signedIn();
+    await mount();
+
+    expect(guard.enabled()).toBe(false);
+  });
+
+  it("после правки возврат спрашивает и не уводит", async () => {
+    signedIn();
+    await mount();
+
+    await type("Название", "Наушники");
+    expect(guard.enabled()).toBe(true);
+
+    await systemBack();
+
+    expect(text()).toContain("Сохранить изменения?");
+    expect(field("Название").value).toBe("Наушники");
+    expect(guard.dispatched()).toEqual([]);
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("«Не сохранять» повторяет ровно тот переход, что просил навигатор", async () => {
+    signedIn();
+    await mount();
+
+    await type("Название", "Наушники");
+    await systemBack();
+    await pressInDialog("Не сохранять");
+
+    expect(guard.dispatched()).toEqual([goBack]);
+    // The action is the way out: the screen does not pick another one.
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+    expect(gifts.createGift).not.toHaveBeenCalled();
+    expect(text()).not.toContain("Сохранить изменения?");
+  });
+
+  it("крестик «Закрыть» не повторяет переход и оставляет введённое", async () => {
+    signedIn();
+    await mount();
+
+    await type("Название", "Наушники");
+    await systemBack();
+    await pressInDialogLabeled("Закрыть");
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(field("Название").value).toBe("Наушники");
+    expect(guard.dispatched()).toEqual([]);
+    expect(navigation.back).not.toHaveBeenCalled();
+  });
+
+  it("Esc возвращает к форме, не повторяя переход", async () => {
+    signedIn();
+    await mount();
+
+    await type("Название", "Наушники");
+    await systemBack();
+    await escapeDialog();
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(field("Название").value).toBe("Наушники");
+    expect(guard.dispatched()).toEqual([]);
+    expect(navigation.back).not.toHaveBeenCalled();
+  });
+
+  it("«Сохранить» сохраняет, уводит к списку с toast и не повторяет заблокированный переход", async () => {
+    signedIn();
+    gifts.createGift.mockResolvedValue({ ok: true, gift: created });
+    await mount();
+
+    await type("Название", "Наушники");
+    await systemBack();
+    await pressInDialog("Сохранить");
+
+    expect(gifts.createGift).toHaveBeenCalledTimes(1);
+    expect(gifts.createGift).toHaveBeenCalledWith({
+      title: "Наушники",
+      description: null,
+      linkUrl: null,
+      priceAmount: null,
+      priceCurrency: null,
+      visibility: "PUBLIC",
+    });
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_created" },
+    });
+    // The save has its own way out; the blocked back action is dropped.
+    expect(guard.dispatched()).toEqual([
+      { type: "POP_TO", payload: { pathname: "/", params: { toast: "gift_created" } } },
+    ]);
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(text()).not.toContain("Сохранить изменения?");
+  });
+
+  it("«Сохранить» с ошибкой проверки закрывает диалог и оставляет форму с ошибкой", async () => {
+    signedIn();
+    await mount();
+
+    // The description makes the draft dirty while the title stays empty.
+    await type("Описание (необязательно)", "Подарок");
+    await press("Отмена");
+    await pressInDialog("Сохранить");
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(fieldText("Название")).toContain("Напишите, что вы хотите.");
+    expect(field("Описание (необязательно)").value).toBe("Подарок");
+    expect(gifts.createGift).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("«Сохранить» с ошибкой сервера закрывает диалог и оставляет форму открытой", async () => {
+    signedIn();
+    gifts.createGift.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await type("Название", "Наушники");
+    await systemBack();
+    await pressInDialog("Сохранить");
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(field("Название").value).toBe("Наушники");
+    expect(button("Добавить желание")).toBeDefined();
+    expect(guard.dispatched()).toEqual([]);
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("пока сохранение идёт, возврат не перехватывается", async () => {
+    signedIn();
+    gifts.createGift.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Добавить желание");
+
+    expect(guard.enabled()).toBe(false);
+  });
+});
+
+/**
+ * Story 2.2 on the web (`EXPERIENCE.md` → Esc / scrim / системное «назад»):
+ * `usePreventRemove` never sees the browser's Back, because the URL changes
+ * before the navigator is told, so the guard keeps the page on the form itself.
+ * These tests drive `window.history` as the browser does and check what the user
+ * ends up with: the question, the draft, the address bar.
+ */
+describe("новое желание: кнопка «назад» браузера", () => {
+  it("после правки возврат браузера спрашивает и остаётся на форме", async () => {
+    signedIn();
+    listThenForm();
+    await mount();
+    await type("Название", "Наушники");
+
+    await browserBack();
+
+    expect(text()).toContain("Сохранить изменения?");
+    expect(field("Название").value).toBe("Наушники");
+    // The address bar still shows the form: the draft is not thrown away.
+    expect(window.location.pathname).toBe("/gifts/new");
+    expect(navigation.back).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("«Не сохранять» после возврата браузера уводит на предыдущую страницу", async () => {
+    signedIn();
+    listThenForm();
+    await mount();
+    await type("Название", "Наушники");
+    await browserBack();
+
+    await pressInDialog("Не сохранять");
+
+    expect(window.location.pathname).toBe("/");
+    expect(text()).not.toContain("Сохранить изменения?");
+    // The way out is the browser's own Back replayed, not a second navigation.
+    expect(guard.dispatched()).toEqual([]);
+    expect(gifts.createGift).not.toHaveBeenCalled();
+  });
+
+  it("крестик оставляет форму с черновиком, второй возврат снова спрашивает", async () => {    signedIn();
+    listThenForm();
+    await mount();
+    await type("Название", "Наушники");
+    await browserBack();
+
+    await pressInDialogLabeled("Закрыть");
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(field("Название").value).toBe("Наушники");
+    expect(window.location.pathname).toBe("/gifts/new");
+
+    await browserBack();
+
+    // The entry the guard keeps on the page is still there for the next Back.
+    expect(text()).toContain("Сохранить изменения?");
+    expect(field("Название").value).toBe("Наушники");
+    expect(window.location.pathname).toBe("/gifts/new");
+  });
+
+  it("«Сохранить» после возврата браузера сохраняет и не повторяет возврат", async () => {
+    signedIn();
+    listThenForm();
+    gifts.createGift.mockResolvedValue({ ok: true, gift: created });
+    await mount();
+    await type("Название", "Наушники");
+    await browserBack();
+
+    await pressInDialog("Сохранить");
+
+    expect(gifts.createGift).toHaveBeenCalledTimes(1);
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_created" },
+    });
+    // The blocked Back is dropped: the save's own way out is the only navigation.
+    expect(guard.dispatched()).toEqual([
+      { type: "POP_TO", payload: { pathname: "/", params: { toast: "gift_created" } } },
+    ]);
+    expect(text()).not.toContain("Сохранить изменения?");
+  });
+
+  it("«Не сохранять» после закрытого «Отменой» вопроса уводит без повторного вопроса", async () => {
+    signedIn();
+    listThenForm();
+    await mount();
+    await type("Название", "Наушники");
+
+    // «Отмена» asks, the cross closes the step and keeps the draft.
+    await press("Отмена");
+    await pressInDialogLabeled("Закрыть");
+    expect(text()).not.toContain("Сохранить изменения?");
+
+    // The system back asks again — correctly — and the answer must leave for the
+    // list even though the step had already been opened and closed once.
+    await browserBack();
+    expect(text()).toContain("Сохранить изменения?");
+
+    await pressInDialog("Не сохранять");
+    expect(window.location.pathname).toBe("/");
+    expect(window.history.state).toMatchObject({ id: "list" });
+
+    // The list's own screen replaces the form: that removal is the accepted way
+    // out and must not be stopped by the guard of the screen that is leaving.
+    await routerRestoresPreviousPage();
+
+    expect(text(), "вопрос не задан повторно").not.toContain("Сохранить изменения?");
+    expect(window.location.pathname).toBe("/");
+    expect(field("Название").value).toBe("Наушники");
+    expect(gifts.createGift).not.toHaveBeenCalled();
+  });
+
+  it("чистая форма: возврат браузера уходит на список без вопроса", async () => {
+    signedIn();
+    listThenForm();
+    const entries = window.history.length;
+    await mount();
+
+    // Nothing to protect: the guard added no entry of its own.
+    expect(window.history.length).toBe(entries);
+
+    await browserBack();
+
+    expect(text()).not.toContain("Сохранить изменения?");
+    expect(window.location.pathname).toBe("/");
+  });
+});
+
+/**
+ * `DESIGN.md` → Мышь и клавиатура: the step takes focus on its title when it
+ * opens and gives it back to «Отмена» when it closes (`EXPERIENCE.md` → Esc /
+ * scrim / системное «назад»).
+ */
+describe("новое желание: фокус в вопросе о черновике", () => {
+  // The layer moves DOM focus on the web; on a phone `Modal` owns it.
+  beforeEach(() => {
+    platform.os = "web";
+  });
+
+  it("открытие уводит фокус в диалог, крестик возвращает его на «Отмена»", async () => {
+    signedIn();
+    navigation.canGoBack.mockReturnValue(true);
+    await mount();
+
+    await type("Название", "Наушники");
+    const cancel = button("Отмена");
+    // A mouse press focuses the control before it opens the step.
+    await act(async () => cancel?.focus());
+    await press("Отмена");
+
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.contains(document.activeElement)).toBe(true);
+
+    await pressInDialogLabeled("Закрыть");
+
+    expect(document.activeElement).toBe(cancel);
+    expect(field("Название").value).toBe("Наушники");
+  });
+
+  it("двойной тап «Сохранить» в диалоге шлёт один createGift", async () => {
+    signedIn();
+    gifts.createGift.mockResolvedValue({ ok: true, gift: created });
+    await mount();
+
+    await type("Название", "Наушники");
+    await systemBack();
+
+    const confirm = dialogButton("Сохранить");
+    expect(confirm).toBeDefined();
+    // Both taps land before the dialog can leave the screen.
+    await act(async () => {
+      confirm?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      confirm?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
     expect(gifts.createGift).toHaveBeenCalledTimes(1);
   });
 });

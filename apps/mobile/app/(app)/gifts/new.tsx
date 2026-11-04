@@ -7,9 +7,16 @@ import { useTranslations } from "use-intl";
 import { createGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { useDiscardGuard } from "@/session/use-discard-guard";
 import { colors, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
-import { GiftForm, type GiftFormServerError, type GiftFormValues } from "@/ui/gift-form";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
+import {
+  GiftForm,
+  type GiftFormHandle,
+  type GiftFormServerError,
+  type GiftFormValues,
+} from "@/ui/gift-form";
 import { ToastHost } from "@/ui/toast";
 
 /**
@@ -25,6 +32,14 @@ import { ToastHost } from "@/ui/toast";
  * A successful save leaves for the list with `?toast=gift_created`: this screen
  * unmounts on the way back, so a toast set here would never be seen (the same
  * hand-over as the login screen's `?reason=`).
+ *
+ * «Отмена» leaves immediately on a clean form and asks «Сохранить изменения?»
+ * once the draft differs from what the screen opened with (`EXPERIENCE.md` →
+ * Esc / scrim / системное «назад»). The same step offers «Сохранить», which runs
+ * the form's own submit, and «Не сохранять», which leaves at once; the cross,
+ * Esc and the scrim return to the form. The system back is caught by
+ * `useDiscardGuard` and asks the same question. A save never asks: it leaves
+ * through the list's toast param.
  */
 export default function NewGiftScreen() {
   const t = useTranslations("app");
@@ -39,9 +54,20 @@ export default function NewGiftScreen() {
   const [serverError, setServerError] = useState<GiftFormServerError | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // `GiftForm` reports only flips, so this mirrors «черновик отличается от исходного».
+  const [dirty, setDirty] = useState(false);
+  // «Сохранить изменения?» is shown before a dirty draft is thrown away.
+  const [discardOpen, setDiscardOpen] = useState(false);
+  // Bumped when the dialog's «Сохранить» asks the form to run its own submit.
+  const [submitRequest, setSubmitRequest] = useState(0);
   // The disabled button follows a state update, which flushes after the handler:
   // a second tap in the same frame must not send a second POST.
   const inFlight = useRef(false);
+  // The form's «Отмена» opened the question, so focus goes back to it afterwards.
+  const formRef = useRef<GiftFormHandle>(null);
+  // System back (Android hardware key, swipe) asks before a dirty draft is lost.
+  // Our own ways out open the guard's synchronous bypass instead of touching this.
+  const guard = useDiscardGuard(dirty && !submitting, () => setDiscardOpen(true));
 
   useEffect(() => {
     if (auth.state.status === "anonymous") {
@@ -70,7 +96,9 @@ export default function NewGiftScreen() {
     if (result.ok) {
       // `dismissTo` pops back to the list without leaving a duplicate behind, and
       // replaces this screen when a direct link left nothing to pop. The list shows
-      // the confirmation from the param and refetches on focus.
+      // the confirmation from the param and refetches on focus. The saved draft is
+      // gone with the request, so this exit must never be met with the question.
+      guard.allowNextLeave();
       router.dismissTo({ pathname: "/", params: { toast: "gift_created" } });
       return;
     }
@@ -84,12 +112,16 @@ export default function NewGiftScreen() {
     }
     if (result.code === "UNAUTHENTICATED") {
       // Same as «Мой вишлист»: clear the dead session and let the guard above open
-      // login with the reason and a return to this screen.
+      // login with the reason and a return to this screen. Login owns the way out,
+      // so the draft guard must not ask about a draft that is already gone.
+      guard.allowNextLeave();
       setSessionExpired(true);
       const signedOut = await auth.signOut();
       // A failed sign-out leaves the screen mounted: report it like any other
       // network failure instead of silently pretending the session is gone.
       if (!signedOut.ok) {
+        // No hand-over happened: guard the still mounted form again.
+        guard.revokeLeave();
         setSessionExpired(false);
         setToast(t("form.network"));
       }
@@ -107,6 +139,47 @@ export default function NewGiftScreen() {
     void save(values);
   }
 
+  /** Leaves the form: back when something is behind, the list otherwise. */
+  function leave() {
+    // The user accepted the loss (or lost nothing): the guard lets this exit pass.
+    guard.allowNextLeave();
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.dismissTo({ pathname: "/" });
+  }
+
+  function cancel() {
+    // A clean form loses nothing: no dialog (EXPERIENCE → Esc / scrim / «назад»).
+    if (!dirty) {
+      leave();
+      return;
+    }
+    setDiscardOpen(true);
+  }
+
+  /** «Сохранить»: the form's own submit runs; a successful save leaves by itself. */
+  function saveDiscard() {
+    setDiscardOpen(false);
+    // The blocked system-back action must not replay on top of the save.
+    guard.cancel();
+    setSubmitRequest((value) => value + 1);
+  }
+
+  /** «Не сохранять»: the draft goes and the way out the user asked for is repeated. */
+  function leaveDiscard() {
+    setDiscardOpen(false);
+    // A system back repeats its own action; the form's «Отмена» opened the step without one.
+    if (!guard.proceed()) leave();
+  }
+
+  /** Cross, Esc, scrim and Android back: back to the form, draft kept. */
+  function closeDiscard() {
+    setDiscardOpen(false);
+    guard.cancel();
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ title: giftForm("pageTitle.create", { brand }) }} />
@@ -121,16 +194,33 @@ export default function NewGiftScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <GiftForm
+            ref={formRef}
             submitting={submitting}
             onSubmit={submit}
             submitLabel={giftForm("action.create")}
             serverError={serverError}
+            submitRequest={submitRequest}
+            onDirtyChange={setDirty}
+            onCancel={cancel}
           />
         </ScrollView>
       </View>
       {toast ? (
         <ToastHost message={toast} onDismiss={() => setToast(null)} />
       ) : null}
+      <ConfirmDialog
+        variant="discard"
+        visible={discardOpen}
+        title={giftForm("discard.title")}
+        confirmLabel={giftForm("discard.confirm")}
+        declineLabel={giftForm("discard.decline")}
+        closeLabel={t("toast.close")}
+        busy={submitting}
+        onConfirm={saveDiscard}
+        onDecline={leaveDiscard}
+        onClose={closeDiscard}
+        onClosed={() => formRef.current?.focusCancel()}
+      />
     </SafeAreaView>
   );
 }

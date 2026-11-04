@@ -57,6 +57,12 @@ const navigation = vi.hoisted(() => {
       // The list is the only route dismissed to in these flows.
       commit([normalize(target)]);
     },
+    back() {
+      if (stack.length > 1) commit(stack.slice(0, -1));
+    },
+    canGoBack() {
+      return stack.length > 1;
+    },
     setParams(next: Params) {
       const top = stack[stack.length - 1];
       if (!top) return;
@@ -155,6 +161,12 @@ vi.mock("expo-router", async () => {
     },
   };
 });
+// The forms' discard guard blocks the system back; these flows cover «Отмена» and
+// the save, which never pass through it.
+vi.mock("expo-router/react-navigation", () => ({
+  usePreventRemove: () => undefined,
+  useNavigation: () => ({ dispatch: vi.fn() }),
+}));
 vi.mock("react-native", async () => {
   const React = await import("react");
   type ChildrenProps = { children?: React.ReactNode };
@@ -216,6 +228,11 @@ vi.mock("react-native", async () => {
   function ScrollView({ children }: ChildrenProps) {
     return React.createElement("div", null, children);
   }
+  /** `Modal` mounts its children only while visible, like the platform. */
+  function Modal({ visible, children }: ChildrenProps & { visible?: boolean }) {
+    if (!visible) return null;
+    return React.createElement("div", { "data-testid": "modal" }, children);
+  }
   function Pressable({
     children,
     onPress,
@@ -255,19 +272,6 @@ vi.mock("react-native", async () => {
     return React.createElement("input", props);
   }
 
-  // The owner list always mounts the visibility dialog; `visible={false}` keeps it
-  // out of the tree here, so the flows never open it.
-  function Modal({
-    visible,
-    children,
-  }: {
-    visible?: boolean;
-    children?: React.ReactNode;
-  }) {
-    if (!visible) return null;
-    return React.createElement("div", { role: "dialog" }, children);
-  }
-
   return {
     StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
     Text,
@@ -276,9 +280,10 @@ vi.mock("react-native", async () => {
     TextInput,
     Pressable,
     Modal,
+    // These flows cover the native path: the browser guard stays out of the window.
+    Platform: { OS: "android" as const },
     // One column, like a phone in the browser (`DESIGN.md` → columns).
     useWindowDimensions: () => ({ width: 375, height: 800 }),
-    Platform: { OS: "web" },
     AccessibilityInfo: { announceForAccessibility: vi.fn(), setAccessibilityFocus: vi.fn() },
     findNodeHandle: () => null,
   };
@@ -506,6 +511,36 @@ describe("поток: создание желания из списка", () => 
     expect(gifts.fetchMyGifts).toHaveBeenCalledTimes(2);
     expect(text()).toContain("Наушники");
     expect(text()).toContain("Свитер");
+  });
+});
+
+/**
+ * The discard step's «Сохранить» runs the form's own submit, so the same create
+ * flow works from the dialog: the draft is saved and the list shows the notice
+ * instead of the unsaved draft being dropped.
+ */
+describe("поток: сохранение из шага «Сохранить изменения?»", () => {
+  it("форма → «Отмена» → «Сохранить» в диалоге → createGift → список с «Добавлено в вишлист»", async () => {
+    const created = gift({ id: "g2", title: "Наушники" });
+    signedIn();
+    gifts.fetchMyGifts
+      .mockResolvedValueOnce(listAnswer([]))
+      .mockResolvedValue(listAnswer([created]));
+    gifts.createGift.mockResolvedValue({ ok: true, gift: created });
+
+    await mount();
+    await press("Добавить желание");
+    await type("Название", "Наушники");
+    await press("Отмена");
+
+    expect(text()).toContain("Сохранить изменения?");
+    await press("Сохранить");
+    await flush();
+
+    expect(gifts.createGift).toHaveBeenCalledTimes(1);
+    expect(navigation.pathname()).toBe("/");
+    expect(text()).toContain("Добавлено в вишлист");
+    expect(text()).toContain("Наушники");
   });
 });
 

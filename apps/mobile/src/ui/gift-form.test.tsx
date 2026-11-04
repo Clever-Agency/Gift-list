@@ -27,7 +27,7 @@ type AppCatalog = {
       visibilityHint: Record<string, string>;
       visibilityLocked: string;
     };
-    action: { create: string; save: string };
+    action: { create: string; save: string; cancel: string };
     error: {
       titleRequired: string;
       titleTooLong: string;
@@ -253,6 +253,12 @@ function isChecked(label: string): boolean {
 }
 
 function submitButton(label: string = form.action.save): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+    (node) => node.getAttribute("aria-label") === label,
+  );
+}
+
+function cancelButton(label: string = form.action.cancel): HTMLButtonElement | undefined {
   return Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
     (node) => node.getAttribute("aria-label") === label,
   );
@@ -521,5 +527,87 @@ describe("GiftForm: отправка", () => {
     await press(form.action.create);
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GiftForm: черновик", () => {
+  it("onDirtyChange: true после правки и false после возврата к исходному", async () => {
+    const onDirtyChange = vi.fn();
+    await mount({ initialValues: { title: "Свитер" }, onDirtyChange });
+
+    // The opening values are not an edit: nothing is reported on mount.
+    expect(onDirtyChange).not.toHaveBeenCalled();
+
+    await type(form.field.title, "Свитер с шарфом");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(onDirtyChange).toHaveBeenCalledTimes(1);
+
+    await type(form.field.title, "Свитер");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    expect(onDirtyChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("пробелы вокруг значения не делают форму грязной", async () => {
+    const onDirtyChange = vi.fn();
+    await mount({ initialValues: { title: "Свитер" }, onDirtyChange });
+
+    await type(form.field.title, "  Свитер  ");
+    expect(onDirtyChange).not.toHaveBeenCalled();
+
+    await type(form.field.title, "Шарф");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("выбор видимости и валюты — тоже правка", async () => {
+    const onDirtyChange = vi.fn();
+    await mount({ initialValues: { title: "Свитер" }, onDirtyChange });
+
+    await press(visibilityLabel.SECRET);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    await type(form.field.price, "250");
+    await press("RUB");
+    // The form was already dirty: only the flip is reported, not every keystroke.
+    expect(onDirtyChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GiftForm: отмена", () => {
+  it("без onCancel кнопки отмены нет, форма как раньше", async () => {
+    await mount();
+
+    expect(cancelButton()).toBeUndefined();
+    expect(text()).not.toContain(form.action.cancel);
+    expect(submitButton()).toBeDefined();
+  });
+
+  it("с onCancel рядом с сохранением появляется «Отмена» и зовёт обработчик", async () => {
+    const onCancel = vi.fn();
+    await mount({ onCancel });
+
+    const cancel = cancelButton();
+    expect(cancel).toBeDefined();
+    expect(cancel?.textContent).toBe(form.action.cancel);
+    expect(submitButton()).toBeDefined();
+
+    await press(form.action.cancel);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancelLabel заменяет подпись отмены", async () => {
+    await mount({ onCancel: vi.fn(), cancelLabel: "Назад" });
+
+    expect(cancelButton("Назад")).toBeDefined();
+    expect(cancelButton()).toBeUndefined();
+    expect(submitButton()).toBeDefined();
+  });
+
+  it("во время сохранения отмена не срабатывает", async () => {
+    const onCancel = vi.fn();
+    await mount({ submitting: true, onCancel });
+
+    expect(cancelButton()).toBeDefined();
+    await press(form.action.cancel);
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });

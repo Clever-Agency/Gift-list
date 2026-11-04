@@ -13,13 +13,13 @@ alwaysApply: false
 ```tsx
 // плохо
 export default () => <Screen />;
-const GiftCard = () => <View />;
+const WishCard = () => <View />;
 const GhostButton = forwardRef((props, ref) => <Pressable ref={ref} {...props} />);
 const MemoList = memo(() => <View />);
 
 // хорошо
 export default function Screen() {…}
-export function GiftCard() {…}
+export function WishCard() {…}
 export const GhostButton = forwardRef(function GhostButton(props, ref) {…});
 const MemoList = memo(function MemoList() {…});
 ```
@@ -27,8 +27,8 @@ const MemoList = memo(function MemoList() {…});
 Сразу после компонента задайте `displayName`, равный имени функции (для generic — имени без параметров): прод-сборка минифицирует terser и переименовывает `function WishCard` в `function a`, поэтому без строки React DevTools показывает `Anonymous`.
 
 ```tsx
-export function GiftCard() {…}
-GiftCard.displayName = "GiftCard";
+export function WishCard() {…}
+WishCard.displayName = "WishCard";
 
 export const GhostButton = forwardRef(function GhostButton(props, ref) {…});
 GhostButton.displayName = "GhostButton";

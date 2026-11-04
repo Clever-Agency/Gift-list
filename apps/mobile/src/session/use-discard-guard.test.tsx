@@ -258,6 +258,35 @@ describe("useDiscardGuard: браузерная кнопка «назад»", ()
     expect(navigation.dispatch).not.toHaveBeenCalled();
   });
 
+  it("после закрытого вопроса «назад» → «Не сохранять» уходит без повторного вопроса", async () => {
+    platform.os = "web";
+    window.history.replaceState({ id: "list" }, "", "/");
+    window.history.pushState({ id: "form" }, "", "/gifts/new");
+    await render(true);
+
+    // «Отмена» opened the question and the cross closed it: the draft is kept.
+    await act(async () => guard().cancel());
+
+    await act(async () => window.history.back());
+    expect(blocked).toHaveBeenCalledTimes(1);
+    expect(window.location.pathname).toBe("/gifts/new");
+
+    let repeated = false;
+    await act(async () => {
+      repeated = guard().proceed();
+    });
+    expect(repeated).toBe(true);
+    expect(window.location.pathname).toBe("/");
+
+    // The Back replays into a real page change, so expo-router restores the list
+    // and removes this screen through `usePreventRemove`. That removal is the
+    // way out the user has just accepted: it must go through, not block again.
+    await act(async () => prevent.attemptRemove({ type: "RESET" }));
+
+    expect(blocked, "вопрос не задан повторно").toHaveBeenCalledTimes(1);
+    expect(navigation.dispatch).toHaveBeenCalledWith({ type: "RESET" });
+  });
+
   it("нативная платформа: историю браузера не трогает", async () => {
     window.history.replaceState({ id: "list" }, "", "/");
     window.history.pushState({ id: "form" }, "", "/gifts/new");

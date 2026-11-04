@@ -15,7 +15,10 @@ import { useBrowserBackGuard } from "@/session/use-browser-back-guard";
  *
  * `proceed()` replays the action the user asked for — the navigator's blocked
  * removal or the browser's Back — so the way out stays exactly what they meant;
- * `cancel()` drops it when the screen decides the draft is kept after all.
+ * `cancel()` drops it when the screen decides the draft is kept after all. The
+ * browser's replay removes this screen through the router, so it arms the same
+ * bypass as an own exit: otherwise the router would stop its own restoration and
+ * ask the question a second time.
  *
  * The screen's own deliberate exits (saved, discarded, clean form, expired
  * session) call `allowNextLeave()` right before navigating: the navigator reads
@@ -55,7 +58,16 @@ export function useDiscardGuard(
       repeat();
       return true;
     }
-    return browser.proceed();
+    // The browser's Back is replayed by moving the page to the entry before the
+    // form, and the navigator reads that move as a removal of this screen. The
+    // same bypass every own exit uses lets the removal through: without it the
+    // router stops it, puts the browser back on the form and asks the question
+    // again. `proceed()` answers `false` when no Back waits, so the screen's own
+    // way out takes over and arms the bypass itself.
+    bypass.current = true;
+    if (browser.proceed()) return true;
+    bypass.current = false;
+    return false;
   }
 
   function cancel(): void {

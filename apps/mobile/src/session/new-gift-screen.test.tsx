@@ -452,6 +452,23 @@ async function browserBack() {
 }
 
 /**
+ * expo-router after the browser's Back has moved the page to the list: it
+ * restores that entry's saved screen, which removes this one, so the navigator
+ * asks the guard first. A refused removal puts the browser back on the form's
+ * entry — the "съеденный" exit this suite guards against.
+ */
+async function routerRestoresPreviousPage() {
+  const before = guard.dispatched().length;
+  await act(async () => {
+    guard.attemptRemove({ type: "POP" });
+  });
+  if (guard.dispatched().length > before) return;
+  await act(async () => {
+    window.history.go(1);
+  });
+}
+
+/**
  * `/gifts/new` opened from the list in the browser: the form's entry sits on top
  * of the list's. The guard's own copy is pushed on top when the form turns dirty.
  */
@@ -1024,6 +1041,36 @@ describe("новое желание: кнопка «назад» браузер�
       { type: "POP_TO", payload: { pathname: "/", params: { toast: "gift_created" } } },
     ]);
     expect(text()).not.toContain("Сохранить изменения?");
+  });
+
+  it("«Не сохранять» после закрытого «Отменой» вопроса уводит без повторного вопроса", async () => {
+    signedIn();
+    listThenForm();
+    await mount();
+    await type("Название", "Наушники");
+
+    // «Отмена» asks, the cross closes the step and keeps the draft.
+    await press("Отмена");
+    await pressInDialogLabeled("Закрыть");
+    expect(text()).not.toContain("Сохранить изменения?");
+
+    // The system back asks again — correctly — and the answer must leave for the
+    // list even though the step had already been opened and closed once.
+    await browserBack();
+    expect(text()).toContain("Сохранить изменения?");
+
+    await pressInDialog("Не сохранять");
+    expect(window.location.pathname).toBe("/");
+    expect(window.history.state).toMatchObject({ id: "list" });
+
+    // The list's own screen replaces the form: that removal is the accepted way
+    // out and must not be stopped by the guard of the screen that is leaving.
+    await routerRestoresPreviousPage();
+
+    expect(text(), "вопрос не задан повторно").not.toContain("Сохранить изменения?");
+    expect(window.location.pathname).toBe("/");
+    expect(field("Название").value).toBe("Наушники");
+    expect(gifts.createGift).not.toHaveBeenCalled();
   });
 
   it("чистая форма: возврат браузера уходит на список без вопроса", async () => {

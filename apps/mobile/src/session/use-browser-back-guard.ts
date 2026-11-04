@@ -42,11 +42,13 @@ function asState(value: unknown): EntryState {
  * again, so the next Back stops here too, while the entry count stays the same
  * (`pushState` drops the forward entries). «Не сохранять» replays the Back by
  * `go(-2)`: one step to the form's own entry, the second to the page before it.
- * The cross keeps both entries, so asking again costs nothing. A reload or a
- * closed tab goes through `beforeunload` and the browser's native question, but
- * only while the form is guarded: an own exit drops that listener before it moves
- * the browser, so crossing documents cannot raise the browser's question on top
- * of the answer the user has just given.
+ * The copy is recognised by where the browser is, not by its state: the router
+ * rewrites the entry it restores and keeps only its own id there. The cross keeps
+ * both entries, so asking again costs nothing. A reload or a closed tab goes
+ * through `beforeunload` and the browser's native question, but only while the
+ * form is guarded: an own exit drops that listener before it moves the browser,
+ * so crossing documents cannot raise the browser's question on top of the answer
+ * the user has just given.
  *
  * Android and iOS never touch `window`: the navigator's own guard asks there.
  */
@@ -58,6 +60,10 @@ export function useBrowserBackGuard(
   const pending = useRef(false);
   // One of the screen's own ways out is under way (save, «Не сохранять», expired session).
   const leaving = useRef(false);
+  // The entry the browser sits on is the guard's own copy, not the form's entry.
+  // The copy repeats the form's state, so the router may rewrite it (and drop
+  // `SENTINEL`): the position, not the state, is what tells the two apart.
+  const onCopy = useRef(false);
   // The listener outlives renders, so it reads the screen's latest callback.
   const blocked = useRef(onBlocked);
   // While the guard is open, drops and re-arms its `beforeunload` listener; null
@@ -85,6 +91,7 @@ export function useBrowserBackGuard(
 
     function pushCopy(): void {
       history.pushState({ ...current.state, [SENTINEL]: true }, "", current.url);
+      onCopy.current = true;
     }
 
     function onPopState(): void {
@@ -92,8 +99,12 @@ export function useBrowserBackGuard(
       if (leaving.current) return;
       const state = asState(history.state);
       // Already on the copy (the guard pushed it on the last blocked Back).
-      if (state[SENTINEL] === true) return;
+      if (state[SENTINEL] === true) {
+        onCopy.current = true;
+        return;
+      }
       // The traversal went past the form's entry: that way out is the router's.
+      onCopy.current = false;
       if (!standsOnForm(state)) return;
       pending.current = true;
       // Push the copy again so this Back is consumed and the next one stops here too.
@@ -132,7 +143,9 @@ export function useBrowserBackGuard(
       // must go now: left on top, it would make their next Back go nowhere.
       // Our own exits leave it to the router's `go(-1)`, which consumes it and
       // skips no page; popping it here as well would jump one screen too far.
-      if (!leaving.current && asState(history.state)[SENTINEL] === true) history.back();
+      const copied = onCopy.current;
+      onCopy.current = false;
+      if (!leaving.current && copied) history.back();
     };
   }, [enabled]);
 
@@ -146,8 +159,9 @@ export function useBrowserBackGuard(
     unload.current?.detach();
     // The blocked Back already ate one copy of the form's entry and the guard
     // pushed another on top, so the page the user came from is two steps back.
-    const steps = asState(window.history.state)[SENTINEL] === true ? -2 : -1;
-    window.history.go(steps);
+    // The copy's state is not a reliable marker: the router rewrites the entry it
+    // restores and keeps only its own id there, so the position is what counts.
+    window.history.go(onCopy.current ? -2 : -1);
     return true;
   }
 

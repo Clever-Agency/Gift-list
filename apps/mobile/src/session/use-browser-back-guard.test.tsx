@@ -148,6 +148,28 @@ describe("useBrowserBackGuard: браузерная кнопка «назад»"
     expect(window.history.length).toBe(seeded + 1);
   });
 
+  it("«Не сохранять» уводит на предыдущую страницу, даже если роутер переписал запись", async () => {
+    await render(true);
+    await browserBack();
+
+    // expo-router restores the entry it lands on and keeps only its own id there:
+    // the guard's marker is gone, but the page is still on the guard's copy.
+    await act(async () => {
+      window.history.replaceState({ id: "form" }, "", "/gifts/new");
+    });
+
+    let repeated = false;
+    await act(async () => {
+      repeated = guard().proceed();
+    });
+
+    expect(repeated).toBe(true);
+    // The page the user came from is two steps back, as the copy is still on top.
+    expect(window.location.pathname).toBe("/");
+    expect(window.history.state).toMatchObject({ id: "list" });
+    expect(blocked).toHaveBeenCalledTimes(1);
+  });
+
   it("«Не сохранять»: переход начинается уже без вопроса браузера", async () => {
     await render(true);
     await browserBack();

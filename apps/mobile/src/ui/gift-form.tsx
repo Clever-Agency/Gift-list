@@ -72,6 +72,12 @@ type GiftFormProps = {
    * submit.
    */
   serverError?: GiftFormServerError | null;
+  /**
+   * The wish is no longer open: visibility is frozen by the server, so the rows
+   * show the stored value but cannot change it (`EXPERIENCE.md` → Правка
+   * забронированного желания).
+   */
+  visibilityLocked?: boolean;
 };
 
 /**
@@ -93,6 +99,7 @@ export function GiftForm({
   onSubmit,
   submitLabel,
   serverError,
+  visibilityLocked = false,
 }: GiftFormProps) {
   const t = useTranslations("app.giftForm");
   const tVisibility = useTranslations("app.gift.visibility");
@@ -230,12 +237,16 @@ export function GiftForm({
         value={visibility}
         onChange={setVisibility}
         error={inlineError("visibility")}
+        disabled={visibilityLocked}
         options={VISIBILITIES.map((code) => ({
           value: code,
           label: tVisibility(code),
           hint: t(`field.visibilityHint.${code}`),
         }))}
       />
+      {visibilityLocked ? (
+        <Text style={styles.lockedHint}>{t("field.visibilityLocked")}</Text>
+      ) : null}
       {formError ? (
         <Text
           style={styles.formError}
@@ -286,6 +297,7 @@ export function ChoiceGroup<T extends string>({
   variant,
   error,
   labelHidden,
+  disabled = false,
 }: {
   label: string;
   value: T;
@@ -296,6 +308,8 @@ export function ChoiceGroup<T extends string>({
   error?: string;
   /** The group is named for screen readers, but the visible copy is rendered elsewhere. */
   labelHidden?: boolean;
+  /** Shows the stored value but does not let it change; every radio reads as disabled. */
+  disabled?: boolean;
 }) {
   const rows = variant === "rows";
   return (
@@ -315,11 +329,15 @@ export function ChoiceGroup<T extends string>({
               accessibilityRole="radio"
               accessibilityLabel={option.label}
               accessibilityHint={option.hint}
-              accessibilityState={{ checked: selected }}
-              onPress={() => onChange(option.value)}
+              accessibilityState={{ checked: selected, disabled }}
+              disabled={disabled}
+              onPress={() => {
+                if (!disabled) onChange(option.value);
+              }}
               style={({ pressed }) => [
                 rows ? styles.row : styles.chip,
                 selected ? (rows ? styles.rowSelected : styles.chipSelected) : null,
+                disabled ? styles.disabled : null,
                 pressed ? styles.pressed : null,
               ]}
             >
@@ -447,6 +465,13 @@ const styles = StyleSheet.create({
   hint: {
     ...textStyle("caption"),
     color: colors["muted-foreground"],
+  },
+  lockedHint: {
+    ...textStyle("caption"),
+    color: colors["muted-foreground"],
+  },
+  disabled: {
+    opacity: 0.6,
   },
   error: {
     ...textStyle("caption"),

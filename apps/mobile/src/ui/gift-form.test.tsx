@@ -25,6 +25,7 @@ type AppCatalog = {
       linkPlaceholder: string;
       visibility: string;
       visibilityHint: Record<string, string>;
+      visibilityLocked: string;
     };
     action: { create: string; save: string };
     error: {
@@ -152,6 +153,7 @@ vi.mock("react-native", async () => {
       ...(accessibilityState && "checked" in accessibilityState
         ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
         : {}),
+      ...(accessibilityState?.disabled ? { "aria-disabled": "true" } : {}),
       ...(disabled ? { disabled: true, "aria-disabled": "true" } : {}),
       // A disabled `Pressable` does not run `onPress`, same as the platform.
       ...(disabled ? {} : { onClick: onPress }),
@@ -396,6 +398,36 @@ describe("GiftForm: отправка", () => {
       priceCurrency: "RUB",
       visibility: "SECRET",
     });
+  });
+
+  /**
+   * Story 2.3: a wish that is no longer open shows its stored visibility, but the
+   * rows are disabled and the hint says why. The form still sends the stored value.
+   */
+  it("visibilityLocked: радио показывают текущее значение, не меняются и подсказка видна", async () => {
+    const onSubmit = await mount({
+      initialValues: { title: "Свитер", visibility: "SECRET" },
+      visibilityLocked: true,
+    });
+
+    expect(text()).toContain(form.field.visibilityLocked);
+    for (const code of VISIBILITIES) {
+      const option = radio(visibilityLabel[code]);
+      expect(option, visibilityLabel[code]).toBeDefined();
+      expect(option?.disabled).toBe(true);
+      expect(option?.getAttribute("aria-disabled")).toBe("true");
+    }
+    expect(isChecked(visibilityLabel.SECRET)).toBe(true);
+
+    await press(visibilityLabel.PUBLIC);
+
+    expect(isChecked(visibilityLabel.SECRET)).toBe(true);
+    expect(isChecked(visibilityLabel.PUBLIC)).toBe(false);
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ visibility: "SECRET" }),
+    );
   });
 
   it("пустое название: ошибка под полем, отправки нет, ошибка объявлена", async () => {

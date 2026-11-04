@@ -1,15 +1,23 @@
 import type { GiftCard, GiftUpdate } from "@gift-list/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
-import { fetchGift, updateGift } from "@/api/my-gifts";
+import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { colors, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { GiftForm, type GiftFormServerError, type GiftFormValues } from "@/ui/gift-form";
 import { PrimaryButton } from "@/ui/primary-button";
 import { WishCardSkeleton } from "@/ui/skeleton";
@@ -67,9 +75,14 @@ export default function EditGiftScreen() {
   const [serverError, setServerError] = useState<GiftFormServerError | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // Story 2.3: deleting is a confirm step of this form, not a separate layer.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   // The disabled button follows a state update, which flushes after the handler:
   // a second tap in the same frame must not send a second PATCH.
   const inFlight = useRef(false);
+  // Same guard for DELETE: two taps before the first answer must delete once.
+  const deleteInFlight = useRef(false);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -150,13 +163,15 @@ export default function EditGiftScreen() {
   }
 
   async function save(values: GiftFormValues) {
+    // The form only exists in `ready`; this narrows the state for the values below.
+    if (state.status !== "ready") return;
     if (inFlight.current) return;
     inFlight.current = true;
     setSubmitting(true);
     // The screen owns the prop: the next submit drops the previous server error.
     setServerError(null);
 
-    const result = await updateGift(id, toGiftUpdate(values));
+    const result = await updateGift(id, toGiftUpdate(values, state.gift));
     inFlight.current = false;
     setSubmitting(false);
 
@@ -203,6 +218,71 @@ export default function EditGiftScreen() {
     void save(values);
   }
 
+  /**
+   * Story 2.3: only an open wish can be deleted (`EXPERIENCE.md` → Правка
+   * забронированного желания, Story 5.4 owns `RESERVED`). The request runs from
+   * the confirm step; the list shows «Желание удалено.» from the param, the same
+   * hand-over the save uses.
+   */
+  async function remove() {
+    if (deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setDeleting(true);
+
+    const result = await deleteGift(id);
+    deleteInFlight.current = false;
+    setDeleting(false);
+    setConfirmingDelete(false);
+
+    if (result.ok) {
+      router.dismissTo({ pathname: "/", params: { toast: "gift_deleted" } });
+      return;
+    }
+    if ("network" in result) {
+      // The wish is still there: the form stays exactly as it was.
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      // Same as save: clear the dead session and let the guard open login.
+      setSessionExpired(true);
+      const signedOut = await auth.signOut();
+      if (!signedOut.ok) {
+        setSessionExpired(false);
+        setToast({ message: t("form.network"), tone: "error" });
+      }
+      return;
+    }
+    if (result.code === "NOT_FOUND") {
+      setState({ status: "missing" });
+      setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
+      return;
+    }
+    if (result.code === "CONFLICT") {
+      // It was reserved while the confirm was open: reload the wish so the
+      // screen shows the real status and drops the delete action.
+      setToast({ message: common("errors.code.CONFLICT"), tone: "error" });
+      setState({ status: "loading" });
+      setAttempt((value) => value + 1);
+      return;
+    }
+    setToast({ message: common(`errors.code.${result.code}`), tone: "error" });
+  }
+
+  function cancelDelete() {
+    if (deleting) return;
+    setConfirmingDelete(false);
+  }
+
+  function startDelete() {
+    setToast(null);
+    setConfirmingDelete(true);
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <Stack.Screen options={{ title: giftForm("pageTitle.edit", { brand }) }} />
@@ -240,18 +320,49 @@ export default function EditGiftScreen() {
               <PrimaryButton label={giftForm("backToList")} onPress={backToList} />
             </View>
           ) : (
-            <GiftForm
-              // `GiftForm` reads `initialValues` once, so another wish needs a remount.
-              key={state.gift.id}
-              initialValues={toFormValues(state.gift)}
-              submitting={submitting}
-              onSubmit={submit}
-              submitLabel={giftForm("action.save")}
-              serverError={serverError}
-            />
+            <>
+              <GiftForm
+                // `GiftForm` reads `initialValues` once, so another wish needs a remount.
+                key={state.gift.id}
+                initialValues={toFormValues(state.gift)}
+                submitting={submitting}
+                onSubmit={submit}
+                submitLabel={giftForm("action.save")}
+                serverError={serverError}
+                visibilityLocked={state.gift.status !== "OPEN"}
+              />
+              {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
+              {state.gift.status === "OPEN" ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={giftForm("delete.action")}
+                  onPress={startDelete}
+                  style={({ pressed }) => [
+                    styles.deleteAction,
+                    pressed ? styles.pressed : null,
+                  ]}
+                >
+                  <Text style={styles.deleteLabel}>{giftForm("delete.action")}</Text>
+                </Pressable>
+              ) : null}
+            </>
           )}
         </ScrollView>
       </View>
+      {state.status === "ready" ? (
+        <ConfirmDialog
+          visible={confirmingDelete}
+          title={giftForm("delete.confirmTitle", { title: state.gift.title })}
+          body={giftForm("delete.confirmBody")}
+          confirmLabel={
+            deleting ? giftForm("delete.deleting") : giftForm("delete.confirm")
+          }
+          cancelLabel={giftForm("delete.cancel")}
+          busy={deleting}
+          onConfirm={() => void remove()}
+          onCancel={cancelDelete}
+        />
+      ) : null}
       {toast ? (
         <ToastHost
           message={toast.message}
@@ -275,16 +386,21 @@ function toFormValues(gift: GiftCard): GiftFormValues {
   };
 }
 
-/** `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12). */
-function toGiftUpdate(values: GiftFormValues): GiftUpdate {
-  return {
+/**
+ * `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12).
+ * Visibility is frozen once the wish is no longer open (`EXPERIENCE.md` → Правка
+ * забронированного желания): the server rejects a change, so the body leaves the
+ * field out instead of repeating the stored value.
+ */
+function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
+  const body: GiftUpdate = {
     title: values.title,
     description: values.description,
     priceAmount: values.priceAmount,
     priceCurrency: values.priceCurrency,
     linkUrl: values.link,
-    visibility: values.visibility,
   };
+  return gift.status === "OPEN" ? { ...body, visibility: values.visibility } : body;
 }
 
 const styles = StyleSheet.create({
@@ -326,5 +442,20 @@ const styles = StyleSheet.create({
     ...textStyle("body"),
     color: colors["muted-foreground"],
     textAlign: "center",
+  },
+  // Secondary destructive action under the form: text only, 44×44 (`DESIGN.md` → buttons).
+  deleteAction: {
+    alignSelf: "flex-start",
+    minHeight: spacing["touch-target"],
+    minWidth: spacing["touch-target"],
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  deleteLabel: {
+    ...textStyle("button"),
+    color: colors.destructive,
+  },
+  pressed: {
+    opacity: 0.9,
   },
 });

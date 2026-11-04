@@ -53,6 +53,7 @@ type ToastState = { message: string; tone: "info" | "error" };
  */
 const CREATED_TOAST = "gift_created";
 const UPDATED_TOAST = "gift_updated";
+const DELETED_TOAST = "gift_deleted";
 
 /**
  * The footer row («Выйти» + «Написать автору») is pinned to the bottom of the column.
@@ -144,13 +145,18 @@ export default function MyWishlistScreen() {
     }
     if (
       handledToast.current === flash ||
-      (flash !== CREATED_TOAST && flash !== UPDATED_TOAST)
+      (flash !== CREATED_TOAST && flash !== UPDATED_TOAST && flash !== DELETED_TOAST)
     ) {
       return;
     }
     handledToast.current = flash;
     setToast({
-      message: flash === CREATED_TOAST ? giftForm("toast.created") : giftForm("toast.saved"),
+      message:
+        flash === CREATED_TOAST
+          ? giftForm("toast.created")
+          : flash === UPDATED_TOAST
+            ? giftForm("toast.saved")
+            : giftForm("toast.deleted"),
       tone: "info",
     });
     router.setParams({ toast: undefined });

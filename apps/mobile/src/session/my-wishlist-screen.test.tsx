@@ -1052,6 +1052,21 @@ describe("мой вишлист: весточка от формы редакти
 });
 
 /**
+ * Story 2.3: the edit screen hands «Желание удалено.» over in
+ * `?toast=gift_deleted`, the same one-shot hand-over the other form screens use.
+ */
+describe("мой вишлист: весточка об удалении", () => {
+  it("показывает «Желание удалено.» из параметра и гасит параметр", async () => {
+    search.params = { toast: "gift_deleted" };
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(text()).toContain("Желание удалено.");
+    expect(navigation.setParams).toHaveBeenCalledWith({ toast: undefined });
+  });
+});
+
+/**
  * `EXPERIENCE.md` → State Patterns → «Подписи брони» (owner column): the holder
  * name appears only in an active reservation and only when shared; `ownerAction`
  * replaces it with the phase label. The status pill stays the fallback label.

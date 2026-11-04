@@ -17,7 +17,13 @@ function createAuth() {
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(prisma, { provider: "postgresql", transaction: true }),
-    advanced: { database: { generateId: () => createId() } },
+    advanced: {
+      database: {
+        generateId: function generateId() {
+          return createId();
+        },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       // Sign-up goes through `registerUser` so the user and the single list
@@ -27,7 +33,7 @@ function createAuth() {
       // Safe together with `transaction: true`: the token, the new password,
       // and session revocation commit or roll back as one unit.
       revokeSessionsOnPasswordReset: true,
-      sendResetPassword: async ({ user, token }) => {
+      sendResetPassword: async function sendResetPassword({ user, token }) {
         const locale = "locale" in user && typeof user.locale === "string" ? user.locale : null;
         try {
           await sendPasswordResetEmail({ to: user.email, locale, token });
@@ -39,7 +45,7 @@ function createAuth() {
       // (`revokeSessionsOnPasswordReset`). Better Auth к этому моменту удалил
       // только использованный токен — остальные ссылки этого пользователя гасим здесь,
       // в том числе если сброс пришёл сырым `POST /api/auth/reset-password`.
-      onPasswordReset: async ({ user }) => {
+      onPasswordReset: async function onPasswordReset({ user }) {
         await invalidateOutstandingPasswordResets(user.id);
       },
     },

@@ -49,7 +49,7 @@ export const giftInputSchema = z
     linkUrl: linkUrlFieldSchema,
     visibility: visibilityFieldSchema.default("PUBLIC"),
   })
-  .transform((value) => {
+  .transform(function toGiftInput(value) {
     const priceAmount = value.priceAmount ?? null;
     return {
       title: value.title,
@@ -90,10 +90,12 @@ export const giftUpdateSchema = z
     linkUrl: linkUrlFieldSchema,
     visibility: visibilityFieldSchema.optional(),
   })
-  .refine((value) => Object.values(value).some((field) => field !== undefined), {
+  .refine(function hasAnyGiftUpdateField(value) {
+    return Object.values(value).some((field) => field !== undefined);
+  }, {
     message: "At least one field is required",
   })
-  .transform((value): GiftUpdate => {
+  .transform(function toGiftUpdate(value): GiftUpdate {
     const update: GiftUpdate = {};
 
     if (value.title !== undefined) update.title = value.title;

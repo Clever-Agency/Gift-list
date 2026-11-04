@@ -20,8 +20,8 @@ function createPrismaClient(): PrismaClient {
   let pool = globalForPrisma.pgPool;
   if (!pool) {
     pool = new Pool({ connectionString });
-    pool.on("error", (err) => {
-      console.error("Unexpected PostgreSQL pool error", err);
+    pool.on("error", function logPoolError(error) {
+      console.error("Unexpected PostgreSQL pool error", error);
     });
     if (process.env.NODE_ENV !== "production") {
       globalForPrisma.pgPool = pool;

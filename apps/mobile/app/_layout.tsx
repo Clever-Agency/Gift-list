@@ -33,9 +33,9 @@ export default function RootLayout() {
     "Manrope-600": Manrope_600SemiBold,
   });
 
-  useEffect(() => {
+  useEffect(function hideSplashWhenLoaded() {
     if (loaded || error) {
-      SplashScreen.hideAsync().catch(() => {});
+      SplashScreen.hideAsync().catch(function ignoreHideError() {});
     }
   }, [loaded, error]);
 

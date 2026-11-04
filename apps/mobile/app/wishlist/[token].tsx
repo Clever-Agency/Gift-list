@@ -16,7 +16,7 @@ export default function WishlistReturnScreen() {
   const token = paramValue(params.token) ?? "";
   const auth = useAuth();
 
-  useEffect(() => {
+  useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous") {
       router.replace({ pathname: "/login", params: { next: `/wishlist/${token}` } });
     }

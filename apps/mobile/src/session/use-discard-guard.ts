@@ -36,7 +36,7 @@ export function useDiscardGuard(
   const bypass = useRef(false);
   const browser = useBrowserBackGuard(enabled, onBlocked);
 
-  usePreventRemove(enabled, (event) => {
+  usePreventRemove(enabled, function handlePreventRemove(event) {
     if (bypass.current) {
       bypass.current = false;
       pending.current = null;

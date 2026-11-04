@@ -85,9 +85,9 @@ export default function EditGiftScreen() {
   // The guard sends a dead session back here after login, so the id travels along.
   const returnTo = `/gifts/${id}/edit`;
 
-  const [state, setState] = useState<ScreenState>(() =>
-    id === "" ? { status: "missing" } : { status: "loading" },
-  );
+  const [state, setState] = useState<ScreenState>(function initialScreenState() {
+    return id === "" ? { status: "missing" } : { status: "loading" };
+  });
   const [attempt, setAttempt] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<GiftFormServerError | null>(null);

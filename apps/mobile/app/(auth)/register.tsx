@@ -34,7 +34,7 @@ export default function RegisterScreen() {
   const [pending, setPending] = useState(false);
 
   function change(field: string, setValue: (value: string) => void) {
-    return (value: string) => {
+    return function handleFieldChange(value: string) {
       setValue(value);
       setIssue((current) => (current?.field === field ? null : current));
     };

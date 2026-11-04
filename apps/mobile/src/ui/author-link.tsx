@@ -19,7 +19,7 @@ export function AuthorLink() {
   }
 
   function handlePress() {
-    void Linking.openURL(url).catch(() => {});
+    void Linking.openURL(url).catch(function ignoreOpenError() {});
   }
 
   return (

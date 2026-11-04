@@ -44,19 +44,22 @@ export function focusInLayer(node: ChipNode | null | undefined): void {
  */
 export function useLayerClosed(visible: boolean, onClosed: () => void): () => void {
   const closed = useRef(onClosed);
-  useEffect(() => {
+  useEffect(function syncClosedHandler() {
     closed.current = onClosed;
   });
 
   const wasVisible = useRef(visible);
-  useEffect(() => {
-    const was = wasVisible.current;
-    wasVisible.current = visible;
-    if (Platform.OS === "web" || visible || !was) return;
-    closed.current();
-  }, [visible]);
+  useEffect(
+    function reportNativeClose() {
+      const was = wasVisible.current;
+      wasVisible.current = visible;
+      if (Platform.OS === "web" || visible || !was) return;
+      closed.current();
+    },
+    [visible],
+  );
 
-  return useCallback(() => {
+  return useCallback(function handleWebDismiss() {
     if (Platform.OS !== "web") return;
     closed.current();
   }, []);

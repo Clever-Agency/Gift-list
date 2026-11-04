@@ -21,7 +21,7 @@ import { colors } from "@/theme/tokens";
 void contactsAvailable();
 void secureStoreAvailable();
 
-SplashScreen.preventAutoHideAsync().catch(() => {
+SplashScreen.preventAutoHideAsync().catch(function ignoreNoSplash() {
   // Web and fast refresh have no native splash to hold.
 });
 

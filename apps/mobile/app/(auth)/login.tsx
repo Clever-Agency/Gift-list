@@ -33,7 +33,7 @@ export default function LoginScreen() {
   );
 
   function change(field: string, setValue: (value: string) => void) {
-    return (value: string) => {
+    return function handleFieldChange(value: string) {
       setValue(value);
       setIssue((current) => (current?.field === field ? null : current));
     };

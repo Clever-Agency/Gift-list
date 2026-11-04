@@ -154,14 +154,16 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const tVisibility = useTranslations("app.gift.visibility");
   const common = useTranslations("common");
   // Read once, like the field states below: `initialValues` prefills the edit form.
-  const [initial] = useState<GiftFormDirtyValues>(() => ({
-    title: initialValues?.title ?? "",
-    description: initialValues?.description ?? "",
-    link: initialValues?.link ?? "",
-    price: initialPriceText(initialValues?.priceAmount),
-    currency: initialValues?.priceCurrency ?? DEFAULT_CURRENCY,
-    visibility: initialValues?.visibility ?? DEFAULT_VISIBILITY,
-  }));
+  const [initial] = useState<GiftFormDirtyValues>(function readInitialValues() {
+    return {
+      title: initialValues?.title ?? "",
+      description: initialValues?.description ?? "",
+      link: initialValues?.link ?? "",
+      price: initialPriceText(initialValues?.priceAmount),
+      currency: initialValues?.priceCurrency ?? DEFAULT_CURRENCY,
+      visibility: initialValues?.visibility ?? DEFAULT_VISIBILITY,
+    };
+  });
   const [title, setTitle] = useState(initialValues?.title ?? "");
   const [description, setDescription] = useState(initialValues?.description ?? "");
   const [link, setLink] = useState(initialValues?.link ?? "");
@@ -176,14 +178,16 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const cancelRef = useRef<ViewInstance>(null);
   useImperativeHandle(
     ref,
-    () => ({
-      focusCancel() {
-        // react-native-web host nodes are DOM elements with `focus()`; native ones
-        // are not, and there `Modal` keeps owning focus.
-        const node = cancelRef.current as unknown as { focus?: () => void } | null;
-        node?.focus?.();
-      },
-    }),
+    function createFormHandle() {
+      return {
+        focusCancel() {
+          // react-native-web host nodes are DOM elements with `focus()`; native ones
+          // are not, and there `Modal` keeps owning focus.
+          const node = cancelRef.current as unknown as { focus?: () => void } | null;
+          node?.focus?.();
+        },
+      };
+    },
     [],
   );
   // `EXPERIENCE.md` → Price field: an empty amount does not show a currency.

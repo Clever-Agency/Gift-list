@@ -136,6 +136,12 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
  * editable here (AD-8, Story 2.5). The ownership check rides in the write's
  * `where`, so a gift of another list — or an archived one (AD-8) — matches
  * nothing and answers NOT_FOUND without revealing that the id exists.
+ *
+ * Story 2.3 (FR-10, AD-8): visibility moves only while the wish is `OPEN`. A
+ * reserved or closed wish answers VALIDATION and writes nothing, but sending the
+ * stored value back — the edit form of a reserved wish does that — is not a
+ * change and passes through. The write itself repeats `status: "OPEN"` in the
+ * `where`, so a reservation between this read and the write cannot slip through.
  */
 export async function updateGift(
   headers: Headers,
@@ -157,31 +163,105 @@ export async function updateGift(
     list: { ownerId: session.user.id },
   };
 
-  // AD-25: a currency sent without an amount keeps the stored amount, so read it
-  // first. A stored `null` amount leaves nothing to price, and the currency is
-  // dropped again — a price never exists as a currency alone. The update below
-  // still carries the ownership gate, so this read is only for the mix-in.
-  if (update.priceCurrency !== undefined && update.priceAmount === undefined) {
+  const changesVisibility = update.visibility !== undefined;
+  const needsStoredPrice = update.priceCurrency !== undefined && update.priceAmount === undefined;
+
+  // One read serves both gates: AD-25 needs the stored amount, Story 2.3 needs
+  // the stored status and visibility. The update below still carries the
+  // ownership gate, so this read is only for the mix-in and the visibility rule.
+  if (changesVisibility || needsStoredPrice) {
     const stored = await prisma.gift.findFirst({
       where: ownedGift,
-      select: { priceAmount: true },
+      select: { priceAmount: true, status: true, visibility: true },
     });
     if (!stored) return notFound;
-    update.priceCurrency = stored.priceAmount === null ? null : update.priceCurrency;
+
+    // AD-25: a currency sent without an amount keeps the stored amount; a stored
+    // `null` amount leaves nothing to price, so the currency is dropped again — a
+    // price never exists as a currency alone.
+    if (needsStoredPrice) {
+      update.priceCurrency = stored.priceAmount === null ? null : update.priceCurrency;
+    }
+
+    if (changesVisibility) {
+      if (stored.visibility === update.visibility) {
+        // The form of a reserved wish resends the stored value: nothing to change.
+        delete update.visibility;
+      } else if (stored.status !== "OPEN") {
+        return validation("visibility");
+      }
+    }
   }
+
+  // Story 2.3/AD-8: a real visibility change writes only while the gift is OPEN,
+  // so a reservation between the read above and this write answers VALIDATION.
+  const where =
+    update.visibility !== undefined ? { ...ownedGift, status: "OPEN" as const } : ownedGift;
 
   try {
     const row = await prisma.gift.update({
-      where: ownedGift,
+      where,
       data: update,
       select: ownerGiftSelect,
     });
     return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
   } catch (error) {
-    // P2025: the where matched nothing, i.e. a foreign or archived gift.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      // A guarded visibility write can lose the race with a reservation: re-read
+      // to tell "no longer OPEN" (VALIDATION) from "foreign or archived" (NOT_FOUND).
+      if (update.visibility !== undefined) {
+        const current = await prisma.gift.findFirst({
+          where: ownedGift,
+          select: { status: true },
+        });
+        if (current && current.status !== "OPEN") return validation("visibility");
+      }
+      // P2025: the where matched nothing, i.e. a foreign or archived gift.
       return notFound;
     }
     throw error;
   }
+}
+
+/**
+ * Story 2.3 (FR-10): the owner deletes an `OPEN` wish of their own list. The
+ * delete's `where` carries ownership, "not archived" and the status (AD-6, AD-8),
+ * so a foreign or archived id removes nothing. A wish that still exists after
+ * the delete is reserved or closed: this use-case only deletes `OPEN` ones —
+ * `RESERVED` is Story 5.4 and `CLOSED` is removed from "Received" (Story 2.6).
+ * Everything that matches nothing answers the same NOT_FOUND, so a foreign id
+ * never reveals that it exists (AD-7).
+ */
+export async function deleteGift(
+  headers: Headers,
+  giftId: string,
+): Promise<ActionResult<{ id: string }>> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return unauthenticated;
+
+  const { count } = await prisma.gift.deleteMany({
+    where: {
+      id: giftId,
+      archivedAt: null,
+      status: "OPEN",
+      list: { ownerId: session.user.id },
+    },
+  });
+  if (count === 1) return { ok: true, data: { id: giftId } };
+
+  // Still there and owned: reserved or closed, which this use-case does not delete.
+  const existing = await prisma.gift.findFirst({
+    where: { id: giftId, archivedAt: null, list: { ownerId: session.user.id } },
+    select: { status: true },
+  });
+  if (existing) {
+    return {
+      ok: false,
+      code: "CONFLICT",
+      message: "Only an open wish can be deleted here",
+    };
+  }
+
+  // Foreign, archived or missing: one answer for all three (AD-7).
+  return notFound;
 }

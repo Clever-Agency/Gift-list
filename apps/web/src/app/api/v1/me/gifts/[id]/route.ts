@@ -1,4 +1,4 @@
-import { getGift, updateGift } from "@/actions/gifts";
+import { deleteGift, getGift, updateGift } from "@/actions/gifts";
 import { notFoundResponse, parseJson, toResponse } from "@/lib/api-v1";
 
 /** Story 2.2 (FR-10): the edit screen loads one wish of the owner's list; 200 carries the card (AD-12). */
@@ -21,6 +21,14 @@ export async function PATCH(
   return toResponse(await updateGift(request.headers, id, parsed.data));
 }
 
+/** Story 2.3 (FR-10): the owner deletes an open wish; 200 carries its id (AD-12). */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  return toResponse(await deleteGift(request.headers, id));
+}
+
 export const POST = notFoundResponse;
 export const PUT = notFoundResponse;
-export const DELETE = notFoundResponse;

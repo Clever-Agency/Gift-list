@@ -49,7 +49,7 @@ vi.mock("@/db/client", () => ({
 }));
 vi.mock("@/db/generated/client", () => ({ Prisma: { PrismaClientKnownRequestError } }));
 
-type TagRow = { tagId: string | null; customText: string | null; tag: { labels: unknown } | null };
+type TagRow = { tagId: string | null; customText: string | null; tag: { slug: string; labels: unknown } | null };
 
 type Row = {
   id: string;
@@ -93,7 +93,7 @@ function giftRow(overrides: Partial<Row> = {}): Row {
 const dreamRow: TagRow = {
   tagId: "tag_dream",
   customText: null,
-  tag: { labels: { ru: "мечта" } },
+  tag: { slug: "dream", labels: { ru: "мечта" } },
 };
 const customRow: TagRow = { tagId: null, customText: "своё", tag: null };
 

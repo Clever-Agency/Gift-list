@@ -53,10 +53,10 @@ const giftSelect = {
   holderVisibleToOwner: true,
   holderVisibleToOthers: true,
   reservedBy: { select: { id: true, nick: true, name: true } },
-  // Story 2.5/AD-22: only what the card shows. The order is a stable database
-  // order, not a presentation decision; the card (2.5.7) owns how tags are shown.
+  // Story 2.5/AD-22: only what the card shows. `slug` orders fixed tags like the
+  // catalog (2.5.7) and never reaches the client.
   tags: {
-    select: { tagId: true, customText: true, tag: { select: { labels: true } } },
+    select: { tagId: true, customText: true, tag: { select: { labels: true, slug: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   },
 } satisfies Prisma.GiftSelect;

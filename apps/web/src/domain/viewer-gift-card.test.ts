@@ -172,7 +172,7 @@ describe("toViewerGiftCard", () => {
     const card = toViewerGiftCard(
       row({
         tags: [
-          { tagId: "tag_dream", customText: null, tag: { labels: { ru: "мечта" } } },
+          { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта" } } },
           { tagId: null, customText: "своё", tag: null },
         ],
       }),
@@ -193,7 +193,7 @@ describe("toViewerGiftCard", () => {
     const card = toViewerGiftCard(
       row({
         tags: [
-          { tagId: "tag_dream", customText: null, tag: { labels: { ru: "мечта", en: "dream" } } },
+          { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта", en: "dream" } } },
         ],
       }),
       OTHER_ID,

@@ -2,11 +2,16 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { StatusPill } from "./status-pill";
+import { TagChipList } from "./tag-chip";
 import { createMount } from "./test-utils";
 import { VisibilityChip } from "./visibility-chip";
 import { WishCard } from "./wish-card";
 
 const mounted = createMount();
+
+function plusHidden(hidden: number): string {
+  return `+${hidden}`;
+}
 
 
 describe("WishCard", () => {
@@ -105,5 +110,35 @@ describe("WishCard", () => {
 
     expect(container.textContent).toBe("Закрыто");
     expect(container.querySelector("[role='button']")).toBeNull();
+  });
+
+  it("теги идут между статусом и бронью — до трёх и «+N», без лишних кнопок", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        title="Плед"
+        status={<StatusPill status="reserved" label="Забронировано" />}
+        tags={<TagChipList labels={["мечта", "нужно сейчас", "когда-нибудь", "своё"]} moreLabel={plusHidden} />}
+        reservation="Забронировал Аня"
+      />,
+    );
+
+    const card = container.querySelector("[role='listitem']") as HTMLElement;
+    expect(card.textContent).toBe("ПледЗабронированомечтанужно сейчаскогда-нибудь+1Забронировал Аня");
+    expect(card.querySelector("[role='button']")).toBeNull();
+    expect(card.querySelector("[role='checkbox']")).toBeNull();
+  });
+
+  it("без тегов ряда нет", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        title="Плед"
+        status={<StatusPill status="open" label="Открыт" />}
+        reservation="Забронировал Аня"
+      />,
+    );
+
+    expect(container.textContent).toBe("ПледОткрытЗабронировал Аня");
   });
 });

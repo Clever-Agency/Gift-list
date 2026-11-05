@@ -31,7 +31,7 @@ type Row = {
   holderVisibleToOwner: boolean;
   holderVisibleToOthers: boolean;
   reservedBy: { id: string; nick: string; name: string } | null;
-  tags: { tagId: string | null; customText: string | null; tag: { labels: unknown } | null }[];
+  tags: { tagId: string | null; customText: string | null; tag: { slug: string; labels: unknown } | null }[];
 };
 
 function gift(overrides: Partial<Row> & Pick<Row, "id" | "title">): Row {
@@ -255,12 +255,12 @@ describe("readWishlist", () => {
 });
 
 describe("readWishlist tags", () => {
-  const dream = { tagId: "tag_dream", customText: null, tag: { labels: { ru: "мечта" } } };
+  const dream = { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта" } } };
   const custom = { tagId: null, customText: "своё", tag: null };
   const secretTag = {
     tagId: "tag_secret",
     customText: null,
-    tag: { labels: { ru: "секретный тег" } },
+    tag: { slug: "secret", labels: { ru: "секретный тег" } },
   };
 
   /** Story 2.5/AD-22/AD-27: tags ride on the visible card only, labelled by the server. */

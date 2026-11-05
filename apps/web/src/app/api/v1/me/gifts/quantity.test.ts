@@ -48,7 +48,7 @@ type Row = {
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
   holderVisibleToOwner: boolean;
   reservedBy: { id: string; nick: string; name: string } | null;
-  tags: { tagId: string | null; customText: string | null; tag: { labels: unknown } | null }[];
+  tags: { tagId: string | null; customText: string | null; tag: { slug: string; labels: unknown } | null }[];
 };
 
 function giftRow(overrides: Partial<Row> = {}): Row {

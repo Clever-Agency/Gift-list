@@ -23,12 +23,22 @@ const app = JSON.parse(
   gift: {
     visibilityLower: Record<string, string>;
     visibilityChipLabel: string;
+    edit: string;
+    editWithTags: string;
   };
 };
 
 /** `app.gift.visibilityChipLabel` with the lower-case visibility word. */
 function chipLabel(visibility: GiftCardData["visibility"]): string {
   return app.gift.visibilityChipLabel.replace("{value}", app.gift.visibilityLower[visibility]);
+}
+
+/** The card's accessible name, from the same catalogue the app ships. */
+function editLabel(tags: readonly string[]): string {
+  const title = "Наушники";
+  return tags.length > 0
+    ? app.gift.editWithTags.replace("{title}", title).replace("{tags}", tags.join(", "))
+    : app.gift.edit.replace("{title}", title);
 }
 
 vi.mock("expo-symbols", async () => {
@@ -372,5 +382,112 @@ describe("WishCard: чип видимости", () => {
     expect(container.querySelector(`[aria-label="${chipLabel("FRIENDS")}"]`)).toBeNull();
     expect(textOf()).toContain(pill);
     expect(textOf()).toContain("Друзьям");
+  });
+});
+
+/**
+ * Story 2.5.7 (`DESIGN.md` -> WishCard, `EXPERIENCE.md` -> Tags): up to three
+ * chips and «+N»; labels come from the server DTO, so fixed tag captions are
+ * never translated on the client and custom text stays as stored.
+ */
+describe("WishCard: теги", () => {
+  it("показывает серверные подписи фиксированного и своего тега без клиентских переводов", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "подарок-сюрприз" },
+          { catalogId: null, label: "своё" },
+        ],
+      }),
+    );
+
+    expect(textOf()).toContain("подарок-сюрприз");
+    expect(textOf()).toContain("своё");
+    // The fixed tag's label is exactly what the server sent, not a local caption.
+    expect(textOf()).not.toContain("мечта");
+    expect(container.querySelector('[role="checkbox"]')).toBeNull();
+    expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
+  });
+
+  it("показывает до трёх тегов и «+N» для остальных", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: "tag_need_now", label: "нужно сейчас" },
+          { catalogId: "tag_someday", label: "когда-нибудь" },
+          { catalogId: null, label: "своё" },
+          { catalogId: null, label: "ещё одно" },
+        ],
+      }),
+    );
+
+    expect(textOf()).toContain("мечта");
+    expect(textOf()).toContain("нужно сейчас");
+    expect(textOf()).toContain("когда-нибудь");
+    expect(textOf()).toContain("+2");
+    expect(textOf()).not.toContain("своё");
+    expect(textOf()).not.toContain("ещё одно");
+    expect(container.querySelector('[data-testid="gift-tags"]')).not.toBeNull();
+  });
+
+  it("длинный свой тег виден целиком", async () => {
+    const longTag = "очень длинный собственный тег";
+    await render(gift({ tags: [{ catalogId: null, label: longTag }] }));
+
+    expect(textOf()).toContain(longTag);
+  });
+
+  it("без тегов ряда нет", async () => {
+    await render(gift({ tags: [] }));
+
+    expect(container.querySelector('[data-testid="gift-tags"]')).toBeNull();
+  });
+
+  it("все теги входят в доступное имя карточки, действие прежнее", async () => {
+    const onPress = vi.fn();
+    const labels = ["мечта", "нужно сейчас", "когда-нибудь", "своё", "ещё одно"];
+    const tags = labels.map(function tagOfLabel(label, index) {
+      return {
+        catalogId: index < 3 ? `tag_${index}` : null,
+        label,
+      };
+    });
+    await render(gift({ tags }), onPress);
+
+    const card = container.querySelector(
+      `[role="button"][aria-label="${editLabel(labels)}"]`,
+    );
+    expect(card).not.toBeNull();
+    // Tags behind «+N» are still announced through the card name.
+    for (const hiddenLabel of ["своё", "ещё одно"]) {
+      expect(textOf()).not.toContain(hiddenLabel);
+      expect(card?.getAttribute("aria-label")).toContain(hiddenLabel);
+    }
+
+    await click(card);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("без onPress теги и «+N» доступны, лишних кнопок нет", async () => {
+    await render(
+      gift({
+        status: "CLOSED",
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: null, label: "своё" },
+          { catalogId: null, label: "ещё одно" },
+          { catalogId: null, label: "четвёртое" },
+        ],
+      }),
+    );
+
+    expect(textOf()).toContain("Получен");
+    expect(textOf()).toContain("мечта");
+    expect(textOf()).toContain("+1");
+    const more = container.querySelector('[data-testid="gift-tags-more"]') as HTMLElement;
+    expect(more).not.toBeNull();
+    expect(more.getAttribute("aria-label")).toContain("четвёртое");
+    expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
   });
 });

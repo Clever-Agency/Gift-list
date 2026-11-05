@@ -108,6 +108,9 @@
       "EXPIRED_NO_REPLY": "Срок брони истёк"
     },
     "edit": "Изменить «{title}»",
+    "editWithTags": "Изменить «{title}». Теги: {tags}",
+    "tagsMore": "+{count}",
+    "tagsMoreLabel": "Ещё теги ({count}): {tags}",
     "toast": {
       "visibility": "Видимость: {value}",
       "visibilityLocked": "Желание уже забронировано — видимость не изменить."

@@ -1,5 +1,5 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
-import { WishCard as UiWishCard } from "@gift-list/ui";
+import { TagChipList, WishCard as UiWishCard } from "@gift-list/ui";
 import { useLocale, useTranslations } from "use-intl";
 import { StatusPill } from "@/ui/status-pill";
 import { VisibilityChip, type VisibilityChipRef } from "@/ui/visibility-chip";
@@ -69,6 +69,27 @@ export function WishCard({
   // `DESIGN.md` → VisibilityChip: the chip is a button only on an open wish.
   const visibilityPress =
     onVisibilityPress !== undefined && gift.status === "OPEN" ? onVisibilityPress : undefined;
+  // Story 2.5.7: labels are the server's, already ordered by the mapper. The
+  // visual row shows up to three chips; the accessible name keeps every tag so
+  // a screen reader hears tags that «+N» hides.
+  const tagLabels = gift.tags.map(function labelOfTag(tag) {
+    return tag.label;
+  });
+  const pressLabel =
+    tagLabels.length > 0
+      ? tGift("editWithTags", { title: gift.title, tags: tagLabels.join(", ") })
+      : tGift("edit", { title: gift.title });
+
+  function moreTagLabel(hiddenCount: number): string {
+    return tGift("tagsMore", { count: hiddenCount });
+  }
+
+  function moreTagAccessibilityLabel(
+    hiddenCount: number,
+    hiddenLabels: readonly string[],
+  ): string {
+    return tGift("tagsMoreLabel", { count: hiddenCount, tags: hiddenLabels.join(", ") });
+  }
 
   return (
     <UiWishCard
@@ -76,6 +97,16 @@ export function WishCard({
       closed={gift.status === "CLOSED"}
       price={price}
       status={<StatusPill status={gift.status} />}
+      tags={
+        tagLabels.length > 0 ? (
+          <TagChipList
+            labels={tagLabels}
+            testID="gift-tags"
+            moreLabel={moreTagLabel}
+            moreAccessibilityLabel={moreTagAccessibilityLabel}
+          />
+        ) : undefined
+      }
       reservation={reservation}
       chip={
         <VisibilityChip
@@ -86,7 +117,7 @@ export function WishCard({
       }
       chipInteractive={visibilityPress !== undefined}
       onPress={onPress}
-      pressLabel={tGift("edit", { title: gift.title })}
+      pressLabel={pressLabel}
       width={width}
     />
   );

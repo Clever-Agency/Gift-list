@@ -74,7 +74,7 @@ type Row = {
   holderVisibleToOwner: boolean;
   reservedBy: { id: string; nick: string; name: string } | null;
   list: { ownerId: string };
-  tags: { tagId: string | null; customText: string | null; tag: { labels: unknown } | null }[];
+  tags: { tagId: string | null; customText: string | null; tag: { slug: string; labels: unknown } | null }[];
 };
 
 /** A row of the shared owner select: the same shape create and update hand back. */
@@ -228,7 +228,7 @@ describe("getGift", () => {
       giftRow({
         id: "g7",
         tags: [
-          { tagId: "tag_dream", customText: null, tag: { labels: { ru: "мечта" } } },
+          { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта" } } },
           { tagId: null, customText: "своё", tag: null },
         ],
       }),
@@ -804,7 +804,7 @@ describe("gift tags", () => {
   const dreamRow = {
     tagId: "tag_dream",
     customText: null,
-    tag: { labels: { ru: "мечта" } },
+    tag: { slug: "dream", labels: { ru: "мечта" } },
   };
   const customRow = { tagId: null, customText: "своё", tag: null };
 
@@ -849,6 +849,43 @@ describe("gift tags", () => {
     expect(create).toHaveBeenCalledWith(
       expect.not.objectContaining({ data: expect.objectContaining({ tags: expect.anything() }) }),
     );
+  });
+
+  it("returns card tags in catalog order regardless of the stored row order", async () => {
+    tagFindMany.mockResolvedValue([
+      { id: "tag_someday" },
+      { id: "tag_dream" },
+      { id: "tag_need_now" },
+    ]);
+    create.mockResolvedValue(
+      giftRow({
+        tags: [
+          { tagId: "tag_someday", customText: null, tag: { slug: "someday", labels: { ru: "когда-нибудь" } } },
+          { tagId: null, customText: "своё", tag: null },
+          { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта" } } },
+          { tagId: "tag_need_now", customText: null, tag: { slug: "need-now", labels: { ru: "нужно сейчас" } } },
+        ],
+      }),
+    );
+
+    const card = okData(
+      await createGift(headers, {
+        title: "Книга",
+        tags: [
+          { catalogId: "tag_someday" },
+          { text: "своё" },
+          { catalogId: "tag_dream" },
+          { catalogId: "tag_need_now" },
+        ],
+      }),
+    );
+
+    expect(card.tags).toEqual([
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: "tag_need_now", label: "нужно сейчас" },
+      { catalogId: "tag_someday", label: "когда-нибудь" },
+      { catalogId: null, label: "своё" },
+    ]);
   });
 
   it("rejects an unknown fixed tag id before writing the gift", async () => {

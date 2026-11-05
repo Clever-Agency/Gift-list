@@ -101,8 +101,12 @@ export type GiftTagRow = {
   readonly tagId: string | null;
   /** Custom text until ADMIN approval; null for a fixed tag (AD-22). */
   readonly customText: string | null;
-  /** Catalog row with the per-language labels; null for an unapproved custom tag. */
-  readonly tag: { readonly labels: unknown } | null;
+  /**
+   * Catalog row with the per-language labels; null for an unapproved custom tag.
+   * `slug` is the immutable catalog key used for display order; reads select it
+   * (`GiftCard` itself never carries it).
+   */
+  readonly tag: { readonly labels: unknown; readonly slug: string } | null;
 };
 
 /**
@@ -128,13 +132,64 @@ export function toGiftTag(row: GiftTagRow, locale: SupportedLocale): GiftTagCard
   return text === "" ? null : { catalogId: null, label: text };
 }
 
-/** Card tags in row order, with unusable rows left out. */
+/**
+ * Card tags in display order, with unusable rows left out.
+ *
+ * Story 2.5.7: the order is deterministic and independent of row insertion:
+ * fixed tags first, ascending by the immutable catalog `slug` in Unicode code
+ * units — the same order as `GET /api/v1/tags` (`compareTagCatalogSlugs`). An
+ * approved custom tag is a fixed tag and sorts there too. Custom tags follow,
+ * ascending by their stored text in code units. No locale collation and no
+ * translated label is used for sorting. Catalog and custom uniques
+ * (`@@unique([giftId, tagId])`, `@@unique([giftId, customText])`) make equal keys
+ * unreachable; the final input-index tie-break only keeps the sort stable.
+ */
 export function toGiftTags(rows: readonly GiftTagRow[], locale: SupportedLocale): GiftTagCard[] {
-  const tags: GiftTagCard[] = [];
-  for (const row of rows) {
+  const ordered: {
+    tag: GiftTagCard;
+    fixed: boolean;
+    key: string;
+    index: number;
+  }[] = [];
+
+  rows.forEach(function collectTag(row, index) {
     const tag = toGiftTag(row, locale);
-    if (tag !== null) tags.push(tag);
-  }
-  return tags;
+    if (tag === null) return;
+    const fixed = tag.catalogId !== null;
+    ordered.push({
+      tag,
+      fixed,
+      key: fixed ? (row.tag?.slug ?? tag.catalogId ?? "") : tag.label,
+      index,
+    });
+  });
+
+  ordered.sort(compareCardTags);
+  return ordered.map(function cardTag(entry) {
+    return entry.tag;
+  });
+}
+
+/** Unicode code units, not `Intl.Collator`: the catalog order is language-independent. */
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function compareCardTags(
+  left: { tag: GiftTagCard; fixed: boolean; key: string; index: number },
+  right: { tag: GiftTagCard; fixed: boolean; key: string; index: number },
+): number {
+  if (left.fixed !== right.fixed) return left.fixed ? -1 : 1;
+
+  const byKey = compareCodeUnits(left.key, right.key);
+  if (byKey !== 0) return byKey;
+
+  const byIdentity = compareCodeUnits(
+    left.tag.catalogId ?? left.tag.label,
+    right.tag.catalogId ?? right.tag.label,
+  );
+  return byIdentity !== 0 ? byIdentity : left.index - right.index;
 }
 

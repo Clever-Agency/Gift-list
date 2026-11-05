@@ -28,6 +28,8 @@ export type WishCardProps = {
   price?: string | null;
   /** The StatusPill. */
   status: ReactNode;
+  /** The tag row, e.g. the app's `TagChipList` (`DESIGN.md` → WishCard). */
+  tags?: ReactNode;
   /** The reservation line, «Подписи брони» in `EXPERIENCE.md`. */
   reservation?: string | null;
   /** The visibility chip; drawn over the reserved footer as a sibling of the main zone. */
@@ -55,6 +57,7 @@ export function WishCard({
   closed,
   price,
   status,
+  tags,
   reservation,
   chip,
   chipInteractive,
@@ -75,6 +78,7 @@ export function WishCard({
           </Text>
         ) : null}
         {status}
+        {tags ? <View>{tags}</View> : null}
         {reservation ? (
           <Text kind="label" tone="reserved">
             {reservation}

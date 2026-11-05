@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { TagChip } from "./tag-chip";
+import { TagChip, TagChipList } from "./tag-chip";
 import { createMount } from "./test-utils";
 
 const mounted = createMount();
@@ -70,5 +70,114 @@ describe("TagChip: свой тег", () => {
 
     await click(remove);
     expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TagChip: карточка", () => {
+  it("статичный чип: текст без checkbox и кнопки", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip variant="card" label="мечта" testID="tag" />);
+
+    const chip = container.querySelector('[data-testid="tag"]') as HTMLElement;
+    expect(chip).not.toBeNull();
+    expect(chip.textContent).toBe("мечта");
+    expect(container.querySelector('[role="checkbox"]')).toBeNull();
+    expect(container.querySelector('[role="button"]')).toBeNull();
+    expect(chip.getAttribute("tabindex")).toBeNull();
+  });
+
+  it("длинный свой текст остаётся целиком и переносится по ширине", async () => {
+    const label = "очень длинный собственный тег";
+    const { container, render } = mounted();
+    await render(<TagChip variant="card" label={label} testID="tag" />);
+
+    const chip = container.querySelector('[data-testid="tag"]') as HTMLElement;
+    expect(chip.textContent).toBe(label);
+    expect(getComputedStyle(chip).maxWidth).toBe("100%");
+  });
+
+  it("доступное имя заменяет видимый текст, когда он неполон", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChip
+        variant="card"
+        label="+2"
+        accessibilityLabel="Ещё теги (2): своё, ещё одно"
+        testID="tag"
+      />,
+    );
+
+    const chip = container.querySelector('[data-testid="tag"]') as HTMLElement;
+    expect(chip.textContent).toBe("+2");
+    expect(chip.getAttribute("aria-label")).toBe("Ещё теги (2): своё, ещё одно");
+  });
+});
+
+function plusHidden(hidden: number): string {
+  return `+${hidden}`;
+}
+
+function hiddenSummary(hidden: number, labels: readonly string[]): string {
+  return `Ещё теги (${hidden}): ${labels.join(", ")}`;
+}
+
+describe("TagChipList", () => {
+  it("показывает не больше трёх чипов, остальные сворачивает в «+N»", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChipList
+        labels={["мечта", "нужно сейчас", "когда-нибудь", "своё", "ещё одно"]}
+        moreLabel={plusHidden}
+        moreAccessibilityLabel={hiddenSummary}
+        testID="tags"
+      />,
+    );
+
+    const row = container.querySelector('[data-testid="tags"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.childElementCount).toBe(4);
+    expect(getComputedStyle(row).flexWrap).toBe("wrap");
+    expect(container.querySelector('[data-testid="tags-0"]')?.textContent).toBe("мечта");
+    expect(container.querySelector('[data-testid="tags-1"]')?.textContent).toBe("нужно сейчас");
+    expect(container.querySelector('[data-testid="tags-2"]')?.textContent).toBe("когда-нибудь");
+    const more = container.querySelector('[data-testid="tags-more"]') as HTMLElement;
+    expect(more.textContent).toBe("+2");
+    expect(more.getAttribute("aria-label")).toBe("Ещё теги (2): своё, ещё одно");
+    expect(container.querySelectorAll('[role="checkbox"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
+  });
+
+  it("без скрытых тегов «+N» нет", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChipList labels={["мечта", "своё"]} moreLabel={plusHidden} testID="tags" />,
+    );
+
+    expect(container.textContent).toBe("мечтасвоё");
+    expect(container.querySelector('[data-testid="tags-more"]')).toBeNull();
+  });
+
+  it("max задаёт число видимых чипов", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChipList
+        labels={["мечта", "своё", "ещё одно"]}
+        max={1}
+        moreLabel={plusHidden}
+        testID="tags"
+      />,
+    );
+
+    expect(container.querySelector('[data-testid="tags-0"]')?.textContent).toBe("мечта");
+    expect(container.querySelector('[data-testid="tags-1"]')).toBeNull();
+    expect(container.querySelector('[data-testid="tags-more"]')?.textContent).toBe("+2");
+  });
+
+  it("пустой список не рисует ряд", async () => {
+    const { container, render } = mounted();
+    await render(<TagChipList labels={[]} moreLabel={plusHidden} testID="tags" />);
+
+    expect(container.querySelector('[data-testid="tags"]')).toBeNull();
+    expect(container.textContent).toBe("");
   });
 });

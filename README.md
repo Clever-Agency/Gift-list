@@ -49,6 +49,8 @@ npm run mobile:web     # то же приложение в браузере
 
 Имя на экранах берётся из `EXPO_PUBLIC_BRAND_NAME` (пустое значение → запасное имя только в `apps/mobile/src/config/env.ts`). Веб читает `BRAND_NAME` из `apps/web/.env`.
 
+Публичный адрес для ссылок вишлиста — `EXPO_PUBLIC_WEB_ORIGIN` (пусто → `EXPO_PUBLIC_API_BASE_URL`: сайт и API на одном домене, AD-26). Неверное значение не подменяется — ссылка просто не собирается.
+
 ### Проверки
 
 ```bash

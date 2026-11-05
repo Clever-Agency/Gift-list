@@ -108,9 +108,21 @@ export const giftCardSchema = z.strictObject({
 
 export type GiftCard = z.infer<typeof giftCardSchema>;
 
-/** List read: gates answer `ok: true` with `access`, never NOT_FOUND; a closed gate carries no gifts. */
+/**
+ * List read: gates answer `ok: true` with `access`, never NOT_FOUND; a closed gate
+ * carries no gifts.
+ *
+ * `publicToken` is the list's immutable share token (AD-6) and is present only in
+ * the owner's answer: the owner client builds `https://{domain}/l/{publicToken}`
+ * from it, while another viewer never learns the shareable link. The token does
+ * not depend on the nick, so renaming never rewrites it (A-26).
+ */
 export const listDataSchema = z.discriminatedUnion("access", [
-  z.strictObject({ access: z.literal("gifts"), gifts: z.array(giftCardSchema) }),
+  z.strictObject({
+    access: z.literal("gifts"),
+    gifts: z.array(giftCardSchema),
+    publicToken: z.string().optional(),
+  }),
   z.strictObject({ access: z.literal("not_found"), gifts: z.tuple([]) }),
 ]);
 

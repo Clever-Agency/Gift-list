@@ -64,7 +64,8 @@ export async function readWishlist(
 
   const list = await prisma.list.findUnique({
     where: "ownerId" in target ? { ownerId: target.ownerId } : { publicToken: target.publicToken },
-    select: { id: true, ownerId: true },
+    // `publicToken` is only handed out below, in the owner's own answer (AD-6).
+    select: { id: true, ownerId: true, publicToken: true },
   });
   // A missing list answers `not_found` before any gift is read, so neither a
   // wrong nick nor a wrong token reveals that a list exists (AD-7).
@@ -113,5 +114,11 @@ export async function readWishlist(
     return role === "owner" ? toOwnerGiftCard(gift) : toViewerGiftCard(gift, viewerId);
   });
 
-  return listDataSchema.parse({ access: "gifts", gifts });
+  return listDataSchema.parse({
+    access: "gifts",
+    gifts,
+    // Story 2.4 (AD-6, A-26): only the owner gets the immutable share token; the
+    // link `/l/{publicToken}` is what the owner shares, nobody else.
+    ...(owner ? { publicToken: list.publicToken } : {}),
+  });
 }

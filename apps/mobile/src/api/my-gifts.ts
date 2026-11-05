@@ -8,7 +8,7 @@ import {
 import { apiRequest, type ClientResult } from "@/api/client";
 
 export type MyGiftsResult =
-  | { ok: true; access: "gifts"; gifts: GiftCard[] }
+  | { ok: true; access: "gifts"; gifts: GiftCard[]; publicToken: string | null }
   | { ok: true; access: "not_found" }
   | { ok: false; invalid: true }
   | Exclude<ClientResult<unknown>, { ok: true }>;
@@ -32,11 +32,16 @@ export type DeleteGiftResult =
 /**
  * AD-7 owner branch behind `/api/v1/me/gifts` (AD-17: the app talks only to `api/v1`).
  * The payload is re-checked with the shared contract (AD-12): `listDataSchema` is
- * `{ access, gifts: giftCardSchema[] }`, a closed set on every card. A body that does
- * not match is its own outcome (`invalid`): the screen still recovers with the retry
- * view, but it does not claim a broken connection. A closed gate (`access: "not_found"`)
- * stays its own outcome: it is not an empty list
+ * `{ access, gifts: giftCardSchema[], publicToken? }`, a closed set on every card.
+ * A body that does not match is its own outcome (`invalid`): the screen still
+ * recovers with the retry view, but it does not claim a broken connection. A closed
+ * gate (`access: "not_found"`) stays its own outcome: it is not an empty list
  * (EXPERIENCE → State Patterns → «Список не найден»).
+ *
+ * Story 2.4: the owner answer carries the immutable `publicToken` (AD-6), from
+ * which the screen builds `https://{домен}/l/{publicToken}`. It is `null` only if
+ * the server ever omits it (the listed anomaly below `getMyGifts`); the token
+ * does not depend on the nick (A-26).
  */
 export async function fetchMyGifts(): Promise<MyGiftsResult> {
   const result = await apiRequest<unknown>("/api/v1/me/gifts");
@@ -47,7 +52,12 @@ export async function fetchMyGifts(): Promise<MyGiftsResult> {
 
   if (parsed.data.access === "not_found") return { ok: true, access: "not_found" };
 
-  return { ok: true, access: "gifts", gifts: parsed.data.gifts };
+  return {
+    ok: true,
+    access: "gifts",
+    gifts: parsed.data.gifts,
+    publicToken: parsed.data.publicToken ?? null,
+  };
 }
 
 /**

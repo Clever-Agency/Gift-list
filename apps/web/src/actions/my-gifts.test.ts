@@ -62,7 +62,7 @@ beforeEach(() => {
   findUnique.mockReset();
   findMany.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
-  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1" });
+  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1", publicToken: "tok-1" });
   findMany.mockResolvedValue([]);
 });
 
@@ -82,11 +82,21 @@ describe("getMyGifts", () => {
     await getMyGifts(headers);
     expect(findUnique).toHaveBeenCalledWith({
       where: { ownerId: "u1" },
-      select: { id: true, ownerId: true },
+      select: { id: true, ownerId: true, publicToken: true },
     });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { listId: "l1", archivedAt: null } }),
     );
+  });
+
+  /** Story 2.4 (AD-6): the owner payload carries the immutable share token. */
+  it("includes the list's publicToken in the owner payload", async () => {
+    const result = await getMyGifts(headers);
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { access: "gifts", publicToken: "tok-1" },
+    });
   });
 
   it("orders the caller's gifts newest first with a stable tie-break", async () => {

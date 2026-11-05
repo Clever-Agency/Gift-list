@@ -111,7 +111,7 @@ function giftsOf(result: ListData) {
 beforeEach(() => {
   findUnique.mockReset();
   findMany.mockReset();
-  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1" });
+  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1", publicToken: "tok-1" });
   findMany.mockImplementation(({ where }: { where: GiftWhere }) => Promise.resolve(query(where)));
 });
 
@@ -130,6 +130,46 @@ describe("readWishlist", () => {
     ]);
     expect(giftsOf(result).find((card) => card.id === "g-secret")?.visibility).toBe("SECRET");
     expect(giftsOf(result).some((card) => card.id === "g-archived")).toBe(false);
+  });
+
+  /** Story 2.4 (AD-6, A-26): the owner builds the share link from this token. */
+  it("gives the owner the list's immutable publicToken", async () => {
+    const result = await readWishlist(
+      { viewer: { id: "u1" }, target: { ownerId: "u1" } },
+      reader().deps,
+    );
+
+    expect(result).toMatchObject({ access: "gifts", publicToken: "tok-1" });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { ownerId: "u1" },
+      select: { id: true, ownerId: true, publicToken: true },
+    });
+  });
+
+  it("keeps the owner's publicToken with an empty wishlist", async () => {
+    findMany.mockResolvedValue([]);
+
+    const result = await readWishlist(
+      { viewer: { id: "u1" }, target: { ownerId: "u1" } },
+      reader().deps,
+    );
+
+    expect(result).toEqual({ access: "gifts", gifts: [], publicToken: "tok-1" });
+  });
+
+  /** The share token is the owner's: a friend or link visitor must not receive it. */
+  it("never hands publicToken to a non-owner viewer", async () => {
+    const friend = await readWishlist(
+      { viewer: { id: "u9" }, target: { ownerId: "u1" } },
+      reader({ friend: true }).deps,
+    );
+    const anonymous = await readWishlist(
+      { viewer: null, target: { publicToken: "tok" }, viaListToken: true },
+      reader().deps,
+    );
+
+    expect(Object.keys(friend).sort()).toEqual(["access", "gifts"]);
+    expect(Object.keys(anonymous).sort()).toEqual(["access", "gifts"]);
   });
 
   it("never asks for relation facts when the owner reads their own list", async () => {

@@ -46,7 +46,7 @@ beforeEach(() => {
   findMany.mockReset();
   createGift.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
-  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1" });
+  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1", publicToken: "tok-1" });
   findMany.mockResolvedValue([row]);
 });
 
@@ -61,6 +61,7 @@ describe("GET /api/v1/me/gifts", () => {
       ok: true,
       data: {
         access: "gifts",
+        publicToken: "tok-1",
         gifts: [
           {
             id: "g1",
@@ -99,7 +100,10 @@ describe("GET /api/v1/me/gifts", () => {
     const { res, viaHttp } = await both();
 
     expect(res.status).toBe(200);
-    expect(viaHttp).toEqual({ ok: true, data: { access: "gifts", gifts: [] } });
+    expect(viaHttp).toEqual({
+      ok: true,
+      data: { access: "gifts", gifts: [], publicToken: "tok-1" },
+    });
   });
 
   /**
@@ -115,6 +119,7 @@ describe("GET /api/v1/me/gifts", () => {
       Promise.resolve({
         id: where.ownerId === "u1" ? "l1" : "l2",
         ownerId: where.ownerId,
+        publicToken: where.ownerId === "u1" ? "tok-1" : "tok-2",
       }),
     );
     findMany.mockImplementation(({ where }: { where: { listId: string } }) =>
@@ -127,13 +132,14 @@ describe("GET /api/v1/me/gifts", () => {
 
     expect(findUnique).toHaveBeenCalledWith({
       where: { ownerId: "u1" },
-      select: { id: true, ownerId: true },
+      select: { id: true, ownerId: true, publicToken: true },
     });
     expect(findUnique).toHaveBeenCalledTimes(1);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { listId: "l1", archivedAt: null } }),
     );
     expect(findMany).toHaveBeenCalledTimes(1);
+    expect(body.data.publicToken).toBe("tok-1");
     expect(body.data.gifts.map((card: { id: string }) => card.id)).toEqual(["g1"]);
     expect(JSON.stringify(body)).not.toContain("Чужое желание");
   });

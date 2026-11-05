@@ -167,9 +167,16 @@ describe("readWishlist", () => {
       { viewer: null, target: { publicToken: "tok" }, viaListToken: true },
       reader().deps,
     );
+    const signedInLinkVisitor = await readWishlist(
+      { viewer: { id: "u9" }, target: { publicToken: "tok-1" }, viaListToken: true },
+      reader().deps,
+    );
 
-    expect(Object.keys(friend).sort()).toEqual(["access", "gifts"]);
-    expect(Object.keys(anonymous).sort()).toEqual(["access", "gifts"]);
+    for (const answer of [friend, anonymous, signedInLinkVisitor]) {
+      expect(Object.keys(answer).sort()).toEqual(["access", "gifts"]);
+      // Neither the field nor the token value may slip into a viewer answer.
+      expect(JSON.stringify(answer)).not.toContain("tok-1");
+    }
   });
 
   it("never asks for relation facts when the owner reads their own list", async () => {

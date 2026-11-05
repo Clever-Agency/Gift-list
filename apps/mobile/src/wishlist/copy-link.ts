@@ -11,12 +11,20 @@ export type CopyShareLinkResult = "copied" | "failed";
 /**
  * Builds `{origin}/l/{publicToken}` and copies it (AD-6, Q-2). A `null` link is
  * never copied: the caller shows the error toast instead of a broken string.
+ * A refused write and a platform exception are the same `failed`: the link did
+ * not reach the clipboard, so the screen must never claim success.
  */
 export async function copyWishlistShareLink(
   publicToken: string | null,
   origin?: string,
 ): Promise<CopyShareLinkResult> {
-  const link = wishlistShareLink(publicToken ?? "", origin);
-  if (link === null) return "failed";
-  return (await copyText(link)) ? "copied" : "failed";
+  try {
+    const link = wishlistShareLink(publicToken ?? "", origin);
+    if (link === null) return "failed";
+    return (await copyText(link)) ? "copied" : "failed";
+  } catch {
+    // The adapters guard their own platform calls; this is a second line so a
+    // rejected clipboard future still ends as an error toast, not a false success.
+    return "failed";
+  }
 }

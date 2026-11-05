@@ -32,17 +32,36 @@ describe("copyWishlistShareLink", () => {
   it("does not copy anything when the token is missing", async () => {
     await expect(copyWishlistShareLink(null, "https://gift.example")).resolves.toBe("failed");
     await expect(copyWishlistShareLink("", "https://gift.example")).resolves.toBe("failed");
+    await expect(copyWishlistShareLink("   ", "https://gift.example")).resolves.toBe("failed");
     expect(copy).not.toHaveBeenCalled();
   });
 
   it("does not copy a broken link when the origin is missing or invalid", async () => {
-    await expect(copyWishlistShareLink("tok-1", "")).resolves.toBe("failed");
-    await expect(copyWishlistShareLink("tok-1", "gift.example")).resolves.toBe("failed");
+    const origins = [
+      "",
+      "   ",
+      "gift.example",
+      "ftp://gift.example",
+      "javascript:alert(1)",
+      "https://gift.example/app",
+      "https://gift.example/?from=mail",
+      "https://gift.example/#top",
+    ];
+    for (const origin of origins) {
+      await expect(copyWishlistShareLink("tok-1", origin)).resolves.toBe("failed");
+    }
     expect(copy).not.toHaveBeenCalled();
   });
 
   it("reports a refused clipboard write as failed", async () => {
     copy.mockResolvedValue(false);
+
+    await expect(copyWishlistShareLink("tok-1", "https://gift.example")).resolves.toBe("failed");
+    expect(copy).toHaveBeenCalledWith("https://gift.example/l/tok-1");
+  });
+
+  it("reports a clipboard exception as failed, never as success", async () => {
+    copy.mockRejectedValue(new Error("clipboard denied"));
 
     await expect(copyWishlistShareLink("tok-1", "https://gift.example")).resolves.toBe("failed");
     expect(copy).toHaveBeenCalledWith("https://gift.example/l/tok-1");

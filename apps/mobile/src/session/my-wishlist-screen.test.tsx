@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "@/session/auth-context";
+import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, pressScrim, settle } from "@/test/dom";
 import MyWishlistScreen from "../../app/(app)/index";
 
@@ -273,15 +273,38 @@ async function chooseInDialog(label: string) {
   await settle(10);
 }
 
-async function mount() {
+async function mount(extra?: ReactNode) {
   await act(async () => {
     root.render(
       <AuthProvider>
         <MyWishlistScreen />
+        {extra}
       </AuthProvider>,
     );
   });
 }
+
+/**
+ * Story 3.1 changes the session nick without leaving the screen. The share link is
+ * built only from `List.publicToken`, so the next copy must be byte-for-byte the
+ * same URL (A-26).
+ */
+function NickSwitcher() {
+  const auth = useAuth();
+
+  function changeNick() {
+    if (auth.state.status !== "ready") return;
+    auth.setUser({ ...auth.state.user, nick: "newnick" });
+  }
+
+  return (
+    <button type="button" onClick={changeNick}>
+      Сменить ник
+    </button>
+  );
+}
+
+NickSwitcher.displayName = "NickSwitcher";
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -771,6 +794,11 @@ describe("мой вишлист: копирование ссылки", () => {
 
     expect(button("Скопировать ссылку")).toBeDefined();
     expect(text()).toContain("Пока пусто");
+
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).toHaveBeenCalledWith("https://gift.example/l/tok-1");
+    expect(text()).toContain("Ссылка скопирована");
   });
 
   it("без настроенного адреса сайта ничего не копирует и показывает ошибку", async () => {
@@ -811,6 +839,37 @@ describe("мой вишлист: копирование ссылки", () => {
     expect(clipboard.copyText).toHaveBeenCalledWith("https://gift.example/l/tok-1");
     expect(text()).toContain("Не получилось скопировать ссылку. Попробуйте ещё раз.");
     expect(text()).not.toContain("Ссылка скопирована");
+  });
+
+  it("когда буфер выбрасывает исключение, тоже показывает ошибку, а не успех", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    clipboard.copyText.mockRejectedValue(new Error("clipboard denied"));
+    respond(giftsAnswer([gift()], "tok-1"));
+    await mount();
+
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).toHaveBeenCalledWith("https://gift.example/l/tok-1");
+    expect(text()).toContain("Не получилось скопировать ссылку. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Ссылка скопирована");
+  });
+
+  it("смена ника не меняет токен и скопированную ссылку (A-26)", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([gift()], "tok-1"));
+    await mount(<NickSwitcher />);
+
+    await press("Скопировать ссылку");
+    expect(clipboard.copyText).toHaveBeenLastCalledWith("https://gift.example/l/tok-1");
+
+    await press("Сменить ник");
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).toHaveBeenCalledTimes(2);
+    expect(clipboard.copyText).toHaveBeenLastCalledWith("https://gift.example/l/tok-1");
+    expect(text()).toContain("Ссылка скопирована");
   });
 });
 

@@ -114,8 +114,10 @@ export type GiftCard = z.infer<typeof giftCardSchema>;
  *
  * `publicToken` is the list's immutable share token (AD-6) and is present only in
  * the owner's answer: the owner client builds `https://{domain}/l/{publicToken}`
- * from it, while another viewer never learns the shareable link. The token does
- * not depend on the nick, so renaming never rewrites it (A-26).
+ * from it, while another viewer never learns the shareable link. The field is
+ * optional because every viewer shares this one schema: a friend, a subscriber or
+ * a link visitor answers with `{ access, gifts }` and no token. The token does not
+ * depend on the nick, so renaming never rewrites it (A-26).
  */
 export const listDataSchema = z.discriminatedUnion("access", [
   z.strictObject({

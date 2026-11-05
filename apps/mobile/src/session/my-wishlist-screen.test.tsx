@@ -10,6 +10,7 @@ import MyWishlistScreen from "../../app/(app)/index";
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
+const clipboard = vi.hoisted(() => ({ copyText: vi.fn() }));
 const navigation = vi.hoisted(() => ({
   replace: vi.fn(),
   push: vi.fn(),
@@ -50,6 +51,7 @@ const focusStore = vi.hoisted(() => {
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/platform/session-token", () => store);
+vi.mock("@/platform/clipboard", () => clipboard);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
 // The visibility chip draws its icon with `expo-symbols`, which loads a symbol font
@@ -171,8 +173,14 @@ function respond(gifts: unknown, session: unknown = { ok: true, data: user }) {
   );
 }
 
-function giftsAnswer(cards: unknown[]) {
-  return { ok: true, data: { access: "gifts", gifts: cards } };
+function giftsAnswer(cards: unknown[], publicToken?: string) {
+  return {
+    ok: true,
+    data:
+      publicToken === undefined
+        ? { access: "gifts", gifts: cards }
+        : { access: "gifts", gifts: cards, publicToken },
+  };
 }
 
 let root: Root;
@@ -277,6 +285,8 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // Story 2.4: the clipboard write succeeds unless a test says otherwise.
+  clipboard.copyText.mockResolvedValue(true);
   focusStore.reset();
   search.params = {};
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
@@ -288,6 +298,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.unstubAllEnvs();
 });
 
 describe("мой вишлист: гейт сессии", () => {
@@ -729,6 +740,77 @@ describe("мой вишлист: список", () => {
     });
 
     expect(navigation.push).toHaveBeenCalledWith("/settings");
+  });
+});
+
+/**
+ * Story 2.4 (FR-28, AD-6, Q-2): one button copies `{origin}/l/{publicToken}` and
+ * a toast says so. A missing origin or token is never copied as a broken string;
+ * the press shows the error toast instead. No share-sheet.
+ */
+describe("мой вишлист: копирование ссылки", () => {
+  it("копирует ссылку публичного вишлиста и показывает «Ссылка скопирована»", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([gift()], "tok-1"));
+    await mount();
+
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).toHaveBeenCalledTimes(1);
+    expect(clipboard.copyText).toHaveBeenCalledWith("https://gift.example/l/tok-1");
+    expect(text()).toContain("Ссылка скопирована");
+    expect(text()).not.toContain("Не получилось скопировать ссылку.");
+  });
+
+  it("кнопка есть и в пустом вишлисте", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([], "tok-1"));
+    await mount();
+
+    expect(button("Скопировать ссылку")).toBeDefined();
+    expect(text()).toContain("Пока пусто");
+  });
+
+  it("без настроенного адреса сайта ничего не копирует и показывает ошибку", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([gift()], "tok-1"));
+    await mount();
+
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).not.toHaveBeenCalled();
+    expect(text()).toContain("Не получилось скопировать ссылку. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Ссылка скопирована");
+  });
+
+  it("без publicToken ничего не копирует и показывает ошибку", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).not.toHaveBeenCalled();
+    expect(text()).toContain("Не получилось скопировать ссылку. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Ссылка скопирована");
+  });
+
+  it("когда система не дала записать в буфер, показывает ошибку", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    clipboard.copyText.mockResolvedValue(false);
+    respond(giftsAnswer([gift()], "tok-1"));
+    await mount();
+
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).toHaveBeenCalledWith("https://gift.example/l/tok-1");
+    expect(text()).toContain("Не получилось скопировать ссылку. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Ссылка скопирована");
   });
 });
 

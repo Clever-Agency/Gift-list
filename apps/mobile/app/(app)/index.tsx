@@ -1,5 +1,6 @@
 import type { GiftCard } from "@gift-list/contracts";
 import {
+  Button,
   Column,
   Heading,
   Pressable,
@@ -28,6 +29,7 @@ import { PrimaryButton } from "@/ui/primary-button";
 import { WishCardSkeleton } from "@/ui/skeleton";
 import { ToastHost } from "@/ui/toast";
 import { VisibilityPicker } from "@/ui/visibility-picker";
+import { copyWishlistShareLink } from "@/wishlist/copy-link";
 
 /**
  * A failed read offers the retry view; UX-DR6 adds the toast. A missing list is its
@@ -35,7 +37,9 @@ import { VisibilityPicker } from "@/ui/visibility-picker";
  */
 type ScreenState =
   | { status: "loading" }
-  | { status: "ready"; gifts: GiftCard[] }
+  // Story 2.4: the owner answer also carries the immutable `publicToken` (AD-6);
+  // it is `null` when the server omits it, so the screen has no link to copy.
+  | { status: "ready"; gifts: GiftCard[]; publicToken: string | null }
   | { status: "missing" }
   // Only a broken connection claims a network problem; other failed reads get the
   // generic body (EXPERIENCE → State Patterns → «Нет сети при загрузке / ошибка загрузки»).
@@ -192,7 +196,7 @@ export default function MyWishlistScreen() {
         setState(
           result.access === "not_found"
             ? { status: "missing" }
-            : { status: "ready", gifts: result.gifts },
+            : { status: "ready", gifts: result.gifts, publicToken: result.publicToken },
         );
         return;
       }
@@ -252,6 +256,20 @@ export default function MyWishlistScreen() {
 
   function dismissToast() {
     setToast(null);
+  }
+
+  /**
+   * Story 2.4 (FR-28): one button, one URL, no share-sheet. The toast names the
+   * result; a missing origin or token and a refused clipboard write are the same
+   * error, because the link did not reach the clipboard either way.
+   */
+  async function copyLink() {
+    const token = state.status === "ready" ? state.publicToken : null;
+    const result = await copyWishlistShareLink(token);
+    setToast({
+      message: result === "copied" ? wishlist("copyLinkDone") : wishlist("copyLinkFailed"),
+      tone: result === "copied" ? "info" : "error",
+    });
   }
 
   function openComposer() {
@@ -414,6 +432,25 @@ export default function MyWishlistScreen() {
               gap: spacing["grid-gap"],
             }}
           >
+            {/* DESIGN.md → App → «Широкий экран»: the owner's buttons sit in a row
+                above the grid, to the right. Story 2.4 adds «Скопировать ссылку». */}
+            {state.status === "ready" ? (
+              <XStack
+                testID="wishlist-actions"
+                flexWrap="wrap"
+                gap="$2"
+                {...(width < spacing["bp-medium"] ? { width: "100%" } : { alignSelf: "flex-end" })}
+              >
+                {state.gifts.length > 0 ? (
+                  <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
+                ) : null}
+                <Button
+                  testID="wishlist-copy-link"
+                  label={wishlist("copyLink")}
+                  onPress={copyLink}
+                />
+              </XStack>
+            ) : null}
             {state.status === "loading" ? (
               <XStack
                 flexWrap="wrap"
@@ -447,40 +484,33 @@ export default function MyWishlistScreen() {
                 action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
               />
             ) : (
-              <>
-                <YStack
-                  {...(width < spacing["bp-medium"] ? { width: "100%" } : { alignSelf: "flex-end" })}
-                >
-                  <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
-                </YStack>
-                {/* Review m5: the grid is a list for assistive tech. */}
-                <XStack role="list" flexWrap="wrap" gap="$grid-gap">
-                  {state.gifts.map((gift) => {
-                    function handlePress() {
-                      openEditor(gift.id);
-                    }
+              // Review m5: the grid is a list for assistive tech.
+              <XStack role="list" flexWrap="wrap" gap="$grid-gap">
+                {state.gifts.map((gift) => {
+                  function handlePress() {
+                    openEditor(gift.id);
+                  }
 
-                    function handleVisibilityPress() {
-                      openVisibilityPicker(gift);
-                    }
+                  function handleVisibilityPress() {
+                    openVisibilityPicker(gift);
+                  }
 
-                    function setChipNode(node: ChipNode | null) {
-                      chipNodes.current.set(gift.id, node);
-                    }
+                  function setChipNode(node: ChipNode | null) {
+                    chipNodes.current.set(gift.id, node);
+                  }
 
-                    return (
-                      <WishCard
-                        key={gift.id}
-                        gift={gift}
-                        width={grid.cardWidth}
-                        onPress={handlePress}
-                        onVisibilityPress={handleVisibilityPress}
-                        visibilityChipRef={setChipNode}
-                      />
-                    );
-                  })}
-                </XStack>
-              </>
+                  return (
+                    <WishCard
+                      key={gift.id}
+                      gift={gift}
+                      width={grid.cardWidth}
+                      onPress={handlePress}
+                      onVisibilityPress={handleVisibilityPress}
+                      visibilityChipRef={setChipNode}
+                    />
+                  );
+                })}
+              </XStack>
             )}
           </ScrollView>
 

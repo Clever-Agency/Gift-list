@@ -31,6 +31,7 @@ type Row = {
   holderVisibleToOwner: boolean;
   holderVisibleToOthers: boolean;
   reservedBy: { id: string; nick: string; name: string } | null;
+  tags: { tagId: string | null; customText: string | null; tag: { labels: unknown } | null }[];
 };
 
 function gift(overrides: Partial<Row> & Pick<Row, "id" | "title">): Row {
@@ -49,6 +50,7 @@ function gift(overrides: Partial<Row> & Pick<Row, "id" | "title">): Row {
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
     reservedBy: null,
+    tags: [],
     ...overrides,
   };
 }
@@ -249,5 +251,62 @@ describe("readWishlist", () => {
 
     expect(result).toEqual({ access: "not_found", gifts: [] });
     expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("readWishlist tags", () => {
+  const dream = { tagId: "tag_dream", customText: null, tag: { labels: { ru: "мечта" } } };
+  const custom = { tagId: null, customText: "своё", tag: null };
+  const secretTag = {
+    tagId: "tag_secret",
+    customText: null,
+    tag: { labels: { ru: "секретный тег" } },
+  };
+
+  /** Story 2.5/AD-22/AD-27: tags ride on the visible card only, labelled by the server. */
+  it("maps tags of visible gifts and never returns a hidden gift's tags", async () => {
+    findMany.mockResolvedValue([
+      gift({ id: "g-public", title: "Публичное", tags: [dream, custom] }),
+      gift({ id: "g-secret", title: "Секрет", visibility: "SECRET", tags: [secretTag] }),
+    ]);
+
+    const result = await readWishlist(
+      { viewer: { id: "u9" }, target: { ownerId: "u1" }, locale: "ru" },
+      reader({ friend: true }).deps,
+    );
+
+    const cards = giftsOf(result);
+    expect(cards.map((card) => card.id)).toEqual(["g-public"]);
+    expect(cards[0]?.tags).toEqual([
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: null, label: "своё" },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("секретный тег");
+  });
+
+  it("gives the owner tags of a SECRET gift too", async () => {
+    findMany.mockResolvedValue([
+      gift({ id: "g-secret", title: "Секрет", visibility: "SECRET", tags: [secretTag] }),
+    ]);
+
+    const result = await readWishlist(
+      { viewer: { id: "u1" }, target: { ownerId: "u1" } },
+      reader().deps,
+    );
+
+    expect(giftsOf(result)[0]?.tags).toEqual([
+      { catalogId: "tag_secret", label: "секретный тег" },
+    ]);
+  });
+
+  it("localizes a fixed tag by the request locale with a DEFAULT_LOCALE fallback", async () => {
+    findMany.mockResolvedValue([gift({ id: "g-public", title: "Публичное", tags: [dream] })]);
+
+    const result = await readWishlist(
+      { viewer: { id: "u1" }, target: { ownerId: "u1" } },
+      reader().deps,
+    );
+
+    expect(giftsOf(result)[0]?.tags).toEqual([{ catalogId: "tag_dream", label: "мечта" }]);
   });
 });

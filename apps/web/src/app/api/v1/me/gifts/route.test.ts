@@ -28,6 +28,7 @@ const row = {
   reservationPhase: null,
   holderVisibleToOwner: false,
   reservedBy: null,
+  tags: [],
 };
 
 /** Calls the use-case and the HTTP adapter with the same request, like the `/me` route test. */

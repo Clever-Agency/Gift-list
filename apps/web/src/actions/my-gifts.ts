@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { ActionResult, ListData } from "@gift-list/contracts";
+import { negotiateLocale, preferredFromAcceptLanguage } from "@gift-list/contracts";
 import { readWishlist } from "@/actions/wishlist-read";
 import { auth } from "@/lib/auth";
 
@@ -22,7 +23,9 @@ export async function getMyGifts(headers: Headers): Promise<ActionResult<ListDat
   if (!session) return unauthenticated;
 
   const ownerId = session.user.id;
-  const data = await readWishlist({ viewer: { id: ownerId }, target: { ownerId } });
+  // AD-27: fixed tag labels follow the request language, like the catalog read.
+  const locale = negotiateLocale(preferredFromAcceptLanguage(headers.get("accept-language")));
+  const data = await readWishlist({ viewer: { id: ownerId }, target: { ownerId }, locale });
   // AD-6 creates the list at registration; a missing row is an anomaly, and an
   // empty wishlist is safer on the owner's own screen than a gate error.
   if (data.access === "not_found") return { ok: true, data: { access: "gifts", gifts: [] } };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
-import { giftInputSchema, giftUpdateSchema } from "./gift";
+import { GIFT_TAG_TEXT_MAX, giftInputSchema, giftUpdateSchema } from "./gift";
 
 describe("giftInputSchema", () => {
   it("fills an empty body with nulls and PUBLIC visibility", () => {
@@ -12,6 +12,7 @@ describe("giftInputSchema", () => {
       linkUrl: null,
       visibility: "PUBLIC",
       quantity: "SINGLE",
+      tags: [],
     });
   });
 
@@ -104,6 +105,120 @@ describe("giftInputSchema", () => {
 
   it("rejects keys outside the body", () => {
     expect(giftInputSchema.safeParse({ title: "Книга", bought: true }).success).toBe(false);
+  });
+});
+
+describe("gift tags", () => {
+  it("defaults a create body to no tags", () => {
+    expect(giftInputSchema.parse({ title: "Книга" }).tags).toEqual([]);
+  });
+
+  it("accepts a catalog tag by id and a custom tag by text", () => {
+    expect(
+      giftInputSchema.parse({
+        title: "Книга",
+        tags: [{ catalogId: "tag_1" }, { text: "  для дома  " }],
+      }).tags,
+    ).toEqual([{ catalogId: "tag_1" }, { text: "для дома" }]);
+  });
+
+  it("trims a custom tag and rejects an empty or blank one", () => {
+    expect(giftInputSchema.parse({ title: "Книга", tags: [{ text: "  мечта  " }] }).tags).toEqual([
+      { text: "мечта" },
+    ]);
+
+    for (const text of ["", "   "]) {
+      expect(giftInputSchema.safeParse({ title: "Книга", tags: [{ text }] }).success).toBe(false);
+    }
+  });
+
+  it("counts custom tag length in Unicode code points", () => {
+    const atLimit = "😀".repeat(GIFT_TAG_TEXT_MAX);
+    const overLimit = "😀".repeat(GIFT_TAG_TEXT_MAX + 1);
+
+    // A surrogate pair is two JS units but one code point, like PostgreSQL's VARCHAR.
+    expect(atLimit.length).toBeGreaterThan(GIFT_TAG_TEXT_MAX);
+    expect(giftInputSchema.safeParse({ title: "Книга", tags: [{ text: atLimit }] }).success).toBe(
+      true,
+    );
+    expect(
+      giftInputSchema.safeParse({ title: "Книга", tags: [{ text: overLimit }] }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a tag with both sources or with neither", () => {
+    for (const tag of [{ catalogId: "tag_1", text: "свой" }, {}]) {
+      expect(giftInputSchema.safeParse({ title: "Книга", tags: [tag] }).success).toBe(false);
+    }
+  });
+
+  it("rejects an empty catalog id", () => {
+    expect(
+      giftInputSchema.safeParse({ title: "Книга", tags: [{ catalogId: "   " }] }).success,
+    ).toBe(false);
+  });
+
+  it("rejects NUL, which PostgreSQL cannot store in a VARCHAR", () => {
+    expect(
+      giftInputSchema.safeParse({ title: "Книга", tags: [{ text: "свой\u0000тег" }] }).success,
+    ).toBe(false);
+  });
+
+  it("rejects duplicate catalog ids and duplicate custom texts", () => {
+    const duplicates = [
+      [{ catalogId: "tag_1" }, { catalogId: "tag_1" }],
+      [{ text: "мечта" }, { text: "мечта" }],
+      [{ text: " мечта " }, { text: "мечта" }],
+    ];
+
+    for (const tags of duplicates) {
+      const parsed = giftInputSchema.safeParse({ title: "Книга", tags });
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["tags"]);
+    }
+  });
+
+  it("keeps a catalog id and an equal custom text apart", () => {
+    expect(
+      giftInputSchema.safeParse({
+        title: "Книга",
+        tags: [{ catalogId: "dream" }, { text: "dream" }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("never lets a client set aggregate eligibility or moderation fields", () => {
+    for (const tag of [
+      { catalogId: "tag_1", aggregateEligible: true },
+      { text: "свой", aggregateEligible: true },
+      { text: "свой", tagId: "tag_1" },
+    ]) {
+      expect(giftInputSchema.safeParse({ title: "Книга", tags: [tag] }).success).toBe(false);
+    }
+  });
+
+  it("accepts an explicit empty list in a create body", () => {
+    expect(giftInputSchema.parse({ title: "Книга", tags: [] }).tags).toEqual([]);
+  });
+
+  it("keeps tags out of an edit body that omits them", () => {
+    expect(giftUpdateSchema.parse({ description: "Заметка" })).not.toHaveProperty("tags");
+  });
+
+  it("carries omitted, cleared and replaced tags into an edit body", () => {
+    expect(giftUpdateSchema.parse({ tags: [] })).toEqual({ tags: [] });
+    expect(giftUpdateSchema.parse({ tags: [{ catalogId: "tag_1" }] })).toEqual({
+      tags: [{ catalogId: "tag_1" }],
+    });
+    expect(giftUpdateSchema.parse({ tags: [{ text: " свой " }] })).toEqual({
+      tags: [{ text: "свой" }],
+    });
+  });
+
+  it("applies the same tag rules to an edit body", () => {
+    for (const tags of [[{ text: "   " }], [{ text: "😀".repeat(GIFT_TAG_TEXT_MAX + 1) }], [{ catalogId: "tag_1", aggregateEligible: true }]]) {
+      expect(giftUpdateSchema.safeParse({ tags }).success).toBe(false);
+    }
   });
 });
 

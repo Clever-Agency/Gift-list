@@ -1,7 +1,8 @@
 import "server-only";
 
-import { listDataSchema, type ListData } from "@gift-list/contracts";
+import { DEFAULT_LOCALE, listDataSchema, type ListData, type SupportedLocale } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
+import type { Prisma } from "@/db/generated/client";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import {
   NO_RELATIONS,
@@ -21,6 +22,11 @@ export type ReadWishlistInput = {
   readonly viewer: VisibilityViewer;
   readonly target: WishlistTarget;
   readonly viaListToken?: boolean;
+  /**
+   * AD-27: the request language for fixed tag labels. The caller negotiates it
+   * from `Accept-Language`; the mapper falls back to `DEFAULT_LOCALE`.
+   */
+  readonly locale?: SupportedLocale;
 };
 
 /** Ports the read depends on; tests hand over a scripted reader. */
@@ -47,7 +53,13 @@ const giftSelect = {
   holderVisibleToOwner: true,
   holderVisibleToOthers: true,
   reservedBy: { select: { id: true, nick: true, name: true } },
-} as const;
+  // Story 2.5/AD-22: only what the card shows. The order is a stable database
+  // order, not a presentation decision; the card (2.5.7) owns how tags are shown.
+  tags: {
+    select: { tagId: true, customText: true, tag: { select: { labels: true } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  },
+} satisfies Prisma.GiftSelect;
 
 /**
  * The single wishlist read of the server (AD-7, AD-12, NFR-3). Every screen and
@@ -110,8 +122,11 @@ export async function readWishlist(
   if (resolved.access === "not_found") return listDataSchema.parse(notFound);
 
   const role = resolved.role;
+  const locale = input.locale ?? DEFAULT_LOCALE;
   const gifts = resolved.gifts.map(function toListGiftCard(gift) {
-    return role === "owner" ? toOwnerGiftCard(gift) : toViewerGiftCard(gift, viewerId);
+    return role === "owner"
+      ? toOwnerGiftCard(gift, locale)
+      : toViewerGiftCard(gift, viewerId, locale);
   });
 
   return listDataSchema.parse({

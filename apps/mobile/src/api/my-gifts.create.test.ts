@@ -38,6 +38,7 @@ const input: GiftInput = {
   linkUrl: null,
   visibility: "PUBLIC",
   quantity: "SINGLE",
+  tags: [],
 };
 
 const card = {

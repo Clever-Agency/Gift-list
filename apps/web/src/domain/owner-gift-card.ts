@@ -2,8 +2,9 @@
 // (no Prisma types) and get the `GiftCard` the owner may see. Shared by the
 // list read (Story 2.1) and the create use-case (Story 2.2).
 
-import type { GiftCard } from "@gift-list/contracts";
+import { DEFAULT_LOCALE, type GiftCard, type SupportedLocale } from "@gift-list/contracts";
 import { calendarDay } from "./calendar-day";
+import { toGiftTags, type GiftTagRow } from "./tag";
 import type { GiftVisibility } from "./visibility";
 
 /** Plain row the owner mapper reads; keeps Prisma types out of the mapping rules. */
@@ -18,6 +19,7 @@ export type OwnerGiftRow = {
   quantity: GiftCard["quantity"];
   expiresOn: Date | null;
   archivedAt: Date | null;
+  tags: readonly GiftTagRow[];
   status: GiftCard["status"];
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
   holderVisibleToOwner: boolean;
@@ -27,11 +29,15 @@ export type OwnerGiftRow = {
 /**
  * Owner gift card (AD-7 read matrix, AD-12): no holder identity unless the holder
  * allowed it, no `bought`, `dueAt` or reservation label; the owner action comes
- * from the reservation phase instead. Tags arrive with Story 2.5. Closing keeps
- * `reserved*` for audit (AD-8), so a CLOSED gift keeps the holder when the
- * toggle is on and still hides it when off (FR-31).
+ * from the reservation phase instead. Tags arrive with Story 2.5: fixed tags are
+ * labelled in the request language, custom ones show their own text (AD-27).
+ * Closing keeps `reserved*` for audit (AD-8), so a CLOSED gift keeps the holder
+ * when the toggle is on and still hides it when off (FR-31).
  */
-export function toOwnerGiftCard(row: OwnerGiftRow): GiftCard {
+export function toOwnerGiftCard(
+  row: OwnerGiftRow,
+  locale: SupportedLocale = DEFAULT_LOCALE,
+): GiftCard {
   const holder = row.holderVisibleToOwner ? row.reservedBy : null;
   return {
     id: row.id,
@@ -44,7 +50,7 @@ export function toOwnerGiftCard(row: OwnerGiftRow): GiftCard {
     quantity: row.quantity,
     expiresOn: calendarDay(row.expiresOn),
     archivedAt: row.archivedAt?.toISOString() ?? null,
-    tags: [],
+    tags: toGiftTags(row.tags, locale),
     status: row.status,
     reservedBy: holder
       ? { id: holder.id, nick: holder.nick, displayName: holder.name }

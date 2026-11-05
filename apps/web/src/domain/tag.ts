@@ -2,7 +2,12 @@
 // enter aggregates. A custom text stays out until approval (Story 10.2). The
 // predicate lives here so aggregate reads cannot inline a weaker check.
 
-import { DEFAULT_LOCALE, type SupportedLocale, type TagCatalogItem } from "@gift-list/contracts";
+import {
+  DEFAULT_LOCALE,
+  type GiftCard,
+  type SupportedLocale,
+  type TagCatalogItem,
+} from "@gift-list/contracts";
 
 /** Minimal shape of a `GiftTag` row needed to decide aggregate eligibility. */
 export type GiftTagAggregateState = {
@@ -86,3 +91,50 @@ export function toTagCatalogItem(row: TagCatalogRow, locale: SupportedLocale): T
     label: pickTagLabel(row.labels, locale),
   };
 }
+
+/** The wire shape of one tag on a gift card; no moderation or aggregate state. */
+export type GiftTagCard = GiftCard["tags"][number];
+
+/** Minimal shape of a `GiftTag` row the card mapper needs. */
+export type GiftTagRow = {
+  /** Catalog tag when the row is a fixed tag or an approved custom one. */
+  readonly tagId: string | null;
+  /** Custom text until ADMIN approval; null for a fixed tag (AD-22). */
+  readonly customText: string | null;
+  /** Catalog row with the per-language labels; null for an unapproved custom tag. */
+  readonly tag: { readonly labels: unknown } | null;
+};
+
+/**
+ * One tag on the wire (Story 2.5, AD-22, AD-27). A fixed tag carries its
+ * `catalogId` and the label for the request language, resolved on the server;
+ * the client never keeps fixed captions. A custom tag has no catalog id and
+ * shows its own text as stored: user data is not translated. The row exposes
+ * only these two fields — `aggregateEligible`, `tagId` and moderation columns
+ * never reach the client.
+ *
+ * An approved custom tag carries both a catalog link and the original text;
+ * the catalog label wins, because approval normalised the text into the
+ * catalog. A catalog row without any usable label is dropped rather than shown
+ * blank, like the catalog read.
+ */
+export function toGiftTag(row: GiftTagRow, locale: SupportedLocale): GiftTagCard | null {
+  if (row.tagId !== null) {
+    const label = row.tag === null ? "" : pickTagLabel(row.tag.labels, locale);
+    return label === "" ? null : { catalogId: row.tagId, label };
+  }
+
+  const text = row.customText?.trim() ?? "";
+  return text === "" ? null : { catalogId: null, label: text };
+}
+
+/** Card tags in row order, with unusable rows left out. */
+export function toGiftTags(rows: readonly GiftTagRow[], locale: SupportedLocale): GiftTagCard[] {
+  const tags: GiftTagCard[] = [];
+  for (const row of rows) {
+    const tag = toGiftTag(row, locale);
+    if (tag !== null) tags.push(tag);
+  }
+  return tags;
+}
+

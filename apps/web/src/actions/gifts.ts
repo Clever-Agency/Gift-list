@@ -4,8 +4,12 @@ import {
   giftCardSchema,
   giftInputSchema,
   giftUpdateSchema,
+  negotiateLocale,
+  preferredFromAcceptLanguage,
   type ActionResult,
   type GiftCard,
+  type GiftTagInput,
+  type SupportedLocale,
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
@@ -42,7 +46,13 @@ const ownerGiftSelect = {
   reservationPhase: true,
   holderVisibleToOwner: true,
   reservedBy: { select: { id: true, nick: true, name: true } },
-} as const;
+  // Story 2.5/AD-22: only what the card shows. The order is a stable database
+  // order, not a presentation decision; the card (2.5.7) owns how tags are shown.
+  tags: {
+    select: { tagId: true, customText: true, tag: { select: { labels: true } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  },
+} satisfies Prisma.GiftSelect;
 
 /** The owner select plus the list owner, which `canSee` needs (AD-7). */
 const formGiftSelect = {
@@ -57,6 +67,55 @@ function validation(field?: string): ActionResult<GiftCard> {
     message: "Invalid input",
     ...(field ? { field } : {}),
   };
+}
+
+/** AD-27: fixed tag labels follow the request language, like the catalog read. */
+function requestLocale(headers: Headers): SupportedLocale {
+  return negotiateLocale(preferredFromAcceptLanguage(headers.get("accept-language")));
+}
+
+/**
+ * A `GiftTag` row a writer may create. Fixed tags are aggregate-eligible right
+ * away; custom text stays out until ADMIN approval (AD-22, Story 10.2). The
+ * client cannot influence either flag — the input schema has no such field.
+ */
+type GiftTagCreate =
+  | { tagId: string; aggregateEligible: true }
+  | { customText: string; aggregateEligible: false };
+
+function toTagRows(tags: readonly GiftTagInput[]): GiftTagCreate[] {
+  return tags.map(function toTagRow(tag) {
+    return "catalogId" in tag
+      ? { tagId: tag.catalogId, aggregateEligible: true as const }
+      : { customText: tag.text, aggregateEligible: false as const };
+  });
+}
+
+/** Raised inside a transaction when a fixed tag id matches no catalog row. */
+class MissingCatalogTagError extends Error {}
+
+/**
+ * Fixed tag ids must exist before anything is written. On update the check runs
+ * inside the same transaction as the tag replacement, so a catalog change cannot
+ * slip between the check and the insert and a missing id rolls everything back.
+ * On create the check runs before the nested create; the create itself is one
+ * atomic statement, and a catalog row deleted between check and insert can only
+ * surface as a database error (ADMIN deletion is Story 10.2).
+ */
+async function fixedTagsExist(
+  db: Prisma.TransactionClient,
+  tags: readonly GiftTagInput[],
+): Promise<boolean> {
+  const catalogIds = tags.flatMap(function catalogIdOf(tag) {
+    return "catalogId" in tag ? [tag.catalogId] : [];
+  });
+  if (catalogIds.length === 0) return true;
+
+  const found = await db.tag.findMany({
+    where: { id: { in: catalogIds } },
+    select: { id: true },
+  });
+  return found.length === catalogIds.length;
 }
 
 /**
@@ -87,15 +146,20 @@ export async function getGift(headers: Headers, giftId: string): Promise<ActionR
   });
   if (!visible) return notFound;
 
-  return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
+  return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))) };
 }
 
 /**
  * Story 2.2 (FR-10, AD-1): the owner creates a wish in their single list (AD-6).
  * The body goes through `giftInputSchema`, so the defaults live in the contract:
  * visibility `PUBLIC` (ARCH-A17), currency `USD` when an amount has none (AD-25),
- * quantity `SINGLE` (Story 2.5/D-25). `status` starts `OPEN` (AD-8). Shared by
- * the app form and `POST /api/v1/...`.
+ * quantity `SINGLE` (Story 2.5/D-25), no tags. `status` starts `OPEN` (AD-8).
+ * Shared by the app form and `POST /api/v1/...`.
+ *
+ * Story 2.5 (AD-22): fixed and custom tags are written with the gift in one
+ * nested create, so a bad tag never leaves a gift behind. A fixed tag id must
+ * exist in the catalog; its row becomes `aggregateEligible` here, never through
+ * the body.
  */
 export async function createGift(headers: Headers, body: unknown): Promise<ActionResult<GiftCard>> {
   const session = await auth.api.getSession({ headers });
@@ -112,6 +176,10 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   });
   if (!list) return { ok: false, code: "NOT_FOUND", message: "Wishlist not found" };
 
+  const tags = parsed.data.tags;
+  if (!(await fixedTagsExist(prisma, tags))) return validation("tags");
+
+  const tagRows = toTagRows(tags);
   const row = await prisma.gift.create({
     data: {
       listId: list.id,
@@ -123,11 +191,16 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
       visibility: parsed.data.visibility,
       quantity: parsed.data.quantity,
       status: "OPEN",
+      // An absent key keeps the create identical to a body without tags.
+      ...(tagRows.length > 0 ? { tags: { create: tagRows } } : {}),
     },
     select: ownerGiftSelect,
   });
 
-  return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
+  return {
+    ok: true,
+    data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))),
+  };
 }
 
 /**
@@ -146,6 +219,12 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
  *
  * Story 2.5 (FR-41, D-25): `quantity` follows the same rule — a changed value is
  * written only while the wish is `OPEN`, and an unchanged one is not a change.
+ *
+ * Story 2.5 (AD-22): `tags` is a full replacement. An omitted key preserves the
+ * stored tags; an explicit empty array clears them (the form removes a chip);
+ * otherwise the old rows are replaced in one transaction with the field write.
+ * Tags have no status restriction of their own: AD-8 allows editing the fields
+ * of a `RESERVED` wish, and only `visibility` and `quantity` are `OPEN`-only.
  */
 export async function updateGift(
   headers: Headers,
@@ -158,7 +237,7 @@ export async function updateGift(
   const parsed = giftUpdateSchema.safeParse(body);
   if (!parsed.success) return validation(firstIssueField(parsed.error));
 
-  const update = parsed.data;
+  const { tags, ...fields } = parsed.data;
 
   // The owner is the list owner (AD-6); the caller cannot pick the list or gift.
   const ownedGift = {
@@ -167,9 +246,9 @@ export async function updateGift(
     list: { ownerId: session.user.id },
   };
 
-  const changesVisibility = update.visibility !== undefined;
-  const changesQuantity = update.quantity !== undefined;
-  const needsStoredPrice = update.priceCurrency !== undefined && update.priceAmount === undefined;
+  const changesVisibility = fields.visibility !== undefined;
+  const changesQuantity = fields.quantity !== undefined;
+  const needsStoredPrice = fields.priceCurrency !== undefined && fields.priceAmount === undefined;
 
   // One read serves both gates: AD-25 needs the stored amount, Story 2.3 needs
   // the stored status and visibility, Story 2.5 needs the stored quantity. The
@@ -186,22 +265,22 @@ export async function updateGift(
     // `null` amount leaves nothing to price, so the currency is dropped again — a
     // price never exists as a currency alone.
     if (needsStoredPrice) {
-      update.priceCurrency = stored.priceAmount === null ? null : update.priceCurrency;
+      fields.priceCurrency = stored.priceAmount === null ? null : fields.priceCurrency;
     }
 
     if (changesVisibility) {
-      if (stored.visibility === update.visibility) {
+      if (stored.visibility === fields.visibility) {
         // The form of a reserved wish resends the stored value: nothing to change.
-        delete update.visibility;
+        delete fields.visibility;
       } else if (stored.status !== "OPEN") {
         return validation("visibility");
       }
     }
 
     if (changesQuantity) {
-      if (stored.quantity === update.quantity) {
+      if (stored.quantity === fields.quantity) {
         // Same rule for a resent quantity: an unchanged value is not a change.
-        delete update.quantity;
+        delete fields.quantity;
       } else if (stored.status !== "OPEN") {
         return validation("quantity");
       }
@@ -211,17 +290,57 @@ export async function updateGift(
   // Story 2.3/2.5/AD-8: a real visibility or quantity change writes only while
   // the gift is OPEN, so a reservation between the read above and this write
   // answers VALIDATION.
-  const guarded = update.visibility !== undefined || update.quantity !== undefined;
+  const guarded = fields.visibility !== undefined || fields.quantity !== undefined;
   const where = guarded ? { ...ownedGift, status: "OPEN" as const } : ownedGift;
 
   try {
-    const row = await prisma.gift.update({
-      where,
-      data: update,
-      select: ownerGiftSelect,
+    if (tags === undefined) {
+      // AD-8: editing any other field at RESERVED is allowed; tags follow the
+      // same rule, so the tag path is not limited to OPEN wishes either.
+      const row = await prisma.gift.update({
+        where,
+        data: fields,
+        select: ownerGiftSelect,
+      });
+      return {
+        ok: true,
+        data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))),
+      };
+    }
+
+    // Story 2.5: the tag set is replaced atomically with the field write. The
+    // gift update goes first, so a foreign or archived gift fails before a
+    // single tag row is touched; any later failure rolls everything back.
+    const row = await prisma.$transaction(async function replaceTags(tx) {
+      if (!(await fixedTagsExist(tx, tags))) throw new MissingCatalogTagError();
+
+      const updated = await tx.gift.update({
+        where,
+        data: fields,
+        select: { id: true },
+      });
+
+      await tx.giftTag.deleteMany({ where: { giftId: updated.id } });
+      const tagRows = toTagRows(tags);
+      if (tagRows.length > 0) {
+        await tx.giftTag.createMany({
+          data: tagRows.map(function withGiftId(tag) {
+            return { ...tag, giftId: updated.id };
+          }),
+        });
+      }
+
+      return tx.gift.findFirst({ where: { id: updated.id }, select: ownerGiftSelect });
     });
-    return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
+    if (row === null) return notFound;
+
+    return {
+      ok: true,
+      data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))),
+    };
   } catch (error) {
+    if (error instanceof MissingCatalogTagError) return validation("tags");
+
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       // A guarded write can lose the race with a reservation: re-read to tell
       // "no longer OPEN" (VALIDATION) from "foreign or archived" (NOT_FOUND).
@@ -231,7 +350,7 @@ export async function updateGift(
           select: { status: true },
         });
         if (current && current.status !== "OPEN") {
-          return validation(update.visibility !== undefined ? "visibility" : "quantity");
+          return validation(fields.visibility !== undefined ? "visibility" : "quantity");
         }
       }
       // P2025: the where matched nothing, i.e. a foreign or archived gift.

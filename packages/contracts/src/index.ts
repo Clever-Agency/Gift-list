@@ -151,10 +151,13 @@ export { rateLimitedError, rateLimitedParams } from "./rate-limit";
 
 export {
   DEFAULT_QUANTITY,
+  GIFT_TAG_TEXT_MAX,
   giftInputSchema,
+  giftTagInputSchema,
   giftUpdateSchema,
   type GiftInput,
   type GiftInputDraft,
+  type GiftTagInput,
   type GiftUpdate,
 } from "./gift";
 

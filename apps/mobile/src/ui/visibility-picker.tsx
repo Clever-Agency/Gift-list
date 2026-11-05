@@ -1,31 +1,28 @@
 import { VISIBILITIES, type GiftCard } from "@gift-list/contracts";
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Button, Dialog, type FocusTarget } from "@gift-list/ui";
+import { useRef } from "react";
 import { useTranslations } from "use-intl";
-import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
-import { pageGutter } from "@/ui/card-grid";
-import { useLayerClosed } from "@/ui/focus";
 import { ChoiceGroup } from "@/ui/gift-form";
 
 type Visibility = GiftCard["visibility"];
 
 /**
  * `DESIGN.md` → Dialog and `EXPERIENCE.md` → Visibility chip: the owner picks
- * «Всем» / «Друзьям» / «Секрет» in a centered dialog over the wishlist.
- * The rows are the same radio rows as in the wish form (`ChoiceGroup`), so the
- * three choices look and read the same in both places.
+ * «Всем» / «Друзьям» / «Секрет» in a centered dialog over the wishlist (`Dialog` from
+ * `@gift-list/ui`). The rows are the same radio rows as in the wish form
+ * (`ChoiceGroup`), so the three choices look and read the same in both places.
  *
- * `visible={false}` renders nothing; the transparency and fade come from `Modal`.
- * Android «назад» arrives as `onRequestClose`, and react-native-web turns Esc
- * into the same callback — the scrim and «Отмена» close it too.
+ * `visible={false}` renders nothing. Esc, the scrim, «Отмена» and the system «назад»
+ * on Android close it through `onClose`; focus lands on the radio that shows the
+ * current value (`EXPERIENCE.md` → «Шторка и диалог»).
  *
  * `onClosed` runs once the layer has really gone, so the screen can put focus back on
- * the chip it was opened from (see `useLayerClosed` for why an effect on `visible` is
- * too early on the web).
+ * the chip it was opened from.
  *
  * NOTE FOR UX: `DESIGN.md` puts the visibility layer in a dialog at medium and
  * wider; compact would be a bottom sheet (`EXPERIENCE.md` → «Шторка vs диалог»).
- * This microtask draws one centered dialog at every width; the sheet chrome can
- * wrap the same content later.
+ * This microtask draws one centered dialog at every width; `BottomSheet` of
+ * `@gift-list/ui` can wrap the same content later.
  */
 export function VisibilityPicker({
   visible,
@@ -47,16 +44,8 @@ export function VisibilityPicker({
   const t = useTranslations("app.gift.visibilityPicker");
   const tVisibility = useTranslations("app.gift.visibility");
   const tHint = useTranslations("app.giftForm.field");
-  const { width: windowWidth } = useWindowDimensions();
-  // `DESIGN.md` → dialog: up to `dialog-width`; on a narrow window the page
-  // gutter stays visible on both sides.
-  const dialogWidth = Math.min(
-    spacing["dialog-width"],
-    Math.max(0, windowWidth - pageGutter(windowWidth) * 2),
-  );
-  const titleId = "visibility-picker-title";
   const heading = t("title", { title });
-  const handleDismiss = useLayerClosed(visible, onClosed);
+  const selectedRef = useRef<FocusTarget>(null);
 
   function handleSelect(next: Visibility) {
     // Picking the current value is a no-op: the dialog just closes.
@@ -65,103 +54,33 @@ export function VisibilityPicker({
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      onDismiss={handleDismiss}
-      // react-native-web's Modal already renders `role="dialog"` and
-      // `aria-modal="true"` and forwards the labelling to that element; on the
-      // phone the platform modal is modal on its own.
-      aria-labelledby={titleId}
+    <Dialog
+      open={visible}
+      title={heading}
+      onClose={onClose}
+      onClosed={onClosed}
+      initialFocus={selectedRef}
+      testID="visibility-picker"
+      actions={<Button label={t("cancel")} onPress={onClose} variant="ghost" />}
     >
-      <View style={styles.overlay}>
-        {/* The scrim closes the layer; it is decorative for screen readers —
-            «Отмена», Esc and Android «назад» do the same. It stays out of the
-            Tab order and out of the dialog's initial focus: `tabIndex={-1}` and
-            `focusable={false}` keep the pointer handler without making the
-            backdrop an interactive stop. */}
-        <Pressable
-          style={[StyleSheet.absoluteFill, styles.scrim]}
-          onPress={onClose}
-          focusable={false}
-          {...{ tabIndex: -1 }}
-          aria-hidden
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        />
-        <View style={[styles.dialog, { width: dialogWidth }]}>
-          <Text accessibilityRole="header" nativeID={titleId} style={styles.title}>
-            {heading}
-          </Text>
-          <ChoiceGroup
-            variant="rows"
-            // The header above is the visible name; this only names the radiogroup.
-            label={heading}
-            labelHidden
-            value={value}
-            // Focus lands on the radio that shows the current value while the
-            // dialog is open (EXPERIENCE.md → «Шторка и диалог»).
-            autoFocusValue={visible ? value : undefined}
-            onChange={handleSelect}
-            options={VISIBILITIES.map((code) => ({
-              value: code,
-              label: tVisibility(code),
-              hint: tHint(`visibilityHint.${code}`),
-            }))}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t("cancel")}
-            onPress={onClose}
-            style={({ pressed }) => [styles.cancel, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.cancelLabel}>{t("cancel")}</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
+      <ChoiceGroup
+        variant="rows"
+        // The header above is the visible name; this only names the radiogroup.
+        label={heading}
+        labelHidden
+        value={value}
+        // The dialog puts focus on the radio holding the current value.
+        autoFocusRef={selectedRef}
+        autoFocusValue={value}
+        onChange={handleSelect}
+        options={VISIBILITIES.map((code) => ({
+          value: code,
+          label: tVisibility(code),
+          hint: tHint(`visibilityHint.${code}`),
+        }))}
+      />
+    </Dialog>
   );
 }
 
 VisibilityPicker.displayName = "VisibilityPicker";
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: spacing["page-gutter-lg"],
-  },
-  scrim: {
-    backgroundColor: colors.scrim,
-    opacity: 0.4,
-  },
-  dialog: {
-    backgroundColor: colors.surface,
-    borderRadius: rounded.lg,
-    padding: spacing["card-padding"],
-    gap: spacing["grid-gap"],
-  },
-  title: {
-    ...textStyle("heading"),
-    color: colors.foreground,
-  },
-  // Ghost «Отмена» (`DESIGN.md` → buttons): text only, 44×44.
-  cancel: {
-    alignSelf: "flex-end",
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-  cancelLabel: {
-    ...textStyle("button"),
-    color: colors.primary,
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-});

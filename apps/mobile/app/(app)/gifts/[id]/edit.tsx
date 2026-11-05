@@ -1,14 +1,8 @@
 import type { GiftCard, GiftUpdate } from "@gift-list/contracts";
+import { Column, Heading, Pressable, Screen, ScrollView, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
@@ -16,7 +10,6 @@ import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { useDiscardGuard } from "@/session/use-discard-guard";
-import { colors, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { restoreFocus } from "@/ui/focus";
@@ -414,111 +407,122 @@ export default function EditGiftScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <Stack.Screen options={{ title: giftForm("pageTitle.edit", { brand }) }} />
-      <View style={[styles.column, { paddingHorizontal: gutter }]}>
-        <Text style={styles.logo}>{common("brandName", { brand })}</Text>
-        <Text accessibilityRole="header" style={styles.title}>
-          {giftForm("title.edit")}
-        </Text>
-        <ScrollView
-          style={styles.scrollArea}
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
+    <Screen>
+      <SafeAreaView style={{ flex: 1 }}>
+        <Stack.Screen options={{ title: giftForm("pageTitle.edit", { brand }) }} />
+        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
+        <Column
+          size="form"
+          flex={1}
+          paddingHorizontal={gutter}
+          paddingTop="$page-gutter"
+          gap="$2"
         >
-          {state.status === "loading" ? (
-            // The list's skeleton, announced the same way (EXPERIENCE → «Загрузка»).
-            <View
-              accessible
-              accessibilityState={{ busy: true }}
-              accessibilityLabel={giftForm("loading")}
-            >
-              <WishCardSkeleton width={skeletonWidth} />
-            </View>
-          ) : state.status === "error" ? (
-            <View style={styles.retry}>
-              <Text style={styles.retryText}>
-                {state.kind === "network"
-                  ? giftForm("loadError")
-                  : giftForm("loadErrorGeneric")}
-              </Text>
-              <PrimaryButton label={giftForm("retry")} onPress={retry} />
-            </View>
-          ) : state.status === "missing" ? (
-            <View style={styles.retry}>
-              <Text style={styles.retryText}>{giftForm("giftNotFound")}</Text>
-              <PrimaryButton label={giftForm("backToList")} onPress={backToList} />
-            </View>
-          ) : (
-            <>
-              <GiftForm
-                // `GiftForm` reads `initialValues` once, so another wish needs a remount.
-                key={state.gift.id}
-                ref={formRef}
-                initialValues={toFormValues(state.gift)}
-                submitting={submitting}
-                onSubmit={submit}
-                submitLabel={giftForm("action.save")}
-                serverError={serverError}
-                submitRequest={submitRequest}
-                onDirtyChange={setDirty}
-                onCancel={cancel}
-                visibilityLocked={state.gift.status !== "OPEN"}
-              />
-              {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
-              {state.gift.status === "OPEN" ? (
-                <Pressable
-                  ref={deleteButtonRef}
-                  accessibilityRole="button"
-                  accessibilityLabel={giftForm("delete.action")}
-                  onPress={startDelete}
-                  style={({ pressed }) => [
-                    styles.deleteAction,
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  <Text style={styles.deleteLabel}>{giftForm("delete.action")}</Text>
-                </Pressable>
-              ) : null}
-            </>
-          )}
-        </ScrollView>
-      </View>
-      {state.status === "ready" ? (
+          <Text kind="display-sm" tone="primary" textAlign="center">
+            {common("brandName", { brand })}
+          </Text>
+          <Heading level={1}>{giftForm("title.edit")}</Heading>
+          <ScrollView
+            flex={1}
+            contentContainerStyle={{
+              paddingTop: spacing["grid-gap"] / 2,
+              paddingBottom: spacing["section-gap"],
+            }}
+            keyboardShouldPersistTaps="handled"
+          >
+            {state.status === "loading" ? (
+              // The list's skeleton, announced the same way (EXPERIENCE → «Загрузка»).
+              <YStack accessible aria-busy aria-label={giftForm("loading")}>
+                <WishCardSkeleton width={skeletonWidth} />
+              </YStack>
+            ) : state.status === "error" ? (
+              <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
+                <Text tone="muted" textAlign="center">
+                  {state.kind === "network"
+                    ? giftForm("loadError")
+                    : giftForm("loadErrorGeneric")}
+                </Text>
+                <PrimaryButton label={giftForm("retry")} onPress={retry} />
+              </YStack>
+            ) : state.status === "missing" ? (
+              <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
+                <Text tone="muted" textAlign="center">
+                  {giftForm("giftNotFound")}
+                </Text>
+                <PrimaryButton label={giftForm("backToList")} onPress={backToList} />
+              </YStack>
+            ) : (
+              <>
+                <GiftForm
+                  // `GiftForm` reads `initialValues` once, so another wish needs a remount.
+                  key={state.gift.id}
+                  ref={formRef}
+                  initialValues={toFormValues(state.gift)}
+                  submitting={submitting}
+                  onSubmit={submit}
+                  submitLabel={giftForm("action.save")}
+                  serverError={serverError}
+                  submitRequest={submitRequest}
+                  onDirtyChange={setDirty}
+                  onCancel={cancel}
+                  visibilityLocked={state.gift.status !== "OPEN"}
+                />
+                {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
+                {state.gift.status === "OPEN" ? (
+                  // Secondary destructive action under the form: text only, 44×44
+                  // (`DESIGN.md` → buttons).
+                  <Pressable
+                    ref={deleteButtonRef}
+                    role="button"
+                    aria-label={giftForm("delete.action")}
+                    onPress={startDelete}
+                    alignSelf="flex-start"
+                    justifyContent="center"
+                    minHeight="$touch-target"
+                    minWidth="$touch-target"
+                    paddingHorizontal="$3"
+                  >
+                    <Text kind="button" tone="destructive">
+                      {giftForm("delete.action")}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
+            )}
+          </ScrollView>
+        </Column>
+        {state.status === "ready" ? (
+          <ConfirmDialog
+            variant="confirm"
+            visible={confirmingDelete}
+            title={giftForm("delete.confirmTitle", { title: state.gift.title })}
+            body={giftForm("delete.confirmBody")}
+            confirmLabel={deleting ? giftForm("delete.deleting") : giftForm("delete.confirm")}
+            cancelLabel={giftForm("delete.cancel")}
+            busy={deleting}
+            onConfirm={confirmDelete}
+            onCancel={cancelDelete}
+            onClosed={restoreDeleteFocus}
+          />
+        ) : null}
+        {toast ? (
+          <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
+        ) : null}
         <ConfirmDialog
-          variant="confirm"
-          visible={confirmingDelete}
-          title={giftForm("delete.confirmTitle", { title: state.gift.title })}
-          body={giftForm("delete.confirmBody")}
-          confirmLabel={deleting ? giftForm("delete.deleting") : giftForm("delete.confirm")}
-          cancelLabel={giftForm("delete.cancel")}
-          busy={deleting}
-          onConfirm={confirmDelete}
-          onCancel={cancelDelete}
-          onClosed={restoreDeleteFocus}
+          variant="discard"
+          visible={discardOpen}
+          title={giftForm("discard.title")}
+          confirmLabel={giftForm("discard.confirm")}
+          declineLabel={giftForm("discard.decline")}
+          closeLabel={t("toast.close")}
+          busy={submitting}
+          onConfirm={saveDiscard}
+          onDecline={leaveDiscard}
+          onClose={closeDiscard}
+          onClosed={restoreFormFocus}
         />
-      ) : null}
-      {toast ? (
-        <ToastHost
-          message={toast.message}
-          tone={toast.tone}
-          onDismiss={dismissToast}
-        />
-      ) : null}
-      <ConfirmDialog
-        variant="discard"
-        visible={discardOpen}
-        title={giftForm("discard.title")}
-        confirmLabel={giftForm("discard.confirm")}
-        declineLabel={giftForm("discard.decline")}
-        closeLabel={t("toast.close")}
-        busy={submitting}
-        onConfirm={saveDiscard}
-        onDecline={leaveDiscard}
-        onClose={closeDiscard}
-        onClosed={restoreFormFocus}
-      />
-    </SafeAreaView>
+      </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -552,60 +556,3 @@ function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
   };
   return gift.status === "OPEN" ? { ...body, visibility: values.visibility } : body;
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  column: {
-    flex: 1,
-    width: "100%",
-    // A form reads best narrow: `DESIGN.md` → Layout → max-form.
-    maxWidth: spacing["max-form"],
-    alignSelf: "center",
-    paddingTop: spacing["page-gutter"],
-    gap: spacing["grid-gap"] / 2,
-  },
-  logo: {
-    ...textStyle("display-sm"),
-    color: colors.primary,
-    textAlign: "center",
-  },
-  title: {
-    ...textStyle("heading"),
-    color: colors.foreground,
-  },
-  scrollArea: {
-    flex: 1,
-  },
-  scroll: {
-    paddingTop: spacing["grid-gap"] / 2,
-    paddingBottom: spacing["section-gap"],
-  },
-  retry: {
-    width: "100%",
-    paddingVertical: spacing["section-gap"] / 2,
-    gap: spacing["grid-gap"],
-  },
-  retryText: {
-    ...textStyle("body"),
-    color: colors["muted-foreground"],
-    textAlign: "center",
-  },
-  // Secondary destructive action under the form: text only, 44×44 (`DESIGN.md` → buttons).
-  deleteAction: {
-    alignSelf: "flex-start",
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-  deleteLabel: {
-    ...textStyle("button"),
-    color: colors.destructive,
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-});

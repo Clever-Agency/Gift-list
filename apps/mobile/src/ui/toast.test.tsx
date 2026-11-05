@@ -25,74 +25,8 @@ vi.mock("use-intl", async () => {
   };
 });
 
-vi.mock("react-native", async () => {
-  const React = await import("react");
-
+vi.mock("react-native", () => {
   return {
-    StyleSheet: { create: (styles: unknown) => styles },
-    Text: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement("span", null, children),
-    /**
-     * `View` отдаёт наружу aria-атрибуты и hover (`DESIGN.md` → Toast): на web
-     * react-native-web пробрасывает указательные события на DOM-узел, здесь они
-     * приходят событиями pointerover/pointerout, как и в браузере.
-     */
-    View: ({
-      children,
-      testID,
-      role,
-      accessibilityRole,
-      accessibilityLiveRegion,
-      onPointerEnter,
-      onPointerLeave,
-    }: {
-      children?: React.ReactNode;
-      testID?: string;
-      role?: string;
-      accessibilityRole?: string;
-      accessibilityLiveRegion?: string;
-      onPointerEnter?: () => void;
-      onPointerLeave?: () => void;
-    }) =>
-      React.createElement(
-        "div",
-        {
-          "data-testid": testID,
-          role: role ?? accessibilityRole,
-          "aria-live": accessibilityLiveRegion,
-          onPointerOver: onPointerEnter,
-          onPointerOut: onPointerLeave,
-        },
-        children,
-      ),
-    /** `Pressable` — только кнопки тоста: у них есть нажатие и фокус. */
-    Pressable: ({
-      children,
-      onPress,
-      onFocus,
-      onBlur,
-      accessibilityRole,
-      accessibilityLabel,
-    }: {
-      children?: React.ReactNode;
-      onPress?: () => void;
-      onFocus?: () => void;
-      onBlur?: () => void;
-      accessibilityRole?: string;
-      accessibilityLabel?: string;
-    }) =>
-      React.createElement(
-        "div",
-        {
-          role: accessibilityRole,
-          // The accessible name reaches the DOM, as on react-native-web.
-          "aria-label": accessibilityLabel,
-          onFocus,
-          onBlur,
-          onClick: onPress ? () => onPress() : undefined,
-        },
-        children,
-      ),
     AccessibilityInfo: {
       isScreenReaderEnabled: () => Promise.resolve(narration.enabled),
       addEventListener: (event: string, listener: (enabled: boolean) => void) => {

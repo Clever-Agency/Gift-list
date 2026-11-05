@@ -1,8 +1,7 @@
+import { Pressable, Text } from "@gift-list/ui";
 import * as Linking from "expo-linking";
-import { Pressable, StyleSheet, Text } from "react-native";
 import { useTranslations } from "use-intl";
 import { getAuthorUrl } from "@/config/env";
-import { colors, spacing, textStyle } from "@/theme/tokens";
 
 export function AuthorLink() {
   const t = useTranslations("common");
@@ -12,7 +11,7 @@ export function AuthorLink() {
   if (!url) {
     // NOTE FOR UX: адрес «Написать автору» не задан.
     return (
-      <Text accessibilityRole="text" style={styles.label}>
+      <Text kind="button" tone="primary">
         {label}
       </Text>
     );
@@ -23,22 +22,18 @@ export function AuthorLink() {
   }
 
   return (
-    <Pressable accessibilityRole="link" onPress={handlePress} style={styles.hit}>
-      <Text style={styles.label}>{label}</Text>
+    <Pressable
+      role="link"
+      onPress={handlePress}
+      minHeight="$touch-target"
+      minWidth="$touch-target"
+      justifyContent="center"
+    >
+      <Text kind="button" tone="primary">
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 AuthorLink.displayName = "AuthorLink";
-
-const styles = StyleSheet.create({
-  hit: {
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    justifyContent: "center",
-  },
-  label: {
-    color: colors.primary,
-    ...textStyle("button"),
-  },
-});

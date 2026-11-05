@@ -11,8 +11,6 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(monorepoRoot, "node_modules"),
 ];
-// Keep Expo on React 19.3.0 even when a hoisted package sits next to React 19.2.8.
-config.resolver.disableHierarchicalLookup = true;
 
 // CLE-64: keeping function and class names in minified web exports lets React
 // DevTools show component names (WishCard, ToastHost, …) instead of Anonymous.

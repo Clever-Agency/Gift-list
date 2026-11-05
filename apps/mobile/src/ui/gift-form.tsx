@@ -1,16 +1,24 @@
 import { CURRENCIES, VISIBILITIES } from "@gift-list/contracts";
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
-  Pressable,
-  StyleSheet,
+  Button,
+  Choice,
+  ChoiceList,
   Text,
-  View,
-  type ViewInstance,
-} from "react-native";
+  TextField,
+  XStack,
+  YStack,
+  type FocusTarget,
+} from "@gift-list/ui";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { AccessibilityInfo } from "react-native";
 import { useTranslations } from "use-intl";
-import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
-import { focusInLayer } from "@/ui/focus";
 import { isGiftFormDirty, type GiftFormDirtyValues } from "@/ui/gift-form-dirty";
 import {
   DESCRIPTION_MAX,
@@ -24,10 +32,7 @@ import {
   type GiftFormErrors,
   type GiftFormField,
 } from "@/ui/gift-form-validation";
-import { GhostButton } from "@/ui/ghost-button";
 import { formatMinorToPrice, parsePriceToMinor } from "@/ui/gift-price";
-import { PrimaryButton } from "@/ui/primary-button";
-import { TextField } from "@/ui/text-field";
 
 /** `CURRENCIES` is the closed set; `GiftInput["priceCurrency"]` is the same union. */
 type Currency = (typeof CURRENCIES)[number];
@@ -175,7 +180,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     initialValues?.visibility ?? DEFAULT_VISIBILITY,
   );
   const [errors, setErrors] = useState<GiftFormErrors>({});
-  const cancelRef = useRef<ViewInstance>(null);
+  const cancelRef = useRef<FocusTarget>(null);
   useImperativeHandle(
     ref,
     function createFormHandle() {
@@ -274,7 +279,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   }
 
   return (
-    <View style={styles.form}>
+    <YStack gap="$grid-gap">
       <TextField
         label={t("field.title")}
         value={title}
@@ -291,13 +296,11 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         value={description}
         onChangeText={setDescription}
         error={inlineError("description")}
-        inputStyle={styles.descriptionInput}
+        multiline
+        rows={4}
         input={{
           placeholder: t("field.descriptionPlaceholder"),
-          multiline: true,
-          numberOfLines: 4,
           maxLength: DESCRIPTION_MAX,
-          textAlignVertical: "top",
           autoCapitalize: "sentences",
         }}
       />
@@ -349,39 +352,37 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         }))}
       />
       {visibilityLocked ? (
-        <Text style={styles.lockedHint}>{t("field.visibilityLocked")}</Text>
+        <Text kind="caption" tone="muted">
+          {t("field.visibilityLocked")}
+        </Text>
       ) : null}
       {formError ? (
-        <Text
-          style={styles.formError}
-          accessibilityRole="alert"
-          accessibilityLiveRegion="polite"
-        >
+        <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
           {formError}
         </Text>
       ) : null}
       {onCancel ? (
-        <View style={styles.actions}>
-          <GhostButton
-            ref={cancelRef}
+        // Cancel on the left of the save button, the pair flush right (`DESIGN.md` → Форма).
+        <XStack alignItems="center" justifyContent="flex-end" gap="$2">
+          <Button
+            ref={cancelRef as never}
+            variant="ghost"
             label={cancelLabel ?? t("action.cancel")}
             onPress={onCancel}
             disabled={submitting}
+            // A disabled «Отмена» keeps its place in the focus order.
+            focusableWhenDisabled
           />
-          <PrimaryButton
+          <Button
             label={submitLabel ?? t("action.save")}
             onPress={submit}
-            disabled={submitting}
+            busy={submitting}
           />
-        </View>
+        </XStack>
       ) : (
-        <PrimaryButton
-          label={submitLabel ?? t("action.save")}
-          onPress={submit}
-          disabled={submitting}
-        />
+        <Button label={submitLabel ?? t("action.save")} onPress={submit} busy={submitting} />
       )}
-    </View>
+    </YStack>
   );
 });
 
@@ -403,10 +404,10 @@ type ChoiceOption<T extends string> = {
 /**
  * The shared `radiogroup` behind the currency codes and the visibility choice
  * (`DESIGN.md` → Форма: five codes; three radio rows with an explanation, «Всем»
- * by default). `DESIGN.md` asks for a bottom sheet with radios on a phone; the
- * same rows are reused by `VisibilityPicker` (Story 2.3). Each variant keeps the
- * same `radio` semantics: one choice, the selected one is marked, and the option
- * label is the accessible name.
+ * by default), built from `ChoiceList` and `Choice` of `@gift-list/ui`. `DESIGN.md`
+ * asks for a bottom sheet with radios on a phone; the same rows are reused by
+ * `VisibilityPicker` (Story 2.3). Each variant keeps the same `radio` semantics: one
+ * choice, the selected one is marked, and the option label is the accessible name.
  *
  * `labelHidden` keeps the accessible name of the group while the visible heading
  * comes from the surrounding layer (the picker title is a header of its own).
@@ -414,9 +415,9 @@ type ChoiceOption<T extends string> = {
  * `disabled` shows the stored value without letting it change (a wish that is no
  * longer open keeps its visibility frozen).
  *
- * `autoFocusValue` is only set by `VisibilityPicker`: when the dialog appears,
- * focus moves to the radio holding the current value instead of staying on the
- * scrim the layer was opened from.
+ * `autoFocusRef` is only set by `VisibilityPicker`: it receives the node of the option
+ * holding `autoFocusValue`, so the dialog can put focus there when it opens instead of
+ * leaving it on the control the layer was opened from.
  */
 export function ChoiceGroup<T extends string>({
   label,
@@ -428,6 +429,7 @@ export function ChoiceGroup<T extends string>({
   labelHidden,
   disabled = false,
   autoFocusValue,
+  autoFocusRef,
 }: {
   label: string;
   value: T;
@@ -440,200 +442,38 @@ export function ChoiceGroup<T extends string>({
   labelHidden?: boolean;
   /** Shows the stored value but does not let it change; every radio reads as disabled. */
   disabled?: boolean;
-  /** Focus this option when the group appears; no other usage passes it. */
+  /** The option whose node goes to `autoFocusRef`. */
   autoFocusValue?: T;
+  /** Receives the node of the `autoFocusValue` option. */
+  autoFocusRef?: RefObject<FocusTarget | null>;
 }) {
-  const rows = variant === "rows";
-  const autoFocusRef = useRef<ViewInstance>(null);
-
-  useEffect(function focusCurrentOption() {
-    if (autoFocusValue === undefined) return;
-    focusInLayer(autoFocusRef.current);
-  }, [autoFocusValue]);
-
   return (
-    <View style={styles.field}>
-      {labelHidden ? null : <Text style={styles.label}>{label}</Text>}
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel={label}
-        accessibilityHint={error}
-        style={rows ? styles.rows : styles.chips}
-      >
-        {options.map((option) => {
-          const selected = option.value === value;
+    <ChoiceList
+      label={label}
+      heading={labelHidden ? undefined : label}
+      variant={variant === "rows" ? "row" : "chip"}
+      error={error}
+    >
+      {options.map((option) => {
+        function handlePress() {
+          onChange(option.value);
+        }
 
-          function handlePress() {
-            if (!disabled) onChange(option.value);
-          }
-
-          return (
-            <Pressable
-              key={option.value}
-              ref={option.value === autoFocusValue ? autoFocusRef : undefined}
-              accessibilityRole="radio"
-              accessibilityLabel={option.label}
-              accessibilityHint={option.hint}
-              accessibilityState={{ checked: selected, disabled }}
-              disabled={disabled}
-              onPress={handlePress}
-              style={({ pressed }) => [
-                rows ? styles.row : styles.chip,
-                selected ? (rows ? styles.rowSelected : styles.chipSelected) : null,
-                disabled ? styles.disabled : null,
-                pressed ? styles.pressed : null,
-              ]}
-            >
-              {rows ? (
-                <>
-                  <View style={[styles.radio, selected ? styles.radioSelected : null]}>
-                    {selected ? <View style={styles.radioDot} /> : null}
-                  </View>
-                  <View style={styles.rowText}>
-                    <Text style={[styles.rowLabel, selected ? styles.rowLabelSelected : null]}>
-                      {option.label}
-                    </Text>
-                    {option.hint ? <Text style={styles.hint}>{option.hint}</Text> : null}
-                  </View>
-                </>
-              ) : (
-                <Text style={[styles.chipLabel, selected ? styles.chipLabelSelected : null]}>
-                  {option.label}
-                </Text>
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
-      {error ? (
-        <Text style={styles.error} accessibilityLiveRegion="polite">
-          {error}
-        </Text>
-      ) : null}
-    </View>
+        return (
+          <Choice
+            key={option.value}
+            ref={option.value === autoFocusValue ? (autoFocusRef as never) : undefined}
+            variant={variant === "rows" ? "row" : "chip"}
+            label={option.label}
+            hint={option.hint}
+            selected={option.value === value}
+            disabled={disabled}
+            onPress={handlePress}
+          />
+        );
+      })}
+    </ChoiceList>
   );
 }
 
 ChoiceGroup.displayName = "ChoiceGroup";
-
-const styles = StyleSheet.create({
-  form: {
-    gap: spacing["grid-gap"],
-  },
-  /** Cancel on the left of the save button, the pair flush right (`DESIGN.md` → Форма). */
-  actions: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: spacing["grid-gap"] / 2,
-  },
-  descriptionInput: {
-    minHeight: spacing["control-height"] * 2,
-    paddingVertical: spacing["grid-gap"] / 2,
-  },
-  field: {
-    gap: 4,
-  },
-  label: {
-    ...textStyle("label"),
-    color: colors.foreground,
-  },
-  chips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing["grid-gap"] / 2,
-  },
-  chip: {
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: colors["border-strong"],
-    borderRadius: rounded.sm,
-    backgroundColor: colors.surface,
-  },
-  chipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipLabel: {
-    ...textStyle("label"),
-    color: colors.foreground,
-  },
-  chipLabelSelected: {
-    color: colors["primary-foreground"],
-  },
-  rows: {
-    gap: spacing["grid-gap"] / 2,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing["grid-gap"] / 2,
-    minHeight: spacing["touch-target"],
-    paddingVertical: spacing["grid-gap"] / 2,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: colors["border-strong"],
-    borderRadius: rounded.sm,
-    backgroundColor: colors.surface,
-  },
-  rowSelected: {
-    backgroundColor: colors.muted,
-    borderColor: colors.primary,
-  },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: rounded.full,
-    borderWidth: 2,
-    borderColor: colors["border-strong"],
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-  },
-  radioSelected: {
-    borderColor: colors.primary,
-  },
-  radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: rounded.full,
-    backgroundColor: colors.primary,
-  },
-  rowText: {
-    flex: 1,
-    gap: 2,
-  },
-  rowLabel: {
-    ...textStyle("label"),
-    color: colors.foreground,
-  },
-  rowLabelSelected: {
-    color: colors.primary,
-  },
-  hint: {
-    ...textStyle("caption"),
-    color: colors["muted-foreground"],
-  },
-  lockedHint: {
-    ...textStyle("caption"),
-    color: colors["muted-foreground"],
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-  error: {
-    ...textStyle("caption"),
-    color: colors.destructive,
-  },
-  formError: {
-    ...textStyle("caption"),
-    color: colors.destructive,
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-});

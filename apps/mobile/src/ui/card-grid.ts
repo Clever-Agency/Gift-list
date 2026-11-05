@@ -1,4 +1,4 @@
-import { spacing } from "@/theme/tokens";
+import { spacing } from "@gift-list/ui";
 
 /** Safe-area insets that eat into the window width, e.g. a notch in landscape. */
 export type GridInsets = { left?: number; right?: number };

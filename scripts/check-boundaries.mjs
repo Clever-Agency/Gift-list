@@ -67,6 +67,64 @@ for await (const file of walk(path.join(root, "packages/contracts/src"))) {
   if (bannedSpecifier.test(text)) failures.push(`${relative}: imports React or Prisma`);
 }
 
+// packages/ui is pure presentation: no env, Prisma, server or contracts imports.
+const uiBanned =
+  /(?:import\s*(?:[^"'()]*?\sfrom\s*)?|export\s+[^"'()]*?\sfrom\s*|require\s*\(\s*|import\s*\(\s*)["'](@prisma\/client(?:\/[^"']*)?|prisma(?:\/[^"']*)?|@gift-list\/(?:web|contracts)(?:\/[^"']*)?|next(?:\/[^"']*)?|expo(?:-[a-z-]+)?(?:\/[^"']*)?|@better-auth\/[^"']+|better-auth(?:\/[^"']*)?)["']/;
+for await (const file of walk(path.join(root, "packages/ui/src"))) {
+  const text = await readFile(file, "utf8");
+  const relative = path.relative(root, file);
+  if (envRead.test(text)) failures.push(`${relative}: reads process.env`);
+  if (uiBanned.test(text)) failures.push(`${relative}: imports Prisma, web, contracts, Next, Expo or better-auth`);
+}
+
+// AD-2: Tamagui is imported by subpath only (`@tamagui/core`, `tamagui/dialog` ...),
+// never from the bare "tamagui" entry that pulls in every component.
+const bareTamagui =
+  /(?:import\s*(?:[^"'()]*?\sfrom\s*)?|export\s+[^"'()]*?\sfrom\s*|require\s*\(\s*|import\s*\(\s*|vi\.(?:mock|doMock|importActual)\s*\(\s*)["']tamagui["']/;
+
+for (const dir of ["apps/mobile", "apps/web/src", "packages/ui/src"]) {
+  for await (const file of walk(path.join(root, dir))) {
+    // Comments may mention "tamagui" in prose; drop whole-line and block comments first.
+    const text = (await readFile(file, "utf8")).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    if (bareTamagui.test(text)) {
+      failures.push(
+        `${path.relative(root, file)}: imports from "tamagui"; use subpaths (@tamagui/core, tamagui/dialog ...)`,
+      );
+    }
+  }
+}
+
+// AD-28: one copy of React and Tamagui in package-lock.json. A nested
+// node_modules/<...>/node_modules/<pkg> (or a workspace-local one) means a duplicate.
+// GIFT_LIST_LOCKFILE lets a test point the check at a doctored copy of the lock.
+const lockPath = process.env.GIFT_LIST_LOCKFILE ?? path.join(root, "package-lock.json");
+const lock = JSON.parse(await readFile(lockPath, "utf8"));
+const singletons = /^(?:react|react-dom|tamagui|@tamagui\/[^/]+)$/;
+const copies = new Map();
+for (const [key, meta] of Object.entries(lock.packages ?? {})) {
+  const at = key.lastIndexOf("node_modules/");
+  if (at === -1) continue;
+  const name = key.slice(at + "node_modules/".length);
+  if (!singletons.test(name) || meta.link) continue;
+  if (!copies.has(name)) copies.set(name, []);
+  copies.get(name).push({ key, version: meta.version });
+}
+for (const [name, list] of copies) {
+  if (list.length > 1) {
+    failures.push(
+      `package-lock.json: duplicate copies of ${name} (${list.map((c) => `${c.key}@${c.version}`).join(", ")}); keep one, see AD-28`,
+    );
+  }
+}
+const tamaguiVersions = new Set(
+  [...copies].filter(([name]) => name !== "react" && name !== "react-dom").flatMap(([, list]) => list.map((c) => c.version)),
+);
+if (tamaguiVersions.size > 1) {
+  failures.push(
+    `package-lock.json: tamagui and @tamagui/* must share one version, found ${[...tamaguiVersions].join(", ")} (AD-28)`,
+  );
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exit(1);

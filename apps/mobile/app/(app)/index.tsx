@@ -1,21 +1,24 @@
 import type { GiftCard } from "@gift-list/contracts";
+import {
+  Column,
+  Heading,
+  Pressable,
+  Screen,
+  ScrollView,
+  spacing,
+  Text,
+  XStack,
+  YStack,
+} from "@gift-list/ui";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { fetchMyGifts, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
-import { colors, spacing, textStyle } from "@/theme/tokens";
 import { AuthorLink } from "@/ui/author-link";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
@@ -60,7 +63,7 @@ const DELETED_TOAST = "gift_deleted";
  * of the column. The toast is lifted by exactly one row's height
  * (`spacing.touch-target` plus `spacing.page-gutter`), so it never covers the controls
  * (`DESIGN.md` → Toast: «снизу, над прилипшей кнопкой»). The row may wrap on a very
- * narrow screen (see `styles.footer`); the clearance covers a single line.
+ * narrow screen (the footer wraps); the clearance covers a single line.
  * The safe-area inset is already outside this box: both live inside `SafeAreaView`.
  */
 const FOOTER_CLEARANCE = spacing["touch-target"] + spacing["page-gutter"];
@@ -279,7 +282,7 @@ export default function MyWishlistScreen() {
 
   function closePicker(id: string) {
     // The focus call itself waits for the dialog's own `onClosed`: the layer is still
-    // in the tree while it fades out (see `useLayerClosed`).
+    // in the tree while it fades out.
     pendingFocus.current = id;
     setPicker(null);
   }
@@ -388,205 +391,173 @@ export default function MyWishlistScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
-      <View style={[styles.column, { paddingHorizontal: gutter }]}>
-        <Text style={styles.logo}>{common("brandName", { brand })}</Text>
-        <Text accessibilityRole="header" style={styles.title}>
-          {wishlist("title")}
-        </Text>
+    <Screen>
+      <SafeAreaView style={{ flex: 1 }}>
+        <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
+        <Column
+          size="wide"
+          flex={1}
+          paddingHorizontal={gutter}
+          paddingTop="$page-gutter"
+          gap="$2"
+        >
+          <Text kind="display-sm" tone="primary" textAlign="center">
+            {common("brandName", { brand })}
+          </Text>
+          <Heading level={1}>{wishlist("title")}</Heading>
 
-        <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scroll}>
-          {state.status === "loading" ? (
-            <View
-              style={styles.grid}
-              accessible
-              accessibilityState={{ busy: true }}
-              accessibilityLabel={wishlist("loading")}
+          <ScrollView
+            flex={1}
+            contentContainerStyle={{
+              paddingTop: spacing["grid-gap"] / 2,
+              paddingBottom: spacing["section-gap"],
+              gap: spacing["grid-gap"],
+            }}
+          >
+            {state.status === "loading" ? (
+              <XStack
+                flexWrap="wrap"
+                gap="$grid-gap"
+                accessible
+                aria-busy
+                aria-label={wishlist("loading")}
+              >
+                {SKELETON_CARDS.map((key) => (
+                  <WishCardSkeleton key={key} width={grid.cardWidth} />
+                ))}
+              </XStack>
+            ) : state.status === "error" ? (
+              <RetryView
+                text={
+                  state.kind === "network" ? wishlist("loadError") : wishlist("loadErrorGeneric")
+                }
+                label={wishlist("retry")}
+                onPress={retry}
+              />
+            ) : state.status === "missing" ? (
+              <RetryView
+                text={wishlist("listNotFound")}
+                label={wishlist("retry")}
+                onPress={retry}
+              />
+            ) : state.gifts.length === 0 ? (
+              <EmptyState
+                title={wishlist("emptyTitle")}
+                body={wishlist("emptyText")}
+                action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
+              />
+            ) : (
+              <>
+                <YStack
+                  {...(width < spacing["bp-medium"] ? { width: "100%" } : { alignSelf: "flex-end" })}
+                >
+                  <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
+                </YStack>
+                {/* Review m5: the grid is a list for assistive tech. */}
+                <XStack role="list" flexWrap="wrap" gap="$grid-gap">
+                  {state.gifts.map((gift) => {
+                    function handlePress() {
+                      openEditor(gift.id);
+                    }
+
+                    function handleVisibilityPress() {
+                      openVisibilityPicker(gift);
+                    }
+
+                    function setChipNode(node: ChipNode | null) {
+                      chipNodes.current.set(gift.id, node);
+                    }
+
+                    return (
+                      <WishCard
+                        key={gift.id}
+                        gift={gift}
+                        width={grid.cardWidth}
+                        onPress={handlePress}
+                        onVisibilityPress={handleVisibilityPress}
+                        visibilityChipRef={setChipNode}
+                      />
+                    );
+                  })}
+                </XStack>
+              </>
+            )}
+          </ScrollView>
+
+          <XStack
+            testID="wishlist-footer"
+            flexWrap="wrap"
+            alignItems="center"
+            justifyContent="space-between"
+            paddingBottom="$page-gutter"
+          >
+            <Pressable
+              role="button"
+              testID="wishlist-logout"
+              onPress={signOut}
+              minHeight="$touch-target"
+              minWidth="$touch-target"
+              justifyContent="center"
             >
-              {SKELETON_CARDS.map((key) => (
-                <WishCardSkeleton key={key} width={grid.cardWidth} />
-              ))}
-            </View>
-          ) : state.status === "error" ? (
-            <View style={styles.retry}>
-              <Text style={styles.retryText}>
-                {state.kind === "network"
-                  ? wishlist("loadError")
-                  : wishlist("loadErrorGeneric")}
+              <Text kind="button" tone="destructive">
+                {wishlist("logout")}
               </Text>
-              <PrimaryButton label={wishlist("retry")} onPress={retry} />
-            </View>
-          ) : state.status === "missing" ? (
-            <View style={styles.retry}>
-              <Text style={styles.retryText}>{wishlist("listNotFound")}</Text>
-              <PrimaryButton label={wishlist("retry")} onPress={retry} />
-            </View>
-          ) : state.gifts.length === 0 ? (
-            <EmptyState
-              title={wishlist("emptyTitle")}
-              body={wishlist("emptyText")}
-              action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
-            />
-          ) : (
-            <>
-              <View style={width < spacing["bp-medium"] ? styles.addRow : styles.addRowWide}>
-                <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
-              </View>
-              {/* Review m5: the grid is a list for assistive tech; `role` is the DOM
-                  role alias React Native forwards on web and maps on native. */}
-              <View role="list" style={styles.grid}>
-                {state.gifts.map((gift) => {
-                  function handlePress() {
-                    openEditor(gift.id);
-                  }
-
-                  function handleVisibilityPress() {
-                    openVisibilityPicker(gift);
-                  }
-
-                  function setChipNode(node: ChipNode | null) {
-                    chipNodes.current.set(gift.id, node);
-                  }
-
-                  return (
-                    <WishCard
-                      key={gift.id}
-                      gift={gift}
-                      width={grid.cardWidth}
-                      onPress={handlePress}
-                      onVisibilityPress={handleVisibilityPress}
-                      visibilityChipRef={setChipNode}
-                    />
-                  );
-                })}
-              </View>
-            </>
-          )}
-        </ScrollView>
-
-        <View testID="wishlist-footer" style={styles.footer}>
-          <Pressable
-            accessibilityRole="button"
-            testID="wishlist-logout"
-            onPress={signOut}
-            style={({ pressed }) => [styles.logout, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.logoutLabel}>{wishlist("logout")}</Text>
-          </Pressable>
-          {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}
-          <Pressable
-            accessibilityRole="button"
-            testID="wishlist-settings"
-            onPress={openSettings}
-            style={({ pressed }) => [styles.link, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.linkLabel}>{wishlist("settings")}</Text>
-          </Pressable>
-          <AuthorLink />
-        </View>
-      </View>
-      <VisibilityPicker
-        visible={picker !== null}
-        title={picker?.gift.title ?? ""}
-        value={picker?.gift.visibility ?? "PUBLIC"}
-        onSelect={handleVisibilitySelect}
-        onClose={cancelPicker}
-        onClosed={returnFocusToChip}
-      />
-      {toast ? (
-        <ToastHost
-          message={toast.message}
-          tone={toast.tone}
-          onDismiss={dismissToast}
-          offsetBottom={FOOTER_CLEARANCE}
+            </Pressable>
+            {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}
+            <Pressable
+              role="button"
+              testID="wishlist-settings"
+              onPress={openSettings}
+              minHeight="$touch-target"
+              minWidth="$touch-target"
+              justifyContent="center"
+            >
+              <Text kind="button" tone="primary">
+                {wishlist("settings")}
+              </Text>
+            </Pressable>
+            <AuthorLink />
+          </XStack>
+        </Column>
+        <VisibilityPicker
+          visible={picker !== null}
+          title={picker?.gift.title ?? ""}
+          value={picker?.gift.visibility ?? "PUBLIC"}
+          onSelect={handleVisibilitySelect}
+          onClose={cancelPicker}
+          onClosed={returnFocusToChip}
         />
-      ) : null}
-    </SafeAreaView>
+        {toast ? (
+          <ToastHost
+            message={toast.message}
+            tone={toast.tone}
+            onDismiss={dismissToast}
+            offsetBottom={FOOTER_CLEARANCE}
+          />
+        ) : null}
+      </SafeAreaView>
+    </Screen>
   );
 }
 
 MyWishlistScreen.displayName = "MyWishlistScreen";
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  column: {
-    flex: 1,
-    width: "100%",
-    maxWidth: spacing["max-wide"],
-    alignSelf: "center",
-    paddingTop: spacing["page-gutter"],
-    gap: spacing["grid-gap"] / 2,
-  },
-  logo: {
-    ...textStyle("display-sm"),
-    color: colors.primary,
-    textAlign: "center",
-  },
-  title: {
-    ...textStyle("heading"),
-    color: colors.foreground,
-  },
-  scrollArea: {
-    flex: 1,
-  },
-  scroll: {
-    paddingTop: spacing["grid-gap"] / 2,
-    paddingBottom: spacing["section-gap"],
-    gap: spacing["grid-gap"],
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing["grid-gap"],
-  },
-  addRow: {
-    width: "100%",
-  },
-  addRowWide: {
-    alignSelf: "flex-end",
-  },
-  retry: {
-    width: "100%",
-    maxWidth: spacing["max-form"],
-    alignSelf: "center",
-    paddingVertical: spacing["section-gap"] / 2,
-    gap: spacing["grid-gap"],
-  },
-  retryText: {
-    ...textStyle("body"),
-    color: colors["muted-foreground"],
-    textAlign: "center",
-  },
-  footer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingBottom: spacing["page-gutter"],
-  },
-  logout: {
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    justifyContent: "center",
-  },
-  link: {
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    justifyContent: "center",
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-  logoutLabel: {
-    ...textStyle("button"),
-    color: colors.destructive,
-  },
-  linkLabel: {
-    ...textStyle("button"),
-    color: colors.primary,
-  },
-});
+/** A failed or missing list: one line of text and the retry button. */
+function RetryView({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {
+  return (
+    <YStack
+      width="100%"
+      maxWidth="$max-form"
+      alignSelf="center"
+      paddingVertical={spacing["section-gap"] / 2}
+      gap="$grid-gap"
+    >
+      <Text tone="muted" textAlign="center">
+        {text}
+      </Text>
+      <PrimaryButton label={label} onPress={onPress} />
+    </YStack>
+  );
+}
+
+RetryView.displayName = "RetryView";

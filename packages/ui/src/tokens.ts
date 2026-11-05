@@ -1,5 +1,8 @@
 /**
- * Forest Paper tokens from DESIGN.md frontmatter (App).
+ * Forest Paper: every value of the DESIGN.md frontmatter (App and Next pages).
+ * The single source of tokens for the whole repo: the Tamagui theme in
+ * `config.ts` is built from these objects, and apps read numbers from here.
+ *
  * `lineHeight` is `fontSize × multiplier`, rounded to an integer.
  * Display `letterSpacing` is `-0.01em` of 36px = -0.36.
  */
@@ -27,6 +30,8 @@ export const colors = {
   scrim: "#1E241F",
 } as const;
 
+export type ColorToken = keyof typeof colors;
+
 export const typography = {
   display: {
     fontFamily: "Lora",
@@ -47,38 +52,46 @@ export const typography = {
     fontSize: 18,
     fontWeight: "600",
     lineHeight: 23,
+    letterSpacing: 0,
   },
   "body-strong": {
     fontFamily: "Manrope",
     fontSize: 16,
     fontWeight: "600",
     lineHeight: 22,
+    letterSpacing: 0,
   },
   body: {
     fontFamily: "Manrope",
     fontSize: 16,
     fontWeight: "400",
     lineHeight: 24,
+    letterSpacing: 0,
   },
   button: {
     fontFamily: "Manrope",
     fontSize: 15,
     fontWeight: "600",
     lineHeight: 18,
+    letterSpacing: 0,
   },
   label: {
     fontFamily: "Manrope",
     fontSize: 14,
     fontWeight: "500",
     lineHeight: 20,
+    letterSpacing: 0,
   },
   caption: {
     fontFamily: "Manrope",
     fontSize: 12,
     fontWeight: "400",
     lineHeight: 16,
+    letterSpacing: 0,
   },
 } as const;
+
+export type TypographyRole = keyof typeof typography;
 
 export const rounded = {
   sm: 6,
@@ -122,32 +135,14 @@ export const spacing = {
   "bp-wide": 1280,
 } as const;
 
-export type TypographyRole = keyof typeof typography;
+export type SpacingToken = keyof typeof spacing;
 
-type FontWeight = "400" | "500" | "600";
+/** Window-width breakpoints (`DESIGN.md` → App → Точки перехода). */
+export const breakpoints = {
+  medium: spacing["bp-medium"],
+  expanded: spacing["bp-expanded"],
+  wide: spacing["bp-wide"],
+} as const;
 
-/** Loaded face names. One file per weight — Android does not synthesize them. */
-function faceFor(token: { fontFamily: string; fontWeight: FontWeight }): string {
-  if (token.fontFamily === "Lora") return "Lora";
-  if (token.fontWeight === "500") return "Manrope-500";
-  if (token.fontWeight === "600") return "Manrope-600";
-  return "Manrope";
-}
-
-export function textStyle(role: TypographyRole): {
-  fontFamily: string;
-  fontSize: number;
-  lineHeight: number;
-  letterSpacing?: number;
-} {
-  const token = typography[role];
-  const letterSpacing = "letterSpacing" in token ? token.letterSpacing : undefined;
-  // Weight is encoded in the loaded face name. Setting fontWeight as well makes
-  // Android look up a different file and fall back to a system font without Cyrillic.
-  return {
-    fontFamily: faceFor(token),
-    fontSize: token.fontSize,
-    lineHeight: token.lineHeight,
-    ...(letterSpacing !== undefined ? { letterSpacing } : {}),
-  };
-}
+/** Layer scrim opacity (`DESIGN.md` → bottom-sheet, dialog: `scrim` at 40%). */
+export const SCRIM_OPACITY = 0.4;

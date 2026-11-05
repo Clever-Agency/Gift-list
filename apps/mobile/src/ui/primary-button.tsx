@@ -1,6 +1,11 @@
-import { Pressable, StyleSheet, Text } from "react-native";
-import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
+import { Button } from "@gift-list/ui";
 
+/**
+ * The primary action of a screen. A thin wrapper over `Button` from `@gift-list/ui`
+ * that keeps the old `disabled` contract: a disabled primary button is announced
+ * busy, because it is disabled while its request runs. Screens move to `Button`
+ * directly with the screens task of Story 1.9.
+ */
 export function PrimaryButton({
   label,
   onPress,
@@ -10,39 +15,7 @@ export function PrimaryButton({
   onPress: () => void;
   disabled?: boolean;
 }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: Boolean(disabled), busy: Boolean(disabled) }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.button, pressed ? styles.pressed : null, disabled ? styles.disabled : null]}
-    >
-      <Text style={styles.label}>{label}</Text>
-    </Pressable>
-  );
+  return <Button label={label} onPress={onPress} busy={Boolean(disabled)} />;
 }
 
 PrimaryButton.displayName = "PrimaryButton";
-
-const styles = StyleSheet.create({
-  button: {
-    minHeight: spacing["control-height"],
-    borderRadius: rounded.sm,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-  label: {
-    ...textStyle("button"),
-    color: colors["primary-foreground"],
-  },
-});

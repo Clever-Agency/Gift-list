@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { click, controlByText, typeInto } from "@/test/dom";
 import LoginScreen from "../../app/(auth)/login";
 import RegisterScreen from "../../app/(auth)/register";
 import ResetScreen from "../../app/(auth)/reset";
@@ -11,9 +12,6 @@ const GENERIC = "Проверьте введённые данные.";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const route = vi.hoisted(() => ({ params: {} as Record<string, string> }));
-const fields = vi.hoisted(() => ({
-  change: new Map<string, (value: string) => void>(),
-}));
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/session/auth-context", () => ({
@@ -62,60 +60,6 @@ vi.mock("expo-router", async () => {
     useLocalSearchParams: () => route.params,
   };
 });
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  return {
-    StyleSheet: { create: (styles: unknown) => styles },
-    Text: ({
-      children,
-      style,
-      accessibilityRole,
-    }: {
-      children?: React.ReactNode;
-      style?: { color?: string };
-      accessibilityRole?: string;
-    }) =>
-      React.createElement(
-        "span",
-        {
-          "data-tone": style?.color === "#B42318" ? "error" : style?.color === "#5C6358" ? "hint" : undefined,
-          role: accessibilityRole,
-        },
-        children,
-      ),
-    View: ({ children }: { children?: React.ReactNode }) => React.createElement("div", null, children),
-    ScrollView: ({ children }: { children?: React.ReactNode }) => React.createElement("div", null, children),
-    TextInput: ({
-      accessibilityLabel,
-      accessibilityHint,
-      onChangeText,
-    }: {
-      accessibilityLabel?: string;
-      accessibilityHint?: string;
-      onChangeText?: (value: string) => void;
-    }) => {
-      if (accessibilityLabel && onChangeText) fields.change.set(accessibilityLabel, onChangeText);
-      return React.createElement("input", {
-        "aria-label": accessibilityLabel,
-        "aria-description": accessibilityHint,
-      });
-    },
-    Pressable: ({
-      children,
-      onPress,
-      accessibilityLabel,
-    }: {
-      children?: React.ReactNode;
-      onPress?: () => void;
-      accessibilityLabel?: string;
-    }) =>
-      React.createElement(
-        "button",
-        { type: "button", "aria-label": accessibilityLabel, onClick: () => onPress?.() },
-        children,
-      ),
-  };
-});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -128,15 +72,27 @@ vi.mock("react-native-safe-area-context", async () => {
 let root: Root;
 let container: HTMLElement;
 
+/**
+ * The text a screen shows as a hint or as an error: its own coloured `Text`, and the line
+ * under a field, which `TextField` marks as an alert when it is an error.
+ */
 function toneText(tone: "hint" | "error"): string {
-  return Array.from(container.querySelectorAll(`span[data-tone="${tone}"]`))
-    .map((node) => node.textContent ?? "")
-    .join("\n");
+  const own = Array.from(container.querySelectorAll(`span[data-tone="${tone}"]`));
+  const underField = Array.from(container.querySelectorAll('[id$="-description"]')).filter(
+    (node) => (node.getAttribute("role") === "alert") === (tone === "error"),
+  );
+  return [...own, ...underField].map((node) => node.textContent ?? "").join("\n");
+}
+
+/** The line a field is described by: its hint or its error. */
+function describedBy(label: string): string {
+  const input = container.querySelector(`input[aria-label="${label}"]`);
+  const id = input?.getAttribute("aria-describedby");
+  return (id ? document.getElementById(id)?.textContent : "") ?? "";
 }
 
 async function mount(screen: "register" | "reset" | "login") {
   route.params = screen === "reset" ? { token: "live-token" } : {};
-  fields.change.clear();
   const Screen = screen === "register" ? RegisterScreen : screen === "reset" ? ResetScreen : LoginScreen;
   await act(async () => {
     root.render(<Screen />);
@@ -144,21 +100,15 @@ async function mount(screen: "register" | "reset" | "login") {
 }
 
 async function fill(label: string, value: string) {
-  const change = fields.change.get(label);
-  expect(change).toBeTypeOf("function");
-  await act(async () => {
-    change?.(value);
-  });
+  const input = container.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
+  expect(input, `поле «${label}»`).not.toBeNull();
+  await typeInto(input as HTMLInputElement, value);
 }
 
 async function press(label: string) {
-  const button = Array.from(container.querySelectorAll("button")).find((node) =>
-    node.textContent?.includes(label),
-  );
+  const button = controlByText(label, container);
   expect(button).toBeTruthy();
-  await act(async () => {
-    button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
+  await click(button);
 }
 
 beforeEach(() => {
@@ -178,7 +128,7 @@ describe("требование к паролю", () => {
     await mount("register");
     expect(toneText("hint")).toContain(RULE);
     expect(toneText("error")).not.toContain(RULE);
-    expect(container.querySelector('input[aria-label="Пароль"]')?.getAttribute("aria-description")).toBe(RULE);
+    expect(describedBy("Пароль")).toBe(RULE);
 
     await fill("Email", "a@b.test");
     await fill("Пароль", "1234567");
@@ -191,7 +141,7 @@ describe("требование к паролю", () => {
     expect(toneText("error")).toContain(RULE);
     expect(toneText("error")).not.toContain(GENERIC);
     expect(toneText("hint")).not.toContain(RULE);
-    expect(container.querySelector('span[role="alert"]')?.textContent).toContain(RULE);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(RULE);
   });
 
   it("на регистрации пароль длиннее 128 символов не называет минимум", async () => {
@@ -231,7 +181,7 @@ describe("требование к паролю", () => {
   it("на новом пароле короткий пароль показывает подсказку и ошибку, а длинный ответ сервера — общий текст", async () => {
     await mount("reset");
     expect(toneText("hint")).toContain(RULE);
-    expect(container.querySelector('input[aria-label="Пароль"]')?.getAttribute("aria-description")).toBe(RULE);
+    expect(describedBy("Пароль")).toBe(RULE);
 
     await fill("Пароль", "1234567");
     await press("Сохранить пароль");

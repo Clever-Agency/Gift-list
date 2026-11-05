@@ -1,12 +1,16 @@
 import type { GiftCard } from "@gift-list/contracts";
+import {
+  VisibilityChip as UiVisibilityChip,
+  spacing,
+  visibilityChipColors,
+  type VisibilityTone,
+} from "@gift-list/ui";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import type { ComponentRef, Ref } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslations } from "use-intl";
-import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 
 /** Where the screen returns focus after the visibility layer closes. */
-export type VisibilityChipRef = Ref<ComponentRef<typeof View>>;
+export type VisibilityChipRef = Ref<ComponentRef<typeof UiVisibilityChip>>;
 
 /**
  * `DESIGN.md` → VisibilityChip: «Всем» / «Друзьям» / «Секрет».
@@ -18,7 +22,9 @@ export type VisibilityChipRef = Ref<ComponentRef<typeof View>>;
  *
  * `DESIGN.md` → VisibilityChip: on an `OPEN` wish the chip is a button that opens
  * the visibility picker (`aria-haspopup="dialog"`); on `RESERVED` / `CLOSED` it
- * only shows the value, so without `onPress` the root stays a plain `View`.
+ * only shows the value, so without `onPress` it is not a control. The chip itself is
+ * `VisibilityChip` of `@gift-list/ui`; this wrapper supplies the catalogue texts and
+ * the icon.
  */
 export function VisibilityChip({
   visibility,
@@ -27,7 +33,7 @@ export function VisibilityChip({
 }: {
   visibility: GiftCard["visibility"];
   onPress?: () => void;
-  /** Ref to the root element, so the screen can put focus back on the chip. */
+  /** Ref to the pressable root, so the screen can put focus back on the chip. */
   chipRef?: VisibilityChipRef;
 }) {
   const t = useTranslations("app.gift.visibility");
@@ -35,51 +41,31 @@ export function VisibilityChip({
   const tGift = useTranslations("app.gift");
   const tone = TONES[visibility];
 
-  const content = (
-    <>
-      <SymbolView
-        name={ICONS[visibility]}
-        size={spacing["icon-small"]}
-        tintColor={tone.text.color}
-        // Decorative: the label next to it is the accessible name.
-        aria-hidden
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      />
-      <Text style={[styles.label, tone.text]}>{t(visibility)}</Text>
-    </>
-  );
-
-  if (!onPress) {
-    return (
-      <View ref={chipRef} style={[styles.chip, tone.chip]}>
-        {content}
-      </View>
-    );
-  }
-
   return (
-    <Pressable
+    <UiVisibilityChip
       ref={chipRef}
-      accessibilityRole="button"
+      tone={tone}
+      label={t(visibility)}
       accessibilityLabel={tGift("visibilityChipLabel", { value: tLower(visibility) })}
-      // The chip opens a dialog. React Native types do not list the web-only ARIA
-      // attribute yet, while react-native-web forwards it to the DOM.
-      {...{ "aria-haspopup": "dialog" as const }}
       onPress={onPress}
-      // The chip stays `chip-height` tall; the touch zone grows to `touch-target`.
-      hitSlop={HIT_SLOP}
-      style={({ pressed }) => [styles.chip, tone.chip, pressed ? styles.pressed : null]}
-    >
-      {content}
-    </Pressable>
+      icon={
+        <SymbolView
+          name={ICONS[visibility]}
+          size={spacing["icon-small"]}
+          tintColor={visibilityChipColors[tone]}
+        />
+      }
+    />
   );
 }
 
 VisibilityChip.displayName = "VisibilityChip";
 
-/** `DESIGN.md` → VisibilityChip: the visual is 28 tall, the touch zone is 44. */
-const HIT_SLOP = (spacing["touch-target"] - spacing["chip-height"]) / 2;
+const TONES = {
+  PUBLIC: "public",
+  FRIENDS: "friends",
+  SECRET: "secret",
+} as const satisfies Record<GiftCard["visibility"], VisibilityTone>;
 
 /**
  * `DESIGN.md` → components: `visibility-chip-public.icon: globe`,
@@ -91,40 +77,3 @@ const ICONS = {
   FRIENDS: { ios: "person.2", android: "group", web: "group" },
   SECRET: { ios: "lock", android: "lock", web: "lock" },
 } as const satisfies Record<GiftCard["visibility"], SymbolViewProps["name"]>;
-
-const TONES = {
-  PUBLIC: {
-    chip: { backgroundColor: colors.surface, borderStyle: "solid" as const },
-    text: { color: colors.primary },
-  },
-  FRIENDS: {
-    chip: { backgroundColor: colors.muted, borderStyle: "solid" as const },
-    text: { color: colors.foreground },
-  },
-  SECRET: {
-    chip: { backgroundColor: "transparent", borderStyle: "dashed" as const },
-    text: { color: colors["muted-foreground"] },
-  },
-} as const;
-
-const styles = StyleSheet.create({
-  chip: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing["grid-gap"] / 4,
-    minHeight: spacing["chip-height"],
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors["border-strong"],
-    borderRadius: rounded.sm,
-    paddingHorizontal: spacing["grid-gap"] / 2,
-  },
-  // The same pressed feedback the other Pressables of the app give (DESIGN.md → App).
-  pressed: {
-    opacity: 0.9,
-  },
-  label: {
-    ...textStyle("caption"),
-  },
-});

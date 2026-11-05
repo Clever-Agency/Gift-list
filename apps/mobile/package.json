@@ -17,6 +17,7 @@
     "@expo/ui": "~58.0.24",
     "@formatjs/intl-pluralrules": "6.3.16",
     "@gift-list/contracts": "*",
+    "@gift-list/ui": "*",
     "expo": "58.0.20",
     "expo-constants": "~58.0.13",
     "expo-contacts": "~58.0.9",

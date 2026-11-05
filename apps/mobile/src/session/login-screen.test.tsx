@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
+import { click, controlByText } from "@/test/dom";
 import LoginScreen from "../../app/(auth)/login";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -66,40 +67,6 @@ vi.mock("expo-router", async () => {
     useLocalSearchParams: () => search.params,
   };
 });
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type Props = { children?: React.ReactNode; testID?: string };
-  function element(tag: string) {
-    return function Element({ children, testID }: Props) {
-      return React.createElement(tag, testID ? { "data-testid": testID } : null, children);
-    };
-  }
-  return {
-    StyleSheet: { create: (styles: unknown) => styles },
-    Text: element("span"),
-    View: element("div"),
-    ScrollView: element("div"),
-    TextInput: ({
-      value,
-      onChangeText,
-      accessibilityLabel,
-    }: {
-      value?: string;
-      onChangeText?: (value: string) => void;
-      accessibilityLabel?: string;
-    }) =>
-      React.createElement("input", {
-        value,
-        "aria-label": accessibilityLabel,
-        onChange: (event: { target: { value: string } }) => onChangeText?.(event.target.value),
-      }),
-    Pressable: ({
-      children,
-      onPress,
-    }: Props & { onPress?: () => void }) =>
-      React.createElement("button", { type: "button", onClick: onPress }, children),
-  };
-});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -157,13 +124,9 @@ describe("вход: сообщение об истёкшей сессии", () =
     search.params = { next: "/", reason: "session_expired" };
     await mount();
 
-    const dismiss = Array.from(container.querySelectorAll("button")).find((node) =>
-      (node.textContent ?? "").includes("Закрыть"),
-    );
+    const dismiss = controlByText("Закрыть", container);
     expect(dismiss).toBeDefined();
-    await act(async () => {
-      dismiss?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await click(dismiss);
 
     expect(text()).not.toContain(expiredText);
   });

@@ -10,8 +10,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: monorepoRoot,
   turbopack: { root: monorepoRoot },
-  // @gift-list/contracts ships TypeScript sources without a build step.
-  transpilePackages: ["@gift-list/contracts"],
+  // @gift-list/contracts and @gift-list/ui ship TypeScript sources without a build step.
+  transpilePackages: ["@gift-list/contracts", "@gift-list/ui"],
   async rewrites() {
     return {
       fallback: spaFallbackRewriteSources().map((source) => ({

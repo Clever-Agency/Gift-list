@@ -5,7 +5,6 @@ import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
-import { GhostButton } from "@/ui/ghost-button";
 import { WishCard } from "@/ui/gift-card";
 import { GiftForm } from "@/ui/gift-form";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -22,107 +21,6 @@ import { VisibilityPicker } from "@/ui/visibility-picker";
  * `displayName` in the second suite), and the key ones are really rendered — the
  * review scenario is the info toast «Изменения сохранены.».
  */
-
-/** The platform modules the UI imports; the test only needs the host tree, not layout. */
-vi.mock("react-native", async () => {
-  const React = await import("react");
-
-  type Props = Record<string, unknown> & { children?: React.ReactNode };
-
-  /** React Native props that map to the DOM on react-native-web, kept for a readable tree. */
-  function domProps(props: Props): Record<string, unknown> {
-    const {
-      testID,
-      nativeID,
-      accessibilityRole,
-      accessibilityLabel,
-      accessibilityState,
-      onPress,
-      onPointerEnter,
-      onPointerLeave,
-      style,
-      children,
-      ...rest
-    } = props;
-    void style;
-    void children;
-
-    const dom: Record<string, unknown> = {};
-    if (testID) dom["data-testid"] = testID;
-    if (nativeID) dom.id = nativeID;
-    if (accessibilityRole) dom.role = accessibilityRole;
-    if (accessibilityLabel) dom["aria-label"] = accessibilityLabel;
-    if (onPress) dom.onClick = onPress;
-    if (onPointerEnter) dom.onPointerOver = onPointerEnter;
-    if (onPointerLeave) dom.onPointerOut = onPointerLeave;
-    const state = accessibilityState as Record<string, unknown> | undefined;
-    if (state && "selected" in state) {
-      dom["aria-selected"] = state.selected ? "true" : "false";
-    }
-    for (const [key, value] of Object.entries(rest)) {
-      if (key.startsWith("aria-") || key === "tabIndex" || key === "href") dom[key] = value;
-    }
-    return dom;
-  }
-
-  /** A host of the platform; its own name is never part of the assertions. */
-  function host(tag: "div" | "span" | "button") {
-    function Host({ children, ...props }: Props) {
-      return React.createElement(tag, domProps(props), children);
-    }
-    Host.displayName = `Host(${tag})`;
-    return Host;
-  }
-
-  const View = host("div");
-  const Text = host("span");
-  const Pressable = host("button");
-  const ScrollView = host("div");
-
-  function TextInput({
-    value,
-    onChangeText,
-    accessibilityLabel,
-    placeholder,
-    maxLength,
-  }: {
-    value?: string;
-    onChangeText?: (value: string) => void;
-    accessibilityLabel?: string;
-    placeholder?: string;
-    maxLength?: number;
-  }) {
-    return React.createElement("input", {
-      value: value ?? "",
-      "aria-label": accessibilityLabel,
-      placeholder,
-      maxLength,
-      onChange: (event: { target: { value: string } }) => onChangeText?.(event.target.value),
-    });
-  }
-
-  function Modal({ visible, children }: { visible?: boolean; children?: React.ReactNode }) {
-    return visible ? React.createElement(React.Fragment, null, children) : null;
-  }
-
-  return {
-    AccessibilityInfo: {
-      announceForAccessibility: () => {},
-      setAccessibilityFocus: () => {},
-      isScreenReaderEnabled: () => Promise.resolve(false),
-    },
-    findNodeHandle: () => null,
-    Modal,
-    Platform: { OS: "web", select: (options: Record<string, unknown>) => options.web },
-    Pressable,
-    ScrollView,
-    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
-    Text,
-    TextInput,
-    useWindowDimensions: () => ({ width: 1024, height: 768, scale: 1, fontScale: 1 }),
-    View,
-  };
-});
 
 vi.mock("expo-symbols", async () => {
   const React = await import("react");
@@ -359,7 +257,6 @@ const samples: { name: string; element: ReactElement }[] = [
       />
     ),
   },
-  { name: "GhostButton", element: <GhostButton label="Отмена" onPress={noop} /> },
   { name: "PrimaryButton", element: <PrimaryButton label="Сохранить" onPress={noop} /> },
   { name: "GiftForm", element: <GiftForm submitting={false} onSubmit={noop} /> },
   {
@@ -392,7 +289,6 @@ describe("CLE-64: имена компонентов в src/ui", () => {
         "WishCard",
         "VisibilityChip",
         "VisibilityPicker",
-        "GhostButton",
         "PrimaryButton",
         "GiftForm",
         "TextField",

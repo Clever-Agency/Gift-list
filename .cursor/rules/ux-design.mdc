@@ -8,7 +8,7 @@ alwaysApply: false
 
 Спека интерфейса лежит в `_bmad-output/planning-artifacts/ux-designs/ux-gift-list-2026-09-30/`:
 
-- `DESIGN.md` — как выглядит. Токены во frontmatter (`colors`, `typography`, `rounded`, `spacing`, `components`); разделы **App** (React Native / react-native-web) и **Next-страницы** (shadcn/ui + Tailwind).
+- `DESIGN.md` — как выглядит. Токены во frontmatter (`colors`, `typography`, `rounded`, `spacing`, `components`); разделы **App** и **Next-страницы**. Оба клиента рисуют одни компоненты `packages/ui` на Tamagui (AD-2, D-47).
 - `EXPERIENCE.md` — как работает: экраны и маршруты (Information Architecture), тексты (Voice and Tone), паттерны, состояния, ошибки форм, доступность, Key Flows.
 - `mockups/app-key-screens.html` — статичный макет ключевых экранов. Только для вида и раскладки.
 - `prototype/index.html` — **устарел**, не использовать.
@@ -25,7 +25,7 @@ alwaysApply: false
 
 ## Обязательные правила
 
-- **Токены, не литералы.** Цвета, шрифты, радиусы, отступы — только из frontmatter `DESIGN.md`. В `apps/mobile` — константы темы, в `apps/web` — CSS-переменные shadcn с теми же значениями (AD-2). Новый цвет или размер — сначала в `DESIGN.md`.
+- **Токены, не литералы.** Цвета, шрифты, радиусы, отступы — только из frontmatter `DESIGN.md`. В коде они живут только в теме `packages/ui` (`packages/ui/src/tokens.ts`, `config.ts`): экраны берут `$`-токены и компоненты пакета, а не `StyleSheet` и не свои константы (AD-2). Новый цвет или размер — сначала в `DESIGN.md`.
 - **Одна тема.** Только светлая.
 - **Мультиязычность заложена (D-46).** Ни одной строки интерфейса в коде — только ключи каталога; исходник `ru` — дословно тексты из `EXPERIENCE.md` (Voice and Tone, Empty states, Ошибки форм, Подписи брони). Множественное число, даты, числа и цены — через `Intl` / ICU, не склейкой строк. Раскладки выдерживают текст на 40% длиннее. Правила — `EXPERIENCE.md` → Локализация. Словарь: «желание», «вишлист» в единственном числе.
 - **Шрифты** — Lora (display) и Manrope (UI) с подмножествами `cyrillic` и `latin`. Fraunces и DM Sans не использовать: в них нет кириллицы.

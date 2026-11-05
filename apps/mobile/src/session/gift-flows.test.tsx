@@ -4,6 +4,7 @@ import { act, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
+import { controls, settle, typeInto } from "@/test/dom";
 import MyWishlistScreen from "../../app/(app)/index";
 import EditGiftScreen from "../../app/(app)/gifts/[id]/edit";
 import NewGiftScreen from "../../app/(app)/gifts/new";
@@ -167,127 +168,6 @@ vi.mock("expo-router/react-navigation", () => ({
   usePreventRemove: () => undefined,
   useNavigation: () => ({ dispatch: vi.fn() }),
 }));
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type ChildrenProps = { children?: React.ReactNode };
-  type TextProps = ChildrenProps & {
-    accessibilityRole?: string;
-    accessibilityLiveRegion?: string;
-  };
-  type ViewProps = ChildrenProps & {
-    testID?: string;
-    role?: string;
-    accessible?: boolean;
-    accessibilityLabel?: string;
-    accessibilityState?: { busy?: boolean };
-    pointerEvents?: string;
-  };
-  type PressableProps = ChildrenProps & {
-    onPress?: () => void;
-    disabled?: boolean;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    accessibilityState?: {
-      checked?: boolean;
-      disabled?: boolean;
-      busy?: boolean;
-      selected?: boolean;
-    };
-  };
-  type InputProps = {
-    value?: string;
-    onChangeText?: (value: string) => void;
-    accessibilityLabel?: string;
-    placeholder?: string;
-    maxLength?: number;
-  };
-
-  function Text({ children, accessibilityRole }: TextProps) {
-    const role = accessibilityRole as React.AriaRole | undefined;
-    return React.createElement("span", role ? { role } : null, children);
-  }
-  function View({
-    children,
-    testID,
-    role,
-    accessible,
-    accessibilityLabel,
-    accessibilityState,
-    pointerEvents,
-  }: ViewProps) {
-    const props: Record<string, unknown> = {
-      ...(testID ? { "data-testid": testID } : {}),
-      ...(role ? { role } : {}),
-      ...(accessible ? { "data-accessible": "true" } : {}),
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(accessibilityState?.busy ? { "aria-busy": "true" } : {}),
-      ...(pointerEvents ? { "data-pointer-events": pointerEvents } : {}),
-    };
-    return React.createElement("div", props, children);
-  }
-  function ScrollView({ children }: ChildrenProps) {
-    return React.createElement("div", null, children);
-  }
-  /** `Modal` mounts its children only while visible, like the platform. */
-  function Modal({ visible, children }: ChildrenProps & { visible?: boolean }) {
-    if (!visible) return null;
-    return React.createElement("div", { "data-testid": "modal" }, children);
-  }
-  function Pressable({
-    children,
-    onPress,
-    disabled,
-    accessibilityRole,
-    accessibilityLabel,
-    accessibilityState,
-  }: PressableProps) {
-    const role = accessibilityRole as React.AriaRole | undefined;
-    const props: React.ButtonHTMLAttributes<HTMLButtonElement> = {
-      type: "button",
-      ...(role ? { role } : {}),
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(accessibilityState && "checked" in accessibilityState
-        ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
-        : {}),
-      ...(disabled ? { disabled: true, "aria-disabled": "true" } : {}),
-      // A disabled `Pressable` does not run `onPress`, same as the platform.
-      ...(disabled ? {} : { onClick: onPress }),
-    };
-    return React.createElement("button", props, children);
-  }
-  function TextInput({
-    value,
-    onChangeText,
-    accessibilityLabel,
-    placeholder,
-    maxLength,
-  }: InputProps) {
-    const props: React.InputHTMLAttributes<HTMLInputElement> = {
-      value: value ?? "",
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(placeholder ? { placeholder } : {}),
-      ...(maxLength != null ? { maxLength } : {}),
-      onChange: (event: { target: { value: string } }) => onChangeText?.(event.target.value),
-    };
-    return React.createElement("input", props);
-  }
-
-  return {
-    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
-    Text,
-    View,
-    ScrollView,
-    TextInput,
-    Pressable,
-    Modal,
-    // These flows cover the native path: the browser guard stays out of the window.
-    Platform: { OS: "android" as const },
-    // One column, like a phone in the browser (`DESIGN.md` → columns).
-    useWindowDimensions: () => ({ width: 375, height: 800 }),
-    AccessibilityInfo: { announceForAccessibility: vi.fn(), setAccessibilityFocus: vi.fn() },
-    findNodeHandle: () => null,
-  };
-});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -364,12 +244,13 @@ function Routes() {
   }
 }
 
+/** Everything on screen, layers included: a `Dialog` is portalled outside the container. */
 function text(): string {
-  return container.textContent ?? "";
+  return document.body.textContent ?? "";
 }
 
 function field(label: string): HTMLInputElement {
-  const input = Array.from(container.querySelectorAll("input")).find(
+  const input = Array.from(container.querySelectorAll<HTMLInputElement>("input, textarea")).find(
     (node) => node.getAttribute("aria-label") === label,
   );
   expect(input, `поле «${label}»`).toBeDefined();
@@ -379,22 +260,19 @@ function field(label: string): HTMLInputElement {
 /** Controlled input: set the value past React's tracker, then let React see the `input` event. */
 async function type(label: string, value: string) {
   const input = field(label);
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await typeInto(input, value);
 }
 
 /** A button found by its visible label (primary buttons, chips, radios). */
-function button(label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll("button")).find((node) =>
+function button(label: string): HTMLElement | undefined {
+  return controls(document).find((node) =>
     (node.textContent ?? "").includes(label),
   );
 }
 
 /** A button found by its accessible name (the wish card's edit target). */
-function labeled(label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll("button")).find(
+function labeled(label: string): HTMLElement | undefined {
+  return controls(document).find(
     (node) => node.getAttribute("aria-label") === label,
   );
 }
@@ -405,6 +283,7 @@ async function press(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 async function pressLabeled(label: string) {
@@ -413,12 +292,13 @@ async function pressLabeled(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 /** A chosen radio in the currency chips or the visibility rows. */
 function chosen(label: string): boolean {
   return (
-    container.querySelector(`button[aria-label="${label}"]`)?.getAttribute("aria-checked") ===
+    container.querySelector(`[role="radio"][aria-label="${label}"]`)?.getAttribute("aria-checked") ===
     "true"
   );
 }

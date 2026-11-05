@@ -138,3 +138,36 @@
 
 - Критерий «`/u/{старый ник}` → пользователь не найден» проверяется только на уровне данных: старого `nickNormalized` больше ни у кого нет. Маршрута профиля `/u/:nick` ещё нет — проверить в Story 3.4.
 - Вход в «Настройки» временно в подвале «Мой вишлист»; постоянное место — Story 6.2.
+
+## Deferred from: Story 1.9 (CLE-66, 2026-11-05)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: `packages/ui` не проверен на iOS (нет macOS и EAS) и на реальном Android-устройстве (только эмулятор, по чек-листу человека); TalkBack и VoiceOver не проверялись.
+  evidence: AC Story 1.9 разрешает отложить iOS до появления macOS или EAS. Платформенные части (`layer.native.ts`, `focus.native.ts`, начертания шрифтов, анимации Sheet) проверены типами и unit-тестами с моком `BackHandler`; прогон на Android-эмуляторе делает человек по чек-листу спеки.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: Выбор видимости и confirm удаления по-прежнему диалог по центру на всех ширинах. `BottomSheet` в пакете есть, но шторка снизу на compact (DESIGN.md → BottomSheet) не подключена.
+  evidence: 1.9 переводит экраны без изменения поведения. Переход на шторку меняет вид и раскладку, поэтому он остаётся за пунктом Story 2.3 выше.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: Скрипт замера веса веб-сборки и базовое число (487 792 байт gzip на dc10567) не лежат в репозитории, а CI бюджет +150 КБ не охраняет.
+  evidence: Замер шёл скриптом из scratchpad сессии, число записано только в спеке и в PR. Запас до бюджета около 15 КБ, поэтому следующие истории (3.3, 2.4–2.7) могут незаметно его превысить.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: (не проверено, medium) `BottomSheet` может не вызвать `onClosed`, если анимация закрытия прервана, и тогда фокус не вернётся.
+  evidence: Закрытие на вебе ловится через `onTransition`. Проверить в браузере, приходит ли событие с `finished=false` при повторном открытии во время анимации. Шторка в приложении пока не используется.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: (не проверено, medium) `layer.native.ts`: фокус диктора может уйти в слой раньше, чем смонтирован портал, а `onClosed` не вызывается при размонтировании открытого слоя.
+  evidence: Проверить на Android с TalkBack: открыть ConfirmDialog и уйти с экрана, пока он открыт.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: `ChoiceList`/`Choice` не поддерживают клавиатурную модель `radiogroup` (стрелки, roving tabIndex): каждая строка — отдельная остановка Tab.
+  evidence: Так было и в `ChoiceGroup` до Story 1.9. WAI-ARIA APG для radiogroup ждёт стрелок.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: Текст ошибки поля одновременно `role="alert"` и `aria-live="polite"`; `accessibilityHint` не доходит до диктора в вебе (нужен `aria-description`).
+  evidence: Поведение перенесено без изменений из версии до Story 1.9.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: (не проверено, medium) Блок `components` frontmatter DESIGN.md не сверяется тестом с компонентами `packages/ui`; тест типографики не проверяет `fontFamily` и `letterSpacing`.
+  evidence: Нужна построчная сверка блока `components` с `button.tsx`, `text-field.tsx`, `toast.tsx`, `visibility-chip.tsx` и др.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: (не проверено, low) В dev-логе Metro на Android предупреждения Tamagui: `zIndex="1"` и `borderRadius="4"` переданы не токенами; источник в коде пакета и экранов не найден.
+  evidence: Видны при прогоне на эмуляторе 2026-11-05; вид не ломают. Найти источник (вероятно, внутренние стили компонента Tamagui) и проверить, есть ли они в релизной сборке.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: (не проверено, low) На «Мой вишлист» в пустом состоянии два текста Lora («Gift List» в шапке и «Пока пусто»), а DESIGN.md требует один Lora на экран.
+  evidence: Видно на эмуляторе 2026-11-05; не сверено, было ли так до Story 1.9.

@@ -4,6 +4,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "./auth-context";
+import { consumeAuthEmail, forgetAuthEmail, rememberAuthEmail } from "./auth-navigation";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -59,6 +60,7 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  forgetAuthEmail();
   delete probe.auth;
   zone.deviceTimeZone.mockReturnValue("Asia/Tokyo");
   container = document.createElement("div");
@@ -151,6 +153,19 @@ describe("AuthProvider", () => {
     expect(store.clearSessionToken).toHaveBeenCalledTimes(1);
     expect(auth().state).toEqual({ status: "anonymous" });
     expect(result).toEqual({ ok: true });
+  });
+
+  it("signOut сбрасывает ожидающий перенос email", async () => {
+    api.apiRequest.mockResolvedValue({ ok: true, data: user });
+    await mount();
+    rememberAuthEmail("/login", "next@example.test");
+    api.apiRequest.mockResolvedValue({ ok: true, data: { signedOut: true } });
+
+    await act(async () => {
+      await auth().signOut();
+    });
+
+    expect(consumeAuthEmail("/login")).toBe("");
   });
 
   it("signOut при сетевой ошибке не очищает токен и оставляет пользователя", async () => {

@@ -6,8 +6,10 @@ import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { rememberAuthEmail } from "@/session/auth-navigation";
 import { firstZodField, formIssue, issueFromError, type FormIssue } from "@/session/form-issue";
-import { paramValue, returnPath } from "@/session/return-path";
+import { returnPath } from "@/session/return-path";
+import { useCarriedAuthEmail } from "@/session/use-carried-auth-email";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { NavLink } from "@/ui/nav-link";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -19,10 +21,10 @@ export default function ForgotScreen() {
   const t = useTranslations("app");
   const common = useTranslations("common");
   const brand = getBrandName();
-  const params = useLocalSearchParams<{ next?: string; email?: string }>();
+  const params = useLocalSearchParams<{ next?: string }>();
   const next = returnPath(params.next);
   const auth = useAuth();
-  const [email, setEmail] = useState(paramValue(params.email) ?? "");
+  const [email, setEmail] = useCarriedAuthEmail("/forgot");
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -79,9 +81,13 @@ export default function ForgotScreen() {
     void submit();
   }
 
+  function rememberEmail() {
+    rememberAuthEmail("/login", email);
+  }
+
   const loginHref = {
     pathname: "/login" as const,
-    params: { ...(next !== "/" ? { next } : {}), ...(email ? { email } : {}) },
+    params: next !== "/" ? { next } : {},
   };
 
   return (
@@ -112,7 +118,7 @@ export default function ForgotScreen() {
           }}
         />
         <PrimaryButton label={t("forgot.submit")} onPress={handleSubmit} disabled={pending} />
-        <NavLink href={loginHref}>
+        <NavLink href={loginHref} onPress={rememberEmail}>
           {t("forgot.toLogin")}
         </NavLink>
       </AnonymousScreen>

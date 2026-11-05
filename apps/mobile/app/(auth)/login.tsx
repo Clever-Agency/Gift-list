@@ -6,8 +6,10 @@ import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { rememberAuthEmail } from "@/session/auth-navigation";
 import { firstZodField, formIssue, issueFromError, type FormIssue } from "@/session/form-issue";
 import { paramValue, returnPath } from "@/session/return-path";
+import { useCarriedAuthEmail } from "@/session/use-carried-auth-email";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { NavLink } from "@/ui/nav-link";
 import { PasswordField, TextField } from "@/ui/text-field";
@@ -19,10 +21,10 @@ export default function LoginScreen() {
   const t = useTranslations("app");
   const common = useTranslations("common");
   const brand = getBrandName();
-  const params = useLocalSearchParams<{ next?: string; email?: string; reason?: string }>();
+  const params = useLocalSearchParams<{ next?: string; reason?: string }>();
   const next = returnPath(params.next);
   const auth = useAuth();
-  const [email, setEmail] = useState(paramValue(params.email) ?? "");
+  const [email, setEmail] = useCarriedAuthEmail("/login");
   const [password, setPassword] = useState("");
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
@@ -84,7 +86,17 @@ export default function LoginScreen() {
     return issue?.field === name ? issue.text : undefined;
   }
 
-  const carry = { pathname: "/register" as const, params: { ...(next !== "/" ? { next } : {}), ...(email ? { email } : {}) } };
+  function rememberEmailForForgot() {
+    rememberAuthEmail("/forgot", email);
+  }
+
+  function rememberEmailForRegister() {
+    rememberAuthEmail("/register", email);
+  }
+
+  const nextParams = next !== "/" ? { next } : {};
+  const registerHref = { pathname: "/register" as const, params: nextParams };
+  const forgotHref = { pathname: "/forgot" as const, params: nextParams };
 
   return (
     <>
@@ -124,10 +136,10 @@ export default function LoginScreen() {
           }}
         />
         <PrimaryButton label={t("form.submitLogin")} onPress={handleSubmit} disabled={pending} />
-        <NavLink href={{ pathname: "/forgot", params: carry.params }}>
+        <NavLink href={forgotHref} onPress={rememberEmailForForgot}>
           {t("login.forgot")}
         </NavLink>
-        <NavLink href={carry}>
+        <NavLink href={registerHref} onPress={rememberEmailForRegister}>
           {t("login.toRegister")}
         </NavLink>
       </AnonymousScreen>

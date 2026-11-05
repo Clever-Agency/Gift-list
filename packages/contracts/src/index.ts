@@ -159,6 +159,13 @@ export {
 } from "./gift";
 
 export {
+  tagCatalogItemSchema,
+  tagCatalogSchema,
+  type TagCatalog,
+  type TagCatalogItem,
+} from "./tag";
+
+export {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
   compareForSort,

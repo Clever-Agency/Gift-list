@@ -134,10 +134,12 @@ model Gift {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  list       List  @relation(fields: [listId], references: [id], onDelete: Cascade)
+  list       List      @relation(fields: [listId], references: [id], onDelete: Cascade)
   /// Account deletion releases reservations through `GiftStatusService` first (AD-20); a raw
   /// `onDelete` that would drop the holder silently is blocked here.
-  reservedBy User? @relation("GiftReservedBy", fields: [reservedById], references: [id], onDelete: Restrict)
+  reservedBy User?     @relation("GiftReservedBy", fields: [reservedById], references: [id], onDelete: Restrict)
+  /// Story 2.5 / AD-22: fixed catalog references and custom texts.
+  tags       GiftTag[]
 
   @@index([listId])
   /// "My reservations" (FR-25) and the reservation-card read matrix (AD-7).
@@ -145,6 +147,51 @@ model Gift {
   /// Reservation timer cron scans (AD-9).
   @@index([status, reservationPhase, reservationDueAt])
   @@index([status, reservationPhase, reservationPhaseAt])
+}
+
+// Fixed tag catalog (AD-22, AD-27). Rows are data, not JSON catalogs: `slug` is
+// immutable and `labels` must carry a label for every `SUPPORTED_LOCALES` entry.
+// ADMIN adds rows in Story 10.2 (and must validate `labels` there); clients only
+// ever show the server-provided label.
+model Tag {
+  id        String   @id @default(cuid(2))
+  slug      String   @unique
+  /// Locale → label, e.g. `{"ru":"мечта"}`; one key per `SUPPORTED_LOCALES` entry.
+  labels    Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  giftTags GiftTag[]
+}
+
+// Tag on a wish (Story 2.5, AD-22). A row carries a catalog reference (`tagId`),
+// a custom text, or both after approval; at least one is required. Custom text is
+// shown with the wish but stays out of aggregates until ADMIN approves it
+// (Story 10.2). Approval links the row to a catalog tag and sets
+// `aggregateEligible`; rejection leaves the text as is. A migration CHECK
+// enforces both invariants at the database level.
+model GiftTag {
+  id                String   @id @default(cuid(2))
+  giftId            String
+  tagId             String?
+  /// Custom tag text; null for a catalog tag. Story 2.5 caps it at 30 characters;
+  /// trimming/normalization is the write path's job (Story 2.5.4).
+  customText        String?  @db.VarChar(30)
+  /// AD-22: a writer adding a fixed tag sets this to true; the default keeps a
+  /// custom tag out of aggregates until ADMIN approval. The CHECK requires
+  /// `tagId` whenever this is true.
+  aggregateEligible Boolean  @default(false)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+
+  gift Gift @relation(fields: [giftId], references: [id], onDelete: Cascade)
+  /// A catalog tag cannot be deleted while wishes still reference it.
+  tag  Tag? @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  /// One catalog tag and one identical custom text per wish.
+  @@unique([giftId, tagId])
+  @@unique([giftId, customText])
+  /// Aggregate reads group by catalog tag.
+  @@index([tagId])
 }
 
 // Closed value sets from AD-7 / AD-8 / AD-9 / AD-25. `COLLECTION` is not part of R1 (AD-11).

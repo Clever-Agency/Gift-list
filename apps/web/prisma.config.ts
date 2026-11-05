@@ -24,6 +24,9 @@ export default defineConfig({
   schema: "src/db/schema.prisma",
   migrations: {
     path: "src/db/migrations",
+    // Story 2.5/AD-22: fixed tag catalog. `prisma db seed` runs this command;
+    // the seed itself is idempotent (upsert by slug).
+    seed: "node src/db/seed.ts",
   },
   datasource: {
     url: resolveDatabaseUrl(),

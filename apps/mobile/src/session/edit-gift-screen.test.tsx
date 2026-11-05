@@ -13,6 +13,7 @@ const gifts = vi.hoisted(() => ({
   updateGift: vi.fn(),
   deleteGift: vi.fn(),
 }));
+const tagApi = vi.hoisted(() => ({ fetchTagCatalog: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const platform = vi.hoisted(() => ({ os: "android" as "android" | "web" }));
@@ -80,6 +81,7 @@ vi.mock("@/api/client", () => api);
 // The screen under test is the edit flow only: the api module's own mapping is
 // covered by its callers, so the screen test drives `fetchGift`/`updateGift` directly.
 vi.mock("@/api/my-gifts", () => gifts);
+vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 // The discard dialog draws its close cross with `expo-symbols`; decorative.
@@ -372,6 +374,9 @@ beforeEach(() => {
   platform.os = "android";
   search.params = { id: "g1" };
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
+  // Story 2.5: the form always asks for the fixed catalogue; an empty one is a
+  // normal state and tests that need tags override this answer.
+  tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: [] });
   // A direct link left nothing to go back to: the screen replaces itself with the list.
   navigation.canGoBack.mockReturnValue(false);
   // A router call that removes this screen is a removal like the system back.
@@ -1299,6 +1304,130 @@ describe("изменение желания: возврат фокуса пос�
     });
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).not.toBe(trigger);
+  });
+});
+
+describe("изменение желания: теги", () => {
+  const tagged: GiftCard = {
+    ...stored,
+    tags: [
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: null, label: "своё" },
+    ],
+  };
+  const catalogue = [
+    { id: "tag_dream", slug: "dream", label: "мечта" },
+    { id: "tag_need", slug: "need-now", label: "нужно сейчас" },
+  ];
+
+  it("показывает сохранённые теги и при неизменной правке не шлёт ключ tags", async () => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: { ...tagged, title: "Наушники Sony" } });
+    await mount();
+
+    expect(text()).toContain("мечта");
+    expect(text()).toContain("своё");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    // Absent tags keep the stored rows; an unchanged set must not rewrite them.
+    expect(body).not.toHaveProperty("tags");
+  });
+
+  it("удаление всех тегов шлёт явный пустой массив", async () => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: { ...tagged, tags: [] } });
+    await mount();
+
+    await pressExact("мечта");
+    await pressExact("Убрать тег своё");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.tags).toEqual([]);
+  });
+
+  it("добавленный фиксированный тег уходит как catalogId вместе с прежними", async () => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: tagged });
+    await mount();
+
+    await pressExact("нужно сейчас");
+    await press("Сохранить");
+
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.tags).toEqual([
+      { catalogId: "tag_dream" },
+      { text: "своё" },
+      { catalogId: "tag_need" },
+    ]);
+  });
+
+  it("ошибка сервера tags.0.text видна в блоке тегов, форма остаётся", async () => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid tag",
+      field: "tags.0.text",
+    });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(text()).toContain("Проверьте теги: до 30 символов и без повторов.");
+    expect(text()).not.toContain("Не получилось сохранить. Попробуйте ещё раз.");
+    expect(field("Название").value).toBe("Наушники Sony");
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("загрузка каталога не скрывает сохранённые фиксированный и свой теги", async () => {
+    tagApi.fetchTagCatalog.mockReturnValue(new Promise(() => {}));
+    loaded(tagged);
+    await mount();
+
+    expect(text()).toContain("Загружаем теги…");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(text()).toContain("своё");
+  });
+
+  it("RESERVED: набор тегов меняется, а visibility и quantity остаются вне тела", async () => {
+    const reserved: GiftCard = { ...tagged, status: "RESERVED" };
+    loaded(reserved);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: reserved });
+    await mount();
+
+    await pressExact("нужно сейчас");
+    await press("Сохранить");
+
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.tags).toEqual([
+      { catalogId: "tag_dream" },
+      { text: "своё" },
+      { catalogId: "tag_need" },
+    ]);
+    // No new status restriction for tags; the frozen fields stay omitted.
+    expect(body).not.toHaveProperty("visibility");
+    expect(body).not.toHaveProperty("quantity");
   });
 });
 

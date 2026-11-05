@@ -16,6 +16,7 @@ const gifts = vi.hoisted(() => ({
   fetchGift: vi.fn(),
   updateGift: vi.fn(),
 }));
+const tagApi = vi.hoisted(() => ({ fetchTagCatalog: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 
@@ -98,6 +99,7 @@ vi.mock("@/api/client", () => api);
 // The flows live between screens: each screen's `my-gifts` calls are driven
 // directly, so the assertions see the mapped `GiftInput` / `GiftUpdate`.
 vi.mock("@/api/my-gifts", () => gifts);
+vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
@@ -322,6 +324,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   navigation.reset();
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
+  tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: [] });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);

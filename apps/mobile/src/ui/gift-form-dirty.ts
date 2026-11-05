@@ -13,6 +13,10 @@ export type GiftFormDirtyValues = {
   visibility: string;
   /** `SINGLE` or `UNLIMITED` (Story 2.5). */
   quantity: string;
+  /** Selected tags as an order-independent key; fixed labels are not part of it. */
+  tags: string;
+  /** The custom tag field as typed but not added yet. */
+  customTag: string;
 };
 
 const FIELDS = [
@@ -23,6 +27,8 @@ const FIELDS = [
   "currency",
   "visibility",
   "quantity",
+  "tags",
+  "customTag",
 ] as const;
 
 /** `"  Свитер  "` and `"Свитер"` are the same draft: surrounding spaces are not an edit. */

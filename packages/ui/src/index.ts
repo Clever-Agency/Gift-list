@@ -29,6 +29,7 @@ export {
   type TextFieldProps,
 } from "./text-field";
 export { Choice, ChoiceList, type ChoiceListProps, type ChoiceProps } from "./choice";
+export { TagChip, type TagChipProps } from "./tag-chip";
 export { StatusPill, type StatusPillProps, type StatusPillStatus } from "./status-pill";
 export {
   VisibilityChip,

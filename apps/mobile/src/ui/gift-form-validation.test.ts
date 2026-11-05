@@ -81,12 +81,16 @@ describe("serverErrorField", () => {
     expect(serverErrorField("linkUrl")).toBe("link");
     expect(serverErrorField("visibility")).toBe("visibility");
     expect(serverErrorField("quantity")).toBe("quantity");
+    expect(serverErrorField("tags")).toBe("tags");
+    expect(serverErrorField("tags.0")).toBe("tags");
+    expect(serverErrorField("tags.12.text")).toBe("tags");
+    expect(serverErrorField("tags.3.catalogId")).toBe("tags");
   });
 
   it("has no place for an unknown or missing field", () => {
     expect(serverErrorField(undefined)).toBeNull();
     expect(serverErrorField("")).toBeNull();
-    expect(serverErrorField("tags")).toBeNull();
+    expect(serverErrorField("tagsExtra")).toBeNull();
   });
 });
 
@@ -110,6 +114,35 @@ describe("fieldErrorCopy", () => {
     expect(fieldErrorCopy("quantity")).toEqual({
       catalog: "giftForm",
       key: "error.quantityLocked",
+    });
+  });
+
+  it("names the custom tag problem behind a tags error", () => {
+    expect(fieldErrorCopy("tags")).toEqual({
+      catalog: "giftForm",
+      key: "error.tags",
+      values: { max: 30 },
+    });
+    expect(fieldErrorCopy("tags", { tagIssue: "empty" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagEmpty",
+    });
+    expect(fieldErrorCopy("tags", { tagIssue: "duplicate" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagDuplicate",
+    });
+    expect(fieldErrorCopy("tags", { tagIssue: "invalid" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagInvalid",
+    });
+    expect(fieldErrorCopy("tags", { tagIssue: "tooLong" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagTooLong",
+      values: { max: 30 },
+    });
+    expect(fieldErrorCopy("tags", { tagServerField: "tags.0.catalogId" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagUnavailable",
     });
   });
 

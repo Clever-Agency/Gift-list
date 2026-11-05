@@ -19,9 +19,15 @@ import {
   type GiftFormServerError,
   type GiftFormValues,
 } from "@/ui/gift-form";
+import {
+  giftTagFromCard,
+  giftTagInputs,
+  giftTagsEqual,
+} from "@/ui/gift-form-tags";
 import { PrimaryButton } from "@/ui/primary-button";
 import { WishCardSkeleton } from "@/ui/skeleton";
 import { ToastHost } from "@/ui/toast";
+import { useTagCatalog } from "@/ui/use-tag-catalog";
 
 /**
  * The edit screen's reads follow the list's states: a failed read offers the retry
@@ -110,6 +116,9 @@ export default function EditGiftScreen() {
   // dirty draft is lost. The delete step owns the back while it is open, so the
   // guard sleeps then: its own modal closes like any other layer.
   const guard = useDiscardGuard(dirty && !submitting && !confirmingDelete, openDiscard);
+  // Story 2.5: the catalogue only offers fixed tags; it never resets the stored
+  // selection when the request fails or the server has no seed yet.
+  const tagCatalog = useTagCatalog();
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -467,6 +476,8 @@ export default function EditGiftScreen() {
                   onCancel={cancel}
                   visibilityLocked={state.gift.status !== "OPEN"}
                   quantityLocked={state.gift.status !== "OPEN"}
+                  tagCatalog={tagCatalog.state}
+                  onRetryTagCatalog={tagCatalog.retry}
                 />
                 {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
                 {state.gift.status === "OPEN" ? (
@@ -539,6 +550,7 @@ function toFormValues(gift: GiftCard): GiftFormValues {
     priceCurrency: gift.priceCurrency,
     visibility: gift.visibility,
     quantity: gift.quantity,
+    tags: gift.tags.map(giftTagFromCard),
   };
 }
 
@@ -549,14 +561,20 @@ function toFormValues(gift: GiftCard): GiftFormValues {
  * change, so the body leaves both fields out instead of repeating the stored
  * value. An unchanged `OPEN` edit sends the stored values, which the server
  * treats as a no-op.
+ *
+ * Story 2.5: `tags` is a full replacement, so the key is sent only when the set
+ * actually changed. An unchanged edit omits it (the server keeps the stored
+ * rows); removing the last tag sends `[]` and clears them.
  */
 function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
+  const tagsChanged = !giftTagsEqual(values.tags, gift.tags.map(giftTagFromCard));
   const body: GiftUpdate = {
     title: values.title,
     description: values.description,
     priceAmount: values.priceAmount,
     priceCurrency: values.priceCurrency,
     linkUrl: values.link,
+    ...(tagsChanged ? { tags: giftTagInputs(values.tags) } : {}),
   };
   return gift.status === "OPEN"
     ? { ...body, visibility: values.visibility, quantity: values.quantity }

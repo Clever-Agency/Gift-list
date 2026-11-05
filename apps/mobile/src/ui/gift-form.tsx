@@ -1,6 +1,7 @@
 import {
   CURRENCIES,
   DEFAULT_QUANTITY,
+  GIFT_TAG_TEXT_MAX,
   QUANTITIES,
   VISIBILITIES,
 } from "@gift-list/contracts";
@@ -8,6 +9,7 @@ import {
   Button,
   Choice,
   ChoiceList,
+  TagChip,
   Text,
   TextField,
   XStack,
@@ -17,6 +19,7 @@ import {
 import {
   forwardRef,
   useEffect,
+  useId,
   useImperativeHandle,
   useRef,
   useState,
@@ -25,6 +28,18 @@ import {
 import { AccessibilityInfo } from "react-native";
 import { useTranslations } from "use-intl";
 import { isGiftFormDirty, type GiftFormDirtyValues } from "@/ui/gift-form-dirty";
+import {
+  customTagIssue,
+  giftTagKey,
+  giftTagLabel,
+  giftTagsKey,
+  isCustomTag,
+  isFixedTag,
+  tagTextLength,
+  type CustomTagIssue,
+  type GiftFormTag,
+} from "@/ui/gift-form-tags";
+import type { TagCatalogState } from "@/ui/use-tag-catalog";
 import {
   DESCRIPTION_MAX,
   LINK_MAX,
@@ -54,6 +69,9 @@ const DEFAULT_CURRENCY: Currency = "USD";
 /** ARCH-A17: a new wish is visible to everyone. */
 const DEFAULT_VISIBILITY: Visibility = "PUBLIC";
 
+/** No catalogue prop (older callers and unit tests): ready with nothing to offer. */
+const EMPTY_TAG_CATALOG: TagCatalogState = { status: "ready", tags: [] };
+
 /** The fields the form edits; screens map them onto `GiftInput` / `GiftUpdate`. */
 export type GiftFormValues = {
   title: string;
@@ -67,6 +85,11 @@ export type GiftFormValues = {
   visibility: Visibility;
   /** Story 2.5: `SINGLE` or `UNLIMITED`, `SINGLE` by default. */
   quantity: Quantity;
+  /**
+   * Story 2.5: the selected fixed tags (`catalogId`, server label) and custom
+   * texts. The screen turns them into `{ catalogId }` / `{ text }`.
+   */
+  tags: GiftFormTag[];
 };
 
 /**
@@ -131,6 +154,14 @@ type GiftFormProps = {
    * visibility. The rows show the stored value, disabled, with a hint why.
    */
   quantityLocked?: boolean;
+  /**
+   * Story 2.5: the fixed tag catalogue and its request state. The selected tags
+   * live in the form, so a failed or empty catalogue never clears them; the
+   * prop only decides which fixed tags can still be offered.
+   */
+  tagCatalog?: TagCatalogState;
+  /** Runs the catalogue request again from the error state. */
+  onRetryTagCatalog?: () => void;
 };
 
 /**
@@ -146,7 +177,10 @@ export type GiftFormHandle = {
  * Create/edit wish form (`EXPERIENCE.md` → Форма желания, `DESIGN.md` → Форма).
  * Story 2.2: title, description, the optional link (subtask 16), the optional
  * price with its currency (subtask 15), visibility (subtask 16), and inline
- * errors (subtask 17). Story 2.5 adds the `SINGLE`/`UNLIMITED` quantity. State
+ * errors (subtask 17). Story 2.5 adds the `SINGLE`/`UNLIMITED` quantity and the
+ * tag picker (microtask 2.5.6): fixed tags from the server catalogue plus custom
+ * text, with the selected set kept here so a failed or empty catalogue never
+ * clears it. State
  * stays local and controlled, so later subtasks add
  * their inputs next to these without changing the screen contract. Required
  * fields are not marked, optional ones carry «(необязательно)» in the label
@@ -169,6 +203,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     cancelLabel,
     visibilityLocked = false,
     quantityLocked = false,
+    tagCatalog = EMPTY_TAG_CATALOG,
+    onRetryTagCatalog,
   },
   ref,
 ) {
@@ -186,6 +222,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       currency: initialValues?.priceCurrency ?? DEFAULT_CURRENCY,
       visibility: initialValues?.visibility ?? DEFAULT_VISIBILITY,
       quantity: initialValues?.quantity ?? DEFAULT_QUANTITY,
+      tags: giftTagsKey(initialValues?.tags ?? []),
+      customTag: "",
     };
   });
   const [title, setTitle] = useState(initialValues?.title ?? "");
@@ -201,7 +239,15 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const [quantity, setQuantity] = useState<Quantity>(
     initialValues?.quantity ?? DEFAULT_QUANTITY,
   );
+  const [tags, setTags] = useState<GiftFormTag[]>(
+    function readInitialTags() {
+      return initialValues?.tags ?? [];
+    },
+  );
+  const [customTag, setCustomTag] = useState("");
+  const [customTagError, setCustomTagError] = useState<CustomTagIssue | null>(null);
   const [errors, setErrors] = useState<GiftFormErrors>({});
+  const tagErrorId = useId();
   const cancelRef = useRef<FocusTarget>(null);
   useImperativeHandle(
     ref,
@@ -221,6 +267,35 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const showCurrency = price.trim() !== "";
   const serverField = serverErrorField(serverError?.field);
   const formError = serverError != null && serverField === null ? t("error.form") : null;
+  const catalogTags = tagCatalog.status === "ready" ? tagCatalog.tags : [];
+  // A selected fixed tag from an older catalogue or a failed fetch keeps its
+  // stored server label: nothing is dropped because the offer is incomplete.
+  const missingFixedTags = tags
+    .filter(isFixedTag)
+    .filter((tag) => !catalogTags.some((item) => item.id === tag.catalogId));
+  const fixedOptions = [
+    ...missingFixedTags.map((tag) => ({ id: tag.catalogId, label: tag.label })),
+    ...catalogTags.map((item) => ({ id: item.id, label: item.label })),
+  ];
+  const selectedFixedIds = new Set(
+    tags.filter(isFixedTag).map((tag) => tag.catalogId),
+  );
+  const customTags = tags.filter(isCustomTag);
+
+  /**
+   * The catalogue is the source of fixed-tag labels (AD-27): an untouched tag
+   * from an older card picks up the label of the current request language. The
+   * identity stays `catalogId`, so this never makes the draft dirty.
+   */
+  function withCatalogueLabels(selected: readonly GiftFormTag[]): GiftFormTag[] {
+    if (catalogTags.length === 0) return [...selected];
+    const labels = new Map(catalogTags.map((item) => [item.id, item.label]));
+    return selected.map((tag) => {
+      if (!isFixedTag(tag)) return tag;
+      const label = labels.get(tag.catalogId);
+      return label === undefined || label === tag.label ? tag : { ...tag, label };
+    });
+  }
   const dirty = isGiftFormDirty(initial, {
     title,
     description,
@@ -229,6 +304,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     currency,
     visibility,
     quantity,
+    tags: giftTagsKey(tags),
+    customTag,
   });
   // Report only flips: the screen listens for «стал грязным» / «снова чистый», not
   // for every keystroke. The first render is not a flip, so nothing fires on mount.
@@ -255,6 +332,14 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     return serverField === field ? copyText(fieldErrorCopy(field, { title })) : undefined;
   }
 
+  const tagServerError =
+    serverField === "tags"
+      ? copyText(fieldErrorCopy("tags", { tagServerField: serverError?.field }))
+      : undefined;
+  const customTagErrorCopy = customTagError
+    ? copyText(fieldErrorCopy("tags", { tagIssue: customTagError }))
+    : undefined;
+
   function clearError(field: GiftFormField) {
     setErrors((current) => {
       if (!current[field]) return current;
@@ -264,14 +349,75 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     });
   }
 
+  /**
+   * Toggles one fixed tag by its catalogue id. The label is stored only for the
+   * case where a later catalogue does not contain the tag any more.
+   */
+  function toggleFixedTag(catalogId: string, label: string) {
+    setTags((current) =>
+      current.some((tag) => isFixedTag(tag) && tag.catalogId === catalogId)
+        ? current.filter((tag) => !(isFixedTag(tag) && tag.catalogId === catalogId))
+        : [...current, { catalogId, label }],
+    );
+    clearError("tags");
+    setCustomTagError(null);
+  }
+
+  function removeCustomTag(text: string) {
+    setTags((current) =>
+      current.filter((tag) => !(isCustomTag(tag) && tag.text === text)),
+    );
+    clearError("tags");
+    setCustomTagError(null);
+  }
+
+  function handleCustomTagChange(value: string) {
+    setCustomTag(value);
+    setCustomTagError(null);
+    clearError("tags");
+  }
+
+  /** Adds the typed custom tag; empty, invalid, too long and duplicate text never lands. */
+  function addCustomTag() {
+    const issue = customTagIssue(customTag, tags);
+    if (issue !== null) {
+      setCustomTagError(issue);
+      AccessibilityInfo.announceForAccessibility(
+        copyText(fieldErrorCopy("tags", { tagIssue: issue })),
+      );
+      return;
+    }
+    setTags((current) => [...current, { text: customTag.trim() }]);
+    setCustomTag("");
+    setCustomTagError(null);
+    clearError("tags");
+  }
+
   function submit() {
+    // Text left in the custom field is a tag the owner meant to add: submit it
+    // instead of dropping it silently, but only when it passes the same rule.
+    let tagsForSubmit = tags;
+    let tagIssue: CustomTagIssue | null = null;
+    if (customTag.trim() !== "") {
+      tagIssue = customTagIssue(customTag, tags);
+      if (tagIssue === null) {
+        tagsForSubmit = [...tags, { text: customTag.trim() }];
+        setTags(tagsForSubmit);
+        setCustomTag("");
+      }
+    }
+    setCustomTagError(tagIssue);
+
     const priceAmount = parsePriceToMinor(price);
     const found = validateGiftForm({ title, link, price });
+    if (tagIssue !== null) found.tags = true;
     setErrors(found);
     const first = firstErrorField(found);
     if (first !== null) {
       // `EXPERIENCE.md` → Accessibility Floor: announce the first error on submit.
-      AccessibilityInfo.announceForAccessibility(copyText(fieldErrorCopy(first, { title })));
+      AccessibilityInfo.announceForAccessibility(
+        copyText(fieldErrorCopy(first, { title, tagIssue })),
+      );
       return;
     }
     // `validateGiftForm` already reported it; this only narrows the type.
@@ -284,6 +430,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       priceCurrency: priceAmount === null ? null : currency,
       visibility,
       quantity,
+      tags: withCatalogueLabels(tagsForSubmit),
     });
   }
 
@@ -398,6 +545,121 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           {t("field.quantityLocked")}
         </Text>
       ) : null}
+      <YStack gap="$1">
+        <Text kind="label">{t("field.tags")}</Text>
+        {tagCatalog.status === "loading" ? (
+          <Text kind="caption" tone="muted" aria-live="polite">
+            {t("field.tagsLoading")}
+          </Text>
+        ) : null}
+        {tagCatalog.status === "error" ? (
+          <YStack gap="$2">
+            <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
+              {t("field.tagsError")}
+            </Text>
+            {onRetryTagCatalog ? (
+              <Button
+                variant="secondary"
+                label={t("field.tagsRetry")}
+                onPress={onRetryTagCatalog}
+              />
+            ) : null}
+          </YStack>
+        ) : null}
+        {tagCatalog.status === "ready" && fixedOptions.length === 0 ? (
+          <YStack gap="$2">
+            <Text kind="caption" tone="muted">
+              {t("field.tagsEmpty")}
+            </Text>
+            {onRetryTagCatalog ? (
+              <Button
+                variant="secondary"
+                label={t("field.tagsRetry")}
+                onPress={onRetryTagCatalog}
+              />
+            ) : null}
+          </YStack>
+        ) : null}
+        {fixedOptions.length > 0 ? (
+          <XStack
+            role="group"
+            aria-label={t("field.tags")}
+            aria-invalid={tagServerError ? true : undefined}
+            aria-describedby={tagServerError ? tagErrorId : undefined}
+            flexWrap="wrap"
+            gap="$2"
+          >
+            {fixedOptions.map((option) => {
+              function handlePress() {
+                toggleFixedTag(option.id, option.label);
+              }
+
+              return (
+                <TagChip
+                  key={option.id}
+                  label={option.label}
+                  selected={selectedFixedIds.has(option.id)}
+                  onPress={handlePress}
+                />
+              );
+            })}
+          </XStack>
+        ) : null}
+        {customTags.length > 0 ? (
+          <XStack flexWrap="wrap" gap="$2">
+            {customTags.map((tag) => {
+              const label = giftTagLabel(tag);
+
+              function handleRemove() {
+                removeCustomTag(tag.text);
+              }
+
+              return (
+                <TagChip
+                  key={giftTagKey(tag)}
+                  label={label}
+                  removeLabel={t("field.tagRemove", { name: label })}
+                  onRemove={handleRemove}
+                />
+              );
+            })}
+          </XStack>
+        ) : null}
+        <TextField
+          label={t("field.tagCustom")}
+          value={customTag}
+          onChangeText={handleCustomTagChange}
+          error={customTagErrorCopy}
+          hint={t("field.tagCounter", {
+            count: tagTextLength(customTag),
+            max: GIFT_TAG_TEXT_MAX,
+          })}
+          input={{
+            placeholder: t("field.tagCustomPlaceholder", { max: GIFT_TAG_TEXT_MAX }),
+            autoCapitalize: "sentences",
+            onSubmitEditing: addCustomTag,
+          }}
+        />
+        <XStack>
+          <Button
+            variant="secondary"
+            label={t("field.tagAdd")}
+            onPress={addCustomTag}
+            disabled={customTag.trim() === ""}
+          />
+        </XStack>
+        {tagServerError ? (
+          <Text
+            id={tagErrorId}
+            kind="caption"
+            tone="destructive"
+            role="alert"
+            aria-live="polite"
+          >
+            {tagServerError}
+          </Text>
+        ) : null}
+      </YStack>
       {formError ? (
         <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
           {formError}

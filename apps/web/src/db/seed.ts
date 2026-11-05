@@ -2,6 +2,11 @@
 // starting set from Story 2.5; ADMIN adds more rows in Story 10.2. `slug` is the
 // stable key, `labels` must cover every `SUPPORTED_LOCALES` entry.
 //
+// The normal deploy path does not run this seed: `prisma migrate deploy` applies
+// the additive data migration `20261106120000_fixed_tags_catalog`, which
+// initializes the same starting rows. This seed stays for local development and
+// manual repair; it is idempotent and never overwrites ADMIN labels.
+//
 // Entry point: `prisma db seed` (configured in `prisma.config.ts`), which loads
 // `apps/web/.env` first. A direct `node src/db/seed.ts` works for Node 24 when
 // `DIRECT_URL` or `DATABASE_URL` is already in the environment. Only a type-only

@@ -70,6 +70,8 @@ npm run migrate
 
 Это алиас для `prisma migrate dev` в `apps/web` (интерактивное создание/применение миграций в development). Для CI/production: `npm exec -w @gift-list/web -- prisma migrate deploy`.
 
+Стартовый каталог фиксированных тегов (`dream`, `need-now`, `someday`) создаёт data-миграция `20261106120000_fixed_tags_catalog`, поэтому отдельный `prisma db seed` в деплое не нужен. Повторный деплой безопасен: миграция идемпотентна по `slug` и не перезаписывает подписи, изменённые ADMIN. `prisma db seed` остаётся для разработки и ручного ремонта — он добавляет недостающие языковые ключи, не удаляя строки.
+
 PIN: `prisma` и `@prisma/client` — **7.10.0** (не ставьте bare `prisma@latest` — он может указать на Prisma 8 RC).
 
 ### Деплой (Vercel)

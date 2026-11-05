@@ -1409,6 +1409,54 @@ describe("изменение желания: теги", () => {
     expect(text()).toContain("своё");
   });
 
+  /**
+   * The catalogue is an optional source of chips, not the source of the saved
+   * choice: an error or an empty catalogue must not drop tags from the draft.
+   */
+  it.each([
+    [
+      "ошибка сети",
+      { ok: false, network: true },
+      "Не получилось загрузить теги. Свои теги всё равно можно добавить.",
+    ],
+    [
+      "битый ответ каталога",
+      { ok: false, invalid: true },
+      "Не получилось загрузить теги. Свои теги всё равно можно добавить.",
+    ],
+    // An empty catalogue is `ready`: the saved fixed chip still renders, so the
+    // empty-state copy is intentionally hidden (2.5.6) and only the loading copy must be gone.
+    ["пустой каталог", { ok: true, tags: [] }, null],
+  ] as const)("%s не сбрасывает сохранённые теги и не шлёт tags при неизменном наборе", async (_state, catalog, copy) => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue(catalog);
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: tagged });
+    await mount();
+    await settle(10);
+
+    // The catalogue really left the loading state, so preservation is proven.
+    expect(text()).not.toContain("Загружаем теги…");
+    if (copy === null) {
+      expect(button("Повторить")).toBeUndefined();
+    } else {
+      expect(text()).toContain(copy);
+      expect(button("Повторить")).toBeDefined();
+    }
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(text()).toContain("своё");
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("tags");
+  });
+
   it("RESERVED: набор тегов меняется, а visibility и quantity остаются вне тела", async () => {
     const reserved: GiftCard = { ...tagged, status: "RESERVED" };
     loaded(reserved);

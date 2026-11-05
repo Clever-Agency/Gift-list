@@ -431,6 +431,46 @@ describe("WishCard: теги", () => {
     expect(container.querySelector('[data-testid="gift-tags"]')).not.toBeNull();
   });
 
+  /** DESIGN.md -> WishCard: three chips fit, the fourth becomes «+1». */
+  it("граница карточки: три тега без «+N»", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: "tag_need_now", label: "нужно сейчас" },
+          { catalogId: "tag_someday", label: "когда-нибудь" },
+        ],
+      }),
+    );
+
+    const row = container.querySelector('[data-testid="gift-tags"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.childElementCount).toBe(3);
+    expect(textOf()).toContain("мечта");
+    expect(textOf()).toContain("нужно сейчас");
+    expect(textOf()).toContain("когда-нибудь");
+    expect(container.querySelector('[data-testid="gift-tags-more"]')).toBeNull();
+  });
+
+  it("граница карточки: четвёртый тег даёт «+1» и скрыт из видимого ряда", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: "tag_need_now", label: "нужно сейчас" },
+          { catalogId: "tag_someday", label: "когда-нибудь" },
+          { catalogId: null, label: "своё" },
+        ],
+      }),
+    );
+
+    const row = container.querySelector('[data-testid="gift-tags"]') as HTMLElement;
+    expect(row.childElementCount).toBe(4);
+    expect(container.querySelector('[data-testid="gift-tags-3"]')).toBeNull();
+    expect(textOf()).not.toContain("своё");
+    expect(container.querySelector('[data-testid="gift-tags-more"]')?.textContent).toBe("+1");
+  });
+
   it("длинный свой тег виден целиком", async () => {
     const longTag = "очень длинный собственный тег";
     await render(gift({ tags: [{ catalogId: null, label: longTag }] }));

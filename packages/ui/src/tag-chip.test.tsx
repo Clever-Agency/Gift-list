@@ -147,6 +147,49 @@ describe("TagChipList", () => {
     expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
   });
 
+  /** `DESIGN.md` -> WishCard: exactly three tags still fit; the fourth starts «+N». */
+  it("граница: три тега без «+N»", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChipList
+        labels={["мечта", "нужно сейчас", "когда-нибудь"]}
+        moreLabel={plusHidden}
+        testID="three"
+      />,
+    );
+
+    const row = container.querySelector('[data-testid="three"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.childElementCount).toBe(3);
+    expect(container.querySelector('[data-testid="three-0"]')?.textContent).toBe("мечта");
+    expect(container.querySelector('[data-testid="three-1"]')?.textContent).toBe("нужно сейчас");
+    expect(container.querySelector('[data-testid="three-2"]')?.textContent).toBe("когда-нибудь");
+    expect(container.querySelector('[data-testid="three-more"]')).toBeNull();
+  });
+
+  it("граница: четвёртый тег сворачивается в «+1» с доступным именем", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChipList
+        labels={["мечта", "нужно сейчас", "когда-нибудь", "своё"]}
+        moreLabel={plusHidden}
+        moreAccessibilityLabel={hiddenSummary}
+        testID="four"
+      />,
+    );
+
+    const row = container.querySelector('[data-testid="four"]') as HTMLElement;
+    expect(row.childElementCount).toBe(4);
+    expect(container.querySelector('[data-testid="four-0"]')?.textContent).toBe("мечта");
+    expect(container.querySelector('[data-testid="four-1"]')?.textContent).toBe("нужно сейчас");
+    expect(container.querySelector('[data-testid="four-2"]')?.textContent).toBe("когда-нибудь");
+    expect(container.querySelector('[data-testid="four-3"]')).toBeNull();
+    const more = container.querySelector('[data-testid="four-more"]') as HTMLElement;
+    expect(more.textContent).toBe("+1");
+    expect(more.getAttribute("aria-label")).toBe("Ещё теги (1): своё");
+    expect(row.textContent).not.toContain("своё");
+  });
+
   it("без скрытых тегов «+N» нет", async () => {
     const { container, render } = mounted();
     await render(

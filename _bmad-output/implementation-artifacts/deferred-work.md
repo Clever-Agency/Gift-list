@@ -165,3 +165,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
   summary: (не проверено, medium) Блок `components` frontmatter DESIGN.md не сверяется тестом с компонентами `packages/ui`; тест типографики не проверяет `fontFamily` и `letterSpacing`.
   evidence: Нужна построчная сверка блока `components` с `button.tsx`, `text-field.tsx`, `toast.tsx`, `visibility-chip.tsx` и др.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: (не проверено, low) В dev-логе Metro на Android предупреждения Tamagui: `zIndex="1"` и `borderRadius="4"` переданы не токенами; источник в коде пакета и экранов не найден.
+  evidence: Видны при прогоне на эмуляторе 2026-11-05; вид не ломают. Найти источник (вероятно, внутренние стили компонента Tamagui) и проверить, есть ли они в релизной сборке.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
+  summary: (не проверено, low) На «Мой вишлист» в пустом состоянии два текста Lora («Gift List» в шапке и «Пока пусто»), а DESIGN.md требует один Lora на экран.
+  evidence: Видно на эмуляторе 2026-11-05; не сверено, было ли так до Story 1.9.

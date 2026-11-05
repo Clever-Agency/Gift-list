@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-11-04'
+last_updated: '2026-11-05'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -44,7 +44,7 @@ development_status:
   1-6-вход-и-выход: done
   1-7-сброс-пароля-по-email: done
   1-8-часовой-пояс-пользователя: done
-  1-9-общий-ui-пакет-packages-ui-на-tamagui: review
+  1-9-общий-ui-пакет-packages-ui-на-tamagui: done
   epic-1-retrospective: optional
 
   epic-2: in-progress

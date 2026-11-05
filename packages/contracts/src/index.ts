@@ -149,7 +149,14 @@ export {
 
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
 
-export { giftInputSchema, giftUpdateSchema, type GiftInput, type GiftUpdate } from "./gift";
+export {
+  DEFAULT_QUANTITY,
+  giftInputSchema,
+  giftUpdateSchema,
+  type GiftInput,
+  type GiftInputDraft,
+  type GiftUpdate,
+} from "./gift";
 
 export {
   DEFAULT_LOCALE,

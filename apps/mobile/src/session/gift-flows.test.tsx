@@ -474,6 +474,7 @@ describe("поток: редактирование желания из спис�
       priceCurrency: "BYN",
       linkUrl: "https://example.com/sviter",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
 
     // The edit screen pops back and hands «Изменения сохранены.» to the list.

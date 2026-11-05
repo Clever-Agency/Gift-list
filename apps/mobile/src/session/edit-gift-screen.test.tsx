@@ -447,6 +447,7 @@ describe("изменение желания: загрузка", () => {
     expect(field("Цена (необязательно)").value).toBe("250");
     expect(selected("RUB")).toBe(true);
     expect(selected("Друзьям")).toBe(true);
+    expect(selected("Один раз")).toBe(true);
     expect(button("Сохранить")).toBeDefined();
   });
 
@@ -525,6 +526,7 @@ describe("изменение желания: сохранение", () => {
       // `GiftFormValues` calls the field `link`, the API body `linkUrl` (AD-12).
       linkUrl: "https://example.com/x",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
     // The screen unmounts on the way back, so the confirmation is the list's to show.
     expect(text()).not.toContain("Изменения сохранены.");
@@ -562,6 +564,34 @@ describe("изменение желания: сохранение", () => {
       priceCurrency: null,
       linkUrl: "https://example.com/x",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
+    });
+  });
+
+  /** Story 2.5: editing another field still sends the stored type, never `SINGLE`. */
+  it("правка названия не сбрасывает UNLIMITED и остальные поля", async () => {
+    const unlimited: GiftCard = { ...stored, quantity: "UNLIMITED" };
+    loaded(unlimited);
+    gifts.updateGift.mockResolvedValue({
+      ok: true,
+      gift: { ...unlimited, title: "Наушники Sony" },
+    });
+    await mount();
+
+    expect(selected("Можно дарить снова")).toBe(true);
+    expect(selected("Один раз")).toBe(false);
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
+      title: "Наушники Sony",
+      description: "Чёрные, с шумоподавлением",
+      priceAmount: 25000,
+      priceCurrency: "RUB",
+      linkUrl: "https://example.com/x",
+      visibility: "FRIENDS",
+      quantity: "UNLIMITED",
     });
   });
 
@@ -582,6 +612,7 @@ describe("изменение желания: сохранение", () => {
       priceCurrency: "RUB",
       linkUrl: null,
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
   });
 
@@ -926,6 +957,7 @@ describe("изменение желания: системное «назад»",
       priceCurrency: "RUB",
       linkUrl: "https://example.com/x",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
     expect(navigation.dismissTo).toHaveBeenCalledWith({
       pathname: "/",
@@ -1059,18 +1091,33 @@ describe("изменение желания: кнопка «назад» бра�
  * through a confirm step of the same form.
  */
 describe("изменение желания: видимость и удаление", () => {
-  it("RESERVED: подсказка блокировки, сохранение без visibility, кнопки удаления нет", async () => {
-    const reserved: GiftCard = { ...stored, status: "RESERVED" };
+  it("RESERVED: показывает UNLIMITED, блокирует оба поля и не шлёт их", async () => {
+    const reserved: GiftCard = {
+      ...stored,
+      status: "RESERVED",
+      quantity: "UNLIMITED",
+    };
     loaded(reserved);
     gifts.updateGift.mockResolvedValue({ ok: true, gift: reserved });
     await mount();
 
     expect(text()).toContain("Видимость меняется только у открытого желания.");
+    expect(text()).toContain("Сколько раз можно дарить — меняется только у открытого желания.");
+    // Editing shows the stored type, even though the control is frozen.
+    expect(selected("Можно дарить снова")).toBe(true);
+    expect(selected("Один раз")).toBe(false);
+    for (const label of ["Один раз", "Можно дарить снова"]) {
+      const radio = container.querySelector(`[role="radio"][aria-label="${label}"]`);
+      expect(radio, label).not.toBeNull();
+      expect(radio?.getAttribute("aria-disabled"), label).toBe("true");
+    }
     expect(button("Удалить желание")).toBeUndefined();
 
     await press("Сохранить");
 
     expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    // Visibility and quantity are frozen outside OPEN, so the body omits both and
+    // an unchanged save cannot reset the stored values.
     expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
       title: "Наушники",
       description: "Чёрные, с шумоподавлением",

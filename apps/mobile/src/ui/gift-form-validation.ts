@@ -15,7 +15,13 @@ export const DESCRIPTION_MAX = 2000;
 export const LINK_MAX = 2048;
 
 /** Fields that can carry an inline error; the currency rides with the price. */
-export type GiftFormField = "title" | "description" | "price" | "link" | "visibility";
+export type GiftFormField =
+  | "title"
+  | "description"
+  | "price"
+  | "link"
+  | "visibility"
+  | "quantity";
 
 export type GiftFormErrors = Partial<Record<GiftFormField, true>>;
 
@@ -26,6 +32,7 @@ const FIELD_ORDER = [
   "link",
   "price",
   "visibility",
+  "quantity",
 ] as const satisfies readonly GiftFormField[];
 
 /**
@@ -83,6 +90,8 @@ export function serverErrorField(field: string | undefined): GiftFormField | nul
       return "link";
     case "visibility":
       return "visibility";
+    case "quantity":
+      return "quantity";
     default:
       return null;
   }
@@ -91,7 +100,8 @@ export function serverErrorField(field: string | undefined): GiftFormField | nul
 /**
  * Where the copy for a field error lives: a dedicated `app.giftForm.error.*`
  * key, or the shared validation sentence when the form has no wording of its
- * own (`visibility`).
+ * own (`visibility`). `quantity` gets its own sentence because the realistic
+ * server rejection is a frozen type, not malformed input.
  */
 export type GiftFormErrorCopy =
   | { catalog: "giftForm"; key: string; values?: { max: number } }
@@ -128,5 +138,9 @@ export function fieldErrorCopy(
       return { catalog: "giftForm", key: "error.linkInvalid" };
     case "visibility":
       return { catalog: "common", key: "errors.code.VALIDATION" };
+    case "quantity":
+      // The realistic rejection is a wish that became non-OPEN during the edit:
+      // a generic "check your input" would ask for a change the server forbids.
+      return { catalog: "giftForm", key: "error.quantityLocked" };
   }
 }

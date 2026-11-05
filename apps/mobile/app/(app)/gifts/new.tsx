@@ -1,4 +1,4 @@
-import type { GiftInput } from "@gift-list/contracts";
+import type { GiftInputDraft } from "@gift-list/contracts";
 import { Column, Heading, Screen, ScrollView, spacing, Text } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -21,8 +21,9 @@ import { ToastHost } from "@/ui/toast";
 
 /**
  * «Новое желание» (Story 2.2): the create screen behind `/gifts/new`. The form owns
- * the fields and the client rules; this screen only maps its values onto `GiftInput`
- * (AD-12), keeps the request state and reports the outcome.
+ * the fields and the client rules; this screen only maps its values onto the
+ * contract's create draft (`GiftInputDraft`, AD-12), keeps the request state and
+ * reports the outcome.
  *
  * `EXPERIENCE.md` → State Patterns: an expired session leaves for login with the
  * return path and the «Сессия закончилась» reason (the login screen owns that toast);
@@ -251,8 +252,12 @@ export default function NewGiftScreen() {
 
 NewGiftScreen.displayName = "NewGiftScreen";
 
-/** `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12). */
-function toGiftInput(values: GiftFormValues): GiftInput {
+/**
+ * `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12).
+ * The form seeds `quantity` from the contract's `DEFAULT_QUANTITY` and sends the
+ * selected value, so this screen holds no `SINGLE` literal of its own.
+ */
+function toGiftInput(values: GiftFormValues): GiftInputDraft {
   return {
     title: values.title,
     description: values.description,
@@ -260,7 +265,6 @@ function toGiftInput(values: GiftFormValues): GiftInput {
     priceCurrency: values.priceCurrency,
     linkUrl: values.link,
     visibility: values.visibility,
-    // Story 2.5.2 adds the SINGLE/UNLIMITED control; until then send the default explicitly.
-    quantity: "SINGLE",
+    quantity: values.quantity,
   };
 }

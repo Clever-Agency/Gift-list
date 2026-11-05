@@ -11,9 +11,19 @@ export type GiftFormDirtyValues = {
   price: string;
   currency: string;
   visibility: string;
+  /** `SINGLE` or `UNLIMITED` (Story 2.5). */
+  quantity: string;
 };
 
-const FIELDS = ["title", "description", "link", "price", "currency", "visibility"] as const;
+const FIELDS = [
+  "title",
+  "description",
+  "link",
+  "price",
+  "currency",
+  "visibility",
+  "quantity",
+] as const;
 
 /** `"  Свитер  "` and `"Свитер"` are the same draft: surrounding spaces are not an edit. */
 function normalized(value: string): string {

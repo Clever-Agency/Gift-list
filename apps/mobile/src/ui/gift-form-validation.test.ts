@@ -67,6 +67,8 @@ describe("firstErrorField", () => {
     expect(firstErrorField({})).toBeNull();
     expect(firstErrorField({ price: true, title: true })).toBe("title");
     expect(firstErrorField({ visibility: true, price: true, link: true })).toBe("link");
+    expect(firstErrorField({ quantity: true, visibility: true })).toBe("visibility");
+    expect(firstErrorField({ quantity: true })).toBe("quantity");
   });
 });
 
@@ -78,6 +80,7 @@ describe("serverErrorField", () => {
     expect(serverErrorField("priceCurrency")).toBe("price");
     expect(serverErrorField("linkUrl")).toBe("link");
     expect(serverErrorField("visibility")).toBe("visibility");
+    expect(serverErrorField("quantity")).toBe("quantity");
   });
 
   it("has no place for an unknown or missing field", () => {
@@ -103,6 +106,10 @@ describe("fieldErrorCopy", () => {
     expect(fieldErrorCopy("visibility")).toEqual({
       catalog: "common",
       key: "errors.code.VALIDATION",
+    });
+    expect(fieldErrorCopy("quantity")).toEqual({
+      catalog: "giftForm",
+      key: "error.quantityLocked",
     });
   });
 

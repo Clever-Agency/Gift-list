@@ -9,6 +9,7 @@ const initial: GiftFormDirtyValues = {
   price: "250,50",
   currency: "RUB",
   visibility: "FRIENDS",
+  quantity: "UNLIMITED",
 };
 
 function changed(overrides: Partial<GiftFormDirtyValues>): GiftFormDirtyValues {
@@ -42,6 +43,7 @@ describe("isGiftFormDirty: чистая форма", () => {
       price: "",
       currency: "USD",
       visibility: "PUBLIC",
+      quantity: "SINGLE",
     };
     expect(isGiftFormDirty(empty, changed({ ...empty, title: "   " }))).toBe(false);
   });
@@ -55,6 +57,7 @@ describe("isGiftFormDirty: правка любого поля", () => {
     { field: "price", value: "300" },
     { field: "currency", value: "USD" },
     { field: "visibility", value: "PUBLIC" },
+    { field: "quantity", value: "SINGLE" },
   ] as const)("поле $field делает форму грязной", ({ field, value }) => {
     const overrides: Partial<GiftFormDirtyValues> = { [field]: value };
     expect(isGiftFormDirty(initial, changed(overrides))).toBe(true);

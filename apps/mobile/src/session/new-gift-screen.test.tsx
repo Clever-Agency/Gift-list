@@ -385,7 +385,30 @@ describe("новое желание: форма", () => {
     expect(text()).toContain("Новое желание");
     expect(text()).toContain("Название");
     expect(text()).toContain("Кто видит");
+    expect(text()).toContain("Сколько раз можно дарить");
     expect(button("Добавить желание")).toBeDefined();
+    // Story 2.5/D-25: a new wish is single by default.
+    const single = container.querySelector('[role="radio"][aria-label="Один раз"]');
+    expect(single?.getAttribute("aria-checked")).toBe("true");
+    const unlimited = container.querySelector(
+      '[role="radio"][aria-label="Можно дарить снова"]',
+    );
+    expect(unlimited?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("выбранный «Можно дарить снова» уходит в createGift как UNLIMITED", async () => {
+    signedIn();
+    gifts.createGift.mockResolvedValue({ ok: true, gift: { ...created, quantity: "UNLIMITED" } });
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Можно дарить снова");
+    await press("Добавить желание");
+
+    expect(gifts.createGift).toHaveBeenCalledTimes(1);
+    expect(gifts.createGift).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: "UNLIMITED" }),
+    );
   });
 
   it("успех: шлёт GiftInput и уводит к списку с одноразовым параметром toast", async () => {

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { CURRENCIES, VISIBILITIES } from "@gift-list/contracts";
+import { CURRENCIES, QUANTITIES, VISIBILITIES } from "@gift-list/contracts";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,9 @@ type AppCatalog = {
       visibility: string;
       visibilityHint: Record<string, string>;
       visibilityLocked: string;
+      quantity: string;
+      quantityHint: Record<string, string>;
+      quantityLocked: string;
     };
     action: { create: string; save: string; cancel: string };
     error: {
@@ -35,10 +38,14 @@ type AppCatalog = {
       descriptionTooLong: string;
       priceInvalid: string;
       linkInvalid: string;
+      quantityLocked: string;
       form: string;
     };
   };
-  gift: { visibility: Record<string, string> };
+  gift: {
+    visibility: Record<string, string>;
+    quantity: Record<string, string>;
+  };
 };
 
 const app = JSON.parse(
@@ -54,6 +61,7 @@ const app = JSON.parse(
 
 const form = app.giftForm;
 const visibilityLabel = app.gift.visibility;
+const quantityLabel = app.gift.quantity;
 
 /** `AccessibilityInfo` lives in the React Native mock below; the announcement is an assertion. */
 const announce = vi.hoisted(() => vi.fn());
@@ -196,6 +204,7 @@ describe("GiftForm: поля", () => {
       form.field.link,
       form.field.price,
       form.field.visibility,
+      form.field.quantity,
     ]) {
       expect(text()).toContain(label);
     }
@@ -210,6 +219,11 @@ describe("GiftForm: поля", () => {
     for (const visibility of VISIBILITIES) {
       expect(radio(visibilityLabel[visibility]), visibility).toBeDefined();
       expect(text()).toContain(form.field.visibilityHint[visibility]);
+    }
+
+    for (const quantity of QUANTITIES) {
+      expect(radio(quantityLabel[quantity]), quantity).toBeDefined();
+      expect(text()).toContain(form.field.quantityHint[quantity]);
     }
   });
 
@@ -239,6 +253,14 @@ describe("GiftForm: поля", () => {
     expect(isChecked(visibilityLabel.FRIENDS)).toBe(false);
     expect(isChecked(visibilityLabel.SECRET)).toBe(false);
   });
+
+  /** Story 2.5/D-25: a new wish is single unless the owner picks otherwise. */
+  it("тип желания по умолчанию — «Один раз» (SINGLE)", async () => {
+    await mount();
+
+    expect(isChecked(quantityLabel.SINGLE)).toBe(true);
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(false);
+  });
 });
 
 describe("GiftForm: отправка", () => {
@@ -256,6 +278,7 @@ describe("GiftForm: отправка", () => {
       priceAmount: null,
       priceCurrency: null,
       visibility: "PUBLIC",
+      quantity: "SINGLE",
     });
   });
 
@@ -277,7 +300,21 @@ describe("GiftForm: отправка", () => {
       priceAmount: 25050,
       priceCurrency: "RUB",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
+  });
+
+  /** Story 2.5: the chosen type is what the screen submits. */
+  it("выбранный «Можно дарить снова» уходит как UNLIMITED", async () => {
+    const onSubmit = await mount();
+
+    await type(form.field.title, "Наушники");
+    await press(quantityLabel.UNLIMITED);
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: "UNLIMITED" }),
+    );
   });
 
   it("initialValues заполняют поля, цену в минорных единицах и выбор", async () => {
@@ -289,6 +326,7 @@ describe("GiftForm: отправка", () => {
         priceAmount: 25050,
         priceCurrency: "RUB",
         visibility: "SECRET",
+        quantity: "UNLIMITED",
       },
     });
 
@@ -301,6 +339,8 @@ describe("GiftForm: отправка", () => {
     expect(isChecked("USD")).toBe(false);
     expect(isChecked(visibilityLabel.SECRET)).toBe(true);
     expect(isChecked(visibilityLabel.PUBLIC)).toBe(false);
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
+    expect(isChecked(quantityLabel.SINGLE)).toBe(false);
 
     await submit();
 
@@ -311,6 +351,7 @@ describe("GiftForm: отправка", () => {
       priceAmount: 25050,
       priceCurrency: "RUB",
       visibility: "SECRET",
+      quantity: "UNLIMITED",
     });
   });
 
@@ -341,6 +382,46 @@ describe("GiftForm: отправка", () => {
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ visibility: "SECRET" }),
     );
+  });
+
+  /**
+   * Story 2.5: a wish that is no longer open keeps its stored type, disabled,
+   * with the same kind of explanation as the frozen visibility.
+   */
+  it("quantityLocked: строки показывают сохранённое значение, не меняются и подсказка видна", async () => {
+    const onSubmit = await mount({
+      initialValues: { title: "Свитер", quantity: "UNLIMITED" },
+      quantityLocked: true,
+    });
+
+    expect(text()).toContain(form.field.quantityLocked);
+    for (const quantity of QUANTITIES) {
+      const option = radio(quantityLabel[quantity]);
+      expect(option, quantityLabel[quantity]).toBeDefined();
+      expect(option?.getAttribute("aria-disabled")).toBe("true");
+    }
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
+
+    await press(quantityLabel.SINGLE);
+
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
+    expect(isChecked(quantityLabel.SINGLE)).toBe(false);
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: "UNLIMITED" }),
+    );
+  });
+
+  it("serverError quantity показывается под группой типа", async () => {
+    await mount({ serverError: { field: "quantity" } });
+
+    const group = container.querySelector(
+      `[role="radiogroup"][aria-label="${form.field.quantity}"]`,
+    );
+    expect(group?.parentElement?.textContent).toContain(form.error.quantityLocked);
+    // The inline message is the group's, not the form-level one above the button.
+    expect(group?.parentElement?.textContent).not.toContain(form.error.form);
   });
 
   it("пустое название: ошибка под полем, отправки нет, ошибка объявлена", async () => {
@@ -479,6 +560,21 @@ describe("GiftForm: черновик", () => {
     await press("RUB");
     // The form was already dirty: only the flip is reported, not every keystroke.
     expect(onDirtyChange).toHaveBeenCalledTimes(1);
+  });
+
+  /** Story 2.5: the type is part of the draft; returning to the stored one cleans it. */
+  it("смена типа желания делает форму грязной, возврат к исходному — снова чистой", async () => {
+    const onDirtyChange = vi.fn();
+    await mount({
+      initialValues: { title: "Свитер", quantity: "SINGLE" },
+      onDirtyChange,
+    });
+
+    await press(quantityLabel.UNLIMITED);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    await press(quantityLabel.SINGLE);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
 });
 

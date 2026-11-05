@@ -2,7 +2,7 @@ import {
   giftCardSchema,
   listDataSchema,
   type GiftCard,
-  type GiftInput,
+  type GiftInputDraft,
   type GiftUpdate,
 } from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
@@ -65,8 +65,12 @@ export async function fetchMyGifts(): Promise<MyGiftsResult> {
  * with the AD-12 card. The transport, timeout and envelope live in `apiRequest`;
  * the card is re-checked with the shared contract (AD-12) like the list read, so
  * an unexpected payload is `invalid`, not a broken connection.
+ *
+ * The body is the schema's input side (`GiftInputDraft`): `visibility` and
+ * `quantity` are optional there, so a caller may rely on the contract's
+ * `PUBLIC`/`SINGLE` defaults instead of hard-coding them.
  */
-export async function createGift(input: GiftInput): Promise<CreateGiftResult> {
+export async function createGift(input: GiftInputDraft): Promise<CreateGiftResult> {
   const result = await apiRequest<unknown>("/api/v1/me/gifts", {
     method: "POST",
     body: input,

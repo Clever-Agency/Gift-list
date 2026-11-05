@@ -1,4 +1,9 @@
-import { CURRENCIES, VISIBILITIES } from "@gift-list/contracts";
+import {
+  CURRENCIES,
+  DEFAULT_QUANTITY,
+  QUANTITIES,
+  VISIBILITIES,
+} from "@gift-list/contracts";
 import {
   Button,
   Choice,
@@ -40,6 +45,9 @@ type Currency = (typeof CURRENCIES)[number];
 /** `VISIBILITIES` is the closed set; `GiftInput["visibility"]` is the same union. */
 type Visibility = (typeof VISIBILITIES)[number];
 
+/** `QUANTITIES` is the closed set; `GiftInput["quantity"]` is the same union. */
+type Quantity = (typeof QUANTITIES)[number];
+
 /** D-37: an amount without a picked currency is USD. */
 const DEFAULT_CURRENCY: Currency = "USD";
 
@@ -57,6 +65,8 @@ export type GiftFormValues = {
   /** `null` exactly when `priceAmount` is `null`: an amount always carries a code (AD-25). */
   priceCurrency: Currency | null;
   visibility: Visibility;
+  /** Story 2.5: `SINGLE` or `UNLIMITED`, `SINGLE` by default. */
+  quantity: Quantity;
 };
 
 /**
@@ -78,8 +88,8 @@ type GiftFormProps = {
    */
   submitting: boolean;
   /**
-   * Receives the trimmed text fields, the price as minor units, and the choice of
-   * visibility. Empty description and link arrive as `null`.
+   * Receives the trimmed text fields, the price as minor units, and the choices of
+   * visibility and quantity. Empty description and link arrive as `null`.
    */
   onSubmit: (values: GiftFormValues) => void;
   /** Create and edit pass their own label (`action.create` / `action.save`). */
@@ -116,6 +126,11 @@ type GiftFormProps = {
    * забронированного желания).
    */
   visibilityLocked?: boolean;
+  /**
+   * Story 2.5: `quantity` is frozen once the wish is no longer open, exactly like
+   * visibility. The rows show the stored value, disabled, with a hint why.
+   */
+  quantityLocked?: boolean;
 };
 
 /**
@@ -131,7 +146,8 @@ export type GiftFormHandle = {
  * Create/edit wish form (`EXPERIENCE.md` → Форма желания, `DESIGN.md` → Форма).
  * Story 2.2: title, description, the optional link (subtask 16), the optional
  * price with its currency (subtask 15), visibility (subtask 16), and inline
- * errors (subtask 17). State stays local and controlled, so later subtasks add
+ * errors (subtask 17). Story 2.5 adds the `SINGLE`/`UNLIMITED` quantity. State
+ * stays local and controlled, so later subtasks add
  * their inputs next to these without changing the screen contract. Required
  * fields are not marked, optional ones carry «(необязательно)» in the label
  * (`EXPERIENCE.md` → Accessibility Floor).
@@ -152,11 +168,13 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     onCancel,
     cancelLabel,
     visibilityLocked = false,
+    quantityLocked = false,
   },
   ref,
 ) {
   const t = useTranslations("app.giftForm");
   const tVisibility = useTranslations("app.gift.visibility");
+  const tQuantity = useTranslations("app.gift.quantity");
   const common = useTranslations("common");
   // Read once, like the field states below: `initialValues` prefills the edit form.
   const [initial] = useState<GiftFormDirtyValues>(function readInitialValues() {
@@ -167,6 +185,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       price: initialPriceText(initialValues?.priceAmount),
       currency: initialValues?.priceCurrency ?? DEFAULT_CURRENCY,
       visibility: initialValues?.visibility ?? DEFAULT_VISIBILITY,
+      quantity: initialValues?.quantity ?? DEFAULT_QUANTITY,
     };
   });
   const [title, setTitle] = useState(initialValues?.title ?? "");
@@ -178,6 +197,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   );
   const [visibility, setVisibility] = useState<Visibility>(
     initialValues?.visibility ?? DEFAULT_VISIBILITY,
+  );
+  const [quantity, setQuantity] = useState<Quantity>(
+    initialValues?.quantity ?? DEFAULT_QUANTITY,
   );
   const [errors, setErrors] = useState<GiftFormErrors>({});
   const cancelRef = useRef<FocusTarget>(null);
@@ -206,6 +228,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     price,
     currency,
     visibility,
+    quantity,
   });
   // Report only flips: the screen listens for «стал грязным» / «снова чистый», not
   // for every keystroke. The first render is not a flip, so nothing fires on mount.
@@ -260,6 +283,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       priceAmount,
       priceCurrency: priceAmount === null ? null : currency,
       visibility,
+      quantity,
     });
   }
 
@@ -356,6 +380,24 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           {t("field.visibilityLocked")}
         </Text>
       ) : null}
+      <ChoiceGroup
+        variant="rows"
+        label={t("field.quantity")}
+        value={quantity}
+        onChange={setQuantity}
+        error={inlineError("quantity")}
+        disabled={quantityLocked}
+        options={QUANTITIES.map((code) => ({
+          value: code,
+          label: tQuantity(code),
+          hint: t(`field.quantityHint.${code}`),
+        }))}
+      />
+      {quantityLocked ? (
+        <Text kind="caption" tone="muted">
+          {t("field.quantityLocked")}
+        </Text>
+      ) : null}
       {formError ? (
         <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
           {formError}
@@ -402,18 +444,19 @@ type ChoiceOption<T extends string> = {
 };
 
 /**
- * The shared `radiogroup` behind the currency codes and the visibility choice
- * (`DESIGN.md` → Форма: five codes; three radio rows with an explanation, «Всем»
- * by default), built from `ChoiceList` and `Choice` of `@gift-list/ui`. `DESIGN.md`
- * asks for a bottom sheet with radios on a phone; the same rows are reused by
- * `VisibilityPicker` (Story 2.3). Each variant keeps the same `radio` semantics: one
- * choice, the selected one is marked, and the option label is the accessible name.
+ * The shared `radiogroup` behind the currency codes, the visibility choice and the
+ * `SINGLE`/`UNLIMITED` quantity (`DESIGN.md` → Форма: five codes; radio rows with
+ * an explanation, «Всем» and «Один раз» by default), built from `ChoiceList` and
+ * `Choice` of `@gift-list/ui`. `DESIGN.md` asks for a bottom sheet with radios on
+ * a phone; the same rows are reused by `VisibilityPicker` (Story 2.3). Each
+ * variant keeps the same `radio` semantics: one choice, the selected one is
+ * marked, and the option label is the accessible name.
  *
  * `labelHidden` keeps the accessible name of the group while the visible heading
  * comes from the surrounding layer (the picker title is a header of its own).
  *
  * `disabled` shows the stored value without letting it change (a wish that is no
- * longer open keeps its visibility frozen).
+ * longer open keeps its visibility and quantity frozen).
  *
  * `autoFocusRef` is only set by `VisibilityPicker`: it receives the node of the option
  * holding `autoFocusValue`, so the dialog can put focus there when it opens instead of

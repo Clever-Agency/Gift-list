@@ -61,8 +61,8 @@ type ToastState = { message: string; tone: "info" | "error" };
  *
  * Story 2.3 lives next to it as a second, independent step: an open wish offers
  * «Удалить желание», which confirms in the same dialog of this form; a wish that
- * is no longer open keeps its visibility frozen and offers no delete. Only one of
- * the two steps can be open at a time.
+ * is no longer open keeps its visibility and quantity frozen and offers no delete.
+ * Only one of the two steps can be open at a time.
  */
 export default function EditGiftScreen() {
   const t = useTranslations("app");
@@ -466,6 +466,7 @@ export default function EditGiftScreen() {
                   onDirtyChange={setDirty}
                   onCancel={cancel}
                   visibilityLocked={state.gift.status !== "OPEN"}
+                  quantityLocked={state.gift.status !== "OPEN"}
                 />
                 {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
                 {state.gift.status === "OPEN" ? (
@@ -537,14 +538,17 @@ function toFormValues(gift: GiftCard): GiftFormValues {
     priceAmount: gift.priceAmount,
     priceCurrency: gift.priceCurrency,
     visibility: gift.visibility,
+    quantity: gift.quantity,
   };
 }
 
 /**
  * `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12).
- * Visibility is frozen once the wish is no longer open (`EXPERIENCE.md` → Правка
- * забронированного желания): the server rejects a change, so the body leaves the
- * field out instead of repeating the stored value.
+ * Visibility and quantity are frozen once the wish is no longer open
+ * (`EXPERIENCE.md` → Правка забронированного желания): the server rejects a
+ * change, so the body leaves both fields out instead of repeating the stored
+ * value. An unchanged `OPEN` edit sends the stored values, which the server
+ * treats as a no-op.
  */
 function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
   const body: GiftUpdate = {
@@ -554,5 +558,7 @@ function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
     priceCurrency: values.priceCurrency,
     linkUrl: values.link,
   };
-  return gift.status === "OPEN" ? { ...body, visibility: values.visibility } : body;
+  return gift.status === "OPEN"
+    ? { ...body, visibility: values.visibility, quantity: values.quantity }
+    : body;
 }

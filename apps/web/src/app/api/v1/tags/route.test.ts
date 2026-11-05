@@ -69,17 +69,28 @@ describe("GET /api/v1/tags", () => {
     expect(await res.json()).toEqual({ ok: true, data: { tags: [] } });
   });
 
-  it("maps a database failure to the standard error envelope", async () => {
-    findMany.mockRejectedValue(new Error("database is down"));
+  it("answers a database failure with a bare 500 instead of NOT_FOUND", async () => {
+    const cause = new Error("database is down");
+    findMany.mockRejectedValue(cause);
     const { GET } = await import("./route");
     const res = await GET(new Request("http://x/api/v1/tags"));
 
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({
-      ok: false,
-      code: "NOT_FOUND",
-      message: "Tag catalog is unavailable",
-    });
+    expect(res.status).toBe(500);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("vary")).toBe("Accept-Language");
+    expect(res.headers.get("content-type")).toBeNull();
+    expect(await res.text()).toBe("");
+    expect(console.error).toHaveBeenCalledTimes(1);
+    expect(console.error).toHaveBeenCalledWith("Tag catalog read failed", cause);
+  });
+
+  it("answers a contract failure with the same bare 500", async () => {
+    findMany.mockResolvedValue([{ id: 1, slug: "dream", labels: { ru: "мечта" } }]);
+    const { GET } = await import("./route");
+    const res = await GET(new Request("http://x/api/v1/tags"));
+
+    expect(res.status).toBe(500);
+    expect(await res.text()).toBe("");
   });
 
   it("answers unsupported methods with the NOT_FOUND envelope", async () => {

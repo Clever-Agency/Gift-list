@@ -1,5 +1,5 @@
 import { getTagCatalog } from "@/actions/tags";
-import { notFoundResponse, toResponse } from "@/lib/api-v1";
+import { infrastructureErrorResponse, notFoundResponse, toResponse } from "@/lib/api-v1";
 
 /**
  * Story 2.5 / AD-22 / AD-27: fixed tag catalog with a label on the request
@@ -7,9 +7,19 @@ import { notFoundResponse, toResponse } from "@/lib/api-v1";
  * `Accept-Language`, so there is no session check. The route always reads the
  * database (no shared cache lifetime); the envelope is `private, no-store`, and
  * `Vary` states the language dependency for any intermediary that inspects it.
+ *
+ * A database or other internal failure is a bare 500 without the AD-12 envelope:
+ * the client treats a non-envelope body as `network`, so an outage is not shown
+ * as "not found".
  */
 export async function GET(request: Request) {
-  const response = toResponse(await getTagCatalog(request.headers));
+  let response: Response;
+  try {
+    response = toResponse(await getTagCatalog(request.headers));
+  } catch (error) {
+    console.error("Tag catalog read failed", error);
+    response = infrastructureErrorResponse();
+  }
   response.headers.set("Vary", "Accept-Language");
   return response;
 }

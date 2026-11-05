@@ -123,28 +123,19 @@ describe("getTagCatalog", () => {
     expect(Object.keys(result.data.tags[0] ?? {})).toEqual(["id", "slug", "label"]);
   });
 
-  it("turns a database failure into the standard error envelope and logs the cause", async () => {
+  it("rethrows a database failure instead of returning NOT_FOUND", async () => {
     const cause = new Error("database is down");
     findMany.mockRejectedValue(cause);
     const { getTagCatalog } = await import("./tags");
 
-    expect(await getTagCatalog(headers("ru"))).toEqual({
-      ok: false,
-      code: "NOT_FOUND",
-      message: "Tag catalog is unavailable",
-    });
-    expect(console.error).toHaveBeenCalledWith("Tag catalog read failed", cause);
+    await expect(getTagCatalog(headers("ru"))).rejects.toThrow(cause);
   });
 
-  it("turns a malformed row into the same envelope instead of a 500", async () => {
+  it("lets a malformed row surface as an internal error instead of NOT_FOUND", async () => {
     findMany.mockResolvedValue([{ id: 1, slug: "dream", labels: { ru: "мечта" } }]);
     const { getTagCatalog } = await import("./tags");
 
-    expect(await getTagCatalog(headers("ru"))).toEqual({
-      ok: false,
-      code: "NOT_FOUND",
-      message: "Tag catalog is unavailable",
-    });
+    await expect(getTagCatalog(headers("ru"))).rejects.toThrow();
   });
 
   it("does not require a session: a bearer header does not change the read", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ERROR_CODES } from "@gift-list/contracts";
-import { parseJsonBody, toResponse } from "./api-v1";
+import { infrastructureErrorResponse, parseJsonBody, toResponse } from "./api-v1";
 
 const status = {
   UNAUTHENTICATED: 401,
@@ -26,6 +26,16 @@ describe("toResponse", () => {
     expect(res.status).toBe(status[code]);
     expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(await res.json()).toEqual(body);
+  });
+});
+
+describe("infrastructureErrorResponse", () => {
+  it("answers a bare 500 without the AD-12 envelope", async () => {
+    const res = infrastructureErrorResponse();
+    expect(res.status).toBe(500);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("content-type")).toBeNull();
+    expect(await res.text()).toBe("");
   });
 });
 

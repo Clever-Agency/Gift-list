@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { controlByLabel, typeInto } from "@/test/dom";
 import { GiftForm } from "@/ui/gift-form";
 import { formatMinorToPrice } from "@/ui/gift-price";
 
@@ -99,93 +100,9 @@ vi.mock("use-intl", async () => {
     useLocale: () => "ru",
   };
 });
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type ChildrenProps = { children?: React.ReactNode };
-  type TextProps = ChildrenProps & {
-    accessibilityRole?: string;
-    accessibilityLiveRegion?: string;
-  };
-  type ViewProps = ChildrenProps & {
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-  };
-  type PressableProps = ChildrenProps & {
-    onPress?: () => void;
-    disabled?: boolean;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    accessibilityState?: { checked?: boolean; disabled?: boolean; busy?: boolean };
-  };
-  type InputProps = {
-    value?: string;
-    onChangeText?: (value: string) => void;
-    accessibilityLabel?: string;
-    placeholder?: string;
-    maxLength?: number;
-  };
-
-  function Text({ children, accessibilityRole }: TextProps) {
-    const role = accessibilityRole as React.AriaRole | undefined;
-    return React.createElement("span", role ? { role } : null, children);
-  }
-  function View({ children, accessibilityRole, accessibilityLabel }: ViewProps) {
-    const role = accessibilityRole as React.AriaRole | undefined;
-    const props: React.HTMLAttributes<HTMLDivElement> = {
-      ...(role ? { role } : {}),
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-    };
-    return React.createElement("div", props, children);
-  }
-  function Pressable({
-    children,
-    onPress,
-    disabled,
-    accessibilityRole,
-    accessibilityLabel,
-    accessibilityState,
-  }: PressableProps) {
-    const role = accessibilityRole as React.AriaRole | undefined;
-    const props: React.ButtonHTMLAttributes<HTMLButtonElement> = {
-      type: "button",
-      ...(role ? { role } : {}),
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(accessibilityState && "checked" in accessibilityState
-        ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
-        : {}),
-      ...(accessibilityState?.disabled ? { "aria-disabled": "true" } : {}),
-      ...(disabled ? { disabled: true, "aria-disabled": "true" } : {}),
-      // A disabled `Pressable` does not run `onPress`, same as the platform.
-      ...(disabled ? {} : { onClick: onPress }),
-    };
-    return React.createElement("button", props, children);
-  }
-  function TextInput({
-    value,
-    onChangeText,
-    accessibilityLabel,
-    placeholder,
-    maxLength,
-  }: InputProps) {
-    const props: React.InputHTMLAttributes<HTMLInputElement> = {
-      value: value ?? "",
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(placeholder ? { placeholder } : {}),
-      ...(maxLength != null ? { maxLength } : {}),
-      onChange: (event: { target: { value: string } }) => onChangeText?.(event.target.value),
-    };
-    return React.createElement("input", props);
-  }
-
-  return {
-    StyleSheet: { create: (styles: unknown) => styles },
-    Text,
-    View,
-    TextInput,
-    Pressable,
-    AccessibilityInfo: { announceForAccessibility: announce },
-  };
-});
+vi.mock("react-native", () => ({
+  AccessibilityInfo: { announceForAccessibility: announce },
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -219,7 +136,7 @@ function text(): string {
 }
 
 function field(label: string): HTMLInputElement {
-  const input = Array.from(container.querySelectorAll("input")).find(
+  const input = Array.from(container.querySelectorAll<HTMLInputElement>("input, textarea")).find(
     (node) => node.getAttribute("aria-label") === label,
   );
   expect(input, `поле «${label}»`).toBeDefined();
@@ -234,14 +151,11 @@ function fieldText(label: string): string {
 /** Controlled input: set the value past React's tracker, then let React see the `input` event. */
 async function type(label: string, value: string) {
   const input = field(label);
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await typeInto(input, value);
 }
 
-function radio(label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>('[role="radio"]')).find(
+function radio(label: string): HTMLElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLElement>('[role="radio"]')).find(
     (node) => node.getAttribute("aria-label") === label,
   );
 }
@@ -253,21 +167,15 @@ function isChecked(label: string): boolean {
 }
 
 function submitButton(label: string = form.action.save): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
-    (node) => node.getAttribute("aria-label") === label,
-  );
+  return controlByLabel(label, container) as HTMLButtonElement | undefined;
 }
 
 function cancelButton(label: string = form.action.cancel): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
-    (node) => node.getAttribute("aria-label") === label,
-  );
+  return controlByLabel(label, container) as HTMLButtonElement | undefined;
 }
 
 async function press(label: string) {
-  const target = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
-    (node) => node.getAttribute("aria-label") === label,
-  );
+  const target = controlByLabel(label, container);
   expect(target, `кнопка «${label}»`).toBeDefined();
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -420,7 +328,6 @@ describe("GiftForm: отправка", () => {
     for (const code of VISIBILITIES) {
       const option = radio(visibilityLabel[code]);
       expect(option, visibilityLabel[code]).toBeDefined();
-      expect(option?.disabled).toBe(true);
       expect(option?.getAttribute("aria-disabled")).toBe("true");
     }
     expect(isChecked(visibilityLabel.SECRET)).toBe(true);
@@ -491,7 +398,10 @@ describe("GiftForm: отправка", () => {
     await mount({ serverError: { field: name } });
 
     expect(fieldText(label)).toContain(message);
-    expect(container.querySelector('[role="alert"]')).toBeNull();
+    // The message is the field's own alert, not a form-level one above the button.
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe(message);
+    expect(alert?.parentElement).toBe(field(label).parentElement);
   });
 
   it("serverError с неизвестным полем — общая ошибка формы", async () => {
@@ -510,7 +420,7 @@ describe("GiftForm: отправка", () => {
 
     const button = submitButton();
     expect(button).toBeDefined();
-    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute("aria-disabled")).toBe("true");
 
     await submit();
     expect(onSubmit).not.toHaveBeenCalled();
@@ -606,7 +516,12 @@ describe("GiftForm: отмена", () => {
     const onCancel = vi.fn();
     await mount({ submitting: true, onCancel });
 
-    expect(cancelButton()).toBeDefined();
+    const cancel = cancelButton() as HTMLButtonElement | undefined;
+    expect(cancel).toBeDefined();
+    // The busy cancel stays in the Tab order: announced disabled, not natively disabled.
+    expect(cancel?.disabled).toBe(false);
+    expect(cancel?.getAttribute("aria-disabled")).toBe("true");
+    expect(cancel?.tabIndex).toBe(0);
     await press(form.action.cancel);
     expect(onCancel).not.toHaveBeenCalled();
   });

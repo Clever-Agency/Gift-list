@@ -1,22 +1,14 @@
 import { NICK_PATTERN, type Me } from "@gift-list/contracts";
+import { Column, Heading, Pressable, Screen, ScrollView, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-  type TextInputInstance,
-} from "react-native";
+import { useWindowDimensions, type TextInputInstance } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { updateNick } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { formIssue } from "@/session/form-issue";
-import { colors, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
 import { PrimaryButton } from "@/ui/primary-button";
 import { TextField } from "@/ui/text-field";
@@ -196,104 +188,69 @@ function SettingsForm({
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <Stack.Screen options={{ title: t("settings.pageTitle", { brand }) }} />
-      <View style={[styles.column, { paddingHorizontal: gutter }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("settings.back")}
-          onPress={goBack}
-          style={({ pressed }) => [styles.back, pressed ? styles.pressed : null]}
+    <Screen>
+      <SafeAreaView style={{ flex: 1 }}>
+        <Stack.Screen options={{ title: t("settings.pageTitle", { brand }) }} />
+        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
+        <Column
+          size="form"
+          flex={1}
+          paddingHorizontal={gutter}
+          paddingTop="$page-gutter"
+          gap="$2"
         >
-          <Text style={styles.backLabel}>{t("settings.back")}</Text>
-        </Pressable>
-        <Text style={styles.logo}>{common("brandName", { brand })}</Text>
-        <Text accessibilityRole="header" style={styles.title}>
-          {t("settings.title")}
-        </Text>
-        <ScrollView
-          style={styles.scrollArea}
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.form}>
-            <TextField
-              label={t("form.nick")}
-              value={nick}
-              onChangeText={changeNick}
-              error={fieldError ?? undefined}
-              hint={hint}
-              inputRef={nickInput}
-              input={{
-                autoCapitalize: "none",
-                autoComplete: "nickname",
-                autoCorrect: false,
-                editable: !pending,
-                textContentType: "nickname",
-                onSubmitEditing: save,
-              }}
-            />
-            <PrimaryButton label={t("settings.save")} onPress={save} disabled={pending} />
-          </View>
-        </ScrollView>
-      </View>
-      {toast ? (
-        <ToastHost
-          message={toast.message}
-          tone={toast.tone}
-          onDismiss={dismissToast}
-        />
-      ) : null}
-    </SafeAreaView>
+          <Pressable
+            role="button"
+            aria-label={t("settings.back")}
+            onPress={goBack}
+            alignSelf="flex-start"
+            justifyContent="center"
+            minHeight="$touch-target"
+            minWidth="$touch-target"
+          >
+            <Text kind="button" tone="primary">
+              {t("settings.back")}
+            </Text>
+          </Pressable>
+          <Text kind="display-sm" tone="primary" textAlign="center">
+            {common("brandName", { brand })}
+          </Text>
+          <Heading level={1}>{t("settings.title")}</Heading>
+          <ScrollView
+            flex={1}
+            contentContainerStyle={{
+              paddingTop: spacing["grid-gap"] / 2,
+              paddingBottom: spacing["section-gap"],
+            }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <YStack gap="$grid-gap">
+              <TextField
+                label={t("form.nick")}
+                value={nick}
+                onChangeText={changeNick}
+                error={fieldError ?? undefined}
+                hint={hint}
+                inputRef={nickInput}
+                input={{
+                  autoCapitalize: "none",
+                  autoComplete: "nickname",
+                  autoCorrect: false,
+                  editable: !pending,
+                  textContentType: "nickname",
+                  onSubmitEditing: save,
+                }}
+              />
+              <PrimaryButton label={t("settings.save")} onPress={save} disabled={pending} />
+            </YStack>
+          </ScrollView>
+        </Column>
+        {toast ? (
+          <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
+        ) : null}
+      </SafeAreaView>
+    </Screen>
   );
 }
 
 SettingsForm.displayName = "SettingsForm";
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  column: {
-    flex: 1,
-    width: "100%",
-    // A form reads best narrow: `DESIGN.md` → Layout → max-form.
-    maxWidth: spacing["max-form"],
-    alignSelf: "center",
-    paddingTop: spacing["page-gutter"],
-    gap: spacing["grid-gap"] / 2,
-  },
-  back: {
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    alignSelf: "flex-start",
-    justifyContent: "center",
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-  backLabel: {
-    ...textStyle("button"),
-    color: colors.primary,
-  },
-  logo: {
-    ...textStyle("display-sm"),
-    color: colors.primary,
-    textAlign: "center",
-  },
-  title: {
-    ...textStyle("heading"),
-    color: colors.foreground,
-  },
-  scrollArea: {
-    flex: 1,
-  },
-  scroll: {
-    paddingTop: spacing["grid-gap"] / 2,
-    paddingBottom: spacing["section-gap"],
-  },
-  form: {
-    gap: spacing["grid-gap"],
-  },
-});

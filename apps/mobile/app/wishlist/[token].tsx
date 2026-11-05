@@ -1,11 +1,11 @@
-import { Link, router, Stack, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
-import { navLinkStyle } from "@/ui/nav-link";
+import { NavLink } from "@/ui/nav-link";
 
 // NOTE FOR UX: цель возврата после входа (Story 1.5). Список желаний — Story 3.3 и 2.1.
 
@@ -28,9 +28,9 @@ export default function WishlistReturnScreen() {
     <>
       <Stack.Screen options={{ title: t("wishlist.pageTitle", { brand }) }} />
       <AnonymousScreen title={t("wishlist.title")}>
-        <Link href="/" style={navLinkStyle} accessibilityRole="link">
+        <NavLink href="/">
           {t("wishlist.toHome")}
-        </Link>
+        </NavLink>
       </AnonymousScreen>
     </>
   );

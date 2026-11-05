@@ -1,21 +1,6 @@
+import { Button, Dialog, colors, spacing, type FocusTarget } from "@gift-list/ui";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
-import { useEffect, useRef, type ComponentRef } from "react";
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-  type ViewInstance,
-} from "react-native";
-import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
-import { pageGutter } from "@/ui/card-grid";
-import { focusInLayer, useLayerClosed } from "@/ui/focus";
-import { PrimaryButton } from "@/ui/primary-button";
-
-/** The `nativeID` of the title, and what `aria-labelledby` on the layer points at. */
-const TITLE_ID = "confirm-dialog-title";
+import { useEffect, useRef } from "react";
 
 /** `DESIGN.md` → BottomSheet / Dialog: the discard step's close cross. */
 const CLOSE_ICON = {
@@ -36,7 +21,7 @@ type ConfirmDialogBase = {
   busy?: boolean;
   /**
    * The layer has really left the tree, so the screen can put focus back on the
-   * control it was opened from (`useLayerClosed`, `onDismiss`).
+   * control it was opened from.
    */
   onClosed: () => void;
 };
@@ -80,9 +65,9 @@ export type DiscardConfirmDialogProps = ConfirmDialogBase & {
 export type ConfirmDialogProps = DestructiveConfirmDialogProps | DiscardConfirmDialogProps;
 
 /**
- * The single dialog of a form (`DESIGN.md` → BottomSheet / Dialog). It has two
- * modes, picked by `variant` (a discriminated union, so the props of one mode
- * cannot leak into the other):
+ * The single dialog of a form (`DESIGN.md` → BottomSheet / Dialog), built on `Dialog`
+ * from `@gift-list/ui`. It has two modes, picked by `variant` (a discriminated union,
+ * so the props of one mode cannot leak into the other):
  *
  * - `confirm` (the default) — a destructive confirmation with two actions:
  *   `cancelLabel` + `onCancel` and `confirmLabel` + `onConfirm`, plus an optional
@@ -92,40 +77,23 @@ export type ConfirmDialogProps = DestructiveConfirmDialogProps | DiscardConfirmD
  *   («Сохранить»), `declineLabel` («Не сохранять») and a `closeLabel` cross.
  *   Initial focus lands on the title.
  *
- * `visible={false}` renders nothing; the transparency and fade come from `Modal`.
- * Android «назад» arrives as `onRequestClose`, and react-native-web turns Esc
- * into the same callback; the scrim does the same. In `confirm` mode all of them
- * ask the screen to close via `onCancel`, in `discard` mode via `onClose`.
+ * `visible={false}` renders nothing. Esc, the scrim and the system «назад» on Android
+ * all ask the screen to close via `onCancel` (`confirm`) or `onClose` (`discard`).
  *
  * «Занято» is one prop for both modes: `busy`. While it is set the confirmation
  * is disabled and announced busy, and a second press in the same frame is
  * dropped (`answered`), so one opening runs one action.
  *
- * `onClosed` runs once the layer has really gone (`useLayerClosed`), so the
- * screen can put focus back on the control it was opened from — «Удалить
- * желание» or the form's «Отмена». Focus is never moved from an effect on
- * `visible={false}`: on the web that is too early (see `focus.ts`).
- *
- * react-native-web's `Modal` already renders `role="dialog"` and
- * `aria-modal="true"` and forwards the labelling to that element, so the card
- * adds neither of them; on the phone the platform modal is modal on its own.
+ * `onClosed` runs once the layer has really gone, so the screen can put focus back on
+ * the control it was opened from — «Удалить желание» or the form's «Отмена».
  */
 export function ConfirmDialog(props: ConfirmDialogProps) {
   const { visible, title, busy = false, onClosed } = props;
   const discard = props.variant === "discard";
-  const { width: windowWidth } = useWindowDimensions();
-  // `DESIGN.md` → dialog: up to `dialog-width`; on a narrow window the page
-  // gutter stays visible on both sides.
-  const dialogWidth = Math.min(
-    spacing["dialog-width"],
-    Math.max(0, windowWidth - pageGutter(windowWidth) * 2),
-  );
-  const titleRef = useRef<ViewInstance>(null);
-  const cancelRef = useRef<ComponentRef<typeof Pressable>>(null);
+  const cancelRef = useRef<FocusTarget>(null);
   // One answer per opening. `busy` follows a state update that lands after the
   // handler, so two taps in the same frame would both reach `onConfirm`.
   const answered = useRef(false);
-  const handleDismiss = useLayerClosed(visible, onClosed);
 
   useEffect(
     function resetAnswerOnOpen() {
@@ -133,18 +101,6 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       if (visible) answered.current = false;
     },
     [visible],
-  );
-
-  useEffect(
-    function focusLayerOnOpen() {
-      if (!visible) return;
-      // `EXPERIENCE.md` → Accessibility Floor «Шторка и диалог»: focus enters the
-      // layer as soon as it opens. The destructive confirm lands on the safe
-      // «Отмена», the discard step on its title (`tabIndex={-1}` keeps the title
-      // out of the tab order while letting the layer focus it).
-      focusInLayer(discard ? titleRef.current : cancelRef.current);
-    },
-    [visible, discard],
   );
 
   function confirm(): void {
@@ -163,48 +119,20 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={dismiss}
-      onDismiss={handleDismiss}
-      aria-labelledby={TITLE_ID}
-    >
-      <View style={styles.overlay}>
-        {/* The scrim closes the layer; it is decorative for screen readers —
-            the buttons, Esc and Android «назад» do the same. It stays out of the
-            Tab order and out of the dialog's initial focus: `tabIndex={-1}` and
-            `focusable={false}` keep the pointer handler without making the
-            backdrop an interactive stop. */}
-        <Pressable
-          testID="confirm-dialog-scrim"
-          style={styles.scrim}
-          onPress={dismiss}
-          focusable={false}
-          {...{ tabIndex: -1 }}
-          aria-hidden
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        />
-        <View testID="confirm-dialog-card" style={[styles.dialog, { width: dialogWidth }]}>
-          {discard ? (
-            <View style={styles.header}>
-              <View
-                ref={titleRef}
-                nativeID={TITLE_ID}
-                accessibilityRole="header"
-                tabIndex={-1}
-                style={styles.titleBox}
-              >
-                <Text style={styles.title}>{title}</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={props.closeLabel}
-                onPress={props.onClose}
-                style={({ pressed }) => [styles.close, pressed ? styles.pressed : null]}
-              >
+    <Dialog
+      open={visible}
+      title={title}
+      description={discard ? undefined : props.body}
+      role={discard ? "dialog" : "alertdialog"}
+      onClose={dismiss}
+      onClosed={onClosed}
+      // The destructive confirm lands on the safe «Отмена»; the discard step on its title.
+      initialFocus={discard ? undefined : cancelRef}
+      closeAction={
+        discard
+          ? {
+              label: props.closeLabel,
+              icon: (
                 <SymbolView
                   name={CLOSE_ICON}
                   size={spacing["icon-nav"]}
@@ -214,153 +142,37 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
                   accessibilityElementsHidden
                   importantForAccessibility="no-hide-descendants"
                 />
-              </Pressable>
-            </View>
-          ) : (
-            <>
-              <Text accessibilityRole="header" nativeID={TITLE_ID} style={styles.title}>
-                {title}
-              </Text>
-              {props.body ? <Text style={styles.body}>{props.body}</Text> : null}
-            </>
-          )}
-          <View style={styles.actions}>
-            {discard ? (
-              <>
-                {/* «Не сохранять» loses the draft, so it is destructive-red. */}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={props.declineLabel}
-                  onPress={props.onDecline}
-                  style={({ pressed }) => [
-                    styles.destructive,
-                    pressed ? styles.pressed : null,
-                  ]}
-                >
-                  <Text style={styles.destructiveLabel}>{props.declineLabel}</Text>
-                </Pressable>
-                <PrimaryButton label={props.confirmLabel} onPress={confirm} disabled={busy} />
-              </>
-            ) : (
-              <>
-                <Pressable
-                  ref={cancelRef}
-                  accessibilityRole="button"
-                  accessibilityLabel={props.cancelLabel}
-                  onPress={props.onCancel}
-                  style={({ pressed }) => [styles.cancel, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.cancelLabel}>{props.cancelLabel}</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={props.confirmLabel}
-                  accessibilityState={{ disabled: busy, busy }}
-                  disabled={busy}
-                  onPress={confirm}
-                  style={({ pressed }) => [
-                    styles.destructive,
-                    pressed ? styles.pressed : null,
-                    busy ? styles.busy : null,
-                  ]}
-                >
-                  <Text style={styles.destructiveLabel}>{props.confirmLabel}</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
-        </View>
-      </View>
-    </Modal>
+              ),
+            }
+          : undefined
+      }
+      testID="confirm-dialog"
+      actions={
+        discard ? (
+          <>
+            {/* «Не сохранять» loses the draft, so it is destructive-red. */}
+            <Button label={props.declineLabel} onPress={props.onDecline} variant="destructive" />
+            <Button label={props.confirmLabel} onPress={confirm} busy={busy} />
+          </>
+        ) : (
+          <>
+            <Button
+              ref={cancelRef as never}
+              label={props.cancelLabel}
+              onPress={props.onCancel}
+              variant="ghost"
+            />
+            <Button
+              label={props.confirmLabel}
+              onPress={confirm}
+              variant="destructive"
+              busy={busy}
+            />
+          </>
+        )
+      }
+    />
   );
 }
 
 ConfirmDialog.displayName = "ConfirmDialog";
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing["page-gutter-lg"],
-  },
-  scrim: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.scrim,
-    opacity: 0.4,
-  },
-  dialog: {
-    maxWidth: spacing["dialog-width"],
-    backgroundColor: colors.surface,
-    borderRadius: rounded.lg,
-    padding: spacing["card-padding"],
-    gap: spacing["grid-gap"],
-  },
-  /** Title on the left, the close cross on the right (`DESIGN.md` → Dialog). */
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing["grid-gap"] / 2,
-  },
-  titleBox: {
-    flex: 1,
-  },
-  title: {
-    ...textStyle("heading"),
-    color: colors.foreground,
-  },
-  body: {
-    ...textStyle("body"),
-    color: colors["muted-foreground"],
-  },
-  actions: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    flexWrap: "wrap",
-    gap: spacing["grid-gap"] / 2,
-  },
-  // Ghost «Отмена» (`DESIGN.md` → buttons): text only, 44×44.
-  cancel: {
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-  cancelLabel: {
-    ...textStyle("button"),
-    color: colors.primary,
-  },
-  /** 44×44 touch target around the close icon. */
-  close: {
-    width: spacing["touch-target"],
-    height: spacing["touch-target"],
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: rounded.full,
-  },
-  // Destructive action (`DESIGN.md` → buttons): filled, 44×44 at least.
-  destructive: {
-    minHeight: spacing["control-height"],
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    borderRadius: rounded.sm,
-    backgroundColor: colors.destructive,
-  },
-  destructiveLabel: {
-    ...textStyle("button"),
-    color: colors["destructive-foreground"],
-  },
-  busy: {
-    opacity: 0.6,
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-});

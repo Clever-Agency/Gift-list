@@ -1,7 +1,7 @@
+import { Text } from "@gift-list/ui";
 import { passwordResetBodySchema } from "@gift-list/contracts";
-import { Link, Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
-import { Text } from "react-native";
 import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
@@ -15,7 +15,7 @@ import {
 } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
-import { navLinkStyle } from "@/ui/nav-link";
+import { NavLink } from "@/ui/nav-link";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PasswordField } from "@/ui/text-field";
 
@@ -89,27 +89,27 @@ export default function ResetScreen() {
       <Stack.Screen options={{ title: t("reset.pageTitle", { brand }) }} />
       <AnonymousScreen title={t("reset.title")}>
         {saved ? (
-          <Text accessibilityLiveRegion="polite">{t("reset.done")}</Text>
+          <Text aria-live="polite">{t("reset.done")}</Text>
         ) : null}
         {stale ? (
-          <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <Text role="alert" aria-live="polite">
             {common("errors.reason.RESET_LINK_STALE")}
           </Text>
         ) : null}
         {!saved && !stale && issue && !issue.field ? (
-          <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <Text role="alert" aria-live="polite">
             {issue.text}
           </Text>
         ) : null}
         {saved ? (
-          <Link href="/login" style={navLinkStyle} accessibilityRole="link">
+          <NavLink href="/login">
             {t("forgot.toLogin")}
-          </Link>
+          </NavLink>
         ) : null}
         {stale ? (
-          <Link href="/forgot" style={navLinkStyle} accessibilityRole="link">
+          <NavLink href="/forgot">
             {t("reset.sendAgain")}
-          </Link>
+          </NavLink>
         ) : null}
         {!saved && !stale ? (
           <>

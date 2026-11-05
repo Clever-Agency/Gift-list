@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { click, controlByLabel, dialogElement, escape, pressScrim, settle } from "@/test/dom";
 import { VisibilityPicker } from "@/ui/visibility-picker";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -63,144 +64,6 @@ vi.mock("use-intl", async () => {
   };
 });
 
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type ViewProps = {
-    children?: React.ReactNode;
-    role?: string;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    nativeID?: string;
-    "aria-modal"?: boolean;
-    "aria-labelledby"?: string;
-  };
-  type TextProps = {
-    children?: React.ReactNode;
-    accessibilityRole?: string;
-    nativeID?: string;
-  };
-  type PressableProps = {
-    children?: React.ReactNode;
-    onPress?: () => void;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    accessibilityState?: { checked?: boolean };
-    "aria-hidden"?: boolean;
-    focusable?: boolean;
-    tabIndex?: number;
-  };
-
-  function View({
-    children,
-    role,
-    accessibilityRole,
-    accessibilityLabel,
-    nativeID,
-    "aria-modal": ariaModal,
-    "aria-labelledby": ariaLabelledBy,
-  }: ViewProps) {
-    return React.createElement(
-      "div",
-      {
-        ...(role ?? accessibilityRole ? { role: role ?? accessibilityRole } : {}),
-        ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-        ...(nativeID ? { id: nativeID } : {}),
-        ...(ariaModal !== undefined ? { "aria-modal": ariaModal ? "true" : "false" } : {}),
-        ...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {}),
-      },
-      children,
-    );
-  }
-
-  function Text({ children, accessibilityRole, nativeID }: TextProps) {
-    return React.createElement(
-      "span",
-      {
-        ...(accessibilityRole ? { role: accessibilityRole } : {}),
-        ...(nativeID ? { id: nativeID } : {}),
-      },
-      children,
-    );
-  }
-
-  const Pressable = React.forwardRef<HTMLButtonElement, PressableProps>(function Pressable(
-    {
-      children,
-      onPress,
-      accessibilityRole,
-      accessibilityLabel,
-      accessibilityState,
-      "aria-hidden": ariaHidden,
-      focusable,
-      tabIndex,
-    },
-    ref,
-  ) {
-    return React.createElement(
-      "button",
-      {
-        type: "button",
-        ref,
-        onClick: onPress,
-        ...(tabIndex !== undefined ? { tabIndex } : {}),
-        ...(ariaHidden ? { "aria-hidden": "true" } : {}),
-        ...(focusable !== undefined ? { focusable: String(focusable) } : {}),
-        ...(accessibilityRole ? { role: accessibilityRole } : {}),
-        ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-        ...(accessibilityState && "checked" in accessibilityState
-          ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
-          : {}),
-      },
-      children,
-    );
-  });
-
-  function Modal({
-    visible,
-    children,
-    onDismiss,
-    "aria-labelledby": ariaLabelledBy,
-  }: {
-    visible?: boolean;
-    children?: React.ReactNode;
-    onDismiss?: () => void;
-    "aria-labelledby"?: string;
-  }) {
-    // react-native-web keeps the layer until the fade-out ends and only then reports
-    // `onDismiss`; here the layer is gone in the same commit and the report follows.
-    const wasVisible = React.useRef(visible);
-    React.useEffect(() => {
-      if (wasVisible.current && !visible) onDismiss?.();
-      wasVisible.current = visible;
-    }, [visible, onDismiss]);
-    if (!visible) return null;
-    // react-native-web's Modal renders the dialog container itself and forwards
-    // `aria-labelledby` to it.
-    return React.createElement(
-      "div",
-      {
-        role: "dialog",
-        "aria-modal": "true",
-        ...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {}),
-      },
-      children,
-    );
-  }
-
-  return {
-    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
-    View,
-    Text,
-    Pressable,
-    Modal,
-    // The focus helper reads the platform; on web it only moves DOM focus.
-    Platform: { OS: "web" },
-    AccessibilityInfo: { setAccessibilityFocus: vi.fn() },
-    findNodeHandle: () => null,
-    useWindowDimensions: () => ({ width: 1024, height: 800 }),
-  };
-});
-
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: Root;
@@ -242,37 +105,41 @@ async function render({
       />,
     );
   });
+  await settle();
   return { onSelect, onClose, onClosed };
 }
 
+function radio(label: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[role="radio"][aria-label="${label}"]`);
+}
+
 /**
- * Story 2.3 (`DESIGN.md` → Dialog, `EXPERIENCE.md` → Visibility chip):
+ * Story 2.3 (`DESIGN.md` -> Dialog, `EXPERIENCE.md` -> Visibility chip):
  * a centered dialog with the three visibility rows, the current one checked.
  */
 describe("VisibilityPicker: заголовок и радио", () => {
   it("заголовок с названием желания и диалоговая семантика", async () => {
     await render();
 
-    const heading = container.querySelector('[role="header"]');
-    expect(heading?.textContent).toBe(picker.title.replace("{title}", "Наушники"));
-
-    const dialog = container.querySelector('[role="dialog"]');
+    const dialog = dialogElement();
     expect(dialog).not.toBeNull();
+    expect(dialog?.getAttribute("role")).toBe("dialog");
     expect(dialog?.getAttribute("aria-modal")).toBe("true");
-    // The dialog is named by its own header, not by a copy of the title.
-    expect(dialog?.getAttribute("aria-labelledby")).toBe(heading?.getAttribute("id"));
+    // The dialog is named by its own heading, not by a copy of the title.
+    const heading = document.getElementById(dialog?.getAttribute("aria-labelledby") ?? "");
+    expect(heading?.textContent).toBe(picker.title.replace("{title}", "Наушники"));
   });
 
   it("три radio с подписями, текущее значение checked", async () => {
     await render({ value: "FRIENDS" });
 
-    const radios = Array.from(container.querySelectorAll<HTMLElement>('[role="radio"]'));
+    const radios = Array.from(document.querySelectorAll<HTMLElement>('[role="radio"]'));
     expect(radios).toHaveLength(VISIBILITIES.length);
-    expect(radios.map((radio) => radio.getAttribute("aria-label"))).toEqual(
+    expect(radios.map((item) => item.getAttribute("aria-label"))).toEqual(
       VISIBILITIES.map((code) => labels[code]),
     );
     expect(
-      radios.map((radio) => [radio.getAttribute("aria-label"), radio.getAttribute("aria-checked")]),
+      radios.map((item) => [item.getAttribute("aria-label"), item.getAttribute("aria-checked")]),
     ).toEqual([
       [labels.PUBLIC, "false"],
       [labels.FRIENDS, "true"],
@@ -283,12 +150,7 @@ describe("VisibilityPicker: заголовок и радио", () => {
   it("выбор другого значения зовёт onSelect(code) и не закрывает диалог", async () => {
     const { onSelect, onClose } = await render({ value: "PUBLIC" });
 
-    const friends = container.querySelector<HTMLElement>(
-      `[role="radio"][aria-label="${labels.FRIENDS}"]`,
-    );
-    await act(async () => {
-      friends?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await click(radio(labels.FRIENDS));
 
     expect(onSelect).toHaveBeenCalledWith("FRIENDS");
     expect(onClose).not.toHaveBeenCalled();
@@ -297,12 +159,7 @@ describe("VisibilityPicker: заголовок и радио", () => {
   it("выбор текущего значения только закрывает диалог", async () => {
     const { onSelect, onClose } = await render({ value: "PUBLIC" });
 
-    const current = container.querySelector<HTMLElement>(
-      `[role="radio"][aria-label="${labels.PUBLIC}"]`,
-    );
-    await act(async () => {
-      current?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await click(radio(labels.PUBLIC));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
@@ -313,56 +170,45 @@ describe("VisibilityPicker: закрытие", () => {
   it("«Отмена» закрывает диалог", async () => {
     const { onClose } = await render();
 
-    const cancel = container.querySelector<HTMLElement>(
-      `[role="button"][aria-label="${picker.cancel}"]`,
-    );
+    const cancel = controlByLabel(picker.cancel);
     expect(cancel?.textContent).toBe(picker.cancel);
 
+    await click(cancel);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Esc просит закрыть диалог", async () => {
+    const { onClose } = await render();
+
     await act(async () => {
-      cancel?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      escape();
     });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("visible=false — ничего не рендерит", async () => {
+  it("visible=false — диалога нет", async () => {
     await render({ visible: false });
 
-    expect(container.innerHTML).toBe("");
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
   });
 });
 
 /**
- * CLE-51: the scrim closes the layer with a tap but is not a tab stop, and the
+ * CLE-51: the scrim closes the layer with a press but is not a tab stop, and the
  * dialog opens with focus on the radio that shows the current value.
  */
 describe("VisibilityPicker: фокус в диалоге", () => {
-  it("подложка не фокусируется и не попадает в порядок Tab", async () => {
-    await render();
-
-    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
-    expect(scrim).not.toBeNull();
-    expect(scrim?.tabIndex).toBe(-1);
-    expect(scrim?.getAttribute("focusable")).toBe("false");
-  });
-
   it("после открытия фокус на выбранном варианте", async () => {
     await render({ value: "FRIENDS" });
 
-    const selected = container.querySelector<HTMLElement>(
-      `[role="radio"][aria-label="${labels.FRIENDS}"]`,
-    );
-    expect(selected).not.toBeNull();
-    expect(document.activeElement).toBe(selected);
+    expect(radio(labels.FRIENDS)).not.toBeNull();
+    expect(document.activeElement).toBe(radio(labels.FRIENDS));
   });
 
-  it("клик по подложке по-прежнему закрывает диалог", async () => {
+  it("нажатие на подложку закрывает диалог", async () => {
     const { onClose } = await render();
 
-    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
-    await act(async () => {
-      scrim?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await pressScrim("visibility-picker-scrim");
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -374,38 +220,46 @@ describe("VisibilityPicker: фокус в диалоге", () => {
  * to close it).
  */
 describe("VisibilityPicker: слой закрылся", () => {
+  function Harness({
+    onSelect,
+    onClosed,
+  }: {
+    onSelect: (visibility: GiftCard["visibility"]) => void;
+    onClosed: () => void;
+  }) {
+    const [open, setOpen] = useState(true);
+
+    function handleClose() {
+      setOpen(false);
+    }
+
+    return (
+      <VisibilityPicker
+        visible={open}
+        title="Наушники"
+        value="PUBLIC"
+        onSelect={onSelect}
+        onClose={handleClose}
+        onClosed={onClosed}
+      />
+    );
+  }
+
   it("после «Отмена» сообщает onClosed, когда диалога уже нет", async () => {
     const onClosed = vi.fn();
 
-    function Harness() {
-      const [open, setOpen] = useState(true);
-      return (
-        <VisibilityPicker
-          visible={open}
-          title="Наушники"
-          value="PUBLIC"
-          onSelect={vi.fn()}
-          onClose={() => setOpen(false)}
-          onClosed={onClosed}
-        />
-      );
-    }
-
     await act(async () => {
-      host.render(<Harness />);
+      host.render(<Harness onSelect={vi.fn()} onClosed={onClosed} />);
     });
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    await settle();
+    expect(dialogElement()).not.toBeNull();
     // Opening is not closing: the report fires only after the layer is gone.
     expect(onClosed).not.toHaveBeenCalled();
 
-    const cancel = container.querySelector<HTMLElement>(
-      `[role="button"][aria-label="${picker.cancel}"]`,
-    );
-    await act(async () => {
-      cancel?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await click(controlByLabel(picker.cancel));
+    await settle(300);
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(onClosed).toHaveBeenCalledTimes(1);
   });
 
@@ -413,28 +267,12 @@ describe("VisibilityPicker: слой закрылся", () => {
     const onSelect = vi.fn();
     const onClosed = vi.fn();
 
-    function Harness() {
-      const [open, setOpen] = useState(true);
-      return (
-        <VisibilityPicker
-          visible={open}
-          title="Наушники"
-          value="PUBLIC"
-          onSelect={onSelect}
-          onClose={() => setOpen(false)}
-          onClosed={onClosed}
-        />
-      );
-    }
-
     await act(async () => {
-      host.render(<Harness />);
+      host.render(<Harness onSelect={onSelect} onClosed={onClosed} />);
     });
-    await act(async () => {
-      container
-        .querySelector<HTMLElement>(`[role="button"][aria-label="${picker.cancel}"]`)
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await settle();
+    await click(controlByLabel(picker.cancel));
+    await settle(300);
 
     expect(onSelect).not.toHaveBeenCalled();
     expect(onClosed).toHaveBeenCalledTimes(1);

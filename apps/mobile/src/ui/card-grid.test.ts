@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spacing } from "@/theme/tokens";
+import { spacing } from "@gift-list/ui";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 
 const gap = spacing["grid-gap"];

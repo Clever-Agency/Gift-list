@@ -44,7 +44,7 @@ development_status:
   1-6-вход-и-выход: done
   1-7-сброс-пароля-по-email: done
   1-8-часовой-пояс-пользователя: done
-  1-9-общий-ui-пакет-packages-ui-на-tamagui: backlog
+  1-9-общий-ui-пакет-packages-ui-на-tamagui: review
   epic-1-retrospective: optional
 
   epic-2: in-progress

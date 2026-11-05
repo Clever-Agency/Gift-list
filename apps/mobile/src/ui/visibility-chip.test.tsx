@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { colors, spacing } from "@/theme/tokens";
+import { colors, spacing } from "@gift-list/ui";
 import { VisibilityChip } from "@/ui/visibility-chip";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -74,12 +74,11 @@ vi.mock("expo-symbols", async () => {
       name,
       size,
       tintColor,
-      ...viewProps
     }: {
       name: Name;
       size?: number;
       tintColor?: string;
-    } & Record<string, unknown>) => {
+    }) => {
       const platforms = typeof name === "string" ? { ios: name, android: name, web: name } : name;
       return React.createElement("span", {
         "data-testid": "visibility-icon",
@@ -87,51 +86,8 @@ vi.mock("expo-symbols", async () => {
         "data-android": platforms.android,
         "data-size": String(size),
         "data-tint": tintColor,
-        // Decorative marking: the chip's word is the accessible name.
-        "data-aria-hidden": String(viewProps["aria-hidden"] ?? false),
-        "data-elements-hidden": String(viewProps.accessibilityElementsHidden ?? false),
-        "data-important-for-accessibility": String(viewProps.importantForAccessibility ?? ""),
       });
     },
-  };
-});
-
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type Props = {
-    children?: React.ReactNode;
-    onPress?: () => void;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    "aria-haspopup"?: string;
-  };
-  function element(tag: string) {
-    return function Element({ children }: Props) {
-      return React.createElement(tag, null, children);
-    };
-  }
-  return {
-    StyleSheet: { create: (styles: unknown) => styles },
-    Text: element("span"),
-    View: element("div"),
-    Pressable: ({
-      children,
-      onPress,
-      accessibilityRole,
-      accessibilityLabel,
-      "aria-haspopup": ariaHaspopup,
-    }: Props) =>
-      React.createElement(
-        "button",
-        {
-          type: "button",
-          onClick: onPress,
-          ...(accessibilityRole ? { role: accessibilityRole } : {}),
-          ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-          ...(ariaHaspopup ? { "aria-haspopup": ariaHaspopup } : {}),
-        },
-        children,
-      ),
   };
 });
 
@@ -181,9 +137,7 @@ describe("VisibilityChip: иконка и слово", () => {
   it("иконка скрыта от диктора: не дублирует подпись", async () => {
     const icon = await render("PUBLIC");
 
-    expect(icon?.getAttribute("data-aria-hidden")).toBe("true");
-    expect(icon?.getAttribute("data-elements-hidden")).toBe("true");
-    expect(icon?.getAttribute("data-important-for-accessibility")).toBe("no-hide-descendants");
+    expect(icon?.closest('[aria-hidden="true"]')).not.toBeNull();
   });
 });
 
@@ -196,16 +150,15 @@ describe("VisibilityChip: нажатие", () => {
   it("без onPress чип не кнопка", async () => {
     await render("PUBLIC");
 
-    expect(container.querySelector("button")).toBeNull();
+    expect(container.querySelector("button, [role='button']")).toBeNull();
   });
 
   it("с onPress — кнопка с подписью «Видимость: всем. Изменить», нажатие зовёт onPress", async () => {
     const onPress = vi.fn();
     await render("PUBLIC", onPress);
 
-    const button = container.querySelector("button");
+    const button = container.querySelector("[role='button']");
     expect(button).not.toBeNull();
-    expect(button?.getAttribute("role")).toBe("button");
     expect(button?.getAttribute("aria-haspopup")).toBe("dialog");
     expect(button?.getAttribute("aria-label")).toBe(
       app.gift.visibilityChipLabel.replace("{value}", app.gift.visibilityLower.PUBLIC),

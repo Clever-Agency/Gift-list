@@ -1,7 +1,7 @@
+import { Toast } from "@gift-list/ui";
 import { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo } from "react-native";
 import { useTranslations } from "use-intl";
-import { colors, rounded, spacing, textStyle } from "@/theme/tokens";
 
 /**
  * Сколько тост живёт сам (`DESIGN.md` → Toast: «обычный — `max(4 с, 1 с + 60 мс ×
@@ -66,7 +66,6 @@ export function ToastHost({
   action?: { label: string; onPress: () => void };
 }) {
   const t = useTranslations("app.toast");
-  const palette = tone === "error" ? styles.error : styles.info;
   const stays = persistent ?? tone === "error";
   const hasAction = action != null;
 
@@ -138,122 +137,19 @@ export function ToastHost({
     };
   }, [autoHide, duration, message, paused]);
 
-  function handlePointerEnter() {
-    setHovered(true);
-  }
-
-  function handlePointerLeave() {
-    setHovered(false);
-  }
-
-  function handleFocus() {
-    setFocused(true);
-  }
-
-  function handleBlur() {
-    setFocused(false);
-  }
-
   return (
-    // `box-none` is a View prop, not a style key: the overlay lets touches through to
-    // the screen, the toast inside stays tappable. In a style object it is ignored.
-    <View
+    <Toast
       testID="toast-host"
-      pointerEvents="box-none"
-      style={[styles.host, { bottom: spacing["grid-gap"] + offsetBottom }]}
-    >
-      <View
-        // React Native has no `status` accessibility role, but `role` maps to the
-        // ARIA role on the web (iPhone and Android keep the live region).
-        role={tone === "error" ? "alert" : "status"}
-        accessibilityRole={tone === "error" ? "alert" : undefined}
-        accessibilityLiveRegion={tone === "error" ? "assertive" : "polite"}
-        // `onHoverIn` живёт только на Pressable, а Pressable вокруг кнопок ломает
-        // порядок целей; в react-native-web указательные события пробрасываются и
-        // на View, ими и ловим hover мыши.
-        onPointerEnter={handlePointerEnter}
-        onPointerLeave={handlePointerLeave}
-        style={[styles.toast, palette]}
-      >
-        <Text style={[styles.message, tone === "error" ? styles.errorText : styles.infoText]}>
-          {message}
-        </Text>
-        {action ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={action.label}
-            onPress={action.onPress}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            style={({ pressed }) => [styles.dismiss, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.dismissLabel}>{action.label}</Text>
-          </Pressable>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("close")}
-          onPress={onDismiss}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          style={({ pressed }) => [styles.dismiss, pressed ? styles.pressed : null]}
-        >
-          <Text style={styles.dismissLabel}>{t("close")}</Text>
-        </Pressable>
-      </View>
-    </View>
+      message={message}
+      tone={tone}
+      closeLabel={t("close")}
+      onClose={onDismiss}
+      action={action}
+      offsetBottom={offsetBottom}
+      onHoverChange={setHovered}
+      onFocusChange={setFocused}
+    />
   );
 }
 
 ToastHost.displayName = "ToastHost";
-
-const styles = StyleSheet.create({
-  host: {
-    position: "absolute",
-    left: spacing["page-gutter"],
-    right: spacing["page-gutter"],
-    alignItems: "center",
-  },
-  toast: {
-    width: "100%",
-    maxWidth: spacing["dialog-width"],
-    minHeight: spacing["control-height"],
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing["grid-gap"] / 2,
-    borderRadius: rounded.md,
-    paddingHorizontal: spacing["card-padding"],
-    paddingVertical: spacing["grid-gap"] / 2,
-  },
-  info: {
-    backgroundColor: colors.foreground,
-  },
-  error: {
-    backgroundColor: colors.destructive,
-  },
-  message: {
-    flexShrink: 1,
-    ...textStyle("label"),
-  },
-  errorText: {
-    color: colors["destructive-foreground"],
-  },
-  infoText: {
-    color: colors["primary-foreground"],
-  },
-  dismiss: {
-    minHeight: spacing["touch-target"],
-    minWidth: spacing["touch-target"],
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-  dismissLabel: {
-    ...textStyle("button"),
-    color: colors.background,
-    textDecorationLine: "underline",
-  },
-});

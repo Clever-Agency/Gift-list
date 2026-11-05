@@ -1,7 +1,7 @@
+import { Text } from "@gift-list/ui";
 import { loginBodySchema, safeNextPath } from "@gift-list/contracts";
-import { Link, router, Stack, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { Text } from "react-native";
 import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
@@ -9,7 +9,7 @@ import { useAuth } from "@/session/auth-context";
 import { firstZodField, formIssue, issueFromError, type FormIssue } from "@/session/form-issue";
 import { paramValue, returnPath } from "@/session/return-path";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
-import { navLinkStyle } from "@/ui/nav-link";
+import { NavLink } from "@/ui/nav-link";
 import { PasswordField, TextField } from "@/ui/text-field";
 import { PrimaryButton } from "@/ui/primary-button";
 import { ToastHost } from "@/ui/toast";
@@ -91,7 +91,7 @@ export default function LoginScreen() {
       <Stack.Screen options={{ title: t("login.pageTitle", { brand }) }} />
       <AnonymousScreen title={t("login.title")}>
         {issue && !issue.field ? (
-          <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <Text role="alert" aria-live="polite">
             {issue.text}
           </Text>
         ) : null}
@@ -124,16 +124,12 @@ export default function LoginScreen() {
           }}
         />
         <PrimaryButton label={t("form.submitLogin")} onPress={handleSubmit} disabled={pending} />
-        <Link
-          href={{ pathname: "/forgot", params: carry.params }}
-          style={navLinkStyle}
-          accessibilityRole="link"
-        >
+        <NavLink href={{ pathname: "/forgot", params: carry.params }}>
           {t("login.forgot")}
-        </Link>
-        <Link href={carry} style={navLinkStyle} accessibilityRole="link">
+        </NavLink>
+        <NavLink href={carry}>
           {t("login.toRegister")}
-        </Link>
+        </NavLink>
       </AnonymousScreen>
       {toast ? <ToastHost message={toast} onDismiss={dismissToast} /> : null}
     </>

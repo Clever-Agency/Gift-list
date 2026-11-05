@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
+import { controls, dialogElement, pressScrim, settle } from "@/test/dom";
 import MyWishlistScreen from "../../app/(app)/index";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -46,9 +47,6 @@ const focusStore = vi.hoisted(() => {
     },
   };
 });
-
-/** Style props per `testID`, so layout can be asserted without a real layout engine. */
-const layout = vi.hoisted(() => ({ styles: new Map<string, unknown>() }));
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/platform/session-token", () => store);
@@ -124,161 +122,6 @@ vi.mock("expo-router", async () => {
     },
   };
 });
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type Props = {
-    children?: React.ReactNode;
-    testID?: string;
-    pointerEvents?: string;
-    role?: string;
-    style?: unknown;
-    accessible?: boolean;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    accessibilityState?: { busy?: boolean; checked?: boolean };
-  };
-  /** Keeps the style of a `testID` element; a real layout engine is not available here. */
-  function record(testID: string | undefined, style: unknown) {
-    if (testID) layout.styles.set(testID, style);
-  }
-  function domProps(
-    testID: string | undefined,
-    pointerEvents?: string,
-    role?: string,
-    accessible?: boolean,
-    accessibilityLabel?: string,
-    accessibilityState?: { busy?: boolean },
-  ) {
-    return {
-      ...(testID ? { "data-testid": testID } : {}),
-      // Mirrors RN: `pointerEvents` is a View prop, not a style key.
-      ...(pointerEvents ? { "data-pointer-events": pointerEvents } : {}),
-      // `role` is a DOM-role prop on View, forwarded as-is by react-native-web.
-      ...(role ? { role } : {}),
-      // react-native-web turns these three into the accessible region the screen
-      // reader announces: a labelled, busy box (the loading skeleton).
-      ...(accessible ? { "data-accessible": "true" } : {}),
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(accessibilityState?.busy ? { "aria-busy": "true" } : {}),
-    };
-  }
-  function element(tag: string) {
-    return function Element({
-      children,
-      testID,
-      pointerEvents,
-      role,
-      style,
-      accessible,
-      accessibilityLabel,
-      accessibilityState,
-    }: Props) {
-      record(testID, style);
-      return React.createElement(
-        tag,
-        domProps(testID, pointerEvents, role, accessible, accessibilityLabel, accessibilityState),
-        children,
-      );
-    };
-  }
-  function Modal({
-    visible,
-    children,
-    onDismiss,
-    onRequestClose,
-    "aria-labelledby": ariaLabelledBy,
-  }: {
-    visible?: boolean;
-    children?: React.ReactNode;
-    onDismiss?: () => void;
-    onRequestClose?: () => void;
-    "aria-labelledby"?: string;
-  }) {
-    // react-native-web keeps the layer until the fade-out ends and only then reports
-    // `onDismiss`; here the layer is gone in the same commit and the report follows.
-    const wasVisible = React.useRef(visible);
-    React.useEffect(() => {
-      if (wasVisible.current && !visible) onDismiss?.();
-      wasVisible.current = visible;
-    }, [visible, onDismiss]);
-    // Esc, like react-native-web's ModalContent, arrives as `onRequestClose`.
-    React.useEffect(() => {
-      if (!visible) return undefined;
-      function closeOnEscape(event: KeyboardEvent) {
-        if (event.key === "Escape") onRequestClose?.();
-      }
-      document.addEventListener("keyup", closeOnEscape);
-      return () => document.removeEventListener("keyup", closeOnEscape);
-    }, [visible, onRequestClose]);
-    if (!visible) return null;
-    // react-native-web's Modal renders the dialog container itself and forwards
-    // `aria-labelledby` to it (the same stub the VisibilityPicker tests use).
-    return React.createElement(
-      "div",
-      {
-        role: "dialog",
-        "aria-modal": "true",
-        ...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {}),
-      },
-      children,
-    );
-  }
-  const Pressable = React.forwardRef<
-    HTMLButtonElement,
-    Props & { onPress?: () => void; "aria-hidden"?: boolean }
-  >(function Pressable(
-    {
-      children,
-      onPress,
-      accessibilityRole,
-      accessibilityLabel,
-      accessibilityState,
-      testID,
-      style,
-      "aria-hidden": ariaHidden,
-    },
-    ref,
-  ) {
-    // Pressable takes `({ pressed }) => style`, the resting state is enough here.
-    record(
-      testID,
-      typeof style === "function"
-        ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
-        : style,
-    );
-    return React.createElement(
-      "button",
-      {
-        type: "button",
-        ref,
-        ...(accessibilityRole ? { role: accessibilityRole } : {}),
-        ...(ariaHidden ? { "aria-hidden": "true" } : {}),
-        ...(accessibilityState && "checked" in accessibilityState
-          ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
-          : {}),
-        "aria-label": accessibilityLabel,
-        onClick: onPress,
-        ...domProps(testID),
-      },
-      children,
-    );
-  });
-  return {
-    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
-    Text: element("span"),
-    View: element("div"),
-    ScrollView: element("div"),
-    Modal,
-    // The focus helper reads the platform and the screen-reader call; on web it only
-    // moves DOM focus, so the accessibility stub is never used here.
-    Platform: { OS: "web" },
-    AccessibilityInfo: { setAccessibilityFocus: vi.fn() },
-    findNodeHandle: () => null,
-    // One column, like a phone in the browser (DESIGN.md → columns).
-    useWindowDimensions: () => ({ width: 375, height: 800 }),
-    Pressable,
-  };
-});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -335,8 +178,9 @@ function giftsAnswer(cards: unknown[]) {
 let root: Root;
 let container: HTMLElement;
 
+/** Everything on screen, layers included: a `Dialog` is portalled outside the container. */
 function text(): string {
-  return container.textContent ?? "";
+  return document.body.textContent ?? "";
 }
 
 /**
@@ -355,23 +199,10 @@ function expectNoSmoke() {
   expect(text()).not.toContain(formatPrice(250000, "RUB", "ru"));
 }
 
-function button(label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll("button")).find((node) =>
+function button(label: string): HTMLElement | undefined {
+  return controls(document).find((node) =>
     (node.textContent ?? "").includes(label),
   );
-}
-
-/** Style arrays are plain objects here: `StyleSheet.create` is the identity in the mock. */
-function flattenStyle(style: unknown): Record<string, unknown> {
-  if (Array.isArray(style)) {
-    return style.reduce<Record<string, unknown>>(
-      (acc, part) => ({ ...acc, ...flattenStyle(part) }),
-      {},
-    );
-  }
-  return typeof style === "object" && style !== null
-    ? { ...(style as Record<string, unknown>) }
-    : {};
 }
 
 async function press(label: string) {
@@ -380,6 +211,7 @@ async function press(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 /** Leaves the screen for another route (the composer), as a push would. */
@@ -405,8 +237,8 @@ function listReads(): number {
  * The visibility chip is a button only on an open wish; its accessible name starts
  * with `app.gift.visibilityChipLabel` and the visible word is the chip value.
  */
-function chip(value: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll("button")).find(
+function chip(value: string): HTMLElement | undefined {
+  return controls(document).find(
     (node) =>
       (node.getAttribute("aria-label") ?? "").startsWith("Видимость:") &&
       (node.textContent ?? "").includes(value),
@@ -425,11 +257,12 @@ function patchCalls(): unknown[][] {
 }
 
 async function chooseInDialog(label: string) {
-  const option = container.querySelector<HTMLElement>(`[role="radio"][aria-label="${label}"]`);
+  const option = document.querySelector<HTMLElement>(`[role="radio"][aria-label="${label}"]`);
   expect(option).not.toBeNull();
   await act(async () => {
     option?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 async function mount() {
@@ -444,7 +277,6 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  layout.styles.clear();
   focusStore.reset();
   search.params = {};
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
@@ -537,7 +369,6 @@ describe("мой вишлист: список", () => {
     const region = container.querySelector('[aria-label="Загружаем вишлист"]');
     expect(region).not.toBeNull();
     expect(region?.getAttribute("aria-busy")).toBe("true");
-    expect(region?.getAttribute("data-accessible")).toBe("true");
     expect(region?.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 
@@ -615,7 +446,7 @@ describe("мой вишлист: список", () => {
     expect(items).toHaveLength(2);
 
     // The label comes from `app.gift.edit`; the mock renders Pressable as a button.
-    const card = Array.from(container.querySelectorAll("button")).find(
+    const card = controls(document).find(
       (node) => node.getAttribute("aria-label") === "Изменить «Наушники»",
     );
     expect(card).toBeDefined();
@@ -623,7 +454,9 @@ describe("мой вишлист: список", () => {
     // transparent to presses outside the chip.
     expect(chip("Всем")).toBeDefined();
     expect(card?.contains(chip("Всем") ?? null)).toBe(false);
-    expect(chip("Всем")?.parentElement?.getAttribute("data-pointer-events")).toBe("box-none");
+    // `box-none`: the layer itself lets presses through to the card button underneath.
+    const chipLayer = chip("Всем")?.parentElement as HTMLElement;
+    expect(getComputedStyle(chipLayer).pointerEvents).toBe("none");
     await act(async () => {
       card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -643,7 +476,7 @@ describe("мой вишлист: список", () => {
     respond(giftsAnswer([gift()]));
     await mount();
 
-    const card = Array.from(container.querySelectorAll("button")).find(
+    const card = controls(document).find(
       (node) => node.getAttribute("aria-label") === "Изменить «Наушники»",
     );
     const spacer = card?.lastElementChild as HTMLElement | null;
@@ -788,17 +621,21 @@ describe("мой вишлист: список", () => {
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     const host = container.querySelector('[data-testid="toast-host"]');
     expect(host).not.toBeNull();
-    // The touch-through overlay: the prop reaches the platform, the toast stays tappable.
-    expect(host?.getAttribute("data-pointer-events")).toBe("box-none");
-    const hostStyle = flattenStyle(layout.styles.get("toast-host"));
-    expect(hostStyle).not.toHaveProperty("pointerEvents");
+    // The touch-through overlay: it takes no presses itself, the toast inside stays tappable.
+    const hostStyle = getComputedStyle(host as Element);
+    expect(hostStyle.pointerEvents).toBe("none");
 
     // Geometry: the toast bottom sits at or above the top of the footer row.
-    const footerStyle = flattenStyle(layout.styles.get("wishlist-footer"));
-    const logoutStyle = flattenStyle(layout.styles.get("wishlist-logout"));
-    const footerHeight = Number(footerStyle.paddingBottom) + Number(logoutStyle.minHeight);
+    const footerStyle = getComputedStyle(
+      container.querySelector('[data-testid="wishlist-footer"]') as Element,
+    );
+    const logoutStyle = getComputedStyle(
+      container.querySelector('[data-testid="wishlist-logout"]') as Element,
+    );
+    const footerHeight =
+      Number.parseFloat(footerStyle.paddingBottom) + Number.parseFloat(logoutStyle.minHeight);
     expect(footerHeight).toBeGreaterThan(0);
-    expect(Number(hostStyle.bottom)).toBeGreaterThanOrEqual(footerHeight);
+    expect(Number.parseFloat(hostStyle.bottom)).toBeGreaterThanOrEqual(footerHeight);
 
     // And the control still works while the toast is on screen.
     api.apiRequest.mockImplementation((path: string) =>
@@ -1218,7 +1055,7 @@ describe("мой вишлист: смена видимости с чипа", () 
     await mount();
 
     await press("Всем");
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(dialogElement()).not.toBeNull();
     expect(text()).toContain("Кто видит «Наушники»");
 
     // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
@@ -1275,7 +1112,7 @@ describe("мой вишлист: смена видимости с чипа", () 
     await mount();
     expect(chip("Секрет")?.getAttribute("aria-label")).toBe("Видимость: секрет. Изменить");
     await press("Секрет");
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(dialogElement()).not.toBeNull();
     const reads = listReads();
 
     api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
@@ -1294,7 +1131,7 @@ describe("мой вишлист: смена видимости с чипа", () 
 
     // The in-flight flag is cleared, so the chip opens the dialog again.
     await press("Секрет");
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(dialogElement()).not.toBeNull();
   });
 
   it("VALIDATION: откат, текст ошибки и тихая перезагрузка списка", async () => {
@@ -1361,7 +1198,7 @@ describe("мой вишлист: смена видимости с чипа", () 
 
     await press("Отмена");
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(chip("Всем")).toBeDefined();
     expect(patchCalls()).toHaveLength(0);
     expect(text()).not.toContain("Видимость: друзьям");
@@ -1382,7 +1219,7 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     const trigger = chip("Всем");
     expect(trigger).toBeDefined();
     await press("Всем");
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(dialogElement()).not.toBeNull();
     // The dialog opens on the selected radio, not on the trigger behind it.
     expect(document.activeElement).not.toBe(trigger);
     return trigger as HTMLButtonElement;
@@ -1393,7 +1230,7 @@ describe("мой вишлист: возврат фокуса на чип", () =>
 
     await press("Отмена");
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 
@@ -1401,22 +1238,19 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     const trigger = await openPicker();
 
     await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape" }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 
   it("тап по подложке: фокус на чипе, который открыл диалог", async () => {
     const trigger = await openPicker();
 
-    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
-    await act(async () => {
-      scrim?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await pressScrim("visibility-picker-scrim");
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 
@@ -1432,7 +1266,7 @@ describe("мой вишлист: возврат фокуса на чип", () =>
 
     await chooseInDialog("Друзьям");
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
     // Never `<body>`: the layer hands focus back instead of dropping it.
     expect(document.activeElement).not.toBe(document.body);

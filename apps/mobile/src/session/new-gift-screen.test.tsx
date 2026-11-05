@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
+import { controls, dialogElement, escape, settle, typeInto } from "@/test/dom";
 import NewGiftScreen from "../../app/(app)/gifts/new";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -134,154 +135,6 @@ vi.mock("expo-router/react-navigation", () => ({
   usePreventRemove: guard.register,
   useNavigation: guard.useNavigation,
 }));
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type ChildrenProps = { children?: React.ReactNode };
-  type TextProps = ChildrenProps & {
-    accessibilityRole?: string;
-    accessibilityLiveRegion?: string;
-  };
-  type ViewProps = ChildrenProps & {
-    ref?: React.Ref<HTMLDivElement>;
-    role?: string;
-    accessibilityRole?: string;
-    nativeID?: string;
-    tabIndex?: number;
-  };
-  type PressableProps = ChildrenProps & {
-    ref?: React.Ref<HTMLButtonElement>;
-    onPress?: () => void;
-    disabled?: boolean;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    accessibilityState?: { checked?: boolean; disabled?: boolean; busy?: boolean };
-  };
-  type InputProps = {
-    value?: string;
-    onChangeText?: (value: string) => void;
-    accessibilityLabel?: string;
-    placeholder?: string;
-    maxLength?: number;
-  };
-
-  function Text({ children, accessibilityRole }: TextProps) {
-    const role = accessibilityRole as React.AriaRole | undefined;
-    return React.createElement("span", role ? { role } : null, children);
-  }
-  function View({ ref, children, role, accessibilityRole, nativeID, tabIndex }: ViewProps) {
-    const props: Record<string, unknown> = {
-      ref,
-      ...(role ?? accessibilityRole ? { role: role ?? accessibilityRole } : {}),
-      ...(nativeID ? { id: nativeID } : {}),
-      // The discard step's title is the layer's focus target on the web.
-      ...(tabIndex != null ? { tabIndex } : {}),
-    };
-    return React.createElement("div", props, children);
-  }
-  function ScrollView({ children }: ChildrenProps) {
-    return React.createElement("div", null, children);
-  }
-  /**
-   * `Modal` mounts its children only while visible, like the platform, reports the
-   * end of the fade-out through `onDismiss`, and takes Esc through `onRequestClose`.
-   */
-  function Modal({
-    visible,
-    children,
-    onDismiss,
-    onRequestClose,
-    "aria-labelledby": ariaLabelledBy,
-  }: ChildrenProps & {
-    visible?: boolean;
-    onDismiss?: () => void;
-    onRequestClose?: () => void;
-    "aria-labelledby"?: string;
-  }) {
-    // react-native-web keeps the layer until the fade-out ends and only then reports
-    // `onDismiss`; here the layer is gone in the same commit and the report follows.
-    const wasVisible = React.useRef(visible);
-    React.useEffect(() => {
-      if (wasVisible.current && !visible) onDismiss?.();
-      wasVisible.current = visible;
-    }, [visible, onDismiss]);
-    if (!visible) return null;
-    // react-native-web's Modal renders the dialog container itself and forwards
-    // `aria-labelledby` to it.
-    return React.createElement(
-      "div",
-      {
-        "data-testid": "modal",
-        role: "dialog",
-        "aria-modal": "true",
-        ...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {}),
-        onKeyDown: (event: React.KeyboardEvent) => {
-          if (event.key === "Escape") onRequestClose?.();
-        },
-      },
-      children,
-    );
-  }
-  function Pressable({
-    ref,
-    children,
-    onPress,
-    disabled,
-    accessibilityLabel,
-    accessibilityState,
-  }: PressableProps) {
-    const props: React.ComponentPropsWithRef<"button"> = {
-      ref,
-      type: "button",
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(accessibilityState && "checked" in accessibilityState
-        ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
-        : {}),
-      ...(disabled ? { disabled: true, "aria-disabled": "true" } : {}),
-      // A disabled `Pressable` does not run `onPress`, same as the platform.
-      ...(disabled ? {} : { onClick: onPress }),
-    };
-    return React.createElement("button", props, children);
-  }
-  function TextInput({
-    value,
-    onChangeText,
-    accessibilityLabel,
-    placeholder,
-    maxLength,
-  }: InputProps) {
-    const props: React.InputHTMLAttributes<HTMLInputElement> = {
-      value: value ?? "",
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(placeholder ? { placeholder } : {}),
-      ...(maxLength != null ? { maxLength } : {}),
-      onChange: (event: { target: { value: string } }) => onChangeText?.(event.target.value),
-    };
-    return React.createElement("input", props);
-  }
-
-  return {
-    StyleSheet: { create: (styles: unknown) => styles },
-    Text,
-    View,
-    ScrollView,
-    TextInput,
-    Pressable,
-    Modal,
-    // The discard guard asks the platform before it touches the browser's history.
-    Platform: {
-      get OS() {
-        return platform.os;
-      },
-    },
-    // One column, like a phone in the browser (`DESIGN.md` → columns).
-    useWindowDimensions: () => ({ width: 375, height: 800 }),
-    AccessibilityInfo: {
-      announceForAccessibility: vi.fn(),
-      setAccessibilityFocus: vi.fn(),
-    },
-    findNodeHandle: () => null,
-  };
-});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -343,12 +196,13 @@ function signOutFails() {
 let root: Root;
 let container: HTMLElement;
 
+/** Everything on screen, layers included: a `Dialog` is portalled outside the container. */
 function text(): string {
-  return container.textContent ?? "";
+  return document.body.textContent ?? "";
 }
 
 function field(label: string): HTMLInputElement {
-  const input = Array.from(container.querySelectorAll("input")).find(
+  const input = Array.from(container.querySelectorAll<HTMLInputElement>("input, textarea")).find(
     (node) => node.getAttribute("aria-label") === label,
   );
   expect(input, `поле «${label}»`).toBeDefined();
@@ -363,14 +217,11 @@ function fieldText(label: string): string {
 /** Controlled input: set the value past React's tracker, then let React see the `input` event. */
 async function type(label: string, value: string) {
   const input = field(label);
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await typeInto(input, value);
 }
 
-function button(label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll("button")).find((node) =>
+function button(label: string): HTMLElement | undefined {
+  return controls(document).find((node) =>
     (node.textContent ?? "").includes(label),
   );
 }
@@ -381,13 +232,14 @@ async function press(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 /** A button inside the open confirm dialog: «Отмена» exists twice on a dirty form. */
-function dialogButton(label: string): HTMLButtonElement | undefined {
-  const dialog = container.querySelector('[role="dialog"]');
+function dialogButton(label: string): HTMLElement | undefined {
+  const dialog = dialogElement();
   if (!dialog) return undefined;
-  return Array.from(dialog.querySelectorAll("button")).find((node) =>
+  return controls(dialog).find((node) =>
     (node.textContent ?? "").includes(label),
   );
 }
@@ -398,13 +250,14 @@ async function pressInDialog(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 /** A dialog button by its accessible name: the close cross has no visible text. */
-function dialogLabeled(label: string): HTMLButtonElement | undefined {
-  const dialog = container.querySelector('[role="dialog"]');
+function dialogLabeled(label: string): HTMLElement | undefined {
+  const dialog = dialogElement();
   if (!dialog) return undefined;
-  return Array.from(dialog.querySelectorAll("button")).find(
+  return controls(dialog).find(
     (node) => node.getAttribute("aria-label") === label,
   );
 }
@@ -415,15 +268,15 @@ async function pressInDialogLabeled(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
-/** Esc reaches the dialog's `onRequestClose`, as on react-native-web. */
+/** Esc reaches the open layer from the document, as in the browser. */
 async function escapeDialog() {
   await act(async () => {
-    container
-      .querySelector('[data-testid="modal"]')
-      ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    escape();
   });
+  await settle(10);
 }
 
 async function mount() {
@@ -646,7 +499,7 @@ describe("новое желание: форма", () => {
     await press("Добавить желание");
 
     const submit = button("Добавить желание");
-    expect(submit?.disabled).toBe(true);
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
     expect(submit?.getAttribute("aria-disabled")).toBe("true");
     expect(gifts.createGift).toHaveBeenCalledTimes(1);
 
@@ -1111,7 +964,7 @@ describe("новое желание: фокус в вопросе о черно�
     await act(async () => cancel?.focus());
     await press("Отмена");
 
-    const dialog = container.querySelector('[role="dialog"]');
+    const dialog = dialogElement();
     expect(dialog).not.toBeNull();
     expect(dialog?.contains(document.activeElement)).toBe(true);
 

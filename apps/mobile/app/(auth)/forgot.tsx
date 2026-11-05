@@ -1,7 +1,7 @@
+import { Text } from "@gift-list/ui";
 import { passwordForgotBodySchema } from "@gift-list/contracts";
-import { Link, router, Stack, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Text } from "react-native";
 import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
@@ -9,7 +9,7 @@ import { useAuth } from "@/session/auth-context";
 import { firstZodField, formIssue, issueFromError, type FormIssue } from "@/session/form-issue";
 import { paramValue, returnPath } from "@/session/return-path";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
-import { navLinkStyle } from "@/ui/nav-link";
+import { NavLink } from "@/ui/nav-link";
 import { PrimaryButton } from "@/ui/primary-button";
 import { TextField } from "@/ui/text-field";
 
@@ -89,10 +89,10 @@ export default function ForgotScreen() {
       <Stack.Screen options={{ title: t("forgot.pageTitle", { brand }) }} />
       <AnonymousScreen title={t("forgot.title")}>
         {sent ? (
-          <Text accessibilityLiveRegion="polite">{t("forgot.sent")}</Text>
+          <Text aria-live="polite">{t("forgot.sent")}</Text>
         ) : null}
         {issue && !issue.field ? (
-          <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <Text role="alert" aria-live="polite">
             {issue.text}
           </Text>
         ) : null}
@@ -112,9 +112,9 @@ export default function ForgotScreen() {
           }}
         />
         <PrimaryButton label={t("forgot.submit")} onPress={handleSubmit} disabled={pending} />
-        <Link href={loginHref} style={navLinkStyle} accessibilityRole="link">
+        <NavLink href={loginHref}>
           {t("forgot.toLogin")}
-        </Link>
+        </NavLink>
       </AnonymousScreen>
     </>
   );

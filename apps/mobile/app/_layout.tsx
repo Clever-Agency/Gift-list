@@ -1,3 +1,4 @@
+import { colors, createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { Lora_600SemiBold } from "@expo-google-fonts/lora";
 import {
   Manrope_400Regular,
@@ -16,7 +17,14 @@ import { getMessages, negotiateLocale } from "@gift-list/contracts";
 import { contactsAvailable } from "@/platform/contacts";
 import { secureStoreAvailable } from "@/platform/secure-store";
 import { AuthProvider } from "@/session/auth-context";
-import { colors } from "@/theme/tokens";
+
+// The faces `useFonts` loads below carry the weight in their name, so the theme maps
+// the weights onto them (one config per app: `createTamagui` registers itself).
+const config = createGiftListConfig({
+  body: "Manrope",
+  heading: "Lora",
+  bodyFaces: { 400: "Manrope", 500: "Manrope-500", 600: "Manrope-600" },
+});
 
 void contactsAvailable();
 void secureStoreAvailable();
@@ -47,19 +55,21 @@ export default function RootLayout() {
   const locale = negotiateLocale(preferred);
 
   return (
-    <SafeAreaProvider>
-      <IntlProvider locale={locale} messages={getMessages(locale)}>
-        <AuthProvider>
-          <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.background },
-            }}
-          />
-        </AuthProvider>
-      </IntlProvider>
-    </SafeAreaProvider>
+    <GiftListProvider config={config}>
+      <SafeAreaProvider>
+        <IntlProvider locale={locale} messages={getMessages(locale)}>
+          <AuthProvider>
+            <StatusBar style="dark" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: colors.background },
+              }}
+            />
+          </AuthProvider>
+        </IntlProvider>
+      </SafeAreaProvider>
+    </GiftListProvider>
   );
 }
 

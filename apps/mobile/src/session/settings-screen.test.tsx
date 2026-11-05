@@ -4,6 +4,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
+import { controls } from "@/test/dom";
 import SettingsScreen from "../../app/(app)/settings";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -65,73 +66,6 @@ vi.mock("expo-router", () => ({
   router: navigation,
   Stack: { Screen: () => null },
 }));
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type ChildrenProps = { children?: React.ReactNode };
-  type TextProps = ChildrenProps & {
-    accessibilityRole?: string;
-    accessibilityLiveRegion?: string;
-  };
-  type PressableProps = ChildrenProps & {
-    onPress?: () => void;
-    disabled?: boolean;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    accessibilityState?: { disabled?: boolean; busy?: boolean };
-  };
-  type InputProps = {
-    value?: string;
-    onChangeText?: (value: string) => void;
-    accessibilityLabel?: string;
-    placeholder?: string;
-  };
-
-  function Text({ children, accessibilityRole }: TextProps) {
-    const role = accessibilityRole as React.AriaRole | undefined;
-    return React.createElement("span", role ? { role } : null, children);
-  }
-  function View({ children }: ChildrenProps) {
-    return React.createElement("div", null, children);
-  }
-  function ScrollView({ children }: ChildrenProps) {
-    return React.createElement("div", null, children);
-  }
-  function Pressable({
-    children,
-    onPress,
-    disabled,
-    accessibilityLabel,
-    accessibilityState,
-  }: PressableProps) {
-    const props: React.ButtonHTMLAttributes<HTMLButtonElement> = {
-      type: "button",
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(disabled ? { disabled: true, "aria-disabled": "true" } : {}),
-      // A disabled `Pressable` does not run `onPress`, same as the platform.
-      ...(disabled ? {} : { onClick: onPress }),
-    };
-    return React.createElement("button", props, children);
-  }
-  function TextInput({ value, onChangeText, accessibilityLabel }: InputProps) {
-    const props: React.InputHTMLAttributes<HTMLInputElement> = {
-      value: value ?? "",
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      onChange: (event: { target: { value: string } }) => onChangeText?.(event.target.value),
-    };
-    return React.createElement("input", props);
-  }
-
-  return {
-    StyleSheet: { create: (styles: unknown) => styles },
-    Text,
-    View,
-    ScrollView,
-    TextInput,
-    Pressable,
-    useWindowDimensions: () => ({ width: 375, height: 800 }),
-    AccessibilityInfo: { announceForAccessibility: vi.fn() },
-  };
-});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -199,10 +133,8 @@ async function type(label: string, value: string) {
   });
 }
 
-function button(label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll("button")).find((node) =>
-    (node.textContent ?? "").includes(label),
-  );
+function button(label: string): HTMLElement | undefined {
+  return controls(container).find((node) => (node.textContent ?? "").includes(label));
 }
 
 async function press(label: string) {
@@ -322,6 +254,7 @@ describe("настройки: ник", () => {
     expect(me.updateNick).toHaveBeenCalledWith("New_Nick");
     expect(text()).toContain("Ник изменён.");
     expect(field("Ник").value).toBe("newnick");
+    expect(field("Ник").readOnly).toBe(false);
     expect(probe.auth?.state).toEqual({ status: "ready", user: changed });
   });
 
@@ -334,8 +267,11 @@ describe("настройки: ник", () => {
     await press("Сохранить");
 
     const save = button("Сохранить");
-    expect(save?.disabled).toBe(true);
+    // Busy keeps the button focusable: `aria-disabled`, not the `disabled` attribute.
+    expect((save as HTMLButtonElement | undefined)?.disabled).toBe(false);
     expect(save?.getAttribute("aria-disabled")).toBe("true");
+    expect(save?.getAttribute("aria-busy")).toBe("true");
+    expect(field("Ник").readOnly).toBe(true);
     expect(me.updateNick).toHaveBeenCalledTimes(1);
 
     await act(async () => {

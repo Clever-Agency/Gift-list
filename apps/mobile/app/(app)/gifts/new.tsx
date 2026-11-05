@@ -1,14 +1,14 @@
 import type { GiftInput } from "@gift-list/contracts";
+import { Column, Heading, Screen, ScrollView, spacing, Text } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { createGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { useDiscardGuard } from "@/session/use-discard-guard";
-import { colors, spacing, textStyle } from "@/theme/tokens";
 import { pageGutter } from "@/ui/card-grid";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import {
@@ -195,47 +195,57 @@ export default function NewGiftScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <Stack.Screen options={{ title: giftForm("pageTitle.create", { brand }) }} />
-      <View style={[styles.column, { paddingHorizontal: gutter }]}>
-        <Text style={styles.logo}>{common("brandName", { brand })}</Text>
-        <Text accessibilityRole="header" style={styles.title}>
-          {giftForm("title.create")}
-        </Text>
-        <ScrollView
-          style={styles.scrollArea}
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
+    <Screen>
+      <SafeAreaView style={{ flex: 1 }}>
+        <Stack.Screen options={{ title: giftForm("pageTitle.create", { brand }) }} />
+        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
+        <Column
+          size="form"
+          flex={1}
+          paddingHorizontal={gutter}
+          paddingTop="$page-gutter"
+          gap="$2"
         >
-          <GiftForm
-            ref={formRef}
-            submitting={submitting}
-            onSubmit={submit}
-            submitLabel={giftForm("action.create")}
-            serverError={serverError}
-            submitRequest={submitRequest}
-            onDirtyChange={setDirty}
-            onCancel={cancel}
-          />
-        </ScrollView>
-      </View>
-      {toast ? (
-        <ToastHost message={toast} onDismiss={dismissToast} />
-      ) : null}
-      <ConfirmDialog
-        variant="discard"
-        visible={discardOpen}
-        title={giftForm("discard.title")}
-        confirmLabel={giftForm("discard.confirm")}
-        declineLabel={giftForm("discard.decline")}
-        closeLabel={t("toast.close")}
-        busy={submitting}
-        onConfirm={saveDiscard}
-        onDecline={leaveDiscard}
-        onClose={closeDiscard}
-        onClosed={restoreFormFocus}
-      />
-    </SafeAreaView>
+          <Text kind="display-sm" tone="primary" textAlign="center">
+            {common("brandName", { brand })}
+          </Text>
+          <Heading level={1}>{giftForm("title.create")}</Heading>
+          <ScrollView
+            flex={1}
+            contentContainerStyle={{
+              paddingTop: spacing["grid-gap"] / 2,
+              paddingBottom: spacing["section-gap"],
+            }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <GiftForm
+              ref={formRef}
+              submitting={submitting}
+              onSubmit={submit}
+              submitLabel={giftForm("action.create")}
+              serverError={serverError}
+              submitRequest={submitRequest}
+              onDirtyChange={setDirty}
+              onCancel={cancel}
+            />
+          </ScrollView>
+        </Column>
+        {toast ? <ToastHost message={toast} onDismiss={dismissToast} /> : null}
+        <ConfirmDialog
+          variant="discard"
+          visible={discardOpen}
+          title={giftForm("discard.title")}
+          confirmLabel={giftForm("discard.confirm")}
+          declineLabel={giftForm("discard.decline")}
+          closeLabel={t("toast.close")}
+          busy={submitting}
+          onConfirm={saveDiscard}
+          onDecline={leaveDiscard}
+          onClose={closeDiscard}
+          onClosed={restoreFormFocus}
+        />
+      </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -252,35 +262,3 @@ function toGiftInput(values: GiftFormValues): GiftInput {
     visibility: values.visibility,
   };
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  column: {
-    flex: 1,
-    width: "100%",
-    // A form reads best narrow: `DESIGN.md` → Layout → max-form.
-    maxWidth: spacing["max-form"],
-    alignSelf: "center",
-    paddingTop: spacing["page-gutter"],
-    gap: spacing["grid-gap"] / 2,
-  },
-  logo: {
-    ...textStyle("display-sm"),
-    color: colors.primary,
-    textAlign: "center",
-  },
-  title: {
-    ...textStyle("heading"),
-    color: colors.foreground,
-  },
-  scrollArea: {
-    flex: 1,
-  },
-  scroll: {
-    paddingTop: spacing["grid-gap"] / 2,
-    paddingBottom: spacing["section-gap"],
-  },
-});

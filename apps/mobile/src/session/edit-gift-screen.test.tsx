@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
+import { controls, dialogElement, escape, pressScrim, settle, typeInto } from "@/test/dom";
 import EditGiftScreen from "../../app/(app)/gifts/[id]/edit";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -141,206 +142,6 @@ vi.mock("expo-router/react-navigation", () => ({
   usePreventRemove: guard.register,
   useNavigation: guard.useNavigation,
 }));
-vi.mock("react-native", async () => {
-  const React = await import("react");
-  type ChildrenProps = { children?: React.ReactNode };
-  type TextProps = ChildrenProps & {
-    accessibilityRole?: string;
-    accessibilityLiveRegion?: string;
-    nativeID?: string;
-  };
-  type ViewProps = ChildrenProps & {
-    ref?: React.Ref<HTMLDivElement>;
-    testID?: string;
-    accessible?: boolean;
-    accessibilityLabel?: string;
-    accessibilityState?: { busy?: boolean };
-    role?: string;
-    accessibilityRole?: string;
-    nativeID?: string;
-    tabIndex?: number;
-  };
-  type PressableProps = ChildrenProps & {
-    ref?: React.Ref<HTMLButtonElement>;
-    onPress?: () => void;
-    disabled?: boolean;
-    accessibilityRole?: string;
-    accessibilityLabel?: string;
-    accessibilityState?: { checked?: boolean; disabled?: boolean; busy?: boolean };
-    "aria-hidden"?: boolean;
-    focusable?: boolean;
-    tabIndex?: number;
-  };
-  type InputProps = {
-    value?: string;
-    onChangeText?: (value: string) => void;
-    accessibilityLabel?: string;
-    placeholder?: string;
-    maxLength?: number;
-  };
-
-  function Text({ children, accessibilityRole, nativeID }: TextProps) {
-    const role = accessibilityRole as React.AriaRole | undefined;
-    return React.createElement(
-      "span",
-      {
-        ...(role ? { role } : {}),
-        ...(nativeID ? { id: nativeID } : {}),
-      },
-      children,
-    );
-  }
-  function View({
-    ref,
-    children,
-    testID,
-    accessible,
-    accessibilityLabel,
-    accessibilityState,
-    role,
-    accessibilityRole,
-    nativeID,
-    tabIndex,
-  }: ViewProps) {
-    const props: Record<string, unknown> = {
-      ref,
-      ...(testID ? { "data-testid": testID } : {}),
-      ...(accessible ? { "data-accessible": "true" } : {}),
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(accessibilityState?.busy ? { "aria-busy": "true" } : {}),
-      ...(role ?? accessibilityRole ? { role: role ?? accessibilityRole } : {}),
-      ...(nativeID ? { id: nativeID } : {}),
-      // The discard step's title is the layer's focus target on the web.
-      ...(tabIndex != null ? { tabIndex } : {}),
-    };
-    return React.createElement("div", props, children);
-  }
-  function ScrollView({ children }: ChildrenProps) {
-    return React.createElement("div", null, children);
-  }
-  const Pressable = React.forwardRef<HTMLButtonElement, PressableProps>(function Pressable(
-    {
-      children,
-      onPress,
-      disabled,
-      accessibilityLabel,
-      accessibilityState,
-      "aria-hidden": ariaHidden,
-      focusable,
-      tabIndex,
-    },
-    ref,
-  ) {
-    const props: React.ComponentPropsWithRef<"button"> = {
-      type: "button",
-      ref,
-      ...(tabIndex !== undefined ? { tabIndex } : {}),
-      ...(ariaHidden ? { "aria-hidden": "true" } : {}),
-      ...(focusable !== undefined ? { focusable: String(focusable) } : {}),
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(accessibilityState && "checked" in accessibilityState
-        ? { "aria-checked": accessibilityState.checked ? "true" : "false" }
-        : {}),
-      ...(disabled ? { disabled: true, "aria-disabled": "true" } : {}),
-      // A disabled `Pressable` does not run `onPress`, same as the platform.
-      ...(disabled ? {} : { onClick: onPress }),
-    };
-    return React.createElement("button", props, children);
-  });
-  /**
-   * `Modal` renders nothing while hidden and mounts its children when visible.
-   * It reports the end of the fade-out through `onDismiss`, and `onRequestClose`
-   * is the Android back / Esc hook (a `keydown`, as react-native-web turns Esc
-   * into the same callback).
-   */
-  function Modal({
-    visible,
-    children,
-    onDismiss,
-    onRequestClose,
-    "aria-labelledby": ariaLabelledBy,
-  }: {
-    visible?: boolean;
-    children?: React.ReactNode;
-    onDismiss?: () => void;
-    onRequestClose?: () => void;
-    "aria-labelledby"?: string;
-  }) {
-    // react-native-web keeps the layer until the fade-out ends and only then reports
-    // `onDismiss`; here the layer is gone in the same commit and the report follows.
-    const wasVisible = React.useRef(visible);
-    React.useEffect(() => {
-      if (wasVisible.current && !visible) onDismiss?.();
-      wasVisible.current = visible;
-    }, [visible, onDismiss]);
-    // Esc, like react-native-web's ModalContent, arrives as `onRequestClose`.
-    React.useEffect(() => {
-      if (!visible) return undefined;
-      function closeOnEscape(event: KeyboardEvent) {
-        if (event.key === "Escape") onRequestClose?.();
-      }
-      document.addEventListener("keyup", closeOnEscape);
-      return () => document.removeEventListener("keyup", closeOnEscape);
-    }, [visible, onRequestClose]);
-    if (!visible) return null;
-    // react-native-web's Modal renders the dialog container itself and forwards
-    // `aria-labelledby` to it.
-    return React.createElement(
-      "div",
-      {
-        "data-testid": "modal",
-        role: "dialog",
-        "aria-modal": "true",
-        ...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : {}),
-        onKeyDown: (event: React.KeyboardEvent) => {
-          if (event.key === "Escape") onRequestClose?.();
-        },
-      },
-      children,
-    );
-  }
-  function TextInput({
-    value,
-    onChangeText,
-    accessibilityLabel,
-    placeholder,
-    maxLength,
-  }: InputProps) {
-    const props: React.InputHTMLAttributes<HTMLInputElement> = {
-      value: value ?? "",
-      ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
-      ...(placeholder ? { placeholder } : {}),
-      ...(maxLength != null ? { maxLength } : {}),
-      onChange: (event: { target: { value: string } }) => onChangeText?.(event.target.value),
-    };
-    return React.createElement("input", props);
-  }
-
-  return {
-    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: {} },
-    Text,
-    View,
-    ScrollView,
-    TextInput,
-    Pressable,
-    Modal,
-    // The discard guard asks the platform before it touches the browser's history.
-    Platform: {
-      get OS() {
-        return platform.os;
-      },
-    },
-    // One column, like a phone in the browser (`DESIGN.md` → columns).
-    useWindowDimensions: () => ({ width: 375, height: 800 }),
-    // The focus helper reads the platform and the screen-reader call; on web it only
-    // moves DOM focus, so the accessibility stub is never used there.
-    AccessibilityInfo: {
-      announceForAccessibility: vi.fn(),
-      setAccessibilityFocus: vi.fn(),
-    },
-    findNodeHandle: () => null,
-  };
-});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -408,12 +209,13 @@ function loaded(gift: GiftCard = stored) {
 let root: Root;
 let container: HTMLElement;
 
+/** Everything on screen, layers included: a `Dialog` is portalled outside the container. */
 function text(): string {
-  return container.textContent ?? "";
+  return document.body.textContent ?? "";
 }
 
 function field(label: string): HTMLInputElement {
-  const input = Array.from(container.querySelectorAll("input")).find(
+  const input = Array.from(container.querySelectorAll<HTMLInputElement>("input, textarea")).find(
     (node) => node.getAttribute("aria-label") === label,
   );
   expect(input, `поле «${label}»`).toBeDefined();
@@ -428,21 +230,18 @@ function fieldText(label: string): string {
 /** Controlled input: set the value past React's tracker, then let React see the `input` event. */
 async function type(label: string, value: string) {
   const input = field(label);
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await typeInto(input, value);
 }
 
-function button(label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll("button")).find((node) =>
+function button(label: string): HTMLElement | undefined {
+  return controls(document).find((node) =>
     (node.textContent ?? "").includes(label),
   );
 }
 
 /** A chosen radio in the currency chips or the visibility rows. */
 function selected(label: string): boolean {
-  return container.querySelector(`button[aria-label="${label}"]`)?.getAttribute("aria-checked") === "true";
+  return container.querySelector(`[role="radio"][aria-label="${label}"]`)?.getAttribute("aria-checked") === "true";
 }
 
 async function press(label: string) {
@@ -451,14 +250,15 @@ async function press(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 /**
  * Exact accessible name, for «Удалить» next to «Удалить желание» and for the
  * dialog's «Отмена» next to the form's own cancel button.
  */
-function buttonByLabel(label: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll("button")).find(
+function buttonByLabel(label: string): HTMLElement | undefined {
+  return controls(document).find(
     (node) => node.getAttribute("aria-label") === label,
   );
 }
@@ -470,13 +270,14 @@ async function pressExact(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 /** A button inside the open confirm dialog: «Отмена» exists twice on a dirty form. */
-function dialogButton(label: string): HTMLButtonElement | undefined {
-  const dialog = container.querySelector('[role="dialog"]');
+function dialogButton(label: string): HTMLElement | undefined {
+  const dialog = dialogElement();
   if (!dialog) return undefined;
-  return Array.from(dialog.querySelectorAll("button")).find((node) =>
+  return controls(dialog).find((node) =>
     (node.textContent ?? "").includes(label),
   );
 }
@@ -487,13 +288,14 @@ async function pressInDialog(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
 /** A dialog button by its accessible name: the close cross has no visible text. */
-function dialogLabeled(label: string): HTMLButtonElement | undefined {
-  const dialog = container.querySelector('[role="dialog"]');
+function dialogLabeled(label: string): HTMLElement | undefined {
+  const dialog = dialogElement();
   if (!dialog) return undefined;
-  return Array.from(dialog.querySelectorAll("button")).find(
+  return controls(dialog).find(
     (node) => node.getAttribute("aria-label") === label,
   );
 }
@@ -504,15 +306,15 @@ async function pressInDialogLabeled(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+  await settle(10);
 }
 
-/** Esc reaches the dialog's `onRequestClose`, as on react-native-web. */
+/** Esc reaches the open layer from the document, as in the browser. */
 async function escapeDialog() {
   await act(async () => {
-    container
-      .querySelector('[data-testid="modal"]')
-      ?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    escape();
   });
+  await settle(10);
 }
 
 async function mount() {
@@ -630,7 +432,6 @@ describe("изменение желания: загрузка", () => {
     const region = container.querySelector('[aria-label="Загружаем желание"]');
     expect(region).not.toBeNull();
     expect(region?.getAttribute("aria-busy")).toBe("true");
-    expect(region?.getAttribute("data-accessible")).toBe("true");
     expect(region?.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(1);
   });
 
@@ -867,7 +668,7 @@ describe("изменение желания: сохранение", () => {
     await press("Сохранить");
 
     const submit = button("Сохранить");
-    expect(submit?.disabled).toBe(true);
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
     expect(submit?.getAttribute("aria-disabled")).toBe("true");
     expect(gifts.updateGift).toHaveBeenCalledTimes(1);
 
@@ -1285,14 +1086,14 @@ describe("изменение желания: видимость и удален�
 
     await press("Удалить желание");
 
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(dialogElement()).not.toBeNull();
     expect(text()).toContain("Удалить «Наушники»?");
     expect(text()).toContain("Желание исчезнет из вишлиста. Это нельзя отменить.");
 
     await pressExact("Отмена");
 
     expect(gifts.deleteGift).not.toHaveBeenCalled();
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(button("Сохранить")).toBeDefined();
   });
 
@@ -1321,7 +1122,7 @@ describe("изменение желания: видимость и удален�
     await pressExact("Удалить");
 
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(button("Сохранить")).toBeDefined();
     expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
@@ -1371,7 +1172,8 @@ describe("изменение желания: видимость и удален�
 
     expect(gifts.deleteGift).toHaveBeenCalledTimes(1);
     const busy = buttonByLabel("Удаляем…");
-    expect(busy?.disabled).toBe(true);
+    expect((busy as HTMLButtonElement).disabled).toBe(false);
+    expect(busy?.getAttribute("aria-disabled")).toBe("true");
     await act(async () => {
       busy?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -1398,7 +1200,7 @@ describe("изменение желания: возврат фокуса пос�
     const trigger = button("Удалить желание");
     expect(trigger).toBeDefined();
     await press("Удалить желание");
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(dialogElement()).not.toBeNull();
     // The dialog opens on «Отмена», not on the trigger behind it.
     expect(document.activeElement).not.toBe(trigger);
     return trigger as HTMLButtonElement;
@@ -1409,7 +1211,7 @@ describe("изменение желания: возврат фокуса пос�
 
     await pressExact("Отмена");
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 
@@ -1417,22 +1219,19 @@ describe("изменение желания: возврат фокуса пос�
     const trigger = await openConfirm();
 
     await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape" }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 
   it("тап по подложке: фокус на «Удалить желание»", async () => {
     const trigger = await openConfirm();
 
-    const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
-    await act(async () => {
-      scrim?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    await pressScrim("confirm-dialog-scrim");
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
     // Never `<body>`: the layer hands focus back instead of dropping it.
     expect(document.activeElement).not.toBe(document.body);
@@ -1451,7 +1250,7 @@ describe("изменение желания: возврат фокуса пос�
       pathname: "/",
       params: { toast: "gift_deleted" },
     });
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialogElement()).toBeNull();
     expect(document.activeElement).not.toBe(trigger);
   });
 });
@@ -1477,7 +1276,7 @@ describe("изменение желания: фокус в вопросе о ч�
     await act(async () => cancel?.focus());
     await press("Отмена");
 
-    const dialog = container.querySelector('[role="dialog"]');
+    const dialog = dialogElement();
     expect(dialog).not.toBeNull();
     expect(dialog?.contains(document.activeElement)).toBe(true);
 

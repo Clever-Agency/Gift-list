@@ -93,9 +93,9 @@ export async function getGift(headers: Headers, giftId: string): Promise<ActionR
 /**
  * Story 2.2 (FR-10, AD-1): the owner creates a wish in their single list (AD-6).
  * The body goes through `giftInputSchema`, so the defaults live in the contract:
- * visibility `PUBLIC` (ARCH-A17), currency `USD` when an amount has none (AD-25).
- * `status` starts `OPEN` (AD-8) and `quantity` stays at the schema default
- * `SINGLE` until Story 2.5. Shared by the app form and `POST /api/v1/...`.
+ * visibility `PUBLIC` (ARCH-A17), currency `USD` when an amount has none (AD-25),
+ * quantity `SINGLE` (Story 2.5/D-25). `status` starts `OPEN` (AD-8). Shared by
+ * the app form and `POST /api/v1/...`.
  */
 export async function createGift(headers: Headers, body: unknown): Promise<ActionResult<GiftCard>> {
   const session = await auth.api.getSession({ headers });
@@ -121,6 +121,7 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
       priceCurrency: parsed.data.priceCurrency,
       linkUrl: parsed.data.linkUrl,
       visibility: parsed.data.visibility,
+      quantity: parsed.data.quantity,
       status: "OPEN",
     },
     select: ownerGiftSelect,
@@ -132,8 +133,8 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
 /**
  * Story 2.2 (FR-10, AD-1): the owner edits a wish of their own list. The body is
  * a partial (`giftUpdateSchema`), so only the keys that came in reach the row: an
- * absent field keeps the stored value, `status`, list and `quantity` are not
- * editable here (AD-8, Story 2.5). The ownership check rides in the write's
+ * absent field keeps the stored value, `status` and list are not editable here
+ * (AD-8). The ownership check rides in the write's
  * `where`, so a gift of another list — or an archived one (AD-8) — matches
  * nothing and answers NOT_FOUND without revealing that the id exists.
  *
@@ -142,6 +143,9 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
  * stored value back — the edit form of a reserved wish does that — is not a
  * change and passes through. The write itself repeats `status: "OPEN"` in the
  * `where`, so a reservation between this read and the write cannot slip through.
+ *
+ * Story 2.5 (FR-41, D-25): `quantity` follows the same rule — a changed value is
+ * written only while the wish is `OPEN`, and an unchanged one is not a change.
  */
 export async function updateGift(
   headers: Headers,
@@ -164,15 +168,17 @@ export async function updateGift(
   };
 
   const changesVisibility = update.visibility !== undefined;
+  const changesQuantity = update.quantity !== undefined;
   const needsStoredPrice = update.priceCurrency !== undefined && update.priceAmount === undefined;
 
   // One read serves both gates: AD-25 needs the stored amount, Story 2.3 needs
-  // the stored status and visibility. The update below still carries the
-  // ownership gate, so this read is only for the mix-in and the visibility rule.
-  if (changesVisibility || needsStoredPrice) {
+  // the stored status and visibility, Story 2.5 needs the stored quantity. The
+  // update below still carries the ownership gate, so this read is only for the
+  // mix-in and the editability rules.
+  if (changesVisibility || changesQuantity || needsStoredPrice) {
     const stored = await prisma.gift.findFirst({
       where: ownedGift,
-      select: { priceAmount: true, status: true, visibility: true },
+      select: { priceAmount: true, status: true, visibility: true, quantity: true },
     });
     if (!stored) return notFound;
 
@@ -191,12 +197,22 @@ export async function updateGift(
         return validation("visibility");
       }
     }
+
+    if (changesQuantity) {
+      if (stored.quantity === update.quantity) {
+        // Same rule for a resent quantity: an unchanged value is not a change.
+        delete update.quantity;
+      } else if (stored.status !== "OPEN") {
+        return validation("quantity");
+      }
+    }
   }
 
-  // Story 2.3/AD-8: a real visibility change writes only while the gift is OPEN,
-  // so a reservation between the read above and this write answers VALIDATION.
-  const where =
-    update.visibility !== undefined ? { ...ownedGift, status: "OPEN" as const } : ownedGift;
+  // Story 2.3/2.5/AD-8: a real visibility or quantity change writes only while
+  // the gift is OPEN, so a reservation between the read above and this write
+  // answers VALIDATION.
+  const guarded = update.visibility !== undefined || update.quantity !== undefined;
+  const where = guarded ? { ...ownedGift, status: "OPEN" as const } : ownedGift;
 
   try {
     const row = await prisma.gift.update({
@@ -207,14 +223,16 @@ export async function updateGift(
     return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row)) };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      // A guarded visibility write can lose the race with a reservation: re-read
-      // to tell "no longer OPEN" (VALIDATION) from "foreign or archived" (NOT_FOUND).
-      if (update.visibility !== undefined) {
+      // A guarded write can lose the race with a reservation: re-read to tell
+      // "no longer OPEN" (VALIDATION) from "foreign or archived" (NOT_FOUND).
+      if (guarded) {
         const current = await prisma.gift.findFirst({
           where: ownedGift,
           select: { status: true },
         });
-        if (current && current.status !== "OPEN") return validation("visibility");
+        if (current && current.status !== "OPEN") {
+          return validation(update.visibility !== undefined ? "visibility" : "quantity");
+        }
       }
       // P2025: the where matched nothing, i.e. a foreign or archived gift.
       return notFound;

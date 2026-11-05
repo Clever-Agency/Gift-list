@@ -381,6 +381,7 @@ describe("поток: создание желания из списка", () => 
       priceAmount: 25050,
       priceCurrency: "RUB",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
 
     // `dismissTo` pops the composer and the list shows the handed-over notice.

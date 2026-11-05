@@ -405,6 +405,7 @@ describe("новое желание: форма", () => {
       priceAmount: 25000,
       priceCurrency: "USD",
       visibility: "PUBLIC",
+      quantity: "SINGLE",
     });
     // The screen unmounts on the way back, so the confirmation is the list's to show.
     expect(text()).not.toContain("Добавлено в вишлист");
@@ -756,6 +757,7 @@ describe("новое желание: системное «назад»", () => {
       priceAmount: null,
       priceCurrency: null,
       visibility: "PUBLIC",
+      quantity: "SINGLE",
     });
     expect(navigation.dismissTo).toHaveBeenCalledWith({
       pathname: "/",

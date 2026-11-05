@@ -260,5 +260,7 @@ function toGiftInput(values: GiftFormValues): GiftInput {
     priceCurrency: values.priceCurrency,
     linkUrl: values.link,
     visibility: values.visibility,
+    // Story 2.5.2 adds the SINGLE/UNLIMITED control; until then send the default explicitly.
+    quantity: "SINGLE",
   };
 }

@@ -244,10 +244,28 @@ describe("createGift", () => {
         priceCurrency: null,
         linkUrl: null,
         visibility: "PUBLIC",
+        quantity: "SINGLE",
         status: "OPEN",
       },
       select: expect.any(Object),
     });
+  });
+
+  it("creates an explicit UNLIMITED wish", async () => {
+    await createGift(headers, { title: "Книга", quantity: "UNLIMITED" });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ quantity: "UNLIMITED" }) }),
+    );
+  });
+
+  it("rejects an unknown quantity", async () => {
+    expect(await createGift(headers, { title: "Книга", quantity: "MANY" })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "quantity",
+    });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("stores USD when an amount comes without a currency", async () => {
@@ -407,7 +425,7 @@ describe("updateGift", () => {
 
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
-      select: { priceAmount: true, status: true, visibility: true },
+      select: { priceAmount: true, status: true, visibility: true, quantity: true },
     });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { priceCurrency: "EUR" } }),
@@ -575,6 +593,157 @@ describe("updateGift", () => {
       code: "NOT_FOUND",
     });
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown quantity", async () => {
+    expect(await updateGift(headers, "g1", { quantity: "MANY" })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "quantity",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  /** Story 2.5/FR-41: an OPEN wish takes a new quantity, written while still OPEN. */
+  it("changes the quantity of an OPEN wish", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+    update.mockResolvedValue(giftRow({ quantity: "UNLIMITED" }));
+
+    const card = okData(await updateGift(headers, "g1", { quantity: "UNLIMITED" }));
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" }, status: "OPEN" },
+      data: { quantity: "UNLIMITED" },
+      select: expect.any(Object),
+    });
+    expect(card.quantity).toBe("UNLIMITED");
+  });
+
+  it("writes quantity and visibility together on an OPEN wish", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+    update.mockResolvedValue(giftRow({ quantity: "UNLIMITED", visibility: "SECRET" }));
+
+    await updateGift(headers, "g1", { quantity: "UNLIMITED", visibility: "SECRET" });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" }, status: "OPEN" },
+      data: { quantity: "UNLIMITED", visibility: "SECRET" },
+      select: expect.any(Object),
+    });
+  });
+
+  /** Story 2.5/AD-8: a reserved or closed wish keeps its quantity. */
+  it.each(["RESERVED", "CLOSED"] as const)(
+    "answers VALIDATION when changing the quantity of a %s wish",
+    async (status) => {
+      findFirst.mockResolvedValue({
+        priceAmount: null,
+        status,
+        visibility: "PUBLIC",
+        quantity: "SINGLE",
+      });
+
+      expect(await updateGift(headers, "g1", { quantity: "UNLIMITED" })).toMatchObject({
+        ok: false,
+        code: "VALIDATION",
+        message: "Invalid input",
+        field: "quantity",
+      });
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+
+  /** A reserved wish's form resends the stored quantity; that is not a change. */
+  it("ignores an unchanged quantity and still saves the other fields", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "RESERVED",
+      visibility: "PUBLIC",
+      quantity: "UNLIMITED",
+    });
+    update.mockResolvedValue(
+      giftRow({ title: "Новое название", status: "RESERVED", quantity: "UNLIMITED" }),
+    );
+
+    const card = okData(
+      await updateGift(headers, "g1", { title: "Новое название", quantity: "UNLIMITED" }),
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
+      data: { title: "Новое название" },
+      select: expect.any(Object),
+    });
+    expect(card.title).toBe("Новое название");
+  });
+
+  /** Story 2.3 is untouched: a resent quantity does not soften the visibility rule. */
+  it("keeps a RESERVED wish's visibility rule when quantity is resent unchanged", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "RESERVED",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
+    expect(
+      await updateGift(headers, "g1", { quantity: "SINGLE", visibility: "SECRET" }),
+    ).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "visibility",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  /** Both guarded fields change on a non-OPEN wish: the visibility rule reports first. */
+  it("names visibility when both quantity and visibility change on a RESERVED wish", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "RESERVED",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
+    expect(
+      await updateGift(headers, "g1", { quantity: "UNLIMITED", visibility: "SECRET" }),
+    ).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "visibility",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  /** AD-8: the write's `status: "OPEN"` loses to a reservation made after the read. */
+  it("answers VALIDATION when the wish is reserved before the guarded quantity write lands", async () => {
+    findFirst
+      .mockResolvedValueOnce({
+        priceAmount: null,
+        status: "OPEN",
+        visibility: "PUBLIC",
+        quantity: "SINGLE",
+      })
+      .mockResolvedValueOnce({ status: "RESERVED" });
+    update.mockRejectedValue(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+
+    expect(await updateGift(headers, "g1", { quantity: "UNLIMITED" })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "quantity",
+    });
   });
 });
 

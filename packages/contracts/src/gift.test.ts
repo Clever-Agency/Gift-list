@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CURRENCIES, VISIBILITIES } from "./enums";
+import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
 import { giftInputSchema, giftUpdateSchema } from "./gift";
 
 describe("giftInputSchema", () => {
@@ -11,6 +11,7 @@ describe("giftInputSchema", () => {
       priceCurrency: null,
       linkUrl: null,
       visibility: "PUBLIC",
+      quantity: "SINGLE",
     });
   });
 
@@ -85,6 +86,20 @@ describe("giftInputSchema", () => {
 
   it.each(VISIBILITIES)("accepts the %s visibility", (visibility) => {
     expect(giftInputSchema.parse({ title: "Книга", visibility }).visibility).toBe(visibility);
+  });
+
+  it("defaults the quantity to SINGLE", () => {
+    expect(giftInputSchema.parse({ title: "Книга" }).quantity).toBe("SINGLE");
+  });
+
+  it.each(QUANTITIES)("accepts the %s quantity", (quantity) => {
+    expect(giftInputSchema.parse({ title: "Книга", quantity }).quantity).toBe(quantity);
+  });
+
+  it("rejects a quantity outside the list", () => {
+    const parsed = giftInputSchema.safeParse({ title: "Книга", quantity: "MANY" });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["quantity"]);
   });
 
   it("rejects keys outside the body", () => {
@@ -189,6 +204,20 @@ describe("giftUpdateSchema", () => {
 
   it.each(VISIBILITIES)("accepts the %s visibility without defaulting it", (visibility) => {
     expect(giftUpdateSchema.parse({ visibility })).toEqual({ visibility });
+  });
+
+  it.each(QUANTITIES)("accepts the %s quantity without defaulting it", (quantity) => {
+    expect(giftUpdateSchema.parse({ quantity })).toEqual({ quantity });
+  });
+
+  it("does not add a default quantity to a body without it", () => {
+    expect(giftUpdateSchema.parse({ description: "Заметка" })).not.toHaveProperty("quantity");
+  });
+
+  it("rejects a quantity outside the list", () => {
+    const parsed = giftUpdateSchema.safeParse({ quantity: "MANY" });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["quantity"]);
   });
 
   it("does not add a default visibility to a body without it", () => {

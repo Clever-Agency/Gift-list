@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CURRENCIES, VISIBILITIES } from "./enums";
+import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
 
 /**
  * Create/edit body of a gift (Story 2.2, FR-10). The spec fixes no lengths, so
@@ -34,11 +34,14 @@ const linkUrlFieldSchema = z.preprocess(
   z.string().trim().max(LINK_URL_MAX).pipe(httpUrlSchema).nullable().optional(),
 );
 const visibilityFieldSchema = z.enum(VISIBILITIES);
+const quantityFieldSchema = z.enum(QUANTITIES);
 
 /**
  * AD-25: the price is optional. When the amount is set and no currency was
  * chosen, the currency is `USD`; without an amount the currency is `null`.
  * AD-17/ARCH-A17: a new gift is visible to everyone (`PUBLIC`) by default.
+ * Story 2.5/D-25: a gift is `SINGLE` by default; `UNLIMITED` is the explicit
+ * "can be given any number of times" choice.
  */
 export const giftInputSchema = z
   .strictObject({
@@ -48,6 +51,7 @@ export const giftInputSchema = z
     priceCurrency: priceCurrencyFieldSchema,
     linkUrl: linkUrlFieldSchema,
     visibility: visibilityFieldSchema.default("PUBLIC"),
+    quantity: quantityFieldSchema.default("SINGLE"),
   })
   .transform(function toGiftInput(value) {
     const priceAmount = value.priceAmount ?? null;
@@ -58,6 +62,7 @@ export const giftInputSchema = z
       priceCurrency: priceAmount === null ? null : (value.priceCurrency ?? "USD"),
       linkUrl: value.linkUrl ?? null,
       visibility: value.visibility,
+      quantity: value.quantity,
     };
   });
 
@@ -71,6 +76,7 @@ export type GiftUpdate = {
   priceCurrency?: (typeof CURRENCIES)[number] | null;
   linkUrl?: string | null;
   visibility?: (typeof VISIBILITIES)[number];
+  quantity?: (typeof QUANTITIES)[number];
 };
 
 /**
@@ -80,6 +86,10 @@ export type GiftUpdate = {
  * keys that came in (plus the currency implied by a given amount), so the
  * use-case never overwrites a field the owner did not touch — in particular
  * `visibility` gets no default here.
+ *
+ * Story 2.5: `quantity` is a closed enum with no `null` form; the use-case
+ * writes a changed value only while the gift is `OPEN`, exactly like
+ * `visibility`.
  */
 export const giftUpdateSchema = z
   .strictObject({
@@ -89,6 +99,7 @@ export const giftUpdateSchema = z
     priceCurrency: priceCurrencyFieldSchema,
     linkUrl: linkUrlFieldSchema,
     visibility: visibilityFieldSchema.optional(),
+    quantity: quantityFieldSchema.optional(),
   })
   .refine(function hasAnyGiftUpdateField(value) {
     return Object.values(value).some((field) => field !== undefined);
@@ -102,6 +113,7 @@ export const giftUpdateSchema = z
     if (value.description !== undefined) update.description = value.description;
     if (value.linkUrl !== undefined) update.linkUrl = value.linkUrl;
     if (value.visibility !== undefined) update.visibility = value.visibility;
+    if (value.quantity !== undefined) update.quantity = value.quantity;
 
     if (value.priceAmount !== undefined) {
       update.priceAmount = value.priceAmount;

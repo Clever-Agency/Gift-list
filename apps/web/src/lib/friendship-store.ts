@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/db/client";
-import type { Prisma } from "@/db/generated/client";
+import { Prisma } from "@/db/generated/client";
 import type {
   FriendshipPair,
   FriendshipStore,
@@ -9,6 +9,25 @@ import type {
 } from "@/domain/friendship";
 
 type TransactionClient = Prisma.TransactionClient;
+
+/**
+ * Serialize every protocol write of one canonical pair (AD-10, Story 4.1.1 R1).
+ *
+ * `pg_advisory_xact_lock` is transaction-scoped: PostgreSQL releases it on
+ * commit or rollback, so no cleanup path can leak it. The key is derived from
+ * the ordered pair (`userLowId:userHighId`), so A→B and B→A wait on the same
+ * lock and the second transaction reads the first committed invite. A hash
+ * collision can only serialize two unrelated pairs, never skip a lock.
+ *
+ * This is plain PostgreSQL (AD-16), not a platform service, and it needs no
+ * extra table or row that would outlive the transaction. Any later writer of
+ * the same pair — accept in Story 4.2, block in Story 4.5 — must take the same
+ * lock before it reads or writes the pair.
+ */
+async function lockPair(tx: TransactionClient, pair: FriendshipPair): Promise<void> {
+  const pairKey = `${pair.userLowId}:${pair.userHighId}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${pairKey}, 0))`;
+}
 
 async function hasBlockBetween(
   tx: TransactionClient,
@@ -84,6 +103,9 @@ async function deleteInvitesBetween(
 
 function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
   return {
+    lockPair(pair) {
+      return lockPair(tx, pair);
+    },
     hasBlockBetween(firstUserId, secondUserId) {
       return hasBlockBetween(tx, firstUserId, secondUserId);
     },
@@ -110,11 +132,20 @@ function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
  * only place that knows about `$transaction`: the domain rules run against the
  * `FriendshipTransaction` port, so every check and write of one send shares the
  * same transaction and a failure writes nothing.
+ *
+ * The isolation level is pinned to `READ COMMITTED` (the PostgreSQL default)
+ * because the pair lock depends on it: after waiting for the lock, the next
+ * statement must see the invite the other transaction just committed. A
+ * database-level default of `REPEATABLE READ` would keep the old snapshot and
+ * let the race back in.
  */
 export const friendshipStore: FriendshipStore = {
   transaction(work) {
-    return prisma.$transaction(async function runInTransaction(tx) {
-      return work(transactionAdapter(tx));
-    });
+    return prisma.$transaction(
+      async function runInTransaction(tx) {
+        return work(transactionAdapter(tx));
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
   },
 };

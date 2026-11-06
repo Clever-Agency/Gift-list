@@ -43,6 +43,18 @@ export type SendFriendInviteResult =
  * only the facts the rules ask for; it never decides the outcome itself.
  */
 export interface FriendshipTransaction {
+  /**
+   * Serializes every protocol write of one canonical pair (AD-10).
+   *
+   * The directed UNIQUE on `FriendshipInvite(fromUserId, toUserId)` does not
+   * stop A→B and B→A from inserting at the same time: both may read "no
+   * reverse pending" before either commits and leave two mutual pendings. The
+   * adapter therefore takes a transaction-scoped lock on the canonical pair as
+   * the first statement of the transaction. Both directions use the same key,
+   * so the second send waits, then sees the first committed invite and
+   * auto-accepts it (AD-10 step 2, ARCH-A12).
+   */
+  lockPair(pair: FriendshipPair): Promise<void>;
   /** A `Block` row between the two users in either direction (AD-10 step 4). */
   hasBlockBetween(firstUserId: string, secondUserId: string): Promise<boolean>;
   /** Whether the canonical pair already has an accepted edge. */
@@ -81,6 +93,8 @@ function forbidden(reason: FriendInviteRefusalReason): SendFriendInviteResult {
  *
  * All checks and writes happen in one transaction:
  *
+ * 0. a transaction-scoped lock on the canonical pair serializes both send
+ *    directions, so two concurrent invites cannot both miss the other one;
  * 1. sending to yourself is refused before the database is touched;
  * 2. a block in either direction refuses the write;
  * 3. an existing friendship is a no-op (`ALREADY_FRIENDS`);
@@ -100,9 +114,16 @@ export async function sendFriendInvite(
   if (fromUserId === toUserId) return forbidden("SELF_INVITE");
 
   return store.transaction(async function runInviteProtocol(tx) {
+    const pair = orderFriendPair(fromUserId, toUserId);
+
+    // Take the pair lock before reading any state: a concurrent send in the
+    // opposite direction must wait, so this transaction never decides on a
+    // snapshot taken before the other invite committed. Every statement after
+    // the lock sees the latest committed rows on READ COMMITTED.
+    await tx.lockPair(pair);
+
     if (await tx.hasBlockBetween(fromUserId, toUserId)) return forbidden("BLOCKED");
 
-    const pair = orderFriendPair(fromUserId, toUserId);
     if (await tx.findFriendship(pair)) return { ok: true, outcome: "ALREADY_FRIENDS" };
 
     if (await tx.findPendingInvite(fromUserId, toUserId)) {

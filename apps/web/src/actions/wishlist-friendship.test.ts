@@ -42,7 +42,11 @@ const fake = vi.hoisted(() => {
     block: {
       findFirst(args: { where: { OR: Block[] } }): Promise<{ id: string } | null>;
     };
-    $transaction(work: (tx: PrismaLike) => Promise<unknown>): Promise<unknown>;
+    $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
+    $transaction(
+      work: (tx: PrismaLike) => Promise<unknown>,
+      options?: { isolationLevel?: string },
+    ): Promise<unknown>;
   };
 
   const state = {
@@ -51,6 +55,9 @@ const fake = vi.hoisted(() => {
     invites: [] as Invite[],
     friendships: [] as Friendship[],
     blocks: [] as Block[],
+    locks: [] as string[],
+    lockStatements: [] as string[],
+    transactionOptions: [] as { isolationLevel?: string }[],
   };
 
   const prisma: PrismaLike = {
@@ -123,7 +130,13 @@ const fake = vi.hoisted(() => {
         return found ? { id: "block_1" } : null;
       },
     },
-    async $transaction(work) {
+    async $executeRaw(strings, ...values) {
+      state.lockStatements.push(strings.join("?"));
+      state.locks.push(values.join(":"));
+      return 1;
+    },
+    async $transaction(work, options) {
+      state.transactionOptions.push(options ?? {});
       return work(prisma);
     },
   };
@@ -179,6 +192,9 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
     fake.state.invites = [];
     fake.state.friendships = [];
     fake.state.blocks = [];
+    fake.state.locks = [];
+    fake.state.lockStatements = [];
+    fake.state.transactionOptions = [];
   });
 
   it("hides FRIENDS wishes while the invite is only pending", async () => {
@@ -204,6 +220,17 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
       friendshipStore,
     );
     expect(accepted).toEqual({ ok: true, outcome: "FRIENDS_CREATED" });
+    // Both directions asked for the same canonical pair lock, with the blocking
+    // statement the adapter must keep, and both transactions pinned to READ COMMITTED.
+    expect(fake.state.locks).toEqual(["owner_1:viewer_1", "owner_1:viewer_1"]);
+    expect(fake.state.lockStatements).toEqual([
+      "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+      "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+    ]);
+    expect(fake.state.transactionOptions).toEqual([
+      { isolationLevel: "ReadCommitted" },
+      { isolationLevel: "ReadCommitted" },
+    ]);
 
     const data = await readWishlist({
       viewer: { id: VIEWER_ID },

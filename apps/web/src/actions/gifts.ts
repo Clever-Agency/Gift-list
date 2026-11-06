@@ -214,7 +214,9 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   if (!parsed.success) return validation(firstIssueField(parsed.error));
 
   // AD-6 creates the list at registration, so a missing row is an anomaly; a
-  // gift cannot exist without a list, unlike the empty wishlist of the read.
+  // gift cannot exist without a list. The owner read repairs that anomaly to
+  // return a share token, while this write still refuses explicitly instead of
+  // creating a gift in an unexpected list.
   const list = await prisma.list.findUnique({
     where: { ownerId: session.user.id },
     select: { id: true },

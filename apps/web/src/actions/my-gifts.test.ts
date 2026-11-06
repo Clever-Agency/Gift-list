@@ -2,14 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUnique, findMany } = vi.hoisted(() => ({
+const { getSession, findUnique, findMany, ensureOwnerList } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findUnique: vi.fn(),
   findMany: vi.fn(),
+  ensureOwnerList: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
+vi.mock("@/lib/owner-list", () => ({ ensureOwnerList }));
 
 import { getMyGifts } from "./my-gifts";
 
@@ -63,9 +65,11 @@ beforeEach(() => {
   getSession.mockReset();
   findUnique.mockReset();
   findMany.mockReset();
+  ensureOwnerList.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1", ownerId: "u1", publicToken: "tok-1" });
   findMany.mockResolvedValue([]);
+  ensureOwnerList.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -78,6 +82,7 @@ describe("getMyGifts", () => {
     expect(await getMyGifts(headers)).toMatchObject({ ok: false, code: "UNAUTHENTICATED" });
     expect(findUnique).not.toHaveBeenCalled();
     expect(findMany).not.toHaveBeenCalled();
+    expect(ensureOwnerList).not.toHaveBeenCalled();
   });
 
   it("reads the caller's own list and only the active gifts of it", async () => {
@@ -91,7 +96,10 @@ describe("getMyGifts", () => {
     );
   });
 
-  /** Story 2.4 (AD-6): the owner payload carries the immutable share token. */
+  /**
+   * Story 2.4 (AD-6): the owner payload carries the immutable share token, even
+   * when the list is empty: a zero-gift list is still a list with a link.
+   */
   it("includes the list's publicToken in the owner payload", async () => {
     const result = await getMyGifts(headers);
 
@@ -99,6 +107,45 @@ describe("getMyGifts", () => {
       ok: true,
       data: { access: "gifts", publicToken: "tok-1" },
     });
+    expect(ensureOwnerList).not.toHaveBeenCalled();
+  });
+
+  /**
+   * AD-6: registration creates the list, so a missing row is an anomaly, not the
+   * normal zero-gift state. The owner read repairs it and returns its new token
+   * instead of silently answering an empty wishlist without a share link.
+   */
+  it("repairs a missing list row and returns the new publicToken", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "l1", ownerId: "u1", publicToken: "tok-new" });
+
+    const result = await getMyGifts(headers);
+
+    expect(ensureOwnerList).toHaveBeenCalledTimes(1);
+    expect(ensureOwnerList).toHaveBeenCalledWith("u1");
+    expect(warn).toHaveBeenCalledWith("Missing List row repaired for owner", "u1");
+    expect(result).toEqual({
+      ok: true,
+      data: { access: "gifts", gifts: [], publicToken: "tok-new" },
+    });
+    expect(findUnique).toHaveBeenCalledTimes(2);
+    expect(findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers an explicit error when the missing list could not be repaired", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    findUnique.mockResolvedValue(null);
+
+    expect(await getMyGifts(headers)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Wishlist not found",
+    });
+    expect(ensureOwnerList).toHaveBeenCalledWith("u1");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it("orders the caller's gifts newest first with a stable tie-break", async () => {
@@ -111,15 +158,6 @@ describe("getMyGifts", () => {
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       }),
     );
-  });
-
-  it("answers an empty wishlist when the list row is missing", async () => {
-    findUnique.mockResolvedValue(null);
-    expect(await getMyGifts(headers)).toEqual({
-      ok: true,
-      data: { access: "gifts", gifts: [] },
-    });
-    expect(findMany).not.toHaveBeenCalled();
   });
 
   it("returns every own gift, including SECRET", async () => {
@@ -146,6 +184,7 @@ describe("getMyGifts", () => {
 
     expect(giftsOf(result)).toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
+    expect(ensureOwnerList).not.toHaveBeenCalled();
   });
 
   it("maps an owner card to the AD-12 contract", async () => {

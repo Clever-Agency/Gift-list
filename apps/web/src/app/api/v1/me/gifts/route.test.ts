@@ -2,15 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUnique, findMany, createGift } = vi.hoisted(() => ({
+const { getSession, findUnique, findMany, create, createGift } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findUnique: vi.fn(),
   findMany: vi.fn(),
+  create: vi.fn(),
   createGift: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
-vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
+vi.mock("@/db/client", () => ({
+  prisma: { list: { findUnique, create }, gift: { findMany } },
+}));
 vi.mock("@/actions/gifts", () => ({ createGift }));
 
 const row = {
@@ -45,10 +48,12 @@ beforeEach(() => {
   getSession.mockReset();
   findUnique.mockReset();
   findMany.mockReset();
+  create.mockReset();
   createGift.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1", ownerId: "u1", publicToken: "tok-1" });
   findMany.mockResolvedValue([row]);
+  create.mockResolvedValue({ id: "l1" });
 });
 
 describe("GET /api/v1/me/gifts", () => {
@@ -96,7 +101,7 @@ describe("GET /api/v1/me/gifts", () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it("answers an empty wishlist as `access: gifts`, never as a gate", async () => {
+  it("answers a normal empty wishlist as `access: gifts` with the token, never as a gate", async () => {
     findMany.mockResolvedValue([]);
     const { res, viaHttp } = await both();
 
@@ -104,6 +109,33 @@ describe("GET /api/v1/me/gifts", () => {
     expect(viaHttp).toEqual({
       ok: true,
       data: { access: "gifts", gifts: [], publicToken: "tok-1" },
+    });
+  });
+
+  /**
+   * AD-6: a missing `List` row is an anomaly, not a normal empty wishlist. The
+   * HTTP adapter must carry the repaired token, not a tokenless empty list.
+   */
+  it("repairs a missing list row and returns the owner token over HTTP", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "l1", ownerId: "u1", publicToken: "tok-new" });
+    findMany.mockResolvedValue([]);
+
+    const { GET } = await import("./route");
+    const res = await GET(new Request("http://x/api/v1/me/gifts"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(create).toHaveBeenCalledWith({
+      data: { ownerId: "u1", publicToken: expect.any(String) },
+      select: { id: true },
+    });
+    expect(warn).toHaveBeenCalledWith("Missing List row repaired for owner", "u1");
+    expect(await res.json()).toEqual({
+      ok: true,
+      data: { access: "gifts", gifts: [], publicToken: "tok-new" },
     });
   });
 

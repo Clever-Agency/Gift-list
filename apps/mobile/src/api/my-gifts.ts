@@ -39,9 +39,10 @@ export type DeleteGiftResult =
  * (EXPERIENCE → State Patterns → «Список не найден»).
  *
  * Story 2.4: the owner answer carries the immutable `publicToken` (AD-6), from
- * which the screen builds `https://{домен}/l/{publicToken}`. It is `null` only if
- * the server ever omits it (the listed anomaly below `getMyGifts`); the token
- * does not depend on the nick (A-26).
+ * which the screen builds `https://{домен}/l/{publicToken}`. The server repairs
+ * a missing `List` row and repeats the owner read, so the token is present for a
+ * zero-gift wishlist too. `null` is only a defensive fallback for an unexpected
+ * older/inconsistent server payload; the token does not depend on the nick (A-26).
  */
 export async function fetchMyGifts(): Promise<MyGiftsResult> {
   const result = await apiRequest<unknown>("/api/v1/me/gifts");

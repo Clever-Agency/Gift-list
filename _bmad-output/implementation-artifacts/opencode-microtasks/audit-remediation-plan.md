@@ -5,7 +5,7 @@
 База: `bc82a75` (`bc82a75718e86b391dc9c2aaac1782890fb1c142`)
 Источник находок: `_bmad-output/implementation-artifacts/opencode-microtasks/independent-audit-f1-f10.md`
 Область: три микрозадачи — R1 (F4, высокий), R2 (F10, низкий), R3 (F6, низкий).
-Правило: R1 и R2 реализованы отдельными заходами; R3 остаётся планом и не начинается.
+Правило: R1, R2 и R3 реализованы отдельными заходами; R3 закрыт последним.
 
 ## Общие границы захода
 
@@ -135,7 +135,7 @@
 - `npm test` — mobile 43 файла / 595, web 48 / 518, contracts 6 / 164, ui 14 / 81, 5 проверок границ; падений 0.
 - `npm run build` — standalone-сборка успешна.
 
-## R3 — F6: `appendChild`/`select` вне `try` в веб-буфере (НИЗКИЙ, только план)
+## R3 — F6: `appendChild`/`select` вне `try` в веб-буфере (НИЗКИЙ, реализован)
 
 ### Проблема
 
@@ -145,7 +145,7 @@
 
 Гарантировать снятие временного `textarea` после присоединения к DOM при любом отказе `select()`/`execCommand`, сохранив прежние результаты и ошибки фолбэка.
 
-### Границы (план)
+### Границы
 
 **Всегда:**
 - `textarea` удаляется в `finally`, если он был присоединён.
@@ -157,7 +157,7 @@
 - Не менять сигнатуру `copyText`, `copyWishlistShareLink` и строки интерфейса.
 - Не добавлять глобальные обработчики ошибок и не глотать исключения, которые меняют результат.
 
-### Критерии приёмки (план)
+### Критерии приёмки
 
 1. При `select()`, бросающем исключение, промис завершается отказом/`false` по текущему контракту, а `document.body` не содержит временного `textarea`.
 2. При отказе `writeText` и успешном `execCommand("copy")` результат прежний, узел снят.
@@ -166,7 +166,19 @@
 
 ### Статус R3
 
-`planned-not-started` — код не менялся.
+`done` — реализовано в этом заходе. Задача без истории Linear: это микрозадача устранения находки аудита F6, продуктовые критерии не меняются. Спека: `_bmad-output/implementation-artifacts/spec-audit-r3-clipboard-cleanup.md`.
+
+Что сделано: в `legacyCopy` вызовы `appendChild`/`select()` перенесены внутрь `try`, а `field.remove()` стоит в `finally`, поэтому узел снимается и при броске `select()`, и при `appendChild`, который вставил узел и затем бросил; `remove()` безопасен и без присоединения. Результаты не менялись: успешный `navigator.clipboard.writeText` не запускает фолбэк, бросок `execCommand` даёт `false`, бросок `select()`/`appendChild` по-прежнему завершает промис отказом, который `copyWishlistShareLink` переводит в `"failed"`. `clipboard.native.ts`, сигнатуры и строки интерфейса не менялись.
+
+Тесты: `clipboard.test.ts` дополнен кейсами «бросок `select()`», «отказ `appendChild` до присоединения» и «`appendChild` вставил узел и бросил»; в каждом проверяется отсутствие `textarea` в `document`. Прежние кейсы `execCommand` true/false/throw сохранены. Новые тесты падают на коде `HEAD` (2 из 12) и проходят после правки.
+
+Фактические гейты:
+
+- Focused: `npm run test -w @gift-list/mobile -- src/platform/clipboard.test.ts src/wishlist/copy-link.test.ts src/platform/clipboard.native.test.ts` — 3 файла / 22 теста, падений 0.
+- `npm run typecheck` — код 0.
+- `npm run lint` — код 0, включая `check-boundaries`.
+- `npm test` — mobile 43 файла / 598, web 48 / 518, contracts 6 / 164, ui 14 / 81, 5 проверок границ; падений 0.
+- `npm run build` — standalone-сборка успешна.
 
 ## Порядок и зависимости
 

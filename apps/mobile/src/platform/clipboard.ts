@@ -28,13 +28,17 @@ function legacyCopy(text: string): boolean {
   field.setAttribute("readonly", "");
   field.style.position = "fixed";
   field.style.opacity = "0";
-  document.body.appendChild(field);
-  field.select();
   try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
+    document.body.appendChild(field);
+    field.select();
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    }
   } finally {
+    // `remove()` is a no-op when the node never reached the DOM, and it also
+    // covers an `appendChild` that attached the node and then failed.
     field.remove();
   }
 }

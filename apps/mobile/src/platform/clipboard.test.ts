@@ -18,6 +18,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   Reflect.deleteProperty(document, "execCommand");
   document.body.innerHTML = "";
@@ -101,6 +102,41 @@ describe("copyText (web)", () => {
     await expect(copyText(TEXT)).resolves.toBe(false);
     expect(execCommand).toHaveBeenCalledTimes(1);
     expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(document.querySelector("textarea")).toBeNull();
+  });
+
+  it("cleans up and rejects when select throws", async () => {
+    vi.stubGlobal("navigator", {});
+    vi.spyOn(HTMLTextAreaElement.prototype, "select").mockImplementation(() => {
+      throw new Error("select is not allowed");
+    });
+
+    await expect(copyText(TEXT)).rejects.toThrow("select is not allowed");
+    expect(execCommand).not.toHaveBeenCalled();
+    expect(document.querySelector("textarea")).toBeNull();
+  });
+
+  it("cleans up when appendChild fails before attaching", async () => {
+    vi.stubGlobal("navigator", {});
+    vi.spyOn(document.body, "appendChild").mockImplementation(() => {
+      throw new Error("cannot attach");
+    });
+
+    await expect(copyText(TEXT)).rejects.toThrow("cannot attach");
+    expect(execCommand).not.toHaveBeenCalled();
+    expect(document.querySelector("textarea")).toBeNull();
+  });
+
+  it("cleans up when appendChild attaches the field and then fails", async () => {
+    vi.stubGlobal("navigator", {});
+    const append = document.body.appendChild.bind(document.body);
+    vi.spyOn(document.body, "appendChild").mockImplementation((node: Node) => {
+      append(node);
+      throw new Error("cannot finish attach");
+    });
+
+    await expect(copyText(TEXT)).rejects.toThrow("cannot finish attach");
+    expect(execCommand).not.toHaveBeenCalled();
     expect(document.querySelector("textarea")).toBeNull();
   });
 

@@ -1,7 +1,9 @@
-import type { GiftCard } from "@gift-list/contracts";
+import type { GiftCard, ProfileRelationship } from "@gift-list/contracts";
 import {
+  Button,
   Column,
   Heading,
+  RelationshipChip,
   Screen,
   ScrollView,
   spacing,
@@ -10,10 +12,11 @@ import {
   YStack,
 } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
+import { sendFriendInvite } from "@/api/friend-invite";
 import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
 import { profileRoute } from "@/profile/profile-route";
@@ -36,21 +39,33 @@ type ScreenState =
   | { status: "loading" }
   // The nick is kept with the answer: a reused route with another nick must not
   // show the previous profile while the new read is in flight.
-  | { status: "ready"; nick: string; gifts: GiftCard[]; owner: ProfileOwner }
+  | {
+      status: "ready";
+      nick: string;
+      gifts: GiftCard[];
+      owner: ProfileOwner;
+      /** The viewer's closed relation from 4.1.2, or `NONE` when absent. */
+      relationship: ProfileRelationship;
+    }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
 
 const SKELETON_CARDS = [0, 1, 2];
 
-type ToastState = { message: string; tone: "info" | "error" };
+type ToastState = { message: string; tone: "info" | "error"; nick: string };
+
+type InviteAction = "add" | "accept";
 
 /**
  * Story 3.4 / AD-13: the app screen behind `/u/:nick`. An anonymous visitor
  * goes to login with that validated path as `next`, so signing in comes back
  * here. A signed-in visitor reads through `GET /api/v1/u/:nick`, and only the
- * server decides which wishes this viewer may see. Epic 4 will add the
- * friend/subscribe actions next to the card; until those actions exist the
- * screen shows no buttons, not even stubs.
+ * server decides which wishes this viewer may see.
+ *
+ * Story 4.1.3 adds the relation actions from the closed `relationship` field of
+ * that same answer: one invite button for «нет связи», an accept button for an
+ * incoming pending invite (the same API auto-accepts it), and static chips for
+ * pending, friends and the viewer's own profile. Nothing else is drawn.
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
@@ -74,6 +89,10 @@ export default function ProfileScreen() {
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [pendingNick, setPendingNick] = useState<string | null>(null);
+  const requestSeq = useRef(0);
+  const inviteInFlight = useRef<string | null>(null);
+  const nickRef = useRef(nick);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -98,6 +117,17 @@ export default function ProfileScreen() {
     return signedOut.ok;
   }
 
+  /**
+   * A reused route with another nick is a different person: the current nick
+   * moves to a ref (for late answers) and the request sequence is invalidated.
+   * The optimistic `pendingNick` and the toast are keyed to a nick, so they
+   * simply stop matching the new route instead of being reset by an effect.
+   */
+  useEffect(function rememberRouteNick() {
+    nickRef.current = nick;
+    requestSeq.current += 1;
+  }, [nick]);
+
   useEffect(function loadProfile() {
     if (ownerId === null || nick === null) return;
     const currentNick = nick;
@@ -115,6 +145,7 @@ export default function ProfileScreen() {
                 nick: currentNick,
                 gifts: result.gifts,
                 owner: result.owner,
+                relationship: result.relationship,
               },
         );
         return;
@@ -124,7 +155,7 @@ export default function ProfileScreen() {
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
         if (!signedOut && !cancelled) {
           setState({ status: "error", kind: "network" });
-          setToast({ message: t("form.network"), tone: "error" });
+          setToast({ message: t("form.network"), tone: "error", nick: currentNick });
         }
         return;
       }
@@ -141,6 +172,7 @@ export default function ProfileScreen() {
             ? common("errors.generic")
             : common(`errors.code.${result.code}`),
         tone: "error",
+        nick: currentNick,
       });
     }
 
@@ -162,6 +194,7 @@ export default function ProfileScreen() {
   // A reused route with a new nick reads as loading until its own answer lands.
   const view: ScreenState =
     state.status === "ready" && state.nick !== nick ? { status: "loading" } : state;
+  const viewer = auth.state.user;
 
   function retry() {
     setToast(null);
@@ -171,6 +204,127 @@ export default function ProfileScreen() {
 
   function dismissToast() {
     setToast(null);
+  }
+
+  const ownProfile =
+    view.status === "ready" &&
+    view.owner.nick.toLowerCase() === viewer.nick.toLowerCase();
+  const sending = pendingNick === nick;
+
+  /**
+   * Story 4.1.3: one invite path for a first invite and for accepting an
+   * incoming one. The optimistic chip is rolled back on every failure, and an
+   * answer that belongs to a previous nick or an older press is ignored.
+   */
+  async function invite(kind: InviteAction) {
+    if (nick === null || inviteInFlight.current === nick) return;
+    const requestedView = view;
+    if (requestedView.status !== "ready") return;
+
+    const requestedNick = nick;
+    const previous = requestedView.relationship;
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
+    inviteInFlight.current = requestedNick;
+    setPendingNick(requestedNick);
+    setToast(null);
+
+    const optimistic: ProfileRelationship =
+      kind === "accept" ? "FRIENDS" : "OUTGOING_PENDING";
+    setState(function applyOptimistic(current) {
+      return current.status === "ready" && current.nick === requestedNick
+        ? { ...current, relationship: optimistic }
+        : current;
+    });
+
+    const result = await sendFriendInvite(requestedNick);
+    if (seq !== requestSeq.current || nickRef.current !== requestedNick) {
+      // The route moved on: drop this answer and release only its own slot.
+      if (inviteInFlight.current === requestedNick) inviteInFlight.current = null;
+      setPendingNick(function clearStalePending(current) {
+        return current === requestedNick ? null : current;
+      });
+      return;
+    }
+    if (inviteInFlight.current === requestedNick) inviteInFlight.current = null;
+    setPendingNick(function clearPending(current) {
+      return current === requestedNick ? null : current;
+    });
+
+    function stillThisProfile(current: ScreenState): boolean {
+      return current.status === "ready" && current.nick === requestedNick;
+    }
+
+    if (result.ok) {
+      if (result.outcome === "FRIENDS_CREATED" || result.outcome === "ALREADY_FRIENDS") {
+        setState(function applyFriendship(current) {
+          return stillThisProfile(current) ? { ...current, relationship: "FRIENDS" } : current;
+        });
+        setToast({
+          message: profile("relationship.toast.friends", {
+            name: requestedView.owner.displayName,
+          }),
+          tone: "info",
+          nick: requestedNick,
+        });
+        // FRIENDS wishes only appear when the server says the edge exists.
+        setAttempt((value) => value + 1);
+        return;
+      }
+
+      setState(function applyPending(current) {
+        return stillThisProfile(current)
+          ? { ...current, relationship: "OUTGOING_PENDING" }
+          : current;
+      });
+      setToast({
+        message: profile("relationship.toast.invited"),
+        tone: "info",
+        nick: requestedNick,
+      });
+      return;
+    }
+
+    setState(function rollback(current) {
+      return stillThisProfile(current) ? { ...current, relationship: previous } : current;
+    });
+
+    if ("network" in result) {
+      setToast({
+        message: profile("relationship.network"),
+        tone: "error",
+        nick: requestedNick,
+      });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({
+        message: common("errors.generic"),
+        tone: "error",
+        nick: requestedNick,
+      });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      const signedOut = await expireSession();
+      if (!signedOut) {
+        setToast({
+          message: profile("relationship.network"),
+          tone: "error",
+          nick: requestedNick,
+        });
+      }
+      return;
+    }
+    if (result.code === "NOT_FOUND") {
+      setState({ status: "missing" });
+      return;
+    }
+    setToast({
+      message: common(`errors.code.${result.code}`),
+      tone: "error",
+      nick: requestedNick,
+    });
   }
 
   return (
@@ -234,6 +388,54 @@ export default function ProfileScreen() {
                     {t("form.nickPreview", { nick: view.owner.nick })}
                   </Text>
                 </YStack>
+                <XStack
+                  testID="profile-relationship"
+                  alignItems="center"
+                  flexWrap="wrap"
+                  gap="$2"
+                >
+                  {ownProfile ? (
+                    <RelationshipChip
+                      label={profile("relationship.chips.SELF")}
+                      testID="profile-relationship-chip"
+                    />
+                  ) : view.relationship === "FRIENDS" ? (
+                    <RelationshipChip
+                      label={profile("relationship.chips.FRIENDS")}
+                      testID="profile-relationship-chip"
+                    />
+                  ) : view.relationship === "OUTGOING_PENDING" ? (
+                    <RelationshipChip
+                      label={profile("relationship.chips.OUTGOING_PENDING")}
+                      testID="profile-relationship-chip"
+                    />
+                  ) : view.relationship === "INCOMING_PENDING" ? (
+                    <>
+                      <RelationshipChip
+                        label={profile("relationship.chips.INCOMING_PENDING")}
+                        emphasis
+                        testID="profile-relationship-chip"
+                      />
+                      <Button
+                        label={profile("relationship.acceptInvite")}
+                        onPress={function acceptInvite() {
+                          void invite("accept");
+                        }}
+                        busy={sending}
+                        testID="profile-accept-invite"
+                      />
+                    </>
+                  ) : (
+                    <Button
+                      label={profile("relationship.addFriend")}
+                      onPress={function addFriend() {
+                        void invite("add");
+                      }}
+                      busy={sending}
+                      testID="profile-add-friend"
+                    />
+                  )}
+                </XStack>
                 {view.gifts.length === 0 ? (
                   <EmptyState title={wishlist("emptyTitle")} />
                 ) : (
@@ -249,7 +451,7 @@ export default function ProfileScreen() {
             )}
           </ScrollView>
         </Column>
-        {toast ? (
+        {toast !== null && toast.nick === nick ? (
           <ToastHost
             message={toast.message}
             tone={toast.tone}

@@ -47,6 +47,7 @@ describe("fetchProfile", () => {
       access: "gifts",
       gifts: [card()],
       owner,
+      relationship: "NONE",
     });
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/anya");
   });
@@ -59,6 +60,20 @@ describe("fetchProfile", () => {
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/anya");
   });
 
+  it("passes the closed relationship of the profile answer through", async () => {
+    api.apiRequest.mockResolvedValue(
+      answer({ access: "gifts", gifts: [], owner, relationship: "INCOMING_PENDING" }),
+    );
+
+    await expect(fetchProfile("anya")).resolves.toEqual({
+      ok: true,
+      access: "gifts",
+      gifts: [],
+      owner,
+      relationship: "INCOMING_PENDING",
+    });
+  });
+
   it("never filters wishes by visibility on its own", async () => {
     const gifts = [
       card(),
@@ -69,7 +84,13 @@ describe("fetchProfile", () => {
 
     const result = await fetchProfile("anya");
 
-    expect(result).toEqual({ ok: true, access: "gifts", gifts, owner });
+    expect(result).toEqual({
+      ok: true,
+      access: "gifts",
+      gifts,
+      owner,
+      relationship: "NONE",
+    });
   });
 
   it("keeps the closed not_found answer without an owner block", async () => {

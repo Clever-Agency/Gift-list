@@ -38,6 +38,7 @@ export {
   type TagChipVariant,
 } from "./tag-chip";
 export { StatusPill, type StatusPillProps, type StatusPillStatus } from "./status-pill";
+export { RelationshipChip, type RelationshipChipProps } from "./relationship-chip";
 export {
   VisibilityChip,
   visibilityChipColors,

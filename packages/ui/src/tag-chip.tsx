@@ -4,6 +4,17 @@ import { Text } from "./text";
 
 export type TagChipVariant = "picker" | "card";
 
+/**
+ * A validation error that belongs to this chip alone (Q-09). The caller renders
+ * the message once and passes its id, so a screen reader reads the same text on
+ * the chip without a duplicate node. `message` is the phone's accessibility hint:
+ * `aria-describedby` is browser-only.
+ */
+export type TagChipError = {
+  id: string;
+  message: string;
+};
+
 export type TagChipProps = {
   /** Visible text and the accessible name of the toggle or the chip. */
   label: string;
@@ -28,6 +39,12 @@ export type TagChipProps = {
    * enough (the «+N» chip names the tags it hides). Unused by picker chips.
    */
   accessibilityLabel?: string;
+  /**
+   * An item-specific validation error from the screen: the chip control is
+   * marked invalid and described by the message rendered once by the caller.
+   * Ignored by a static card chip.
+   */
+  error?: TagChipError;
   testID?: string;
 };
 
@@ -48,6 +65,7 @@ export function TagChip({
   removeLabel,
   onRemove,
   accessibilityLabel,
+  error,
   testID,
 }: TagChipProps) {
   if (variant === "card") {
@@ -95,6 +113,9 @@ export function TagChip({
         <Pressable
           role="button"
           aria-label={removeLabel ?? label}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error?.id}
+          accessibilityHint={error?.message}
           onPress={onRemove}
           minHeight="$touch-target"
           minWidth="$touch-target"
@@ -115,6 +136,9 @@ export function TagChip({
       role="checkbox"
       aria-label={label}
       aria-checked={selected}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error?.id}
+      accessibilityHint={error?.message}
       onPress={onPress}
       minHeight="$touch-target"
       minWidth="$touch-target"

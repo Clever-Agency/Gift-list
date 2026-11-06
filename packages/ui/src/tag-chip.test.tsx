@@ -49,6 +49,25 @@ describe("TagChip: фиксированный тег", () => {
 
     expect(onPress).toHaveBeenCalledTimes(2);
   });
+
+  it("ошибка конкретного тега связана с его чекбоксом, а не с соседним", async () => {
+    const error = { id: "tags-error", message: "Проверьте теги" };
+    const { container, render } = mounted();
+    await render(<TagChip label="мечта" selected onPress={vi.fn()} error={error} />);
+    const chip = container.querySelector('[role="checkbox"]') as HTMLElement;
+
+    expect(chip.getAttribute("aria-invalid")).toBe("true");
+    expect(chip.getAttribute("aria-describedby")).toBe("tags-error");
+  });
+
+  it("без ошибки у чекбокса нет aria-invalid и aria-describedby", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip label="мечта" selected onPress={vi.fn()} />);
+    const chip = container.querySelector('[role="checkbox"]') as HTMLElement;
+
+    expect(chip.getAttribute("aria-invalid")).toBeNull();
+    expect(chip.getAttribute("aria-describedby")).toBeNull();
+  });
 });
 
 describe("TagChip: свой тег", () => {
@@ -70,6 +89,18 @@ describe("TagChip: свой тег", () => {
 
     await click(remove);
     expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("ошибка своего тега связана с кнопкой удаления — единственным управлением чипа", async () => {
+    const error = { id: "tags-error", message: "Проверьте теги" };
+    const { container, render } = mounted();
+    await render(
+      <TagChip label="своё" removeLabel="Убрать тег своё" onRemove={vi.fn()} error={error} />,
+    );
+
+    const remove = container.querySelector('[role="button"]') as HTMLElement;
+    expect(remove.getAttribute("aria-invalid")).toBe("true");
+    expect(remove.getAttribute("aria-describedby")).toBe("tags-error");
   });
 });
 

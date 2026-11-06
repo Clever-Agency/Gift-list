@@ -47,6 +47,7 @@ import {
   fieldErrorCopy,
   firstErrorField,
   serverErrorField,
+  tagErrorKey,
   validateGiftForm,
   type GiftFormErrorCopy,
   type GiftFormErrors,
@@ -248,6 +249,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const [customTagError, setCustomTagError] = useState<CustomTagIssue | null>(null);
   const [errors, setErrors] = useState<GiftFormErrors>({});
   const tagErrorId = useId();
+  // Q-09: the tag identities in the order the last submit sent them. A server
+  // `tags.N` error names a position in that list, not in the current chips.
+  const submittedTagKeys = useRef<readonly string[]>([]);
   const cancelRef = useRef<FocusTarget>(null);
   useImperativeHandle(
     ref,
@@ -336,6 +340,18 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     serverField === "tags"
       ? copyText(fieldErrorCopy("tags", { tagServerField: serverError?.field }))
       : undefined;
+  // Q-09: one rejected tag gets its own chip; anything without a live position
+  // stays the group-level error the form already showed.
+  const tagErrorTargetKey =
+    tagServerError === undefined
+      ? null
+      : tagErrorKey(
+          serverError?.field,
+          submittedTagKeys.current,
+          tags.map(giftTagKey),
+        );
+  const tagChipError =
+    tagServerError === undefined ? undefined : { id: tagErrorId, message: tagServerError };
   const customTagErrorCopy = customTagError
     ? copyText(fieldErrorCopy("tags", { tagIssue: customTagError }))
     : undefined;
@@ -422,6 +438,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     }
     // `validateGiftForm` already reported it; this only narrows the type.
     if (priceAmount === "invalid") return;
+    const submittedTags = withCatalogueLabels(tagsForSubmit);
+    // The server indexes tags in body order; keep exactly that list for Q-09.
+    submittedTagKeys.current = submittedTags.map(giftTagKey);
     onSubmit({
       title: title.trim(),
       description: description.trim() === "" ? null : description.trim(),
@@ -430,7 +449,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       priceCurrency: priceAmount === null ? null : currency,
       visibility,
       quantity,
-      tags: withCatalogueLabels(tagsForSubmit),
+      tags: submittedTags,
     });
   }
 
@@ -573,11 +592,14 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           </YStack>
         ) : null}
         {fixedOptions.length > 0 ? (
+          // Q-09: a chip-level error belongs to that chip; the group is invalid only when no chip can carry it.
           <XStack
             role="group"
             aria-label={t("field.tags")}
-            aria-invalid={tagServerError ? true : undefined}
-            aria-describedby={tagServerError ? tagErrorId : undefined}
+            aria-invalid={tagServerError && tagErrorTargetKey === null ? true : undefined}
+            aria-describedby={
+              tagServerError && tagErrorTargetKey === null ? tagErrorId : undefined
+            }
             flexWrap="wrap"
             gap="$2"
           >
@@ -586,12 +608,15 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
                 toggleFixedTag(option.id, option.label);
               }
 
+              const optionKey = giftTagKey({ catalogId: option.id, label: option.label });
+
               return (
                 <TagChip
                   key={option.id}
                   label={option.label}
                   selected={selectedFixedIds.has(option.id)}
                   onPress={handlePress}
+                  error={tagErrorTargetKey === optionKey ? tagChipError : undefined}
                 />
               );
             })}
@@ -612,6 +637,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
                   label={label}
                   removeLabel={t("field.tagRemove", { name: label })}
                   onRemove={handleRemove}
+                  error={tagErrorTargetKey === giftTagKey(tag) ? tagChipError : undefined}
                 />
               );
             })}

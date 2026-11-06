@@ -103,6 +103,31 @@ export function serverErrorField(field: string | undefined): GiftFormField | nul
 }
 
 /**
+ * The selected tag a `tags.N` / `tags.N.text` / `tags.N.catalogId` server error
+ * points at, or `null` for the group-level message (Q-09).
+ *
+ * `N` counts the tags of the request body, whose order the form preserves when
+ * it passes `GiftFormValues.tags` to the screen (`giftTagInputs` in
+ * `apps/mobile/app/(app)/gifts/new.tsx`). `submitted` is that order from the
+ * last actual submit: mapping through it, instead of the current position,
+ * keeps the error on the right tag after the owner removes or re-adds chips. A
+ * missing tag — removed since the submit, or an index the request never had —
+ * has nothing to point at, so the group keeps the message and no other chip is
+ * blamed.
+ */
+export function tagErrorKey(
+  field: string | undefined,
+  submitted: readonly string[],
+  selected: readonly string[],
+): string | null {
+  const match = /^tags\.(\d+)(?:\.|$)/.exec(field ?? "");
+  if (match === null) return null;
+  const key = submitted[Number(match[1])];
+  if (key === undefined) return null;
+  return selected.includes(key) ? key : null;
+}
+
+/**
  * Where the copy for a field error lives: a dedicated `app.giftForm.error.*`
  * key, or the shared validation sentence when the form has no wording of its
  * own (`visibility`). `quantity` gets its own sentence because the realistic

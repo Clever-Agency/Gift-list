@@ -6,6 +6,7 @@ import {
   firstErrorField,
   isHttpUrl,
   serverErrorField,
+  tagErrorKey,
   validateGiftForm,
 } from "@/ui/gift-form-validation";
 
@@ -91,6 +92,41 @@ describe("serverErrorField", () => {
     expect(serverErrorField(undefined)).toBeNull();
     expect(serverErrorField("")).toBeNull();
     expect(serverErrorField("tagsExtra")).toBeNull();
+  });
+});
+
+describe("tagErrorKey", () => {
+  const submitted = ["catalog:tag_dream", "custom:своё", "catalog:tag_need"];
+
+  it("maps the server index onto the tag that was sent at that position", () => {
+    expect(tagErrorKey("tags.0.catalogId", submitted, submitted)).toBe("catalog:tag_dream");
+    expect(tagErrorKey("tags.1.text", submitted, submitted)).toBe("custom:своё");
+    expect(tagErrorKey("tags.2", submitted, submitted)).toBe("catalog:tag_need");
+  });
+
+  it("follows the tag identity after the chips are reordered", () => {
+    const reordered = ["catalog:tag_need", "catalog:tag_dream", "custom:своё"];
+    expect(tagErrorKey("tags.2.catalogId", submitted, reordered)).toBe("catalog:tag_need");
+    expect(tagErrorKey("tags.1.text", submitted, reordered)).toBe("custom:своё");
+  });
+
+  it("falls back to the group when the offending tag is gone or the index is stale", () => {
+    const withoutCustom = ["catalog:tag_dream", "catalog:tag_need"];
+    // A tag removed after the submit: nothing to highlight.
+    expect(tagErrorKey("tags.1.text", submitted, withoutCustom)).toBeNull();
+    // An index the submitted request never had.
+    expect(tagErrorKey("tags.3.text", submitted, submitted)).toBeNull();
+    expect(tagErrorKey("tags.99", submitted, submitted)).toBeNull();
+    // No submit has happened in this mount yet.
+    expect(tagErrorKey("tags.0.text", [], submitted)).toBeNull();
+  });
+
+  it("is group-level for a path without an item number", () => {
+    expect(tagErrorKey("tags", submitted, submitted)).toBeNull();
+    expect(tagErrorKey("tags.", submitted, submitted)).toBeNull();
+    expect(tagErrorKey("tags.text", submitted, submitted)).toBeNull();
+    expect(tagErrorKey("title", submitted, submitted)).toBeNull();
+    expect(tagErrorKey(undefined, submitted, submitted)).toBeNull();
   });
 });
 

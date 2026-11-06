@@ -32,6 +32,7 @@ export { Choice, ChoiceList, type ChoiceListProps, type ChoiceProps } from "./ch
 export {
   TagChip,
   TagChipList,
+  type TagChipError,
   type TagChipListProps,
   type TagChipProps,
   type TagChipVariant,

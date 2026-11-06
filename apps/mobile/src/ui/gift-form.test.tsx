@@ -7,7 +7,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { controlByLabel, typeInto } from "@/test/dom";
-import { GiftForm } from "@/ui/gift-form";
+import { GiftForm, type GiftFormValues } from "@/ui/gift-form";
 import { formatMinorToPrice } from "@/ui/gift-price";
 
 /** The same catalogue the app ships, so the copy is asserted without a copy of it. */
@@ -144,6 +144,7 @@ type FormProps = Omit<ComponentProps<typeof GiftForm>, "onSubmit">;
 
 let host: Root;
 let container: HTMLDivElement;
+let onSubmitMock: (values: GiftFormValues) => void;
 
 beforeEach(() => {
   announce.mockClear();
@@ -158,11 +159,19 @@ afterEach(async () => {
 });
 
 async function mount(overrides: Partial<FormProps> = {}) {
-  const onSubmit = vi.fn();
+  const onSubmit = vi.fn<(values: GiftFormValues) => void>();
+  onSubmitMock = onSubmit;
   await act(async () => {
     host.render(<GiftForm submitting={false} onSubmit={onSubmit} {...overrides} />);
   });
   return onSubmit;
+}
+
+/** Re-renders the same mounted form, e.g. with the server error a save returned. */
+async function update(overrides: Partial<FormProps> = {}) {
+  await act(async () => {
+    host.render(<GiftForm submitting={false} onSubmit={onSubmitMock} {...overrides} />);
+  });
 }
 
 function text(): string {
@@ -950,6 +959,131 @@ describe("GiftForm: теги", () => {
     const alerts = Array.from(container.querySelectorAll('[role="alert"]'));
     expect(alerts.some((node) => node.textContent === form.error.tagUnavailable)).toBe(true);
     expect(text()).not.toContain(form.error.tags.replace("{max}", "30"));
+  });
+
+  /** Q-09: the number counts the submitted body, not the order of the catalogue chips. */
+  it("ошибка tags.N подсвечивает чип, стоявший на этом месте в отправке", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [
+        { catalogId: "tag_need", label: "нужно сейчас" },
+        { catalogId: "tag_dream", label: "мечта" },
+      ],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await submit();
+
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.0.catalogId", message: "Unknown tag" },
+    });
+
+    const target = checkbox("нужно сейчас");
+    expect(target?.getAttribute("aria-invalid")).toBe("true");
+    const described = target?.getAttribute("aria-describedby");
+    expect(document.getElementById(described as string)?.textContent).toBe(
+      form.error.tagUnavailable,
+    );
+    expect(checkbox("мечта")?.getAttribute("aria-invalid")).toBeNull();
+    expect(checkbox("когда-нибудь")?.getAttribute("aria-invalid")).toBeNull();
+    // The group carries the message for a stale index only; one chip is enough here.
+    const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
+    expect(group?.getAttribute("aria-invalid")).toBeNull();
+    // The selected set and its order stay exactly as submitted.
+    expect(tagIsSelected("нужно сейчас")).toBe(true);
+    expect(tagIsSelected("мечта")).toBe(true);
+    expect(tagIsSelected("когда-нибудь")).toBe(false);
+  });
+
+  it("ошибка tags.N без суффикса находит свой тег, добавленный при отправке", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [{ catalogId: "tag_dream", label: "мечта" }],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await type(form.field.tagCustom, "своё");
+    // Submitting moves the pending text into the tag set at the end.
+    await submit();
+
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.1", message: "Invalid input" },
+    });
+
+    const remove = button("Убрать тег своё");
+    expect(remove?.getAttribute("aria-invalid")).toBe("true");
+    expect(remove?.getAttribute("aria-describedby")).toBeTruthy();
+    expect(checkbox("мечта")?.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("снятие и повторный выбор тега не сбивают ошибку с него", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [
+        { catalogId: "tag_dream", label: "мечта" },
+        { catalogId: "tag_need", label: "нужно сейчас" },
+      ],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await submit();
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.0.catalogId", message: "Unknown tag" },
+    });
+    expect(checkbox("мечта")?.getAttribute("aria-invalid")).toBe("true");
+
+    // Remove and re-add the first tag: the set order becomes the second, first.
+    await press("мечта");
+    await press("мечта");
+
+    expect(checkbox("мечта")?.getAttribute("aria-invalid")).toBe("true");
+    expect(checkbox("нужно сейчас")?.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("удаление отвергнутого тега оставляет общую ошибку и не подсвечивает чужой чип", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [
+        { catalogId: "tag_dream", label: "мечта" },
+        { text: "своё" },
+      ],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await submit();
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.1.text", message: "Invalid input" },
+    });
+    expect(button("Убрать тег своё")?.getAttribute("aria-invalid")).toBe("true");
+
+    await press("Убрать тег своё");
+
+    const invalid = container.querySelectorAll('[aria-invalid="true"]');
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0]?.getAttribute("role")).toBe("group");
+    expect(text()).toContain(form.error.tags.replace("{max}", "30"));
+  });
+
+  it("номер вне отправленного набора не подсвечивает ни один чип", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [{ catalogId: "tag_dream", label: "мечта" }],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await submit();
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.5.text", message: "Invalid input" },
+    });
+
+    expect(container.querySelectorAll('[role="checkbox"][aria-invalid="true"]')).toHaveLength(0);
+    const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
+    expect(group?.getAttribute("aria-invalid")).toBe("true");
   });
 });
 

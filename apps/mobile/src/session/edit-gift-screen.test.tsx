@@ -1391,6 +1391,17 @@ describe("изменение желания: теги", () => {
 
     expect(text()).toContain("Проверьте теги: до 30 символов и без повторов.");
     expect(text()).not.toContain("Не получилось сохранить. Попробуйте ещё раз.");
+    // Q-09: the saved order maps N onto the chip; `tags.0` is «мечта», not «своё».
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBe("true");
+    expect(
+      container
+        .querySelector('[role="button"][aria-label="Убрать тег своё"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBeNull();
     expect(field("Название").value).toBe("Наушники Sony");
     expect(navigation.dismissTo).not.toHaveBeenCalled();
   });

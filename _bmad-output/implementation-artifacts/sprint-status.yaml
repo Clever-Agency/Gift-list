@@ -60,7 +60,7 @@ development_status:
   epic-3: in-progress
   3-1-смена-ника-в-настройках: done
   3-2-visibilitypolicy-и-wire-dto-доступа: done
-  3-3-публичная-ссылка-l-publictoken: in-progress # CLE-53: 3.3.1 GET /api/v1/l/:token готов 2026-11-06; 3.3.2 страница /l готова 2026-11-06; 3.3.3 экран впереди
+  3-3-публичная-ссылка-l-publictoken: review # CLE-53: 3.3.1 GET /api/v1/l/:token готов 2026-11-06; 3.3.2 страница /l готова 2026-11-06; 3.3.3 экран /wishlist/:token готов, корневые гейты typecheck/lint/test/build — exit 0 на 577ddfe 2026-11-06; не done до приёмки человеком
   3-4-профиль-u-nick: backlog
   3-5-поиск-пользователей-и-скрыть-из-поиска: backlog
   epic-3-retrospective: optional

@@ -223,6 +223,43 @@ describe("POST /api/v1/me/gifts tags", () => {
     expect((await res.json()).code).toBe("VALIDATION");
     expect(create).not.toHaveBeenCalled();
   });
+
+  /** Q-10/F4: a catalog row deleted after the check is invalid input, not a 500. */
+  it("answers 400 in the envelope when the catalog tag races the insert (P2003)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    create.mockRejectedValue(
+      new PrismaClientKnownRequestError("Foreign key constraint violated", { code: "P2003" }),
+    );
+
+    const { POST } = await import("./route");
+    const res = await POST(post({ title: "Книга", tags: [{ catalogId: "tag_dream" }] }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "tags",
+    });
+  });
+
+  it("answers 409 in the envelope when a unique tag index loses the race (P2002)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    create.mockRejectedValue(
+      new PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002" }),
+    );
+
+    const { POST } = await import("./route");
+    const res = await POST(post({ title: "Книга", tags: [{ catalogId: "tag_dream" }] }));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "Tags conflict with a concurrent change",
+      field: "tags",
+    });
+  });
 });
 
 describe("PATCH /api/v1/me/gifts/[id] tags", () => {
@@ -305,5 +342,44 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
     expect(res.status).toBe(404);
     expect(tagDeleteMany).not.toHaveBeenCalled();
     expect(tagCreateMany).not.toHaveBeenCalled();
+  });
+
+  /** Q-10/F4: the tag replacement rolls back and answers VALIDATION, not a 500. */
+  it("answers 400 in the envelope when the catalog tag races the replacement (P2003)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    update.mockResolvedValue({ id: "g1" });
+    tagCreateMany.mockRejectedValue(
+      new PrismaClientKnownRequestError("Foreign key constraint violated", { code: "P2003" }),
+    );
+
+    const { PATCH } = await import("./[id]/route");
+    const res = await PATCH(patch({ tags: [{ catalogId: "tag_dream" }] }), context);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "tags",
+    });
+  });
+
+  it("answers 409 in the envelope when a unique tag index loses the race (P2002)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    update.mockResolvedValue({ id: "g1" });
+    tagCreateMany.mockRejectedValue(
+      new PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002" }),
+    );
+
+    const { PATCH } = await import("./[id]/route");
+    const res = await PATCH(patch({ tags: [{ catalogId: "tag_dream" }] }), context);
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "Tags conflict with a concurrent change",
+      field: "tags",
+    });
   });
 });

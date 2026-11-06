@@ -15,13 +15,15 @@ const {
   transaction,
   PrismaClientKnownRequestError,
 } = vi.hoisted(() => {
-    /** Stands in for the generated class, so a test can shape the `code` the use-cases read. */
+    /** Stands in for the generated class, so a test can shape the `code` and `meta` the use-cases read. */
     class PrismaClientKnownRequestError extends Error {
       code: string;
+      meta?: Record<string, unknown>;
 
-      constructor(message: string, { code }: { code: string }) {
+      constructor(message: string, { code, meta }: { code: string; meta?: Record<string, unknown> }) {
         super(message);
         this.code = code;
+        this.meta = meta;
       }
     }
 
@@ -909,6 +911,63 @@ describe("gift tags", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  /** Q-10/F4: the catalog row disappeared between the check and the nested insert. */
+  it("maps a catalog tag deleted during create to VALIDATION (P2003)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    create.mockRejectedValue(
+      new PrismaClientKnownRequestError("Foreign key constraint violated", {
+        code: "P2003",
+        meta: { modelName: "GiftTag", field_name: "GiftTag_tagId_fkey (index)" },
+      }),
+    );
+
+    const result = await createGift(headers, {
+      title: "Книга",
+      tags: [{ catalogId: "tag_dream" }],
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    expect(result).not.toHaveProperty("data");
+  });
+
+  /** Q-10/F4: a unique `GiftTag` index wins the race; there is no partial write. */
+  it("maps a unique tag race during create to CONFLICT (P2002)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    create.mockRejectedValue(
+      new PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        meta: { modelName: "GiftTag", target: ["giftId", "tagId"] },
+      }),
+    );
+
+    const result = await createGift(headers, {
+      title: "Книга",
+      tags: [{ catalogId: "tag_dream" }],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      message: "Tags conflict with a concurrent change",
+      field: "tags",
+    });
+    expect(result).not.toHaveProperty("data");
+  });
+
+  /** Only the tag relation is mapped: a vanished list stays a database failure. */
+  it("rethrows a foreign key failure that names another relation", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    const error = new PrismaClientKnownRequestError("Foreign key constraint violated", {
+      code: "P2003",
+      meta: { modelName: "Gift", field_name: "Gift_listId_fkey (index)" },
+    });
+    create.mockRejectedValue(error);
+
+    await expect(
+      createGift(headers, { title: "Книга", tags: [{ catalogId: "tag_dream" }] }),
+    ).rejects.toBe(error);
+  });
+
   it("never lets the client set aggregate eligibility", async () => {
     expect(
       await createGift(headers, {
@@ -994,6 +1053,49 @@ describe("gift tags", () => {
       { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "своё" },
     ]);
+  });
+
+  /** Q-10/F4: the catalog row disappeared after the in-transaction check. */
+  it("maps a catalog tag deleted during the tag replacement to VALIDATION (P2003)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    update.mockResolvedValue({ id: "g1" });
+    tagCreateMany.mockRejectedValue(
+      new PrismaClientKnownRequestError("Foreign key constraint violated", {
+        code: "P2003",
+        meta: { modelName: "GiftTag", field_name: "GiftTag_tagId_fkey (index)" },
+      }),
+    );
+
+    const result = await updateGift(headers, "g1", { tags: [{ catalogId: "tag_dream" }] });
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    expect(result).not.toHaveProperty("data");
+    // The transaction rolled the field write back; nothing partial is returned.
+    expect(update.mock.invocationCallOrder[0]).toBeLessThan(
+      tagCreateMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  /** Q-10/F4: a concurrent replacement hit a `GiftTag` unique index. */
+  it("maps a unique tag race during the tag replacement to CONFLICT (P2002)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    update.mockResolvedValue({ id: "g1" });
+    tagCreateMany.mockRejectedValue(
+      new PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        meta: { modelName: "GiftTag", target: ["giftId", "customText"] },
+      }),
+    );
+
+    const result = await updateGift(headers, "g1", { tags: [{ catalogId: "tag_dream" }] });
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      message: "Tags conflict with a concurrent change",
+      field: "tags",
+    });
+    expect(result).not.toHaveProperty("data");
   });
 
   it("clears tags with an explicit empty list", async () => {

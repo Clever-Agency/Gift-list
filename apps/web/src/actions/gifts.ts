@@ -94,13 +94,58 @@ function toTagRows(tags: readonly GiftTagInput[]): GiftTagCreate[] {
 /** Raised inside a transaction when a fixed tag id matches no catalog row. */
 class MissingCatalogTagError extends Error {}
 
+/** Text Prisma records in `meta` for a failed constraint; empty when it gave none. */
+function constraintDetail(error: Prisma.PrismaClientKnownRequestError): string {
+  const meta = (error as { meta?: Record<string, unknown> }).meta;
+  if (!meta) return "";
+
+  return [meta.modelName, meta.field_name, meta.target]
+    .flatMap(function flatten(value) {
+      return Array.isArray(value) ? value : [value];
+    })
+    .filter(function isName(value): value is string {
+      return typeof value === "string";
+    })
+    .join(" ");
+}
+
+/**
+ * A failure of the tag write itself. P2003: a catalog row was deleted between
+ * the existence check and the insert (ADMIN deletion is Story 10.2), so the
+ * id is no longer valid input. P2002: a concurrent replacement hit one of the
+ * `GiftTag` unique indexes.
+ *
+ * Only a constraint that names the tag relation is mapped. Current Prisma
+ * names it in `meta`; a runtime without `meta` is also the tag write, because
+ * the caller asks only after sending tag rows. A foreign key to another table
+ * (the gift's list) stays an infrastructure failure and is rethrown.
+ */
+function tagWriteFailure(error: unknown): ActionResult<GiftCard> | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return null;
+
+  const detail = constraintDetail(error);
+  if (detail !== "" && !/tag/i.test(detail)) return null;
+
+  if (error.code === "P2003") return validation("tags");
+  if (error.code === "P2002") {
+    return {
+      ok: false,
+      code: "CONFLICT",
+      message: "Tags conflict with a concurrent change",
+      field: "tags",
+    };
+  }
+  return null;
+}
+
 /**
  * Fixed tag ids must exist before anything is written. On update the check runs
  * inside the same transaction as the tag replacement, so a catalog change cannot
  * slip between the check and the insert and a missing id rolls everything back.
  * On create the check runs before the nested create; the create itself is one
- * atomic statement, and a catalog row deleted between check and insert can only
- * surface as a database error (ADMIN deletion is Story 10.2).
+ * atomic statement, and a catalog row deleted between check and insert surfaces
+ * as a P2003 that `tagWriteFailure` maps to the same VALIDATION (ADMIN deletion
+ * is Story 10.2).
  */
 async function fixedTagsExist(
   db: Prisma.TransactionClient,
@@ -180,27 +225,35 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   if (!(await fixedTagsExist(prisma, tags))) return validation("tags");
 
   const tagRows = toTagRows(tags);
-  const row = await prisma.gift.create({
-    data: {
-      listId: list.id,
-      title: parsed.data.title,
-      description: parsed.data.description,
-      priceAmount: parsed.data.priceAmount,
-      priceCurrency: parsed.data.priceCurrency,
-      linkUrl: parsed.data.linkUrl,
-      visibility: parsed.data.visibility,
-      quantity: parsed.data.quantity,
-      status: "OPEN",
-      // An absent key keeps the create identical to a body without tags.
-      ...(tagRows.length > 0 ? { tags: { create: tagRows } } : {}),
-    },
-    select: ownerGiftSelect,
-  });
+  try {
+    const row = await prisma.gift.create({
+      data: {
+        listId: list.id,
+        title: parsed.data.title,
+        description: parsed.data.description,
+        priceAmount: parsed.data.priceAmount,
+        priceCurrency: parsed.data.priceCurrency,
+        linkUrl: parsed.data.linkUrl,
+        visibility: parsed.data.visibility,
+        quantity: parsed.data.quantity,
+        status: "OPEN",
+        // An absent key keeps the create identical to a body without tags.
+        ...(tagRows.length > 0 ? { tags: { create: tagRows } } : {}),
+      },
+      select: ownerGiftSelect,
+    });
 
-  return {
-    ok: true,
-    data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))),
-  };
+    return {
+      ok: true,
+      data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))),
+    };
+  } catch (error) {
+    // The nested create is one statement, so a tag that lost the race leaves
+    // no gift behind; only the tag write is mapped to the envelope.
+    const tagFailure = tagRows.length > 0 ? tagWriteFailure(error) : null;
+    if (tagFailure) return tagFailure;
+    throw error;
+  }
 }
 
 /**
@@ -340,6 +393,11 @@ export async function updateGift(
     };
   } catch (error) {
     if (error instanceof MissingCatalogTagError) return validation("tags");
+
+    if (tags !== undefined) {
+      const tagFailure = tagWriteFailure(error);
+      if (tagFailure) return tagFailure;
+    }
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       // A guarded write can lose the race with a reservation: re-read to tell

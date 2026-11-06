@@ -33,6 +33,13 @@ model User {
 
   /// Gifts this user holds a reservation on (AD-9). Active reservations are `status=RESERVED`.
   reservedGifts Gift[] @relation("GiftReservedBy")
+
+  friendshipInvitesSent     FriendshipInvite[] @relation("FriendshipInviteFrom")
+  friendshipInvitesReceived FriendshipInvite[] @relation("FriendshipInviteTo")
+  friendshipsAsLow          Friendship[]       @relation("FriendshipLow")
+  friendshipsAsHigh         Friendship[]       @relation("FriendshipHigh")
+  blocksMade                Block[]            @relation("BlockBlocker")
+  blocksReceived            Block[]            @relation("BlockBlocked")
 }
 
 model Session {
@@ -238,4 +245,51 @@ model RateLimit {
   key         String   @id
   count       Int
   windowStart DateTime @db.Timestamptz(3)
+}
+
+// Friendship protocol (AD-10, Story 4.1). Pending is the mere presence of a
+// directed `FriendshipInvite`: there is no status column and no second row per
+// direction. An accepted friendship is one undirected edge with the canonical
+// pair `userLowId < userHighId`; the migration CHECK and the UNIQUE index make a
+// second row in the opposite direction impossible. `Block` is only read here —
+// the storage is shared with Story 4.5, which owns creating and removing blocks.
+model FriendshipInvite {
+  id         String   @id @default(cuid(2))
+  fromUserId String
+  toUserId   String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  fromUser User @relation("FriendshipInviteFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User @relation("FriendshipInviteTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  /// One pending invite per direction; a repeat send keeps the same row.
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId])
+}
+
+model Friendship {
+  id         String   @id @default(cuid(2))
+  userLowId  String
+  userHighId String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  userLow  User @relation("FriendshipLow", fields: [userLowId], references: [id], onDelete: Cascade)
+  userHigh User @relation("FriendshipHigh", fields: [userHighId], references: [id], onDelete: Cascade)
+
+  /// Canonical ordered pair: at most one edge per two users (CHECK low < high).
+  @@unique([userLowId, userHighId])
+  @@index([userHighId])
+}
+
+model Block {
+  id        String   @id @default(cuid(2))
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  blocker User @relation("BlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
 }

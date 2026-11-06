@@ -516,17 +516,13 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         onChange={setVisibility}
         error={inlineError("visibility")}
         disabled={visibilityLocked}
+        description={visibilityLocked ? t("field.visibilityLocked") : undefined}
         options={VISIBILITIES.map((code) => ({
           value: code,
           label: tVisibility(code),
           hint: t(`field.visibilityHint.${code}`),
         }))}
       />
-      {visibilityLocked ? (
-        <Text kind="caption" tone="muted">
-          {t("field.visibilityLocked")}
-        </Text>
-      ) : null}
       <ChoiceGroup
         variant="rows"
         label={t("field.quantity")}
@@ -534,17 +530,13 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         onChange={setQuantity}
         error={inlineError("quantity")}
         disabled={quantityLocked}
+        description={quantityLocked ? t("field.quantityLocked") : undefined}
         options={QUANTITIES.map((code) => ({
           value: code,
           label: tQuantity(code),
           hint: t(`field.quantityHint.${code}`),
         }))}
       />
-      {quantityLocked ? (
-        <Text kind="caption" tone="muted">
-          {t("field.quantityLocked")}
-        </Text>
-      ) : null}
       <YStack gap="$1">
         <Text kind="label">{t("field.tags")}</Text>
         {tagCatalog.status === "loading" ? (
@@ -733,6 +725,7 @@ export function ChoiceGroup<T extends string>({
   error,
   labelHidden,
   disabled = false,
+  description,
   autoFocusValue,
   autoFocusRef,
 }: {
@@ -747,6 +740,8 @@ export function ChoiceGroup<T extends string>({
   labelHidden?: boolean;
   /** Shows the stored value but does not let it change; every radio reads as disabled. */
   disabled?: boolean;
+  /** Persistent explanation under the group, e.g. why the stored value cannot change. */
+  description?: string;
   /** The option whose node goes to `autoFocusRef`. */
   autoFocusValue?: T;
   /** Receives the node of the `autoFocusValue` option. */
@@ -758,6 +753,7 @@ export function ChoiceGroup<T extends string>({
       heading={labelHidden ? undefined : label}
       variant={variant === "rows" ? "row" : "chip"}
       error={error}
+      description={description}
     >
       {options.map((option) => {
         function handlePress() {

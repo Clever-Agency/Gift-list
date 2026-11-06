@@ -411,6 +411,13 @@ describe("GiftForm: отправка", () => {
     });
 
     expect(text()).toContain(form.field.visibilityLocked);
+    const group = container.querySelector(
+      `[role="radiogroup"][aria-label="${form.field.visibility}"]`,
+    );
+    const described = document.getElementById(group?.getAttribute("aria-describedby") ?? "");
+    expect(described?.textContent).toBe(form.field.visibilityLocked);
+    expect(described?.getAttribute("role")).toBeNull();
+    expect(group?.getAttribute("aria-invalid")).toBeNull();
     for (const code of VISIBILITIES) {
       const option = radio(visibilityLabel[code]);
       expect(option, visibilityLabel[code]).toBeDefined();
@@ -440,6 +447,13 @@ describe("GiftForm: отправка", () => {
     });
 
     expect(text()).toContain(form.field.quantityLocked);
+    const group = container.querySelector(
+      `[role="radiogroup"][aria-label="${form.field.quantity}"]`,
+    );
+    const described = document.getElementById(group?.getAttribute("aria-describedby") ?? "");
+    expect(described?.textContent).toBe(form.field.quantityLocked);
+    expect(described?.getAttribute("role")).toBeNull();
+    expect(group?.getAttribute("aria-invalid")).toBeNull();
     for (const quantity of QUANTITIES) {
       const option = radio(quantityLabel[quantity]);
       expect(option, quantityLabel[quantity]).toBeDefined();
@@ -465,6 +479,11 @@ describe("GiftForm: отправка", () => {
       `[role="radiogroup"][aria-label="${form.field.quantity}"]`,
     );
     expect(group?.parentElement?.textContent).toContain(form.error.quantityLocked);
+    expect(group?.getAttribute("aria-invalid")).toBe("true");
+    const errorId = group?.getAttribute("aria-describedby");
+    const error = document.getElementById(errorId ?? "");
+    expect(error?.textContent).toBe(form.error.quantityLocked);
+    expect(error?.getAttribute("role")).toBe("alert");
     // The inline message is the group's, not the form-level one above the button.
     expect(group?.parentElement?.textContent).not.toContain(form.error.form);
   });

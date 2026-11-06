@@ -16,10 +16,12 @@ const {
 } = vi.hoisted(() => {
   class PrismaClientKnownRequestError extends Error {
     code: string;
+    meta?: Record<string, unknown>;
 
-    constructor(message: string, { code }: { code: string }) {
+    constructor(message: string, { code, meta }: { code: string; meta?: Record<string, unknown> }) {
       super(message);
       this.code = code;
+      this.meta = meta;
     }
   }
 
@@ -228,7 +230,18 @@ describe("POST /api/v1/me/gifts tags", () => {
   it("answers 400 in the envelope when the catalog tag races the insert (P2003)", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
     create.mockRejectedValue(
-      new PrismaClientKnownRequestError("Foreign key constraint violated", { code: "P2003" }),
+      new PrismaClientKnownRequestError("Foreign key constraint violated", {
+        code: "P2003",
+        meta: {
+          modelName: "Gift",
+          driverAdapterError: {
+            cause: {
+              kind: "ForeignKeyConstraintViolation",
+              constraint: { index: "GiftTag_tagId_fkey" },
+            },
+          },
+        },
+      }),
     );
 
     const { POST } = await import("./route");
@@ -243,10 +256,46 @@ describe("POST /api/v1/me/gifts tags", () => {
     });
   });
 
+  /** Q-10/F4: the gift's own list FK is not a tag failure and stays unhandled. */
+  it("does not turn a Gift.listId foreign key into a tags envelope", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    const error = new PrismaClientKnownRequestError("Foreign key constraint violated", {
+      code: "P2003",
+      meta: {
+        modelName: "Gift",
+        driverAdapterError: {
+          cause: {
+            kind: "ForeignKeyConstraintViolation",
+            constraint: { index: "Gift_listId_fkey" },
+          },
+        },
+      },
+    });
+    create.mockRejectedValue(error);
+
+    const { POST } = await import("./route");
+
+    await expect(
+      POST(post({ title: "Книга", tags: [{ catalogId: "tag_dream" }] })),
+    ).rejects.toBe(error);
+  });
+
   it("answers 409 in the envelope when a unique tag index loses the race (P2002)", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
     create.mockRejectedValue(
-      new PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002" }),
+      new PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "UniqueConstraintViolation",
+              table: "GiftTag",
+              constraint: { index: "GiftTag_giftId_tagId_key" },
+            },
+          },
+        },
+      }),
     );
 
     const { POST } = await import("./route");
@@ -349,7 +398,18 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
     update.mockResolvedValue({ id: "g1" });
     tagCreateMany.mockRejectedValue(
-      new PrismaClientKnownRequestError("Foreign key constraint violated", { code: "P2003" }),
+      new PrismaClientKnownRequestError("Foreign key constraint violated", {
+        code: "P2003",
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "ForeignKeyConstraintViolation",
+              constraint: { index: "GiftTag_tagId_fkey" },
+            },
+          },
+        },
+      }),
     );
 
     const { PATCH } = await import("./[id]/route");
@@ -368,7 +428,19 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
     update.mockResolvedValue({ id: "g1" });
     tagCreateMany.mockRejectedValue(
-      new PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002" }),
+      new PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "UniqueConstraintViolation",
+              table: "GiftTag",
+              constraint: { index: "GiftTag_giftId_tagId_key" },
+            },
+          },
+        },
+      }),
     );
 
     const { PATCH } = await import("./[id]/route");

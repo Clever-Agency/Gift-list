@@ -917,7 +917,17 @@ describe("gift tags", () => {
     create.mockRejectedValue(
       new PrismaClientKnownRequestError("Foreign key constraint violated", {
         code: "P2003",
-        meta: { modelName: "GiftTag", field_name: "GiftTag_tagId_fkey (index)" },
+        // Real Prisma 7.10 + @prisma/adapter-pg shape for a nested create:
+        // modelName is the operation root, the constraint is only in the adapter cause.
+        meta: {
+          modelName: "Gift",
+          driverAdapterError: {
+            cause: {
+              kind: "ForeignKeyConstraintViolation",
+              constraint: { index: "GiftTag_tagId_fkey" },
+            },
+          },
+        },
       }),
     );
 
@@ -936,7 +946,16 @@ describe("gift tags", () => {
     create.mockRejectedValue(
       new PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
-        meta: { modelName: "GiftTag", target: ["giftId", "tagId"] },
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "UniqueConstraintViolation",
+              table: "GiftTag",
+              constraint: { index: "GiftTag_giftId_tagId_key" },
+            },
+          },
+        },
       }),
     );
 
@@ -959,7 +978,16 @@ describe("gift tags", () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
     const error = new PrismaClientKnownRequestError("Foreign key constraint violated", {
       code: "P2003",
-      meta: { modelName: "Gift", field_name: "Gift_listId_fkey (index)" },
+      // Same nested-create shape as the tag failure, but the adapter names Gift.listId.
+      meta: {
+        modelName: "Gift",
+        driverAdapterError: {
+          cause: {
+            kind: "ForeignKeyConstraintViolation",
+            constraint: { index: "Gift_listId_fkey" },
+          },
+        },
+      },
     });
     create.mockRejectedValue(error);
 
@@ -1062,7 +1090,15 @@ describe("gift tags", () => {
     tagCreateMany.mockRejectedValue(
       new PrismaClientKnownRequestError("Foreign key constraint violated", {
         code: "P2003",
-        meta: { modelName: "GiftTag", field_name: "GiftTag_tagId_fkey (index)" },
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "ForeignKeyConstraintViolation",
+              constraint: { index: "GiftTag_tagId_fkey" },
+            },
+          },
+        },
       }),
     );
 
@@ -1083,7 +1119,16 @@ describe("gift tags", () => {
     tagCreateMany.mockRejectedValue(
       new PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
-        meta: { modelName: "GiftTag", target: ["giftId", "customText"] },
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "UniqueConstraintViolation",
+              table: "GiftTag",
+              constraint: { index: "GiftTag_giftId_customText_key" },
+            },
+          },
+        },
       }),
     );
 

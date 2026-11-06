@@ -94,19 +94,58 @@ function toTagRows(tags: readonly GiftTagInput[]): GiftTagCreate[] {
 /** Raised inside a transaction when a fixed tag id matches no catalog row. */
 class MissingCatalogTagError extends Error {}
 
-/** Text Prisma records in `meta` for a failed constraint; empty when it gave none. */
-function constraintDetail(error: Prisma.PrismaClientKnownRequestError): string {
-  const meta = (error as { meta?: Record<string, unknown> }).meta;
-  if (!meta) return "";
+/** PostgreSQL constraint that ties a `GiftTag` row to the tag catalog. */
+const TAG_ID_FOREIGN_KEY = "GiftTag_tagId_fkey";
+/** Relation whose unique indexes and catalog FK are tag-write failures. */
+const GIFT_TAG_RELATION = "GiftTag";
 
-  return [meta.modelName, meta.field_name, meta.target]
-    .flatMap(function flatten(value) {
-      return Array.isArray(value) ? value : [value];
-    })
-    .filter(function isName(value): value is string {
-      return typeof value === "string";
-    })
-    .join(" ");
+/** Real adapter metadata shape, narrowed to the names a mapper may read. */
+type ConstraintMeta = {
+  modelName?: unknown;
+  field_name?: unknown;
+  target?: unknown;
+  table?: unknown;
+  driverAdapterError?: {
+    cause?: {
+      table?: unknown;
+      constraint?: { index?: unknown; fields?: unknown };
+    };
+  };
+};
+
+function pushNames(names: string[], value: unknown): void {
+  if (typeof value === "string") {
+    names.push(value);
+    return;
+  }
+  if (!Array.isArray(value)) return;
+  for (const item of value) {
+    if (typeof item === "string") names.push(item);
+  }
+}
+
+/**
+ * Names Prisma records for a failed constraint; empty when it gave none.
+ *
+ * Prisma 7.10 with `@prisma/adapter-pg` puts the PostgreSQL constraint only in
+ * `meta.driverAdapterError.cause.constraint.index` for a nested write and keeps
+ * `modelName` at the operation root (`Gift`). Older/other runtimes use
+ * `modelName`/`field_name`/`target`, so both shapes are read.
+ */
+function constraintNames(error: Prisma.PrismaClientKnownRequestError): string[] {
+  const meta = (error as { meta?: ConstraintMeta }).meta;
+  if (!meta) return [];
+
+  const cause = meta.driverAdapterError?.cause;
+  const names: string[] = [];
+  pushNames(names, meta.modelName);
+  pushNames(names, meta.field_name);
+  pushNames(names, meta.target);
+  pushNames(names, meta.table);
+  pushNames(names, cause?.constraint?.index);
+  pushNames(names, cause?.constraint?.fields);
+  pushNames(names, cause?.table);
+  return names;
 }
 
 /**
@@ -115,19 +154,32 @@ function constraintDetail(error: Prisma.PrismaClientKnownRequestError): string {
  * id is no longer valid input. P2002: a concurrent replacement hit one of the
  * `GiftTag` unique indexes.
  *
- * Only a constraint that names the tag relation is mapped. Current Prisma
- * names it in `meta`; a runtime without `meta` is also the tag write, because
- * the caller asks only after sending tag rows. A foreign key to another table
- * (the gift's list) stays an infrastructure failure and is rethrown.
+ * P2003 is mapped only when the adapter names the catalog FK
+ * (`GiftTag_tagId_fkey`); the root `modelName` of a nested create is `Gift`, so
+ * matching it would also swallow the gift's own `Gift_listId_fkey`. P2002 is
+ * mapped only for the `GiftTag` relation. A runtime without metadata keeps the
+ * old behaviour: the caller asks only after sending tag rows. A foreign key to
+ * another table stays an infrastructure failure and is rethrown.
  */
 function tagWriteFailure(error: unknown): ActionResult<GiftCard> | null {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return null;
 
-  const detail = constraintDetail(error);
-  if (detail !== "" && !/tag/i.test(detail)) return null;
+  const names = constraintNames(error);
+  const hasNames = names.length > 0;
 
-  if (error.code === "P2003") return validation("tags");
+  if (error.code === "P2003") {
+    const namesTagForeignKey = names.some(function includesTagFk(name) {
+      return name.includes(TAG_ID_FOREIGN_KEY);
+    });
+    if (hasNames && !namesTagForeignKey) return null;
+    return validation("tags");
+  }
+
   if (error.code === "P2002") {
+    const namesGiftTag = names.some(function includesGiftTag(name) {
+      return name.includes(GIFT_TAG_RELATION);
+    });
+    if (hasNames && !namesGiftTag) return null;
     return {
       ok: false,
       code: "CONFLICT",

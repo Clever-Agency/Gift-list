@@ -27,8 +27,9 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Client, Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { toGiftTags } from "../../domain/tag";
+import { createGift } from "../../actions/gifts";
 import { Prisma, PrismaClient } from "../generated/client";
 import {
   describeDisposableTarget,
@@ -36,6 +37,11 @@ import {
   resolveDisposableTarget,
   type DisposableTarget,
 } from "./guard";
+
+const { getSession } = vi.hoisted(() => ({ getSession: vi.fn() }));
+
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 
 const WEB_DIR = fileURLToPath(new URL("../../../", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
@@ -200,6 +206,36 @@ async function createGiftFixture(title: string): Promise<{ giftId: string; listI
   return { giftId: gift.id, listId: list.id };
 }
 
+/** A user and their list without a gift, for the R1 action-level probes. */
+async function createOwnerFixture(): Promise<{ userId: string; listId: string }> {
+  const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
+  const user = await prisma.user.create({
+    data: {
+      name: "F4",
+      email: `${suffix}@f4.invalid`,
+      nick: `f4${suffix}`,
+      nickNormalized: `f4${suffix}`,
+    },
+  });
+  const list = await prisma.list.create({
+    data: { ownerId: user.id, publicToken: `f4${suffix}` },
+  });
+  return { userId: user.id, listId: list.id };
+}
+
+/** Prisma 7.10 + adapter-pg keeps the PostgreSQL constraint only in this cause. */
+function constraintIndex(error: unknown): string {
+  const meta = (error as { meta?: { driverAdapterError?: { cause?: { constraint?: { index?: unknown } } } } })
+    .meta;
+  const index = meta?.driverAdapterError?.cause?.constraint?.index;
+  return typeof index === "string" ? index : "";
+}
+
+async function dropGiftTrigger(trigger: string, fn: string): Promise<void> {
+  await client.query(`DROP TRIGGER IF EXISTS "${trigger}" ON "Gift"`);
+  await client.query(`DROP FUNCTION IF EXISTS "${fn}"()`);
+}
+
 async function expectPostgresError(
   sql: string,
   values: readonly unknown[],
@@ -228,6 +264,10 @@ async function expectPrismaError(operation: Promise<unknown>, code: string): Pro
 describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
   beforeAll(async () => {
     target = resolveTargetOrReport();
+    // Process-local override for the action's shared client; the guard never
+    // reads these, and child Prisma processes get explicit overrides below.
+    process.env.DATABASE_URL = target.databaseUrl;
+    process.env.DIRECT_URL = target.directUrl;
     tempDir = mkdtempSync(join(tmpdir(), "gift-list-f5-"));
     writeFileSync(join(tempDir, "empty.env"), "");
     record(`target: ${describeDisposableTarget(target)}`);
@@ -735,5 +775,160 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
     ]);
     expect(await countRows("Tag")).toBe(3);
     record("reseed: ADMIN ru label kept, en kept, missing ru filled from the seed");
+  });
+
+  /**
+   * R1/F4: the mapper must read the constraint from the adapter cause, because
+   * the root `modelName` of a nested create is `Gift`, not `GiftTag`.
+   */
+  it("records the real adapter meta for a nested create with a missing tag", async () => {
+    const { listId } = await createOwnerFixture();
+    const title = `F4 meta ${randomUUID()}`;
+    const giftsBefore = await countGifts();
+    let caught: unknown;
+
+    try {
+      await prisma.gift.create({
+        data: {
+          listId,
+          title,
+          tags: { create: [{ tagId: `missing_${randomUUID()}`, aggregateEligible: true }] },
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+    expect((caught as Prisma.PrismaClientKnownRequestError).code).toBe("P2003");
+    const meta = (caught as { meta?: Record<string, unknown> }).meta;
+    expect(meta?.modelName).toBe("Gift");
+    expect(meta).not.toHaveProperty("field_name");
+    expect(meta).not.toHaveProperty("target");
+    expect(constraintIndex(caught)).toBe("GiftTag_tagId_fkey");
+    expect(await countGifts()).toBe(giftsBefore);
+
+    const leftovers = await client.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM "Gift" WHERE "title" = $1`,
+      [title],
+    );
+    expect(leftovers.rows[0]?.count).toBe(0);
+    record(
+      "R1 real meta: P2003 modelName=Gift, cause.constraint.index=GiftTag_tagId_fkey, no gift left",
+    );
+  });
+
+  /**
+   * R1/F4: a catalog row deleted between the existence check and the nested
+   * create is the reported race. A BEFORE INSERT trigger deletes the tag row
+   * deterministically; the action must answer VALIDATION/tags, not throw.
+   */
+  it("maps the real nested-create tag race to VALIDATION without a partial gift", async () => {
+    const { userId } = await createOwnerFixture();
+    const tagId = `tag_${randomUUID()}`;
+    const slug = `f4_${randomUUID()}`;
+    const title = `F4 tag race ${randomUUID()}`;
+    const fn = `f4_race_${randomUUID().replaceAll("-", "")}`;
+    const trigger = `f4_race_${randomUUID().replaceAll("-", "")}`;
+    await client.query(
+      `INSERT INTO "Tag" ("id", "slug", "labels", "updatedAt")
+       VALUES ($1, $2, '{"ru":"гонка F4"}'::jsonb, NOW())`,
+      [tagId, slug],
+    );
+    await client.query(
+      `CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         DELETE FROM "Tag" WHERE "id" = TG_ARGV[0];
+         RETURN NEW;
+       END;
+       $$`,
+    );
+    await client.query(
+      `CREATE TRIGGER "${trigger}" BEFORE INSERT ON "Gift"
+       FOR EACH ROW WHEN (NEW."title" = '${title}')
+       EXECUTE FUNCTION "${fn}"('${tagId}')`,
+    );
+    getSession.mockResolvedValue({ user: { id: userId }, session: { token: "t" } });
+
+    try {
+      const giftsBefore = await countGifts();
+      const result = await createGift(new Headers(), {
+        title,
+        tags: [{ catalogId: tagId }],
+      });
+
+      expect(result).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+      expect(result).not.toHaveProperty("data");
+      expect(await countGifts()).toBe(giftsBefore);
+      const leftovers = await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM "Gift" WHERE "title" = $1`,
+        [title],
+      );
+      expect(leftovers.rows[0]?.count).toBe(0);
+      const orphans = await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count
+           FROM "GiftTag" gt
+           LEFT JOIN "Tag" t ON t."id" = gt."tagId"
+          WHERE gt."tagId" IS NOT NULL AND t."id" IS NULL`,
+      );
+      expect(orphans.rows[0]?.count).toBe(0);
+      record("R1 createGift: real tag race -> VALIDATION/tags, no Gift and no orphan GiftTag");
+    } finally {
+      await dropGiftTrigger(trigger, fn);
+      await client.query(`DELETE FROM "Gift" WHERE "title" = $1`, [title]);
+      await client.query(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId]);
+    }
+  });
+
+  /**
+   * R1/F4: the gift's own list FK must stay an infrastructure failure. The
+   * same trigger shape deletes the list, so the nested write hits
+   * `Gift_listId_fkey`; the action must rethrow it, never return a tags envelope.
+   */
+  it("rethrows the real Gift_listId_fkey from createGift", async () => {
+    const { userId, listId } = await createOwnerFixture();
+    const dream = await client.query<{ id: string }>(
+      `SELECT "id" FROM "Tag" WHERE "slug" = 'dream'`,
+    );
+    const dreamId = dream.rows[0]?.id ?? "";
+    const title = `F4 list race ${randomUUID()}`;
+    const fn = `f4_list_${randomUUID().replaceAll("-", "")}`;
+    const trigger = `f4_list_${randomUUID().replaceAll("-", "")}`;
+    await client.query(
+      `CREATE FUNCTION "${fn}"() RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         DELETE FROM "List" WHERE "id" = TG_ARGV[0];
+         RETURN NEW;
+       END;
+       $$`,
+    );
+    await client.query(
+      `CREATE TRIGGER "${trigger}" BEFORE INSERT ON "Gift"
+       FOR EACH ROW WHEN (NEW."title" = '${title}')
+       EXECUTE FUNCTION "${fn}"('${listId}')`,
+    );
+    getSession.mockResolvedValue({ user: { id: userId }, session: { token: "t" } });
+
+    try {
+      const failure = await createGift(new Headers(), {
+        title,
+        tags: [{ catalogId: dreamId }],
+      }).then(
+        function unexpectedSuccess(value) {
+          throw new Error(`expected a rethrown error, got ${JSON.stringify(value)}`);
+        },
+        function captureRejection(error: unknown) {
+          return error;
+        },
+      );
+
+      expect(failure).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+      expect((failure as Prisma.PrismaClientKnownRequestError).code).toBe("P2003");
+      expect(constraintIndex(failure)).toBe("Gift_listId_fkey");
+      record("R1 createGift: real Gift_listId_fkey rethrown (not a tags VALIDATION)");
+    } finally {
+      await dropGiftTrigger(trigger, fn);
+      await client.query(`DELETE FROM "Gift" WHERE "title" = $1`, [title]);
+    }
   });
 });

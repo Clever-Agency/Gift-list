@@ -4,7 +4,8 @@ import { Heading, Text } from "./text";
 
 export type EmptyStateProps = {
   title: string;
-  body: string;
+  /** A single line under the title; the public link page has none. */
+  body?: string;
   /** At most one primary CTA. */
   action?: ReactNode;
 };
@@ -23,9 +24,11 @@ export function EmptyState({ title, body, action }: EmptyStateProps) {
       <Heading level={2} kind="display-sm" textAlign="center">
         {title}
       </Heading>
-      <Text tone="muted" textAlign="center">
-        {body}
-      </Text>
+      {body ? (
+        <Text tone="muted" textAlign="center">
+          {body}
+        </Text>
+      ) : null}
       {action ? <YStack width="100%">{action}</YStack> : null}
     </YStack>
   );

@@ -2,6 +2,7 @@
 // No React, Prisma or env here: the package must load in any client.
 import { z } from "zod";
 import { CURRENCIES, GIFT_STATUSES, OWNER_ACTIONS, QUANTITIES, RESERVATION_LABELS, VISIBILITIES } from "./enums";
+import { PROFILE_RELATIONSHIPS } from "./friendship";
 
 export const ERROR_CODES = [
   "UNAUTHENTICATED",
@@ -136,6 +137,10 @@ const listOwnerSchema = z.strictObject({
  * a link visitor answers with no token. `owner` is likewise optional: a read by
  * the link token or by nick names the owner, while an `/me` read already knows
  * it. The token does not depend on the nick, so renaming never rewrites it (A-26).
+ *
+ * `relationship` is the viewer's closed relation to the profile owner (Story
+ * 4.1.2). It is optional because the same schema serves `/l/:token` and `/me`,
+ * which must never carry it; only the `/u/:nick` use-case adds the field.
  */
 export const listDataSchema = z.discriminatedUnion("access", [
   z.strictObject({
@@ -143,6 +148,7 @@ export const listDataSchema = z.discriminatedUnion("access", [
     gifts: z.array(giftCardSchema),
     publicToken: z.string().optional(),
     owner: listOwnerSchema.optional(),
+    relationship: z.enum(PROFILE_RELATIONSHIPS).optional(),
   }),
   z.strictObject({ access: z.literal("not_found"), gifts: z.tuple([]) }),
 ]);
@@ -167,6 +173,17 @@ export {
 } from "./auth";
 
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
+
+export {
+  FRIEND_INVITE_OUTCOMES,
+  PROFILE_RELATIONSHIPS,
+  friendInviteDataSchema,
+  friendInviteOutcomeSchema,
+  profileRelationshipSchema,
+  type FriendInviteData,
+  type FriendInviteOutcome,
+  type ProfileRelationship,
+} from "./friendship";
 
 export {
   DEFAULT_QUANTITY,

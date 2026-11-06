@@ -2,15 +2,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUnique, findMany, ensureOwnerList } = vi.hoisted(() => ({
+const {
+  getSession,
+  findUnique,
+  findMany,
+  ensureOwnerList,
+  findFriendship,
+  findBlock,
+} = vi.hoisted(() => ({
   getSession: vi.fn(),
   findUnique: vi.fn(),
   findMany: vi.fn(),
   ensureOwnerList: vi.fn(),
+  // Story 4.1.1: the relation reader now asks the friendship and block tables.
+  findFriendship: vi.fn(async () => null),
+  findBlock: vi.fn(async () => null),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
-vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
+vi.mock("@/db/client", () => ({
+  prisma: {
+    list: { findUnique },
+    gift: { findMany },
+    friendship: { findUnique: findFriendship },
+    block: { findFirst: findBlock },
+  },
+}));
 vi.mock("@/lib/owner-list", () => ({ ensureOwnerList }));
 
 import { getMyGifts } from "./my-gifts";

@@ -110,15 +110,24 @@ function gift(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function giftsAnswer(cards: unknown[], ownerBlock: unknown = owner) {
+function giftsAnswer(
+  cards: unknown[],
+  ownerBlock: unknown = owner,
+  relationship: string | undefined = "NONE",
+) {
   return {
     ok: true,
     data: {
       access: "gifts",
       gifts: cards,
       ...(ownerBlock === undefined ? {} : { owner: ownerBlock }),
+      ...(relationship === undefined ? {} : { relationship }),
     },
   };
+}
+
+function inviteAnswer(outcome: string) {
+  return { ok: true, data: { outcome } };
 }
 
 function notFoundAnswer() {
@@ -133,8 +142,15 @@ function respond(profile: unknown, session: unknown = { ok: true, data: user }) 
 }
 
 function profileReads(): number {
+  return api.apiRequest.mock.calls.filter(
+    ([path]) =>
+      String(path).startsWith("/api/v1/u/") && !String(path).endsWith("/invite"),
+  ).length;
+}
+
+function inviteCalls(): number {
   return api.apiRequest.mock.calls.filter(([path]) =>
-    String(path).startsWith("/api/v1/u/"),
+    String(path).endsWith("/invite"),
   ).length;
 }
 
@@ -281,13 +297,18 @@ describe("профиль: карточка и желания", () => {
     expect(text()).not.toContain("Секретный подарок");
   });
 
-  it("не рисует кнопок дружбы, подписки и блока (Epic 4)", async () => {
+  it("при «нет связи» рисует только «Добавить в друзья», без подписки и блока", async () => {
     respond(giftsAnswer([]));
     await mount();
 
-    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Добавить в друзья")).toBeDefined();
+    expect(button("Принять приглашение")).toBeUndefined();
     expect(button("Подписаться")).toBeUndefined();
+    expect(button("Отписаться")).toBeUndefined();
     expect(button("Заблокировать")).toBeUndefined();
+    expect(button("Отменить приглашение")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
+    expect(text()).not.toContain("Друзья");
   });
 
   it("пустой набор говорит «Пока нет открытых желаний», а не «Пользователь не найден»", async () => {
@@ -376,5 +397,229 @@ describe("профиль: карточка и желания", () => {
     expect(text()).not.toContain("Наушники");
     expect(text()).toContain("Не получилось загрузить. Попробуйте ещё раз.");
     expect(button("Повторить")).toBeDefined();
+  });
+});
+
+describe("профиль: приглашение в друзья (Story 4.1.3)", () => {
+  function expectNoForeignActions() {
+    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Отписаться")).toBeUndefined();
+    expect(button("Заблокировать")).toBeUndefined();
+    expect(button("Отменить приглашение")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
+  }
+
+  it("нет связи: оптимистичный «Ожидает ответа», тост и исчезнувшая кнопка", async () => {
+    let resolveInvite: (value: unknown) => void = () => {};
+    const invite = new Promise((resolve) => {
+      resolveInvite = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") return invite;
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+    await mount();
+
+    const add = button("Добавить в друзья");
+    expect(add).toBeDefined();
+    expect(add?.getAttribute("aria-label")).toBe("Добавить в друзья");
+    expect(text()).not.toContain("Друзья");
+
+    await press("Добавить в друзья");
+
+    expect(inviteCalls()).toBe(1);
+    expect(text()).toContain("Ожидает ответа");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(text()).not.toContain("Друзья");
+
+    await act(async () => resolveInvite(inviteAnswer("INVITED")));
+    await settle(10);
+
+    expect(text()).toContain("Приглашение отправлено");
+    expect(text()).toContain("Ожидает ответа");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expectNoForeignActions();
+  });
+
+  it("исходящий pending: только «Ожидает ответа», без второй отправки и отмены", async () => {
+    respond(giftsAnswer([], owner, "OUTGOING_PENDING"));
+    await mount();
+
+    expect(text()).toContain("Ожидает ответа");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Принять приглашение")).toBeUndefined();
+    expectNoForeignActions();
+  });
+
+  it("входящий pending: «Принять приглашение» вызывает тот же API, даёт дружбу и перечитывает желания", async () => {
+    let accepted = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        accepted = true;
+        return Promise.resolve(inviteAnswer("FRIENDS_CREATED"));
+      }
+      return Promise.resolve(
+        accepted
+          ? giftsAnswer(
+              [gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" })],
+              owner,
+              "FRIENDS",
+            )
+          : giftsAnswer([gift()], owner, "INCOMING_PENDING"),
+      );
+    });
+    await mount();
+
+    expect(text()).toContain("Зовёт в друзья");
+    expect(button("Принять приглашение")).toBeDefined();
+    expect(button("Добавить в друзья")).toBeUndefined();
+
+    await press("Принять приглашение");
+
+    expect(inviteCalls()).toBe(1);
+    expect(text()).toContain("Борис теперь в друзьях");
+    expect(text()).toContain("Друзья");
+    expect(text()).toContain("Свитер");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Принять приглашение")).toBeUndefined();
+    expectNoForeignActions();
+  });
+
+  it("уже друзья: только chip «Друзья» и никаких действий", async () => {
+    respond(giftsAnswer([], owner, "FRIENDS"));
+    await mount();
+
+    expect(text()).toContain("Друзья");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Принять приглашение")).toBeUndefined();
+    expectNoForeignActions();
+  });
+
+  it("свой профиль: chip «Это вы» и никаких действий", async () => {
+    search.params = { nick: "anya" };
+    respond(giftsAnswer([], { displayName: "Аня", nick: "anya" }, "NONE"));
+    await mount();
+
+    expect(text()).toContain("Это вы");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Принять приглашение")).toBeUndefined();
+    expectNoForeignActions();
+  });
+
+  it("not_found: «Пользователь не найден.» без кнопки", async () => {
+    respond(notFoundAnswer());
+    await mount();
+
+    expect(text()).toContain("Пользователь не найден.");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Принять приглашение")).toBeUndefined();
+  });
+
+  it("сеть: оптимистичный chip откатывается, кнопка возвращается, тост остаётся", async () => {
+    let rejectInvite: (value: unknown) => void = () => {};
+    const invite = new Promise((resolve) => {
+      rejectInvite = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") return invite;
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+
+    expect(text()).toContain("Ожидает ответа");
+    expect(button("Добавить в друзья")).toBeUndefined();
+
+    await act(async () => rejectInvite({ ok: false, network: true }));
+    await settle(10);
+
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Ожидает ответа");
+    expect(button("Добавить в друзья")).toBeDefined();
+    expect(inviteCalls()).toBe(1);
+  });
+
+  it("повторное нажатие не отправляет второй запрос", async () => {
+    let resolveInvite: (value: unknown) => void = () => {};
+    const invite = new Promise((resolve) => {
+      resolveInvite = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") return invite;
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    const add = button("Добавить в друзья");
+    await act(async () => {
+      add?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      add?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+
+    expect(inviteCalls()).toBe(1);
+
+    await act(async () => resolveInvite(inviteAnswer("INVITED")));
+    await settle(10);
+  });
+
+  it("ответ старого ника после смены маршрута не меняет новый профиль", async () => {
+    let resolveInvite: (value: unknown) => void = () => {};
+    const invite = new Promise((resolve) => {
+      resolveInvite = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") return invite;
+      if (path === "/api/v1/u/masha") {
+        return Promise.resolve(
+          giftsAnswer([], { displayName: "Маша", nick: "masha" }, "NONE"),
+        );
+      }
+      return Promise.resolve(giftsAnswer([], owner, "NONE"));
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+    expect(text()).toContain("Ожидает ответа");
+
+    await rerenderWithNick("masha");
+
+    expect(text()).toContain("Маша");
+    expect(text()).not.toContain("Ожидает ответа");
+    expect(button("Добавить в друзья")).toBeDefined();
+
+    await act(async () => resolveInvite(inviteAnswer("FRIENDS_CREATED")));
+    await settle(10);
+
+    expect(text()).not.toContain("Борис теперь в друзьях");
+    expect(text()).not.toContain("Друзья");
+    expect(button("Добавить в друзья")).toBeDefined();
+  });
+
+  it("401 при отправке уводит на вход с прежним безопасным next", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        return Promise.resolve({ ok: false, code: "UNAUTHENTICATED", message: "" });
+      }
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/u/boris", reason: "session_expired" },
+    });
   });
 });

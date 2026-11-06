@@ -1,4 +1,8 @@
-import { listDataSchema, type GiftCard } from "@gift-list/contracts";
+import {
+  listDataSchema,
+  type GiftCard,
+  type ProfileRelationship,
+} from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
 import { profileRoute } from "@/profile/profile-route";
 
@@ -15,7 +19,13 @@ export type ProfileOwner = {
  * unnamed profile the server did not describe.
  */
 export type ProfileResult =
-  | { ok: true; access: "gifts"; gifts: GiftCard[]; owner: ProfileOwner }
+  | {
+      ok: true;
+      access: "gifts";
+      gifts: GiftCard[];
+      owner: ProfileOwner;
+      relationship: ProfileRelationship;
+    }
   | { ok: true; access: "not_found" }
   | { ok: false; invalid: true }
   | Exclude<ClientResult<unknown>, { ok: true }>;
@@ -26,6 +36,9 @@ export type ProfileResult =
  * applies `VisibilityPolicy`; the client only checks the AD-12 envelope and
  * never filters wishes by visibility on its own. A malformed segment is the
  * same `not_found` before a request, matching the server route.
+ *
+ * Story 4.1.3 reads the closed `relationship` from this same answer and never
+ * derives it from the cards it received.
  */
 export async function fetchProfile(nick: string): Promise<ProfileResult> {
   const route = profileRoute(nick);
@@ -45,5 +58,8 @@ export async function fetchProfile(nick: string): Promise<ProfileResult> {
     access: "gifts",
     gifts: parsed.data.gifts,
     owner: parsed.data.owner,
+    // Only `/u/:nick` adds this closed field (Story 4.1.2). A body without it
+    // cannot claim a friendship: the weakest relation is the safe default.
+    relationship: parsed.data.relationship ?? "NONE",
   };
 }

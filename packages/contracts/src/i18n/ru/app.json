@@ -125,6 +125,11 @@
     "notFound": "Список не найден",
     "emptyTitle": "Пока нет открытых желаний"
   },
+  "profile": {
+    "pageTitle": "Профиль — {brand}",
+    "notFound": "Пользователь не найден",
+    "loading": "Загружаем профиль"
+  },
   "invite": {
     "title": "Приглашение",
     "pageTitle": "Приглашение — {brand}",

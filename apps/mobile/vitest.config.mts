@@ -5,6 +5,10 @@ import { defineConfig } from "vitest/config";
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  // expo-modules-core reads the identifier `__DEV__`. Metro defines it; Vitest does not.
+  define: {
+    __DEV__: "true",
+  },
   resolve: {
     alias: {
       "@": path.join(root, "src"),
@@ -16,5 +20,12 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./src/test/setup.tsx"],
+    // `.mts` so Vite's config loader accepts the ESM config in a CommonJS package.
+    // Inline deps so Tamagui and react-dom share one React on Windows.
+    server: {
+      deps: {
+        inline: true,
+      },
+    },
   },
 });

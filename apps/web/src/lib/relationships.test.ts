@@ -4,12 +4,13 @@ vi.mock("server-only", () => ({}));
 
 const db = vi.hoisted(() => ({
   friendship: { findUnique: vi.fn() },
+  friendshipInvite: { findUnique: vi.fn() },
   block: { findFirst: vi.fn() },
 }));
 
 vi.mock("@/db/client", () => ({ prisma: db }));
 
-import { relationshipReader } from "@/lib/relationships";
+import { readProfileRelationship, relationshipReader } from "@/lib/relationships";
 
 const ALPHA = "alpha_user";
 const ZEBRA = "zebra_user";
@@ -25,6 +26,7 @@ describe("relationshipReader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     db.friendship.findUnique.mockResolvedValue(null);
+    db.friendshipInvite.findUnique.mockResolvedValue(null);
     db.block.findFirst.mockResolvedValue(null);
   });
 
@@ -111,5 +113,85 @@ describe("relationshipReader", () => {
       "friend",
       "subscriber",
     ]);
+  });
+});
+
+describe("readProfileRelationship (Story 4.1.2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.friendship.findUnique.mockResolvedValue(null);
+    db.friendshipInvite.findUnique.mockResolvedValue(null);
+    db.block.findFirst.mockResolvedValue(null);
+  });
+
+  it("returns NONE for the owner and an anonymous viewer without reading the database", async () => {
+    await expect(readProfileRelationship(ALPHA, ALPHA)).resolves.toBe("NONE");
+    await expect(readProfileRelationship(null, ALPHA)).resolves.toBe("NONE");
+
+    expect(db.friendship.findUnique).not.toHaveBeenCalled();
+    expect(db.friendshipInvite.findUnique).not.toHaveBeenCalled();
+    expect(db.block.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns FRIENDS from the accepted edge and never asks about invites", async () => {
+    db.friendship.findUnique.mockResolvedValue({ id: "friendship_1" });
+
+    await expect(readProfileRelationship(ZEBRA, ALPHA)).resolves.toBe("FRIENDS");
+    expect(db.friendship.findUnique).toHaveBeenCalledWith({
+      where: { userLowId_userHighId: { userLowId: ALPHA, userHighId: ZEBRA } },
+      select: { id: true },
+    });
+  });
+
+  it("returns OUTGOING_PENDING when the viewer has a pending invite", async () => {
+    db.friendshipInvite.findUnique.mockImplementation(
+      ({ where }: { where: { fromUserId_toUserId: { fromUserId: string; toUserId: string } } }) => {
+        const { fromUserId, toUserId } = where.fromUserId_toUserId;
+        return Promise.resolve(
+          fromUserId === ZEBRA && toUserId === ALPHA ? { id: "invite_1" } : null,
+        );
+      },
+    );
+
+    await expect(readProfileRelationship(ZEBRA, ALPHA)).resolves.toBe("OUTGOING_PENDING");
+    expect(db.friendshipInvite.findUnique).toHaveBeenCalledWith({
+      where: { fromUserId_toUserId: { fromUserId: ZEBRA, toUserId: ALPHA } },
+      select: { id: true },
+    });
+    expect(db.friendshipInvite.findUnique).toHaveBeenCalledWith({
+      where: { fromUserId_toUserId: { fromUserId: ALPHA, toUserId: ZEBRA } },
+      select: { id: true },
+    });
+  });
+
+  it("returns INCOMING_PENDING when the owner has a pending invite", async () => {
+    db.friendshipInvite.findUnique.mockImplementation(
+      ({ where }: { where: { fromUserId_toUserId: { fromUserId: string; toUserId: string } } }) => {
+        const { fromUserId, toUserId } = where.fromUserId_toUserId;
+        return Promise.resolve(
+          fromUserId === ALPHA && toUserId === ZEBRA ? { id: "invite_1" } : null,
+        );
+      },
+    );
+
+    await expect(readProfileRelationship(ZEBRA, ALPHA)).resolves.toBe("INCOMING_PENDING");
+  });
+
+  it("returns NONE when neither edge exists", async () => {
+    await expect(readProfileRelationship(ZEBRA, ALPHA)).resolves.toBe("NONE");
+  });
+
+  it("lets the accepted friendship win over a stale pending invite", async () => {
+    db.friendship.findUnique.mockResolvedValue({ id: "friendship_1" });
+    db.friendshipInvite.findUnique.mockResolvedValue({ id: "invite_1" });
+
+    await expect(readProfileRelationship(ZEBRA, ALPHA)).resolves.toBe("FRIENDS");
+  });
+
+  it("leaves the Block gate to readWishlist and does not read Block itself", async () => {
+    db.block.findFirst.mockResolvedValue({ id: "block_1" });
+
+    await expect(readProfileRelationship(ZEBRA, ALPHA)).resolves.toBe("NONE");
+    expect(db.block.findFirst).not.toHaveBeenCalled();
   });
 });

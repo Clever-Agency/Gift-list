@@ -63,7 +63,9 @@ describe("GET /api/v1/me/gifts", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("private, no-store");
-    expect(await res.json()).toEqual({
+    const body = await res.json();
+    expect(body.data).not.toHaveProperty("relationship");
+    expect(body).toEqual({
       ok: true,
       data: {
         access: "gifts",

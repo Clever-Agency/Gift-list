@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { ProfileRelationship } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { orderFriendPair } from "@/domain/friendship";
 import type { RelationshipReader, ViewerRelations } from "@/domain/visibility";
@@ -56,3 +57,44 @@ async function relationsBetween(
 }
 
 export const relationshipReader: RelationshipReader = { relationsBetween };
+
+/**
+ * The viewer's closed relation to the owner of a profile (AD-7, AD-10, Story
+ * 4.1.2). This is the only read that answers a pending invite: `FRIENDS` comes
+ * from the accepted edge, while `OUTGOING_PENDING` and `INCOMING_PENDING` never
+ * open `FRIENDS` wishes. Visibility keeps deciding from its own `friend` and
+ * `blocked` facts, so a pending invite cannot widen a list read.
+ *
+ * A friendship always wins over a pending invite; the protocol 4.1.1 R1 leaves
+ * at most one pending direction per pair. The owner and an anonymous viewer have
+ * no relation and cost no query. A block is deliberately not part of this
+ * answer: `readWishlist` turns it into the same closed `not_found` as an unknown
+ * nick, so a blocked profile never exposes even the fact that a relation exists.
+ */
+export async function readProfileRelationship(
+  viewerId: string | null,
+  ownerId: string,
+): Promise<ProfileRelationship> {
+  if (viewerId === null || viewerId === ownerId) return "NONE";
+
+  const pair = orderFriendPair(viewerId, ownerId);
+  const [friendship, outgoing, incoming] = await Promise.all([
+    prisma.friendship.findUnique({
+      where: { userLowId_userHighId: pair },
+      select: { id: true },
+    }),
+    prisma.friendshipInvite.findUnique({
+      where: { fromUserId_toUserId: { fromUserId: viewerId, toUserId: ownerId } },
+      select: { id: true },
+    }),
+    prisma.friendshipInvite.findUnique({
+      where: { fromUserId_toUserId: { fromUserId: ownerId, toUserId: viewerId } },
+      select: { id: true },
+    }),
+  ]);
+
+  if (friendship !== null) return "FRIENDS";
+  if (outgoing !== null) return "OUTGOING_PENDING";
+  if (incoming !== null) return "INCOMING_PENDING";
+  return "NONE";
+}

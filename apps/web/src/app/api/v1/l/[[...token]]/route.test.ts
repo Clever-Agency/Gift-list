@@ -126,6 +126,7 @@ describe("GET /api/v1/l/:token", () => {
       },
     });
     expect(Object.keys(body.data)).not.toContain("publicToken");
+    expect(body.data).not.toHaveProperty("relationship");
     expect(JSON.stringify(body)).not.toContain("Для друзей");
     expect(JSON.stringify(body)).not.toContain("Секрет");
   });
@@ -162,6 +163,7 @@ describe("GET /api/v1/l/:token", () => {
 
     expect(titles).toEqual(["Публичное", "Для друзей", "Секрет"]);
     expect(body.data.publicToken).toBe("tok-1");
+    expect(body.data).not.toHaveProperty("relationship");
     expect(body.data.owner).toEqual({ displayName: "Анна", nick: "anna" });
   });
 

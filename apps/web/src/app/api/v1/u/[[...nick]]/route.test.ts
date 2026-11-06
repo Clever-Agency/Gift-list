@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUser, findList, findManyGifts, relationsBetween } = vi.hoisted(() => ({
-  getSession: vi.fn(),
-  findUser: vi.fn(),
-  findList: vi.fn(),
-  findManyGifts: vi.fn(),
-  relationsBetween: vi.fn(),
-}));
+const { getSession, findUser, findList, findManyGifts, relationsBetween, readProfileRelationship } =
+  vi.hoisted(() => ({
+    getSession: vi.fn(),
+    findUser: vi.fn(),
+    findList: vi.fn(),
+    findManyGifts: vi.fn(),
+    relationsBetween: vi.fn(),
+    readProfileRelationship: vi.fn(),
+  }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({
@@ -18,7 +20,10 @@ vi.mock("@/db/client", () => ({
     gift: { findMany: findManyGifts },
   },
 }));
-vi.mock("@/lib/relationships", () => ({ relationshipReader: { relationsBetween } }));
+vi.mock("@/lib/relationships", () => ({
+  relationshipReader: { relationsBetween },
+  readProfileRelationship,
+}));
 
 type Row = {
   id: string;
@@ -133,8 +138,10 @@ beforeEach(() => {
   findList.mockReset();
   findManyGifts.mockReset();
   relationsBetween.mockReset();
+  readProfileRelationship.mockReset();
 
   getSession.mockResolvedValue(null);
+  readProfileRelationship.mockResolvedValue("NONE");
   findUser.mockImplementation(({ where }: { where: { nickNormalized: string } }) =>
     Promise.resolve(users.find((user) => user.nickNormalized === where.nickNormalized) ?? null),
   );
@@ -160,6 +167,7 @@ describe("GET /api/v1/u/:nick", () => {
     expect(findUser).not.toHaveBeenCalled();
     expect(findList).not.toHaveBeenCalled();
     expect(findManyGifts).not.toHaveBeenCalled();
+    expect(readProfileRelationship).not.toHaveBeenCalled();
   });
 
   it("answers an unknown nick with the closed not_found body, without a name or a list read", async () => {
@@ -173,6 +181,7 @@ describe("GET /api/v1/u/:nick", () => {
     expect(JSON.stringify(body)).not.toContain("anna@example.com");
     expect(findList).not.toHaveBeenCalled();
     expect(findManyGifts).not.toHaveBeenCalled();
+    expect(readProfileRelationship).not.toHaveBeenCalled();
     expect(res.headers.get("cache-control")).toBe("private, no-store");
   });
 
@@ -204,6 +213,7 @@ describe("GET /api/v1/u/:nick", () => {
     expect(findUser).not.toHaveBeenCalled();
     expect(findList).not.toHaveBeenCalled();
     expect(findManyGifts).not.toHaveBeenCalled();
+    expect(readProfileRelationship).not.toHaveBeenCalled();
   });
 
   it("finds the nick case-insensitively through nickNormalized and returns the stored nick", async () => {
@@ -230,9 +240,11 @@ describe("GET /api/v1/u/:nick", () => {
         access: "gifts",
         owner: { displayName: "Анна", nick: "Anna" },
         gifts: [],
+        relationship: "NONE",
       },
     });
     expect(relationsBetween).toHaveBeenCalledWith("u9", "u1");
+    expect(readProfileRelationship).toHaveBeenCalledWith("u9", "u1");
     expect(findManyGifts).not.toHaveBeenCalled();
     expect(Object.keys(body.data)).not.toContain("publicToken");
     expect(JSON.stringify(body)).not.toContain("anna@example.com");
@@ -241,14 +253,38 @@ describe("GET /api/v1/u/:nick", () => {
   it("gives a friend PUBLIC and FRIENDS gifts, never SECRET, archived or the share token", async () => {
     signIn();
     relationsBetween.mockResolvedValue(relations({ friend: true }));
+    readProfileRelationship.mockResolvedValue("FRIENDS");
 
     const { body } = await callRoute(["Anna"]);
 
     expect(titles(body)).toEqual(["Публичное", "Для друзей"]);
+    expect(body.data.relationship).toBe("FRIENDS");
     expect(JSON.stringify(body)).not.toContain("Секрет");
     expect(JSON.stringify(body)).not.toContain("Архивное");
     expect(JSON.stringify(body)).not.toContain("anna@example.com");
     expect(Object.keys(body.data)).not.toContain("publicToken");
+  });
+
+  it("names an outgoing pending invite without opening FRIENDS wishes", async () => {
+    signIn();
+    readProfileRelationship.mockResolvedValue("OUTGOING_PENDING");
+
+    const { body } = await callRoute(["Anna"]);
+
+    expect(body.data.relationship).toBe("OUTGOING_PENDING");
+    expect(body.data.gifts).toEqual([]);
+    expect(titles(body)).not.toContain("Для друзей");
+  });
+
+  it("names an incoming pending invite without opening FRIENDS wishes", async () => {
+    signIn();
+    readProfileRelationship.mockResolvedValue("INCOMING_PENDING");
+
+    const { body } = await callRoute(["Anna"]);
+
+    expect(body.data.relationship).toBe("INCOMING_PENDING");
+    expect(body.data.gifts).toEqual([]);
+    expect(titles(body)).not.toContain("Для друзей");
   });
 
   it("gives a subscriber only PUBLIC gifts", async () => {
@@ -280,6 +316,8 @@ describe("GET /api/v1/u/:nick", () => {
 
     expect(titles(body)).toEqual(["Публичное", "Для друзей", "Секрет"]);
     expect(body.data.owner).toEqual({ displayName: "Анна", nick: "Anna" });
+    expect(body.data.relationship).toBe("NONE");
+    expect(readProfileRelationship).toHaveBeenCalledWith("u1", "u1");
     expect(JSON.stringify(body)).not.toContain("anna@example.com");
     expect(relationsBetween).not.toHaveBeenCalled();
   });
@@ -287,6 +325,8 @@ describe("GET /api/v1/u/:nick", () => {
   it("answers a Block with the same body as an unknown nick and reads no gifts", async () => {
     signIn();
     relationsBetween.mockResolvedValue(relations({ blocked: true }));
+    // Even a stale FRIENDS fact must be discarded with the whole profile.
+    readProfileRelationship.mockResolvedValue("FRIENDS");
 
     const blocked = await callRoute(["Anna"]);
     findUser.mockResolvedValue(null);
@@ -295,6 +335,7 @@ describe("GET /api/v1/u/:nick", () => {
     expect(blocked.res.status).toBe(unknown.res.status);
     expect(blocked.body).toEqual(unknown.body);
     expect(blocked.body).toEqual({ ok: true, data: { access: "not_found", gifts: [] } });
+    expect(blocked.body.data).not.toHaveProperty("relationship");
     expect(findManyGifts).not.toHaveBeenCalled();
     expect(JSON.stringify(blocked.body)).not.toContain("Анна");
     expect(JSON.stringify(blocked.body)).not.toContain("Секрет");

@@ -32,6 +32,8 @@ describe("wishlistShareLink", () => {
     expect(wishlistShareLink("tok-1", "   ")).toBeNull();
     expect(wishlistShareLink("tok-1", "gift.example")).toBeNull();
     expect(wishlistShareLink("tok-1", "https://gift.example/app")).toBeNull();
+    expect(wishlistShareLink("tok-1", "https://gift.example@evil.com")).toBeNull();
+    expect(wishlistShareLink("tok-1", "https://user:pass@gift.example")).toBeNull();
   });
 
   it("returns null when the token is missing", () => {

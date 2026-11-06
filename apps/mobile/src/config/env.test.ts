@@ -36,6 +36,32 @@ describe("normalizeWebOrigin", () => {
     expect(normalizeWebOrigin("https://gift.example/?from=mail")).toBe("");
     expect(normalizeWebOrigin("https://gift.example/#top")).toBe("");
   });
+
+  it("rejects userinfo so a share link cannot point at another host", () => {
+    expect(normalizeWebOrigin("https://gift.example@evil.com")).toBe("");
+    expect(normalizeWebOrigin("https://user:pass@gift.example")).toBe("");
+    expect(normalizeWebOrigin("https://user@gift.example")).toBe("");
+    expect(normalizeWebOrigin("https://@gift.example")).toBe("");
+  });
+
+  it("rejects a backslash that changes how the authority is parsed", () => {
+    expect(normalizeWebOrigin("https://evil.com\\@gift.example")).toBe("");
+    expect(normalizeWebOrigin("https://evil.com\\gift.example")).toBe("");
+    expect(normalizeWebOrigin("https:/\\gift.example")).toBe("");
+  });
+
+  it("accepts localhost and IPv6 hosts with a numeric port", () => {
+    expect(normalizeWebOrigin("http://localhost/")).toBe("http://localhost");
+    expect(normalizeWebOrigin("http://[::1]:3000")).toBe("http://[::1]:3000");
+    expect(normalizeWebOrigin("https://[2001:db8::1]")).toBe("https://[2001:db8::1]");
+  });
+
+  it("rejects a malformed or out-of-range port", () => {
+    expect(normalizeWebOrigin("https://gift.example:abc")).toBe("");
+    expect(normalizeWebOrigin("https://gift.example:")).toBe("");
+    expect(normalizeWebOrigin("https://gift.example:65536")).toBe("");
+    expect(normalizeWebOrigin("https://gift.example:0")).toBe("");
+  });
 });
 
 describe("resolvePublicWebOrigin", () => {
@@ -61,6 +87,22 @@ describe("resolvePublicWebOrigin", () => {
   it("does not fall back when an explicit value is set but invalid", () => {
     expect(resolvePublicWebOrigin("gift.example", "https://gift.example")).toBe("");
     expect(resolvePublicWebOrigin("https://gift.example/app", "https://gift.example")).toBe("");
+  });
+
+  it("does not fall back when an explicit value carries userinfo or a backslash", () => {
+    expect(
+      resolvePublicWebOrigin("https://gift.example@evil.com", "https://gift.example"),
+    ).toBe("");
+    expect(
+      resolvePublicWebOrigin(
+        "https://user:pass@gift.example",
+        "",
+        "https://preview.example",
+      ),
+    ).toBe("");
+    expect(
+      resolvePublicWebOrigin("https://evil.com\\@gift.example", "https://gift.example"),
+    ).toBe("");
   });
 
   it("does not fall back when a set API origin is invalid", () => {

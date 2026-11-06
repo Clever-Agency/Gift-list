@@ -5,7 +5,7 @@
 База: `bc82a75` (`bc82a75718e86b391dc9c2aaac1782890fb1c142`)
 Источник находок: `_bmad-output/implementation-artifacts/opencode-microtasks/independent-audit-f1-f10.md`
 Область: три микрозадачи — R1 (F4, высокий), R2 (F10, низкий), R3 (F6, низкий).
-Правило: в этом заходе **реализуется только R1**; R2 и R3 остаются планом и не начинаются.
+Правило: R1 и R2 реализованы отдельными заходами; R3 остаётся планом и не начинается.
 
 ## Общие границы захода
 
@@ -85,7 +85,7 @@
 
 Подтверждено на реальной БД: P2003 вложенного create имеет `modelName: "Gift"` и `driverAdapterError.cause.constraint.index: "GiftTag_tagId_fkey"`; `createGift` возвращает `VALIDATION`/`tags` без остатка `Gift`/`GiftTag`; `Gift_listId_fkey` пробрасывается, а не превращается в `VALIDATION`.
 
-## R2 — F10: `normalizeWebOrigin` принимает userinfo и обратную косую (НИЗКИЙ, только план)
+## R2 — F10: `normalizeWebOrigin` принимает userinfo и обратную косую (НИЗКИЙ, реализован)
 
 ### Проблема
 
@@ -101,7 +101,7 @@
 
 Сузить нормализатор до схемы `http(s)`, хоста и необязательного порта; отвергать userinfo, обратную косую черту и некорректные значения. Сохранить порядок «явный origin → API-base → origin страницы» и правило «неверное явное значение не подменяется следующим источником».
 
-### Границы (план)
+### Границы
 
 **Всегда:**
 - Разрешены только `http://` и `https://`, валидный хост и необязательный числовой порт.
@@ -114,7 +114,7 @@
 - Не менять серверные ссылки по `BETTER_AUTH_URL`.
 - Не ослаблять проверку ради удобства локальной разработки.
 
-### Критерии приёмки (план)
+### Критерии приёмки
 
 1. `https://gift.example` и `https://gift.example:8443` нормализуются без изменений.
 2. `https://user:pass@gift.example`, `https://gift.example@evil.com`, `https://evil.com\@gift.example` дают `""`.
@@ -124,7 +124,16 @@
 
 ### Статус R2
 
-`planned-not-started` — код не менялся.
+`done` — реализовано в этом заходе. Задача без истории Linear: это микрозадача устранения находки аудита F10, продуктовые критерии не меняются. Спека: `_bmad-output/implementation-artifacts/spec-audit-r2-strict-web-origin.md`.
+
+Что сделано: `WEB_ORIGIN` в `apps/mobile/src/config/env.ts` сужен до `http(s)://` + хост (DNS-имя, IPv4, `localhost`, IPv6 в скобках) + необязательный порт `1…65535`; `@` и обратная косая черта в authority больше не проходят, хвостовые слэши по-прежнему срезаются. Порядок источников и fail-closed для явного значения не менялись. Тесты: `env.test.ts` (userinfo, backslash, порт, localhost/IPv6, fail-closed), `share-link.test.ts` (атакующий origin → `null`).
+
+Фактические гейты:
+
+- `npm run typecheck` — код 0.
+- `npm run lint` — код 0, включая `check-boundaries`.
+- `npm test` — mobile 43 файла / 595, web 48 / 518, contracts 6 / 164, ui 14 / 81, 5 проверок границ; падений 0.
+- `npm run build` — standalone-сборка успешна.
 
 ## R3 — F6: `appendChild`/`select` вне `try` в веб-буфере (НИЗКИЙ, только план)
 

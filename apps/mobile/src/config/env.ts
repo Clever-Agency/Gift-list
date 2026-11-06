@@ -5,15 +5,21 @@ function readPublic(value: string | undefined): string {
 }
 
 /**
- * An origin is scheme, host and optional port, nothing else. Trailing slashes are
- * allowed so `https://gift.example/` works; a path, query or other scheme is not
- * an origin and must not become a share link by accident.
+ * An origin is scheme, host and optional port, nothing else. A bare hostname,
+ * userinfo (`user:pass@host`), a backslash, a path, query, fragment or other
+ * scheme is not an origin: a browser resolves `https://gift.example@evil.com`
+ * to `evil.com`, so such values must not become a share link by accident.
+ * Trailing slashes are allowed so `https://gift.example/` works.
  */
-const WEB_ORIGIN = /^(https?:\/\/[^/?#\s]+)\/*$/i;
+const WEB_ORIGIN = /^(https?:\/\/(?:\[[0-9a-f:.]+\]|[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::([0-9]{1,5}))?)\/*$/i;
 
 /** ` https://gift.example/ ` → `https://gift.example`; anything else → "" (no wrong host). */
 export function normalizeWebOrigin(value: string | undefined): string {
-  return WEB_ORIGIN.exec(readPublic(value))?.[1] ?? "";
+  const match = WEB_ORIGIN.exec(readPublic(value));
+  if (!match) return "";
+  const port = match[2];
+  if (port !== undefined && (Number(port) < 1 || Number(port) > 65535)) return "";
+  return match[1];
 }
 
 /** Empty `EXPO_PUBLIC_BRAND_NAME` becomes the fallback only in this module (AD-24). */

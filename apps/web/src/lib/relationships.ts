@@ -1,33 +1,56 @@
 import "server-only";
 
+import { prisma } from "@/db/client";
+import { orderFriendPair } from "@/domain/friendship";
 import type { RelationshipReader, ViewerRelations } from "@/domain/visibility";
 
+/** Nobody is related to themselves; the owner branch never asks the port. */
+const noRelations: Omit<ViewerRelations, "viaListToken"> = {
+  blocked: false,
+  friend: false,
+  subscriber: false,
+  contactMatch: false,
+};
+
 /**
- * Relation facts for the pre-Epic-4 schema (Story 3.2). None of the relation
- * tables exist yet, so every answer is "no relation" — the safe, fail-closed
- * default: `FRIENDS` stays shut and `PUBLIC` opens only through the list token
- * the caller adds itself.
+ * Relation facts for the viewer/owner pair (AD-7, AD-10, Story 4.1.1).
  *
- * Epic 4 and Epic 8 replace each field with a real lookup; the port signature
- * already takes the pair those lookups need.
+ * - `friend` — an accepted `Friendship` edge, stored once as the canonical
+ *   `userLowId < userHighId` pair;
+ * - `blocked` — a `Block` in either direction, so a block hides both profiles;
+ * - `subscriber` and `contactMatch` stay `false`: neither table exists in R1 and
+ *   this reader must not pretend otherwise (AD-19, AD-18).
+ *
+ * An anonymous viewer cannot have either edge, and the owner branch never asks
+ * the port, so both answer without reading the database.
  */
 async function relationsBetween(
   viewerId: string | null,
   ownerId: string,
 ): Promise<Omit<ViewerRelations, "viaListToken">> {
-  // Both ids are unused until the tables land; the signature stays honest so
-  // callers are written against the final port.
-  void viewerId;
-  void ownerId;
+  if (viewerId === null || viewerId === ownerId) return noRelations;
+
+  const pair = orderFriendPair(viewerId, ownerId);
+  const [friendship, block] = await Promise.all([
+    prisma.friendship.findUnique({
+      where: { userLowId_userHighId: pair },
+      select: { id: true },
+    }),
+    prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerId: viewerId, blockedId: ownerId },
+          { blockerId: ownerId, blockedId: viewerId },
+        ],
+      },
+      select: { id: true },
+    }),
+  ]);
 
   return {
-    // `Block` in either direction — AD-10, Epic 4.
-    blocked: false,
-    // Accepted `Friendship` — AD-10, Epic 4.
-    friend: false,
-    // `Subscription(subscriberId, targetId)` — AD-19, Story 4.x.
+    blocked: block !== null,
+    friend: friendship !== null,
     subscriber: false,
-    // `ContactMatch(scannerId, foundUserId)` — AD-18, Epic 8.
     contactMatch: false,
   };
 }

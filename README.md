@@ -49,7 +49,7 @@ npm run mobile:web     # то же приложение в браузере
 
 Имя на экранах берётся из `EXPO_PUBLIC_BRAND_NAME` (пустое значение → запасное имя только в `apps/mobile/src/config/env.ts`). Веб читает `BRAND_NAME` из `apps/web/.env`.
 
-Публичный адрес для ссылок вишлиста — `EXPO_PUBLIC_WEB_ORIGIN` (пусто → `EXPO_PUBLIC_API_BASE_URL`: сайт и API на одном домене, AD-26). Неверное значение не подменяется — ссылка просто не собирается.
+Публичный адрес для ссылок вишлиста — `EXPO_PUBLIC_WEB_ORIGIN` (пусто → `EXPO_PUBLIC_API_BASE_URL`: сайт и API на одном домене, AD-26). В веб-сборке, если обе переменные пусты, берётся origin страницы, отдавшей SPA: задеплоенному вебу отдельный домен не нужен, но ссылка с preview-деплоя ведёт на его же хост. Для `npm run mobile:web` страница — Metro (:8081), где `/l/*` нет; локально задайте `EXPO_PUBLIC_WEB_ORIGIN=http://localhost:3000`. В native страницы нет — задайте одну из переменных. Неверное значение не подменяется — ссылка просто не собирается.
 
 ### Проверки
 
@@ -86,7 +86,7 @@ PIN: `prisma` и `@prisma/client` — **7.10.0** (не ставьте bare `pris
 2. Доставьте на сервер (в образ) каталог `apps/web/.next/standalone`: статика и `public` уже внутри.
 3. Примените миграции до старта сервера: в standalone нет Prisma CLI и миграций, поэтому из полного чекаута или CI выполните `npm exec -w @gift-list/web -- prisma migrate deploy` с `DATABASE_URL` целевой базы.
 4. Запускайте `node apps/web/.next/standalone/apps/web/server.js` из корня репозитория, а не `next start`. Если в образ скопировано только содержимое `standalone`, запускайте `node apps/web/server.js` из этого каталога.
-5. Конфигурация и секреты рантайма — из окружения процесса, список переменных в `apps/web/.env.example`. Исключение: `BRAND_NAME` вшивается ещё при сборке в страницы, которые Next.js пререндерит (`/`, 404: `apps/web/src/app/layout.tsx` берёт `getBrandName()` в metadata), а `EXPO_PUBLIC_*` — в SPA в `public/` (`sync-spa`). Задайте их и в окружении сборки, с тем же значением, что в рантайме.
+5. Конфигурация и секреты рантайма — из окружения процесса, список переменных в `apps/web/.env.example`; переменные SPA — в `apps/mobile/.env.example`. Исключение: `BRAND_NAME` вшивается ещё при сборке в страницы, которые Next.js пререндерит (`/`, 404: `apps/web/src/app/layout.tsx` берёт `getBrandName()` в metadata), а `EXPO_PUBLIC_*` — в SPA в `public/` (`sync-spa`). Задайте `EXPO_PUBLIC_*` и в окружении сборки с тем же значением, что в рантайме, если они нужны: для веб-сборки `EXPO_PUBLIC_WEB_ORIGIN` не обязателен (без него ссылка вишлиста берёт origin страницы), а native-сборке нужна эта переменная или `EXPO_PUBLIC_API_BASE_URL`.
 
 `PORT` и `HOSTNAME` по умолчанию — `3000` и `0.0.0.0`. В Docker задайте `HOSTNAME=0.0.0.0` явно: Docker подставляет в `HOSTNAME` id контейнера, и сервер не будет слушать 127.0.0.1 внутри контейнера.
 

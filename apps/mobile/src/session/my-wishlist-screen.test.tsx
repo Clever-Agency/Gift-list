@@ -801,8 +801,22 @@ describe("мой вишлист: копирование ссылки", () => {
     expect(text()).toContain("Ссылка скопирована");
   });
 
-  it("без настроенного адреса сайта ничего не копирует и показывает ошибку", async () => {
+  it("без настроенного адреса сайта на вебе берёт origin текущей страницы", async () => {
     vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([gift()], "tok-1"));
+    await mount();
+
+    await press("Скопировать ссылку");
+
+    const pageOrigin = window.location.origin.replace(/\/+$/, "");
+    expect(pageOrigin).not.toBe("");
+    expect(clipboard.copyText).toHaveBeenCalledWith(`${pageOrigin}/l/tok-1`);
+    expect(text()).toContain("Ссылка скопирована");
+  });
+
+  it("неверный адрес сайта не подменяется и даёт ошибку", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "gift.example");
     vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
     respond(giftsAnswer([gift()], "tok-1"));
     await mount();

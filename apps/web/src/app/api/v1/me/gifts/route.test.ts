@@ -165,7 +165,12 @@ describe("GET /api/v1/me/gifts", () => {
 
     expect(findUnique).toHaveBeenCalledWith({
       where: { ownerId: "u1" },
-      select: { id: true, ownerId: true, publicToken: true },
+      select: {
+        id: true,
+        ownerId: true,
+        publicToken: true,
+        owner: { select: { name: true, nick: true } },
+      },
     });
     expect(findUnique).toHaveBeenCalledTimes(1);
     expect(findMany).toHaveBeenCalledWith(

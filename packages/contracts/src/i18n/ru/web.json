@@ -1,3 +1,12 @@
 {
-  "description": "Персональные вишлисты подарков"
+  "description": "Персональные вишлисты подарков",
+  "wishlist": {
+    "pageTitle": "Вишлист {name} — {brand}",
+    "notFound": "Список не найден",
+    "notFoundTitle": "Список не найден — {brand}",
+    "emptyTitle": "Пока нет открытых желаний",
+    "nick": "@{nick}",
+    "buyMyself": "Куплю сам",
+    "buyMyselfLabel": "Куплю сам: {title}"
+  }
 }

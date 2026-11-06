@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Lora, Manrope } from "next/font/google";
 import { createTranslator } from "next-intl";
 import { DEFAULT_LOCALE, getMessages } from "@gift-list/contracts";
 import { getBrandName } from "@/lib/env";
+import { pageLocale } from "@/lib/request-locale";
 import "./globals.css";
 import { TamaguiRegistry } from "./tamagui-registry";
 
@@ -33,9 +35,12 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // The proxy marks `/l/*` with the negotiated language; every other route keeps
+  // `ru`, so the Russian-only admin does not start varying by `Accept-Language`.
+  const locale = pageLocale(await headers());
   return (
-    <html lang="ru" className={`${manrope.variable} ${lora.variable}`}>
+    <html lang={locale} className={`${manrope.variable} ${lora.variable}`}>
       <body>
         <TamaguiRegistry>{children}</TamaguiRegistry>
       </body>

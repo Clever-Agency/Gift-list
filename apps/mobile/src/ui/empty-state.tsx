@@ -8,7 +8,7 @@ export function EmptyState({
   action,
 }: {
   title: string;
-  body: string;
+  body?: string;
   action?: ReactNode;
 }) {
   return <UiEmptyState title={title} body={body} action={action} />;

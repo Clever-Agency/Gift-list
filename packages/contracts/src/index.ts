@@ -2,7 +2,7 @@
 // No React, Prisma or env here: the package must load in any client.
 import { z } from "zod";
 import { CURRENCIES, GIFT_STATUSES, OWNER_ACTIONS, QUANTITIES, RESERVATION_LABELS, VISIBILITIES } from "./enums";
-import { PROFILE_RELATIONSHIPS } from "./friendship";
+import { PROFILE_RELATIONSHIPS, profileInviteCooldownSchema } from "./friendship";
 
 export const ERROR_CODES = [
   "UNAUTHENTICATED",
@@ -23,6 +23,12 @@ export const ERROR_REASONS = [
   "DUE_OUT_OF_RANGE",
   "DATES_LIMIT",
   "RESET_LINK_STALE",
+  /**
+   * A rejected invite is still cooling down (Story 4.2.2, AD-10 step 3, A-16).
+   * Always rides with `code: "RATE_LIMITED"` and `params: { hours }`, never with
+   * the generic `RATE_LIMITED` text: the client shows "Можно снова через {hours} ч".
+   */
+  "INVITE_COOLDOWN",
 ] as const;
 
 /** Closed set of machine-readable causes; the client maps them to `errors.reason.<REASON>`. */
@@ -149,6 +155,12 @@ export const listDataSchema = z.discriminatedUnion("access", [
     publicToken: z.string().optional(),
     owner: listOwnerSchema.optional(),
     relationship: z.enum(PROFILE_RELATIONSHIPS).optional(),
+    /**
+     * Story 4.2.2 (AD-10 step 3, A-16): the viewer's live rejection cooldown with
+     * this profile owner. Only `/u/:nick` adds it, so `/l/:token` and `/me` keep
+     * their answer unchanged. Absence means no live cooldown.
+     */
+    inviteCooldown: profileInviteCooldownSchema.optional(),
   }),
   z.strictObject({ access: z.literal("not_found"), gifts: z.tuple([]) }),
 ]);
@@ -175,13 +187,25 @@ export {
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
 
 export {
+  FRIEND_ACCEPT_OUTCOMES,
   FRIEND_INVITE_OUTCOMES,
+  FRIEND_REJECT_OUTCOMES,
   PROFILE_RELATIONSHIPS,
+  friendAcceptDataSchema,
+  friendAcceptOutcomeSchema,
   friendInviteDataSchema,
   friendInviteOutcomeSchema,
+  friendRejectDataSchema,
+  friendRejectOutcomeSchema,
+  profileInviteCooldownSchema,
   profileRelationshipSchema,
+  type FriendAcceptData,
+  type FriendAcceptOutcome,
   type FriendInviteData,
   type FriendInviteOutcome,
+  type FriendRejectData,
+  type FriendRejectOutcome,
+  type ProfileInviteCooldown,
   type ProfileRelationship,
 } from "./friendship";
 

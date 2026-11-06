@@ -5,12 +5,13 @@ vi.mock("server-only", () => ({}));
 const db = vi.hoisted(() => ({
   friendship: { findUnique: vi.fn() },
   friendshipInvite: { findUnique: vi.fn() },
+  inviteCooldown: { findUnique: vi.fn() },
   block: { findFirst: vi.fn() },
 }));
 
 vi.mock("@/db/client", () => ({ prisma: db }));
 
-import { readProfileRelationship, relationshipReader } from "@/lib/relationships";
+import { readProfileInviteCooldown, readProfileRelationship, relationshipReader } from "@/lib/relationships";
 
 const ALPHA = "alpha_user";
 const ZEBRA = "zebra_user";
@@ -27,6 +28,7 @@ describe("relationshipReader", () => {
     vi.clearAllMocks();
     db.friendship.findUnique.mockResolvedValue(null);
     db.friendshipInvite.findUnique.mockResolvedValue(null);
+    db.inviteCooldown.findUnique.mockResolvedValue(null);
     db.block.findFirst.mockResolvedValue(null);
   });
 
@@ -121,6 +123,7 @@ describe("readProfileRelationship (Story 4.1.2)", () => {
     vi.clearAllMocks();
     db.friendship.findUnique.mockResolvedValue(null);
     db.friendshipInvite.findUnique.mockResolvedValue(null);
+    db.inviteCooldown.findUnique.mockResolvedValue(null);
     db.block.findFirst.mockResolvedValue(null);
   });
 
@@ -193,5 +196,78 @@ describe("readProfileRelationship (Story 4.1.2)", () => {
 
     await expect(readProfileRelationship(ZEBRA, ALPHA)).resolves.toBe("NONE");
     expect(db.block.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("readProfileInviteCooldown (Story 4.2.2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.inviteCooldown.findUnique.mockResolvedValue(null);
+  });
+
+  it("returns null for the owner and an anonymous viewer without reading the database", async () => {
+    await expect(readProfileInviteCooldown(ALPHA, ALPHA)).resolves.toBeNull();
+    await expect(readProfileInviteCooldown(null, ALPHA)).resolves.toBeNull();
+
+    expect(db.inviteCooldown.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the pair has no cooldown row", async () => {
+    await expect(readProfileInviteCooldown(ZEBRA, ALPHA)).resolves.toBeNull();
+  });
+
+  it("queries the canonical ordered pair", async () => {
+    await readProfileInviteCooldown(ZEBRA, ALPHA);
+
+    expect(db.inviteCooldown.findUnique).toHaveBeenCalledWith({
+      where: { userLowId_userHighId: { userLowId: ALPHA, userHighId: ZEBRA } },
+      select: { until: true, rejectedFromUserId: true },
+    });
+  });
+
+  it("flags the rejected sender A with the remaining whole hours", async () => {
+    db.inviteCooldown.findUnique.mockResolvedValue({
+      until: new Date(Date.now() + 5 * 3_600_000),
+      rejectedFromUserId: ZEBRA,
+    });
+
+    const cooldown = await readProfileInviteCooldown(ZEBRA, ALPHA);
+
+    expect(cooldown?.rejected).toBe(true);
+    expect(cooldown?.hours).toBeGreaterThanOrEqual(1);
+    expect(Number.isInteger(cooldown?.hours)).toBe(true);
+  });
+
+  it("does not flag the rejecting recipient B, but still gives the hours", async () => {
+    db.inviteCooldown.findUnique.mockResolvedValue({
+      until: new Date(Date.now() + 5 * 3_600_000),
+      rejectedFromUserId: ZEBRA,
+    });
+
+    const cooldown = await readProfileInviteCooldown(ALPHA, ZEBRA);
+
+    expect(cooldown?.rejected).toBe(false);
+    expect(cooldown?.hours).toBeGreaterThanOrEqual(1);
+  });
+
+  it("rounds up and never reports less than one hour while the window is open", async () => {
+    db.inviteCooldown.findUnique.mockResolvedValue({
+      until: new Date(Date.now() + 1_000),
+      rejectedFromUserId: ZEBRA,
+    });
+
+    await expect(readProfileInviteCooldown(ZEBRA, ALPHA)).resolves.toEqual({
+      hours: 1,
+      rejected: true,
+    });
+  });
+
+  it("returns null for an expired row and does not delete it on read", async () => {
+    db.inviteCooldown.findUnique.mockResolvedValue({
+      until: new Date(Date.now() - 1_000),
+      rejectedFromUserId: ZEBRA,
+    });
+
+    await expect(readProfileInviteCooldown(ZEBRA, ALPHA)).resolves.toBeNull();
   });
 });

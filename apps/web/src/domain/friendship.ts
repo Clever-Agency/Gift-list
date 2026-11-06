@@ -159,8 +159,22 @@ const NOT_FOUND_RESULT = { ok: false, code: "NOT_FOUND" } as const;
 const FORBIDDEN_RESULT = { ok: false, code: "FORBIDDEN" } as const;
 
 /** Whole hours left until `until`, never below 1 while the window is open. */
-function hoursUntil(until: Date, now: Date): number {
+export function inviteCooldownHoursLeft(until: Date, now: Date = new Date()): number {
   return Math.max(1, Math.ceil((until.getTime() - now.getTime()) / 3_600_000));
+}
+
+/**
+ * Whole hours left while the rejection window is live, or `null` once `until`
+ * has passed. `sendFriendInvite` and the profile DTO of Story 4.2.2 share this
+ * one calculation, so the wire never disagrees with the write gate.
+ */
+export function liveInviteCooldownHours(
+  record: InviteCooldownRecord,
+  now: Date = new Date(),
+): number | null {
+  return record.until.getTime() > now.getTime()
+    ? inviteCooldownHoursLeft(record.until, now)
+    : null;
 }
 
 /**
@@ -236,12 +250,13 @@ export async function sendFriendInvite(
     const cooldown = await tx.findInviteCooldown(pair);
     if (cooldown !== null) {
       const now = new Date();
-      if (cooldown.until.getTime() > now.getTime()) {
+      const hours = liveInviteCooldownHours(cooldown, now);
+      if (hours !== null) {
         return {
           ok: false,
           code: "RATE_LIMITED",
           reason: "INVITE_COOLDOWN",
-          hours: hoursUntil(cooldown.until, now),
+          hours,
         };
       }
       await tx.deleteInviteCooldown(pair);

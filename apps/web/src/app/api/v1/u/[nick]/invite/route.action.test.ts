@@ -80,6 +80,28 @@ describe("POST /api/v1/u/:nick/invite through the use-case", () => {
     expect(sendFriendInvite).toHaveBeenCalledWith({ fromUserId: "u9", toUserId: "u1" }, store);
   });
 
+  it("exposes a live cooldown as 429 INVITE_COOLDOWN with hours, not FORBIDDEN", async () => {
+    sendFriendInvite.mockResolvedValue({
+      ok: false,
+      code: "RATE_LIMITED",
+      reason: "INVITE_COOLDOWN",
+      hours: 5,
+    });
+
+    const { res, body } = await post("anna", JSON.stringify({ toUserId: "victim" }));
+
+    expect(res.status).toBe(429);
+    expect(body).toEqual({
+      ok: false,
+      code: "RATE_LIMITED",
+      message: "Invite cooldown is active",
+      reason: "INVITE_COOLDOWN",
+      params: { hours: 5 },
+    });
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(JSON.stringify(body)).not.toContain("victim");
+  });
+
   it("does not reach the protocol for an unknown nick", async () => {
     const { res, body } = await post("unknown");
 

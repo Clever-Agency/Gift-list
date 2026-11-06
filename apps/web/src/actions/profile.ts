@@ -6,7 +6,7 @@ import { prisma } from "@/db/client";
 import { isValidNick, normalizeNick } from "@/domain/nick";
 import { auth } from "@/lib/auth";
 import { requestLocale } from "@/lib/request-locale";
-import { readProfileRelationship } from "@/lib/relationships";
+import { readProfileInviteCooldown, readProfileRelationship } from "@/lib/relationships";
 
 const unauthenticated = {
   ok: false as const,
@@ -40,6 +40,12 @@ const notFound: ListData = { access: "not_found", gifts: [] };
  * pending invite does not open FRIENDS wishes; `readWishlist` still decides that
  * from the accepted `Friendship` edge alone. A Block keeps the same closed
  * `not_found` body as an unknown nick, so no relationship, card or name leaks.
+ *
+ * Story 4.2.2 adds the profile-only live rejection cooldown. While the window is
+ * open the relationship is forced to `NONE`: a rejection leaves no edge and no
+ * pending invite, so neither `FRIENDS` nor `OUTGOING_PENDING` may be shown. The
+ * cooldown never reaches `/l/:token` or `/me`, because those use-cases never add
+ * the field.
  */
 export async function getProfileByNick(
   nick: string,
@@ -57,8 +63,9 @@ export async function getProfileByNick(
   });
   if (owner === null) return { ok: true, data: listDataSchema.parse(notFound) };
 
-  const [relationship, data] = await Promise.all([
+  const [relationship, inviteCooldown, data] = await Promise.all([
     readProfileRelationship(session.user.id, owner.id),
+    readProfileInviteCooldown(session.user.id, owner.id),
     readWishlist({
       viewer: { id: session.user.id },
       target: { ownerId: owner.id },
@@ -66,7 +73,7 @@ export async function getProfileByNick(
     }),
   ]);
   // A Block hides the whole profile and must look exactly like a missing nick;
-  // the relationship is discarded with the rest of the profile.
+  // the relationship and the cooldown are discarded with the rest of the profile.
   if (data.access === "not_found") return { ok: true, data };
 
   return {
@@ -74,7 +81,8 @@ export async function getProfileByNick(
     data: listDataSchema.parse({
       ...data,
       owner: { displayName: owner.name, nick: owner.nick },
-      relationship,
+      relationship: inviteCooldown === null ? relationship : "NONE",
+      ...(inviteCooldown === null ? {} : { inviteCooldown }),
     }),
   };
 }

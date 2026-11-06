@@ -1,0 +1,80 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
+const { acceptInviteByNick } = vi.hoisted(() => ({ acceptInviteByNick: vi.fn() }));
+
+vi.mock("@/actions/friend-invite", () => ({ acceptInviteByNick }));
+
+const envelope = { ok: false, code: "NOT_FOUND", message: "Not found" };
+
+async function callRoute(
+  nick: string,
+  { headers = {}, body }: { headers?: Record<string, string>; body?: string } = {},
+) {
+  const { POST } = await import("./route");
+  const res = await POST(
+    new Request(`http://x/api/v1/u/${encodeURIComponent(nick)}/invite/accept`, {
+      method: "POST",
+      headers,
+      ...(body === undefined ? {} : { body }),
+    }),
+    { params: Promise.resolve({ nick }) },
+  );
+  return { res, body: await res.json() };
+}
+
+beforeEach(() => {
+  acceptInviteByNick.mockReset();
+  acceptInviteByNick.mockResolvedValue({ ok: true, data: { outcome: "FRIENDS_CREATED" } });
+});
+
+describe("POST /api/v1/u/:nick/invite/accept", () => {
+  it("returns the closed outcome in the AD-12 envelope with a private cache header", async () => {
+    const { res, body } = await callRoute("Anna", { headers: { authorization: "Bearer t" } });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(body).toEqual({ ok: true, data: { outcome: "FRIENDS_CREATED" } });
+    const [nick, headers] = acceptInviteByNick.mock.calls[0] as [string, Headers];
+    expect(nick).toBe("Anna");
+    expect(headers.get("authorization")).toBe("Bearer t");
+  });
+
+  it("ignores an arbitrary user id or forged direction in the body", async () => {
+    await callRoute("Anna", {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fromUserId: "victim", viewerId: "attacker", publicToken: "tok" }),
+    });
+
+    const [nick] = acceptInviteByNick.mock.calls[0] as [string, Headers];
+    expect(nick).toBe("Anna");
+    expect(acceptInviteByNick).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [{ ok: false, code: "UNAUTHENTICATED", message: "Authentication required" }, 401],
+    [{ ok: false, code: "FORBIDDEN", message: "Forbidden" }, 403],
+    [envelope, 404],
+  ] as const)("maps a failure result to its AD-12 status", async (result, status) => {
+    acceptInviteByNick.mockResolvedValue(result);
+
+    const { res, body } = await callRoute("anna");
+
+    expect(res.status).toBe(status);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(body).toEqual(result);
+  });
+
+  it("keeps the AD-12 envelope for unsupported methods", async () => {
+    const { GET, PUT, PATCH, DELETE } = await import("./route");
+    const request = new Request("http://x/api/v1/u/anna/invite/accept");
+
+    for (const handler of [GET, PUT, PATCH, DELETE]) {
+      const res = handler(request);
+      expect(res.status).toBe(404);
+      expect(res.headers.get("cache-control")).toBe("private, no-store");
+      expect(await res.json()).toEqual(envelope);
+    }
+  });
+});

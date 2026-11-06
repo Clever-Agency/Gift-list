@@ -22,6 +22,19 @@ export function toResponse<T>(result: ActionResult<T>, successStatus = 200): Res
   });
 }
 
+/**
+ * Infrastructure failure (for example, the database is unavailable): a bare 500
+ * without the AD-12 envelope. The client treats a non-envelope body as a network
+ * error, which is the sanctioned behavior from Story 1.4; the closed `ErrorCode`
+ * set has no internal-error code.
+ */
+export function infrastructureErrorResponse(): Response {
+  return new Response(null, {
+    status: 500,
+    headers: { "Cache-Control": "private, no-store" },
+  });
+}
+
 /** Unknown path or method: the same envelope, so the client does not treat HTML or an empty body as `network`. */
 export function notFoundResponse(request?: Request): Response {
   // The matched route is already unknown; the request only keeps the handler signature.

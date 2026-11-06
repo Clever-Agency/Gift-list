@@ -2,25 +2,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUnique, findFirst, update, PrismaClientKnownRequestError } = vi.hoisted(() => {
-  class PrismaClientKnownRequestError extends Error {
-    constructor(readonly code: string) {
-      super(code);
+const { getSession, findUnique, findFirst, update, listUpdate, PrismaClientKnownRequestError } =
+  vi.hoisted(() => {
+    class PrismaClientKnownRequestError extends Error {
+      constructor(readonly code: string) {
+        super(code);
+      }
     }
-  }
-  return {
-    getSession: vi.fn(),
-    findUnique: vi.fn(),
-    findFirst: vi.fn(),
-    update: vi.fn(),
-    PrismaClientKnownRequestError,
-  };
-});
+    return {
+      getSession: vi.fn(),
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
+      listUpdate: vi.fn(),
+      PrismaClientKnownRequestError,
+    };
+  });
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
-// No `list` delegate: touching the list table would throw, so an update can
-// never rewrite `List.publicToken` (AD-6, A-26).
-vi.mock("@/db/client", () => ({ prisma: { user: { findUnique, findFirst, update } } }));
+// The list delegate is a spy: a nick update must never rewrite `List.publicToken`
+// (AD-6, A-26), so any call here fails the test even though it would not throw.
+vi.mock("@/db/client", () => ({
+  prisma: { user: { findUnique, findFirst, update }, list: { update: listUpdate } },
+}));
 vi.mock("@/db/generated/client", () => ({ Prisma: { PrismaClientKnownRequestError } }));
 
 import { updateNick } from "./update-nick";
@@ -41,6 +45,7 @@ beforeEach(() => {
   findUnique.mockReset();
   findFirst.mockReset();
   update.mockReset();
+  listUpdate.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue(row);
   findFirst.mockResolvedValue(null);
@@ -90,6 +95,18 @@ describe("updateNick", () => {
     findUnique.mockResolvedValue({ ...row, timeZone: "Europe/Minsk" });
     const result = await updateNick({ nick: "newnick" }, headers);
     expect(result).toMatchObject({ ok: true, data: { timeZone: "Europe/Minsk" } });
+  });
+
+  /** A-26: the share link survives a rename, because only the user row changes. */
+  it("changes only the user row and leaves List.publicToken untouched", async () => {
+    await updateNick({ nick: "newnick" }, headers);
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { nick: "newnick", nickNormalized: "newnick" },
+    });
+    expect(listUpdate).not.toHaveBeenCalled();
   });
 
   it("does not write when the nick is already the user's own", async () => {

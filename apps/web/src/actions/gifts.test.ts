@@ -9,15 +9,21 @@ const {
   findFirst,
   update,
   deleteMany,
+  tagFindMany,
+  tagDeleteMany,
+  tagCreateMany,
+  transaction,
   PrismaClientKnownRequestError,
 } = vi.hoisted(() => {
-    /** Stands in for the generated class, so a test can shape the `code` the use-cases read. */
+    /** Stands in for the generated class, so a test can shape the `code` and `meta` the use-cases read. */
     class PrismaClientKnownRequestError extends Error {
       code: string;
+      meta?: Record<string, unknown>;
 
-      constructor(message: string, { code }: { code: string }) {
+      constructor(message: string, { code, meta }: { code: string; meta?: Record<string, unknown> }) {
         super(message);
         this.code = code;
+        this.meta = meta;
       }
     }
 
@@ -28,13 +34,23 @@ const {
       findFirst: vi.fn(),
       update: vi.fn(),
       deleteMany: vi.fn(),
+      tagFindMany: vi.fn(),
+      tagDeleteMany: vi.fn(),
+      tagCreateMany: vi.fn(),
+      transaction: vi.fn(),
       PrismaClientKnownRequestError,
     };
   });
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({
-  prisma: { list: { findUnique }, gift: { create, findFirst, update, deleteMany } },
+  prisma: {
+    list: { findUnique },
+    gift: { create, findFirst, update, deleteMany },
+    tag: { findMany: tagFindMany },
+    giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
+    $transaction: transaction,
+  },
 }));
 vi.mock("@/db/generated/client", () => ({ Prisma: { PrismaClientKnownRequestError } }));
 
@@ -60,6 +76,7 @@ type Row = {
   holderVisibleToOwner: boolean;
   reservedBy: { id: string; nick: string; name: string } | null;
   list: { ownerId: string };
+  tags: { tagId: string | null; customText: string | null; tag: { slug: string; labels: unknown } | null }[];
 };
 
 /** A row of the shared owner select: the same shape create and update hand back. */
@@ -80,6 +97,7 @@ function giftRow(overrides: Partial<Row> = {}): Row {
     holderVisibleToOwner: false,
     reservedBy: null,
     list: { ownerId: "u1" },
+    tags: [],
     ...overrides,
   };
 }
@@ -96,12 +114,29 @@ beforeEach(() => {
   findFirst.mockReset();
   update.mockReset();
   deleteMany.mockReset();
+  tagFindMany.mockReset();
+  tagDeleteMany.mockReset();
+  tagCreateMany.mockReset();
+  transaction.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1" });
   create.mockResolvedValue(giftRow());
   findFirst.mockResolvedValue(null);
   update.mockResolvedValue(giftRow());
   deleteMany.mockResolvedValue({ count: 0 });
+  tagFindMany.mockResolvedValue([]);
+  tagDeleteMany.mockResolvedValue({ count: 0 });
+  tagCreateMany.mockResolvedValue({ count: 0 });
+  // A stand-in for an interactive transaction: it runs the callback with the
+  // same mocked delegates, so the test sees the order of the writes.
+  transaction.mockImplementation(
+    async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        gift: { update, findFirst },
+        tag: { findMany: tagFindMany },
+        giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
+      }),
+  );
 });
 
 afterEach(() => {
@@ -188,6 +223,26 @@ describe("getGift", () => {
       ownerAction: "CONFIRM_GIVEN",
     });
   });
+
+  /** Story 2.5: the edit form prefill carries the owner's tags, labelled by the server. */
+  it("returns the stored tags on the edit card", async () => {
+    findFirst.mockResolvedValue(
+      giftRow({
+        id: "g7",
+        tags: [
+          { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта" } } },
+          { tagId: null, customText: "своё", tag: null },
+        ],
+      }),
+    );
+
+    const card = okData(await getGift(headers, "g7"));
+
+    expect(card.tags).toEqual([
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: null, label: "своё" },
+    ]);
+  });
 });
 
 describe("createGift", () => {
@@ -244,10 +299,28 @@ describe("createGift", () => {
         priceCurrency: null,
         linkUrl: null,
         visibility: "PUBLIC",
+        quantity: "SINGLE",
         status: "OPEN",
       },
       select: expect.any(Object),
     });
+  });
+
+  it("creates an explicit UNLIMITED wish", async () => {
+    await createGift(headers, { title: "Книга", quantity: "UNLIMITED" });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ quantity: "UNLIMITED" }) }),
+    );
+  });
+
+  it("rejects an unknown quantity", async () => {
+    expect(await createGift(headers, { title: "Книга", quantity: "MANY" })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "quantity",
+    });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("stores USD when an amount comes without a currency", async () => {
@@ -407,7 +480,7 @@ describe("updateGift", () => {
 
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
-      select: { priceAmount: true, status: true, visibility: true },
+      select: { priceAmount: true, status: true, visibility: true, quantity: true },
     });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { priceCurrency: "EUR" } }),
@@ -575,6 +648,577 @@ describe("updateGift", () => {
       code: "NOT_FOUND",
     });
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown quantity", async () => {
+    expect(await updateGift(headers, "g1", { quantity: "MANY" })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "quantity",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  /** Story 2.5/FR-41: an OPEN wish takes a new quantity, written while still OPEN. */
+  it("changes the quantity of an OPEN wish", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+    update.mockResolvedValue(giftRow({ quantity: "UNLIMITED" }));
+
+    const card = okData(await updateGift(headers, "g1", { quantity: "UNLIMITED" }));
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" }, status: "OPEN" },
+      data: { quantity: "UNLIMITED" },
+      select: expect.any(Object),
+    });
+    expect(card.quantity).toBe("UNLIMITED");
+  });
+
+  it("writes quantity and visibility together on an OPEN wish", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+    update.mockResolvedValue(giftRow({ quantity: "UNLIMITED", visibility: "SECRET" }));
+
+    await updateGift(headers, "g1", { quantity: "UNLIMITED", visibility: "SECRET" });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" }, status: "OPEN" },
+      data: { quantity: "UNLIMITED", visibility: "SECRET" },
+      select: expect.any(Object),
+    });
+  });
+
+  /** Story 2.5/AD-8: a reserved or closed wish keeps its quantity. */
+  it.each(["RESERVED", "CLOSED"] as const)(
+    "answers VALIDATION when changing the quantity of a %s wish",
+    async (status) => {
+      findFirst.mockResolvedValue({
+        priceAmount: null,
+        status,
+        visibility: "PUBLIC",
+        quantity: "SINGLE",
+      });
+
+      expect(await updateGift(headers, "g1", { quantity: "UNLIMITED" })).toMatchObject({
+        ok: false,
+        code: "VALIDATION",
+        message: "Invalid input",
+        field: "quantity",
+      });
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+
+  /** A reserved wish's form resends the stored quantity; that is not a change. */
+  it("ignores an unchanged quantity and still saves the other fields", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "RESERVED",
+      visibility: "PUBLIC",
+      quantity: "UNLIMITED",
+    });
+    update.mockResolvedValue(
+      giftRow({ title: "Новое название", status: "RESERVED", quantity: "UNLIMITED" }),
+    );
+
+    const card = okData(
+      await updateGift(headers, "g1", { title: "Новое название", quantity: "UNLIMITED" }),
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
+      data: { title: "Новое название" },
+      select: expect.any(Object),
+    });
+    expect(card.title).toBe("Новое название");
+  });
+
+  /** Story 2.3 is untouched: a resent quantity does not soften the visibility rule. */
+  it("keeps a RESERVED wish's visibility rule when quantity is resent unchanged", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "RESERVED",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
+    expect(
+      await updateGift(headers, "g1", { quantity: "SINGLE", visibility: "SECRET" }),
+    ).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "visibility",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  /** Both guarded fields change on a non-OPEN wish: the visibility rule reports first. */
+  it("names visibility when both quantity and visibility change on a RESERVED wish", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      status: "RESERVED",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
+    expect(
+      await updateGift(headers, "g1", { quantity: "UNLIMITED", visibility: "SECRET" }),
+    ).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "visibility",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  /** AD-8: the write's `status: "OPEN"` loses to a reservation made after the read. */
+  it("answers VALIDATION when the wish is reserved before the guarded quantity write lands", async () => {
+    findFirst
+      .mockResolvedValueOnce({
+        priceAmount: null,
+        status: "OPEN",
+        visibility: "PUBLIC",
+        quantity: "SINGLE",
+      })
+      .mockResolvedValueOnce({ status: "RESERVED" });
+    update.mockRejectedValue(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+
+    expect(await updateGift(headers, "g1", { quantity: "UNLIMITED" })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "quantity",
+    });
+  });
+});
+
+describe("gift tags", () => {
+  const dreamRow = {
+    tagId: "tag_dream",
+    customText: null,
+    tag: { slug: "dream", labels: { ru: "мечта" } },
+  };
+  const customRow = { tagId: null, customText: "своё", tag: null };
+
+  it("creates fixed and custom tags with server-side eligibility", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    create.mockResolvedValue(giftRow({ tags: [dreamRow, customRow] }));
+
+    const card = okData(
+      await createGift(headers, {
+        title: "Книга",
+        tags: [{ catalogId: "tag_dream" }, { text: "  своё  " }],
+      }),
+    );
+
+    expect(tagFindMany).toHaveBeenCalledWith({
+      where: { id: { in: ["tag_dream"] } },
+      select: { id: true },
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tags: {
+            create: [
+              { tagId: "tag_dream", aggregateEligible: true },
+              { customText: "своё", aggregateEligible: false },
+            ],
+          },
+        }),
+      }),
+    );
+    // AD-27: the fixed label is resolved on the server; custom text stays as typed.
+    expect(card.tags).toEqual([
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: null, label: "своё" },
+    ]);
+  });
+
+  it("creates no tags when the body has none", async () => {
+    await createGift(headers, { title: "Книга" });
+
+    expect(tagFindMany).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith(
+      expect.not.objectContaining({ data: expect.objectContaining({ tags: expect.anything() }) }),
+    );
+  });
+
+  it("returns card tags in catalog order regardless of the stored row order", async () => {
+    tagFindMany.mockResolvedValue([
+      { id: "tag_someday" },
+      { id: "tag_dream" },
+      { id: "tag_need_now" },
+    ]);
+    create.mockResolvedValue(
+      giftRow({
+        tags: [
+          { tagId: "tag_someday", customText: null, tag: { slug: "someday", labels: { ru: "когда-нибудь" } } },
+          { tagId: null, customText: "своё", tag: null },
+          { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта" } } },
+          { tagId: "tag_need_now", customText: null, tag: { slug: "need-now", labels: { ru: "нужно сейчас" } } },
+        ],
+      }),
+    );
+
+    const card = okData(
+      await createGift(headers, {
+        title: "Книга",
+        tags: [
+          { catalogId: "tag_someday" },
+          { text: "своё" },
+          { catalogId: "tag_dream" },
+          { catalogId: "tag_need_now" },
+        ],
+      }),
+    );
+
+    expect(card.tags).toEqual([
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: "tag_need_now", label: "нужно сейчас" },
+      { catalogId: "tag_someday", label: "когда-нибудь" },
+      { catalogId: null, label: "своё" },
+    ]);
+  });
+
+  it("rejects an unknown fixed tag id before writing the gift", async () => {
+    tagFindMany.mockResolvedValue([]);
+
+    expect(
+      await createGift(headers, { title: "Книга", tags: [{ catalogId: "tag_missing" }] }),
+    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("accepts only the known fixed tag ids", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+
+    expect(
+      await createGift(headers, {
+        title: "Книга",
+        tags: [{ catalogId: "tag_dream" }, { catalogId: "tag_missing" }],
+      }),
+    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  /** Q-10/F4: the catalog row disappeared between the check and the nested insert. */
+  it("maps a catalog tag deleted during create to VALIDATION (P2003)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    create.mockRejectedValue(
+      new PrismaClientKnownRequestError("Foreign key constraint violated", {
+        code: "P2003",
+        // Real Prisma 7.10 + @prisma/adapter-pg shape for a nested create:
+        // modelName is the operation root, the constraint is only in the adapter cause.
+        meta: {
+          modelName: "Gift",
+          driverAdapterError: {
+            cause: {
+              kind: "ForeignKeyConstraintViolation",
+              constraint: { index: "GiftTag_tagId_fkey" },
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await createGift(headers, {
+      title: "Книга",
+      tags: [{ catalogId: "tag_dream" }],
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    expect(result).not.toHaveProperty("data");
+  });
+
+  /** Q-10/F4: a unique `GiftTag` index wins the race; there is no partial write. */
+  it("maps a unique tag race during create to CONFLICT (P2002)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    create.mockRejectedValue(
+      new PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "UniqueConstraintViolation",
+              table: "GiftTag",
+              constraint: { index: "GiftTag_giftId_tagId_key" },
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await createGift(headers, {
+      title: "Книга",
+      tags: [{ catalogId: "tag_dream" }],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      message: "Tags conflict with a concurrent change",
+      field: "tags",
+    });
+    expect(result).not.toHaveProperty("data");
+  });
+
+  /** Only the tag relation is mapped: a vanished list stays a database failure. */
+  it("rethrows a foreign key failure that names another relation", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    const error = new PrismaClientKnownRequestError("Foreign key constraint violated", {
+      code: "P2003",
+      // Same nested-create shape as the tag failure, but the adapter names Gift.listId.
+      meta: {
+        modelName: "Gift",
+        driverAdapterError: {
+          cause: {
+            kind: "ForeignKeyConstraintViolation",
+            constraint: { index: "Gift_listId_fkey" },
+          },
+        },
+      },
+    });
+    create.mockRejectedValue(error);
+
+    await expect(
+      createGift(headers, { title: "Книга", tags: [{ catalogId: "tag_dream" }] }),
+    ).rejects.toBe(error);
+  });
+
+  it("never lets the client set aggregate eligibility", async () => {
+    expect(
+      await createGift(headers, {
+        title: "Книга",
+        tags: [{ catalogId: "tag_dream", aggregateEligible: true }],
+      }),
+    ).toMatchObject({ ok: false, code: "VALIDATION" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate tags and over-long custom text before the database", async () => {
+    for (const tags of [
+      [{ catalogId: "tag_dream" }, { catalogId: "tag_dream" }],
+      [{ text: "мечта" }, { text: " мечта " }],
+      [{ text: "😀".repeat(31) }],
+    ]) {
+      expect(await createGift(headers, { title: "Книга", tags })).toMatchObject({
+        ok: false,
+        code: "VALIDATION",
+      });
+    }
+    expect(create).not.toHaveBeenCalled();
+    expect(tagFindMany).not.toHaveBeenCalled();
+  });
+
+  it("accepts 30 emoji as one code point each", async () => {
+    create.mockResolvedValue(giftRow());
+    const text = "😀".repeat(30);
+
+    expect(await createGift(headers, { title: "Книга", tags: [{ text }] })).toMatchObject({
+      ok: true,
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tags: { create: [{ customText: text, aggregateEligible: false }] },
+        }),
+      }),
+    );
+  });
+
+  it("preserves stored tags when an edit omits them", async () => {
+    await updateGift(headers, "g1", { title: "Новое название" });
+
+    expect(transaction).not.toHaveBeenCalled();
+    expect(tagDeleteMany).not.toHaveBeenCalled();
+    expect(tagCreateMany).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
+      data: { title: "Новое название" },
+      select: expect.any(Object),
+    });
+  });
+
+  it("replaces the tag set atomically after the owned row is updated", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    update.mockResolvedValue({ id: "g1" });
+    findFirst.mockResolvedValue(giftRow({ tags: [dreamRow, customRow] }));
+
+    const card = okData(
+      await updateGift(headers, "g1", {
+        tags: [{ catalogId: "tag_dream" }, { text: "своё" }],
+      }),
+    );
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
+      data: {},
+      select: { id: true },
+    });
+    expect(tagDeleteMany).toHaveBeenCalledWith({ where: { giftId: "g1" } });
+    expect(tagCreateMany).toHaveBeenCalledWith({
+      data: [
+        { tagId: "tag_dream", aggregateEligible: true, giftId: "g1" },
+        { customText: "своё", aggregateEligible: false, giftId: "g1" },
+      ],
+    });
+    expect(update.mock.invocationCallOrder[0]).toBeLessThan(
+      tagDeleteMany.mock.invocationCallOrder[0]!,
+    );
+    expect(card.tags).toEqual([
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: null, label: "своё" },
+    ]);
+  });
+
+  /** Q-10/F4: the catalog row disappeared after the in-transaction check. */
+  it("maps a catalog tag deleted during the tag replacement to VALIDATION (P2003)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    update.mockResolvedValue({ id: "g1" });
+    tagCreateMany.mockRejectedValue(
+      new PrismaClientKnownRequestError("Foreign key constraint violated", {
+        code: "P2003",
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "ForeignKeyConstraintViolation",
+              constraint: { index: "GiftTag_tagId_fkey" },
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await updateGift(headers, "g1", { tags: [{ catalogId: "tag_dream" }] });
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    expect(result).not.toHaveProperty("data");
+    // The transaction rolled the field write back; nothing partial is returned.
+    expect(update.mock.invocationCallOrder[0]).toBeLessThan(
+      tagCreateMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  /** Q-10/F4: a concurrent replacement hit a `GiftTag` unique index. */
+  it("maps a unique tag race during the tag replacement to CONFLICT (P2002)", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    update.mockResolvedValue({ id: "g1" });
+    tagCreateMany.mockRejectedValue(
+      new PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        meta: {
+          modelName: "GiftTag",
+          driverAdapterError: {
+            cause: {
+              kind: "UniqueConstraintViolation",
+              table: "GiftTag",
+              constraint: { index: "GiftTag_giftId_customText_key" },
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await updateGift(headers, "g1", { tags: [{ catalogId: "tag_dream" }] });
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      message: "Tags conflict with a concurrent change",
+      field: "tags",
+    });
+    expect(result).not.toHaveProperty("data");
+  });
+
+  it("clears tags with an explicit empty list", async () => {
+    update.mockResolvedValue({ id: "g1" });
+    findFirst.mockResolvedValue(giftRow());
+
+    const card = okData(await updateGift(headers, "g1", { tags: [] }));
+
+    expect(tagDeleteMany).toHaveBeenCalledWith({ where: { giftId: "g1" } });
+    expect(tagCreateMany).not.toHaveBeenCalled();
+    expect(card.tags).toEqual([]);
+  });
+
+  it("rejects an unknown fixed tag id without deleting the stored tags", async () => {
+    tagFindMany.mockResolvedValue([]);
+
+    expect(
+      await updateGift(headers, "g1", { tags: [{ catalogId: "tag_missing" }] }),
+    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    expect(update).not.toHaveBeenCalled();
+    expect(tagDeleteMany).not.toHaveBeenCalled();
+    expect(tagCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("answers NOT_FOUND for another user's gift before touching its tags", async () => {
+    update.mockRejectedValue(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+
+    expect(await updateGift(headers, "g-other", { tags: [{ text: "своё" }] })).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    expect(tagDeleteMany).not.toHaveBeenCalled();
+    expect(tagCreateMany).not.toHaveBeenCalled();
+  });
+
+  it("edits tags of a RESERVED wish, which AD-8 allows for gift fields", async () => {
+    update.mockResolvedValue({ id: "g1" });
+    findFirst.mockResolvedValue(giftRow({ status: "RESERVED", tags: [customRow] }));
+
+    const card = okData(await updateGift(headers, "g1", { tags: [{ text: "своё" }] }));
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
+      data: {},
+      select: { id: true },
+    });
+    expect(card.status).toBe("RESERVED");
+    expect(card.tags).toEqual([{ catalogId: null, label: "своё" }]);
+  });
+
+  it("keeps the quantity and visibility gates unchanged when tags change too", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+    findFirst
+      .mockResolvedValueOnce({
+        priceAmount: null,
+        status: "OPEN",
+        visibility: "PUBLIC",
+        quantity: "SINGLE",
+      })
+      .mockResolvedValueOnce(giftRow({ visibility: "SECRET", tags: [dreamRow] }));
+    update.mockResolvedValue({ id: "g1" });
+
+    const card = okData(
+      await updateGift(headers, "g1", {
+        visibility: "SECRET",
+        tags: [{ catalogId: "tag_dream" }],
+      }),
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" }, status: "OPEN" },
+      data: { visibility: "SECRET" },
+      select: { id: true },
+    });
+    expect(card.visibility).toBe("SECRET");
+    expect(card.tags).toEqual([{ catalogId: "tag_dream", label: "мечта" }]);
   });
 });
 

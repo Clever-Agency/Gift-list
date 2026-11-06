@@ -64,6 +64,7 @@ vi.mock("expo-router", async () => {
     Stack: { Screen: () => null },
     Link: ({ children }: { children?: React.ReactNode }) =>
       React.createElement("a", { href: "#" }, children),
+    useFocusEffect: (effect: () => void | (() => void)) => React.useEffect(effect, [effect]),
     useLocalSearchParams: () => search.params,
   };
 });

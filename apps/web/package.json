@@ -11,7 +11,8 @@
     "postinstall": "prisma generate",
     "typecheck": "prisma generate && next typegen && tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:disposable-pg": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg.config.ts"
   },
   "dependencies": {
     "@better-auth/core": "1.7.14",

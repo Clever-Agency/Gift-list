@@ -2,9 +2,10 @@
 // plain row (no Prisma types) and get the `GiftCard` a non-owner may see. The
 // holder and everybody else share one shape; only reservation facts differ.
 
-import type { GiftCard } from "@gift-list/contracts";
+import { DEFAULT_LOCALE, type GiftCard, type SupportedLocale } from "@gift-list/contracts";
 import { calendarDay } from "./calendar-day";
 import type { OwnerGiftRow } from "./owner-gift-card";
+import { toGiftTags } from "./tag";
 
 /** Plain row the viewer mapper reads; adds the two reservation facts D-13 uses. */
 export type ViewerGiftRow = OwnerGiftRow & {
@@ -24,6 +25,7 @@ export type ViewerGiftRow = OwnerGiftRow & {
 export function toViewerGiftCard(
   row: ViewerGiftRow,
   viewerId: string | null,
+  locale: SupportedLocale = DEFAULT_LOCALE,
 ): GiftCard {
   return {
     id: row.id,
@@ -36,7 +38,7 @@ export function toViewerGiftCard(
     quantity: row.quantity,
     expiresOn: calendarDay(row.expiresOn),
     archivedAt: row.archivedAt?.toISOString() ?? null,
-    tags: [],
+    tags: toGiftTags(row.tags, locale),
     status: row.status,
     reservedBy: reservedBy(row, viewerId),
     reservationLabel: reservationLabel(row),

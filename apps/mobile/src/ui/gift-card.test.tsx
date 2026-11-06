@@ -23,12 +23,47 @@ const app = JSON.parse(
   gift: {
     visibilityLower: Record<string, string>;
     visibilityChipLabel: string;
+    visibilityInCardName: string;
+    status: Record<string, string>;
+    ownerAction: Record<string, string>;
   };
+  myWishlist: { reservedBy: string };
 };
 
 /** `app.gift.visibilityChipLabel` with the lower-case visibility word. */
 function chipLabel(visibility: GiftCardData["visibility"]): string {
   return app.gift.visibilityChipLabel.replace("{value}", app.gift.visibilityLower[visibility]);
+}
+
+/** The card's `DESIGN.md` phrase, from the same catalogue the app ships. */
+function cardLabel(card: GiftCardData): string {
+  const price =
+    card.priceAmount !== null && card.priceCurrency !== null
+      ? formatPrice(card.priceAmount, card.priceCurrency, "ru")
+      : null;
+  const reservation = card.ownerAction
+    ? app.gift.ownerAction[card.ownerAction]
+    : card.reservedBy
+      ? app.myWishlist.reservedBy.replace("{name}", card.reservedBy.displayName)
+      : null;
+  return [
+    card.title,
+    price,
+    app.gift.status[card.status],
+    card.tags.length > 0
+      ? card.tags
+          .map(function labelOfTag(tag) {
+            return tag.label;
+          })
+          .join(", ")
+      : null,
+    reservation,
+    app.gift.visibilityInCardName.replace("{value}", app.gift.visibilityLower[card.visibility]),
+  ]
+    .filter(function hasText(part): part is string {
+      return part !== null && part.trim() !== "";
+    })
+    .join(", ");
 }
 
 vi.mock("expo-symbols", async () => {
@@ -200,7 +235,107 @@ describe("WishCard: цена", () => {
   });
 });
 
-const EDIT = '[role="button"][aria-label="Изменить «Наушники»"]';
+/** The card button is the first button of the list item; the clickable chip is its sibling. */
+const CARD = '[role="listitem"] > [role="button"]';
+
+/** `DESIGN.md` → Доступность: one phrase for the pressable main zone. */
+describe("WishCard: доступное имя", () => {
+  it("название, цена, статус, все теги, строка брони и видимость — в этом порядке", async () => {
+    const cardData = gift({
+      title: "Наушники",
+      priceAmount: 250000,
+      priceCurrency: "RUB",
+      status: "RESERVED",
+      reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+      visibility: "PUBLIC",
+      tags: [
+        { catalogId: "tag_dream", label: "мечта" },
+        { catalogId: "tag_need_now", label: "нужно сейчас" },
+        { catalogId: "tag_someday", label: "когда-нибудь" },
+        { catalogId: null, label: "своё" },
+        { catalogId: null, label: "ещё одно" },
+      ],
+    });
+    await render(cardData, vi.fn());
+
+    const card = container.querySelector(CARD);
+    expect(card?.getAttribute("aria-label")).toBe(
+      [
+        "Наушники",
+        formatPrice(250000, "RUB", "ru"),
+        "Забронирован",
+        "мечта, нужно сейчас, когда-нибудь, своё, ещё одно",
+        "Берёт Олег",
+        "видимость всем",
+      ].join(", "),
+    );
+  });
+
+  it.each([
+    { ownerAction: "CONFIRM_GIVEN" as const, line: "Ждёт вашего подтверждения" },
+    { ownerAction: "EXPIRED_NO_REPLY" as const, line: "Срок брони истёк" },
+  ])("$ownerAction: фаза брони вытесняет имя держателя", async ({ ownerAction, line }) => {
+    const cardData = gift({
+      status: "RESERVED",
+      ownerAction,
+      reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+    });
+    await render(cardData, vi.fn());
+
+    const label = container.querySelector(CARD)?.getAttribute("aria-label") ?? "";
+    expect(label).toBe(
+      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Забронирован, ${line}, видимость всем`,
+    );
+    expect(label).not.toContain("Берёт Олег");
+  });
+
+  it("пустые части опускаются: без цены, тегов и брони лишних запятых нет", async () => {
+    const cardData = gift({
+      priceAmount: null,
+      priceCurrency: null,
+      status: "OPEN",
+      tags: [],
+      reservedBy: null,
+      visibility: "SECRET",
+    });
+    await render(cardData, vi.fn());
+
+    const card = container.querySelector(CARD);
+    expect(card?.getAttribute("aria-label")).toBe(
+      "Наушники, Открыт, видимость секрет",
+    );
+  });
+
+  it("имя обновляется вместе с данными карточки", async () => {
+    const onPress = vi.fn();
+    const first = gift({ title: "Наушники", status: "OPEN", tags: [] });
+    await render(first, onPress);
+    expect(container.querySelector(CARD)?.getAttribute("aria-label")).toBe(
+      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт, видимость всем`,
+    );
+
+    const second = gift({
+      title: "Свитер",
+      status: "CLOSED",
+      tags: [{ catalogId: null, label: "тёплое" }],
+      visibility: "FRIENDS",
+    });
+    await render(second, onPress);
+    const card = container.querySelector(CARD);
+    expect(card?.getAttribute("aria-label")).toBe(
+      `Свитер, ${formatPrice(250000, "RUB", "ru")}, Получен, тёплое, видимость друзьям`,
+    );
+    expect(card?.getAttribute("aria-label")).toBe(cardLabel(second));
+    expect(card?.getAttribute("aria-label")).not.toContain("Наушники");
+  });
+
+  it("без onPress общего имени нет: карточка не кнопка", async () => {
+    await render(gift({ tags: [{ catalogId: null, label: "своё" }] }));
+
+    expect(container.querySelector(CARD)).toBeNull();
+    expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
+  });
+});
 
 /**
  * Story 2.2 + CLE-65: the card stays presentational: the list passes `onPress` to
@@ -209,15 +344,19 @@ const EDIT = '[role="button"][aria-label="Изменить «Наушники»"
  * a handler.
  */
 describe("WishCard: нажатие", () => {
-  it("с onPress вся карточка — кнопка с подписью «Изменить «{title}»» и зовёт onPress", async () => {
+  it("с onPress вся карточка — кнопка с полным именем по DESIGN и зовёт onPress", async () => {
     const onPress = vi.fn();
-    await render(gift({ title: "Наушники" }), onPress);
+    const cardData = gift({ title: "Наушники" });
+    await render(cardData, onPress);
 
     const item = container.querySelector('[role="listitem"]');
     expect(item).not.toBeNull();
 
-    const card = item?.querySelector(EDIT);
+    const card = item?.querySelector(CARD);
     expect(card).not.toBeNull();
+    expect(card?.getAttribute("aria-label")).toBe(
+      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт, видимость всем`,
+    );
     // The press zone is the whole card: the button is the first thing in the item.
     expect(item?.firstElementChild).toBe(card);
 
@@ -233,7 +372,7 @@ describe("WishCard: нажатие", () => {
     const onPress = vi.fn();
     await render(gift({ title: "Наушники" }), onPress);
 
-    const card = container.querySelector(EDIT);
+    const card = container.querySelector(CARD);
     // The spacer is the last box of the card button, with no text of its own.
     const spacer = card?.lastElementChild;
     expect(spacer).not.toBeNull();
@@ -255,7 +394,7 @@ describe("WishCard: нажатие", () => {
     const onPress = vi.fn();
     await render(gift({ title: "Наушники" }), onPress);
 
-    const card = container.querySelector(EDIT);
+    const card = container.querySelector(CARD);
     // Focusable in the Tab order.
     expect(card?.getAttribute("tabindex")).toBe("0");
     await act(async () => {
@@ -281,7 +420,7 @@ describe("WishCard: чип видимости", () => {
     );
 
     const item = container.querySelector('[role="listitem"]');
-    const edit = item?.querySelector(EDIT);
+    const edit = item?.querySelector(CARD);
     const chip = item?.querySelector(`[role="button"][aria-label="${chipLabel("PUBLIC")}"]`);
     expect(edit).not.toBeNull();
     expect(chip).not.toBeNull();
@@ -303,7 +442,9 @@ describe("WishCard: чип видимости", () => {
     const item = container.querySelector('[role="listitem"]');
     const buttons = Array.from(item?.querySelectorAll('[role="button"]') ?? []);
     expect(buttons).toHaveLength(2);
-    expect(buttons[0]?.getAttribute("aria-label")).toBe("Изменить «Наушники»");
+    expect(buttons[0]?.getAttribute("aria-label")).toBe(
+      cardLabel(gift({ title: "Наушники", visibility: "PUBLIC" })),
+    );
     expect(buttons[1]?.getAttribute("aria-label")).toBe(chipLabel("PUBLIC"));
     // Both are reachable by Tab, in that order.
     expect(buttons.every((node) => node.getAttribute("tabindex") === "0")).toBe(true);
@@ -320,7 +461,7 @@ describe("WishCard: чип видимости", () => {
     expect(layer).not.toBeNull();
     // The layer is the last child of the listitem, outside the card button.
     expect(layer?.parentElement).toBe(item);
-    expect(layer?.previousElementSibling).toBe(item?.querySelector(EDIT));
+    expect(layer?.previousElementSibling).toBe(item?.querySelector(CARD));
     // It takes no presses itself: the ones around the chip reach the card button.
     expect(getComputedStyle(layer as Element).pointerEvents).toBe("none");
   });
@@ -347,7 +488,9 @@ describe("WishCard: чип видимости", () => {
     // Only the card is a button.
     const buttons = Array.from(container.querySelectorAll('[role="button"]'));
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.getAttribute("aria-label")).toBe("Изменить «Наушники»");
+    expect(buttons[0]?.getAttribute("aria-label")).toBe(
+      cardLabel(gift({ status: "RESERVED", visibility: "FRIENDS" })),
+    );
     expect(container.querySelector(`[aria-label="${chipLabel("FRIENDS")}"]`)).toBeNull();
 
     const label = Array.from(container.querySelectorAll("span")).find(
@@ -372,5 +515,176 @@ describe("WishCard: чип видимости", () => {
     expect(container.querySelector(`[aria-label="${chipLabel("FRIENDS")}"]`)).toBeNull();
     expect(textOf()).toContain(pill);
     expect(textOf()).toContain("Друзьям");
+  });
+});
+
+/**
+ * Story 2.5.7 (`DESIGN.md` -> WishCard, `EXPERIENCE.md` -> Tags): up to three
+ * chips and «+N»; labels come from the server DTO, so fixed tag captions are
+ * never translated on the client and custom text stays as stored.
+ */
+describe("WishCard: теги", () => {
+  it("показывает серверные подписи фиксированного и своего тега без клиентских переводов", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "подарок-сюрприз" },
+          { catalogId: null, label: "своё" },
+        ],
+      }),
+    );
+
+    expect(textOf()).toContain("подарок-сюрприз");
+    expect(textOf()).toContain("своё");
+    // The fixed tag's label is exactly what the server sent, not a local caption.
+    expect(textOf()).not.toContain("мечта");
+    expect(container.querySelector('[role="checkbox"]')).toBeNull();
+    expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
+  });
+
+  it("показывает до трёх тегов и «+N» для остальных", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: "tag_need_now", label: "нужно сейчас" },
+          { catalogId: "tag_someday", label: "когда-нибудь" },
+          { catalogId: null, label: "своё" },
+          { catalogId: null, label: "ещё одно" },
+        ],
+      }),
+    );
+
+    expect(textOf()).toContain("мечта");
+    expect(textOf()).toContain("нужно сейчас");
+    expect(textOf()).toContain("когда-нибудь");
+    expect(textOf()).toContain("+2");
+    expect(textOf()).not.toContain("своё");
+    expect(textOf()).not.toContain("ещё одно");
+    expect(container.querySelector('[data-testid="gift-tags"]')).not.toBeNull();
+  });
+
+  /** DESIGN.md -> WishCard: three chips fit, the fourth becomes «+1». */
+  it("граница карточки: три тега без «+N»", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: "tag_need_now", label: "нужно сейчас" },
+          { catalogId: "tag_someday", label: "когда-нибудь" },
+        ],
+      }),
+    );
+
+    const row = container.querySelector('[data-testid="gift-tags"]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.childElementCount).toBe(3);
+    expect(textOf()).toContain("мечта");
+    expect(textOf()).toContain("нужно сейчас");
+    expect(textOf()).toContain("когда-нибудь");
+    expect(container.querySelector('[data-testid="gift-tags-more"]')).toBeNull();
+  });
+
+  it("граница карточки: четвёртый тег даёт «+1» и скрыт из видимого ряда", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: "tag_need_now", label: "нужно сейчас" },
+          { catalogId: "tag_someday", label: "когда-нибудь" },
+          { catalogId: null, label: "своё" },
+        ],
+      }),
+    );
+
+    const row = container.querySelector('[data-testid="gift-tags"]') as HTMLElement;
+    expect(row.childElementCount).toBe(4);
+    expect(container.querySelector('[data-testid="gift-tags-3"]')).toBeNull();
+    expect(textOf()).not.toContain("своё");
+    expect(container.querySelector('[data-testid="gift-tags-more"]')?.textContent).toBe("+1");
+  });
+
+  it("длинный свой тег виден целиком", async () => {
+    const longTag = "очень длинный собственный тег";
+    await render(gift({ tags: [{ catalogId: null, label: longTag }] }));
+
+    expect(textOf()).toContain(longTag);
+  });
+
+  it("без тегов ряда нет", async () => {
+    await render(gift({ tags: [] }));
+
+    expect(container.querySelector('[data-testid="gift-tags"]')).toBeNull();
+  });
+
+  it("все теги входят в доступное имя карточки в порядке показа, действие прежнее", async () => {
+    const onPress = vi.fn();
+    const labels = ["мечта", "нужно сейчас", "когда-нибудь", "своё", "ещё одно"];
+    const tags = labels.map(function tagOfLabel(label, index) {
+      return {
+        catalogId: index < 3 ? `tag_${index}` : null,
+        label,
+      };
+    });
+    const cardData = gift({ tags });
+    await render(cardData, onPress);
+
+    const card = container.querySelector(CARD);
+    expect(card).not.toBeNull();
+    expect(card?.getAttribute("aria-label")).toBe(cardLabel(cardData));
+    // Tags behind «+N» are still announced through the card name.
+    for (const hiddenLabel of ["своё", "ещё одно"]) {
+      expect(textOf()).not.toContain(hiddenLabel);
+      expect(card?.getAttribute("aria-label")).toContain(hiddenLabel);
+    }
+
+    await click(card);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("визуальный порядок чипов не меняется: три подписи, затем «+N», без кнопок", async () => {
+    await render(
+      gift({
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: "tag_need_now", label: "нужно сейчас" },
+          { catalogId: "tag_someday", label: "когда-нибудь" },
+          { catalogId: null, label: "своё" },
+          { catalogId: null, label: "ещё одно" },
+        ],
+      }),
+    );
+
+    const row = container.querySelector('[data-testid="gift-tags"]') as HTMLElement;
+    expect(
+      Array.from(row.children).map(function chipText(chip) {
+        return chip.textContent;
+      }),
+    ).toEqual(["мечта", "нужно сейчас", "когда-нибудь", "+2"]);
+    // The row is not a control and has no presses of its own.
+    expect(row.getAttribute("role")).toBeNull();
+    expect(row.querySelectorAll('[role="button"]')).toHaveLength(0);
+  });
+
+  it("без onPress теги и «+N» доступны, лишних кнопок нет", async () => {
+    await render(
+      gift({
+        status: "CLOSED",
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: null, label: "своё" },
+          { catalogId: null, label: "ещё одно" },
+          { catalogId: null, label: "четвёртое" },
+        ],
+      }),
+    );
+
+    expect(textOf()).toContain("Получен");
+    expect(textOf()).toContain("мечта");
+    expect(textOf()).toContain("+1");
+    const more = container.querySelector('[data-testid="gift-tags-more"]') as HTMLElement;
+    expect(more).not.toBeNull();
+    expect(more.getAttribute("aria-label")).toContain("четвёртое");
+    expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
   });
 });

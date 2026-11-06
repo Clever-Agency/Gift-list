@@ -1,9 +1,18 @@
 import { View } from "@tamagui/core";
 import { XStack, YStack } from "@tamagui/stacks";
-import { forwardRef, type ComponentRef, type ReactNode } from "react";
+import { createContext, forwardRef, useContext, useId, type ComponentRef, type ReactNode } from "react";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { spacing, typography } from "./tokens";
+
+/** The group error and lock explanation, read with each radio on the phone. */
+const ChoiceListHintContext = createContext<string | undefined>(undefined);
+
+/** Joins sentences without doubling the final period of a part. */
+function joinSentences(parts: Array<string | undefined>): string | undefined {
+  const text = parts.filter((part): part is string => Boolean(part)).join(". ");
+  return text ? text.replace(/\.{2,}/g, ".") : undefined;
+}
 
 export type ChoiceProps = {
   /** `rows`: radio dot, label and a hint line. `chip`: a compact label, e.g. a currency code. */
@@ -27,6 +36,8 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
   { variant, label, hint, selected, disabled, onPress, testID },
   ref,
 ) {
+  const groupHint = useContext(ChoiceListHintContext);
+  const accessibleHint = joinSentences([hint, groupHint]);
   const row = variant === "row";
   return (
     <Pressable
@@ -34,7 +45,7 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
       role="radio"
       aria-label={label}
       aria-checked={selected}
-      accessibilityHint={hint}
+      accessibilityHint={accessibleHint}
       disabled={disabled}
       onPress={onPress}
       testID={testID}
@@ -102,23 +113,52 @@ export type ChoiceListProps = {
   /** The visible heading of the group. Omit when the surrounding layer has its own. */
   heading?: string;
   variant: "row" | "chip";
-  /** Inline error under the group, e.g. a server rejection. */
+  /** Inline error under the group, e.g. a server rejection. Linked to the group. */
   error?: string;
+  /** Persistent explanation under the group, e.g. why the choice is locked. Linked to the group. */
+  description?: string;
   children: ReactNode;
 };
 
 /** The `radiogroup` around `Choice`s: `rows` stack, `chips` wrap. */
-export function ChoiceList({ label, heading, variant, error, children }: ChoiceListProps) {
+export function ChoiceList({
+  label,
+  heading,
+  variant,
+  error,
+  description,
+  children,
+}: ChoiceListProps) {
+  const id = useId();
+  const errorId = error ? `${id}-error` : undefined;
+  const descriptionId = description ? `${id}-description` : undefined;
+  const describedBy = [errorId, descriptionId].filter(Boolean).join(" ");
+  const hint = joinSentences([error, description]);
   const Frame = variant === "row" ? YStack : XStack;
   return (
     <YStack gap="$1">
       {heading ? <Text kind="label">{heading}</Text> : null}
-      <Frame role="radiogroup" aria-label={label} gap="$2" {...(variant === "chip" ? { flexWrap: "wrap" } : null)}>
-        {children}
-      </Frame>
+      <ChoiceListHintContext.Provider value={hint}>
+        <Frame
+          role="radiogroup"
+          aria-label={label}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy || undefined}
+          accessibilityHint={hint}
+          gap="$2"
+          {...(variant === "chip" ? { flexWrap: "wrap" } : null)}
+        >
+          {children}
+        </Frame>
+      </ChoiceListHintContext.Provider>
       {error ? (
-        <Text kind="caption" tone="destructive" aria-live="polite">
+        <Text id={errorId} kind="caption" tone="destructive" role="alert" aria-live="polite">
           {error}
+        </Text>
+      ) : null}
+      {description ? (
+        <Text id={descriptionId} kind="caption" tone="muted" marginTop="$3">
+          {description}
         </Text>
       ) : null}
     </YStack>

@@ -4,7 +4,7 @@ import { act } from "react";
  * What a user would press: native buttons (`Button` renders `<button>`), pressable
  * surfaces (`Pressable` is `role="button"`), and radios of a choice list.
  */
-export const CONTROLS = 'button, [role="button"], [role="radio"]';
+export const CONTROLS = 'button, [role="button"], [role="radio"], [role="checkbox"]';
 
 /** The open layer. A `Dialog` is portalled to `document.body`, outside the test container. */
 export const DIALOG = '[role="dialog"], [role="alertdialog"]';

@@ -12,7 +12,8 @@
     "typecheck": "prisma generate && next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify:disposable-pg": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg.config.ts"
+    "verify:disposable-pg": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg.config.ts",
+    "verify:friendship-concurrency": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg-friendship.config.ts"
   },
   "dependencies": {
     "@better-auth/core": "1.7.14",

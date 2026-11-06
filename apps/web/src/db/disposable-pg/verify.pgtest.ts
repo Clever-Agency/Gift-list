@@ -46,8 +46,6 @@ const EVIDENCE_DIR = join(
   "implementation-artifacts",
   "opencode-microtasks",
 );
-const LOOPBACK_ADDRESSES = ["127.0.0.1", "::1", "::ffff:127.0.0.1"];
-
 const STRUCTURAL_TAGS_MIGRATION = "20261105120000_tags";
 const CATALOG_MIGRATION = "20261106120000_fixed_tags_catalog";
 
@@ -75,6 +73,7 @@ let pool!: Pool;
 let prisma!: PrismaClient;
 let tempDir = "";
 let serverVersion = "";
+let systemIdentifier = "";
 const evidence: string[] = [];
 
 function record(line: string): void {
@@ -85,8 +84,50 @@ function scrub(text: string): string {
   return text.split(target.password).join("***");
 }
 
-function isLoopbackAddress(address: string | null): boolean {
-  return address !== null && LOOPBACK_ADDRESSES.includes(address);
+type ServerIdentity = {
+  database: string;
+  user: string;
+  version: string;
+  systemIdentifier: string;
+};
+
+/**
+ * `inet_server_addr()` reports the server-side socket address, which behind a
+ * Docker published port is the container bridge address, not loopback. The
+ * loopback guarantee therefore comes from the validated connection string and
+ * from the client's actual connection parameters, while the cluster system
+ * identifier proves that the migration hit the same server that was checked
+ * empty.
+ */
+async function readServerIdentity(): Promise<ServerIdentity> {
+  const result = await client.query<{
+    database: string;
+    user: string;
+    version: string;
+    systemIdentifier: string;
+  }>(
+    `SELECT current_database() AS database,
+            current_user AS "user",
+            current_setting('server_version') AS version,
+            (SELECT system_identifier::text FROM pg_control_system()) AS "systemIdentifier"`,
+  );
+  return (
+    result.rows[0] ?? { database: "", user: "", version: "", systemIdentifier: "" }
+  );
+}
+
+function expectLoopbackClient(label: string): void {
+  // `connectionParameters` exists at runtime but is not part of the published
+  // `@types/pg` surface, so read it through a narrow local shape.
+  const connection = (
+    client as unknown as {
+      connectionParameters?: { host?: string; port?: number; database?: string };
+    }
+  ).connectionParameters;
+  expect(connection?.host, `${label}: client host`).toBe(target.host);
+  expect(Number(connection?.port), `${label}: client port`).toBe(target.port);
+  expect(connection?.database, `${label}: client database`).toBe(target.database);
+  record(`${label}: client connection ${target.host}:${target.port}/${target.database}`);
 }
 
 function runPrisma(args: readonly string[]): string {
@@ -208,10 +249,17 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
     );
     const row = identity.rows[0];
     expect(row?.database).toBe(target.database);
-    expect(isLoopbackAddress(row?.address ?? null), "server address must be loopback").toBe(true);
+    expectLoopbackClient("preflight");
 
     serverVersion = row?.version ?? "";
     record(`server: PostgreSQL ${serverVersion}, connected as ${row?.user ?? "?"}`);
+    record(`server-side socket address (informational): ${row?.address ?? "unix socket"}`);
+
+    const serverIdentity = await readServerIdentity();
+    expect(serverIdentity.database).toBe(target.database);
+    expect(serverIdentity.systemIdentifier).not.toBe("");
+    systemIdentifier = serverIdentity.systemIdentifier;
+    record(`cluster system identifier: ${systemIdentifier}`);
 
     // Proven empty before the first migration: no user tables at all.
     const empty = await client.query<{ count: number }>(
@@ -228,8 +276,10 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
       `SELECT current_database() AS database, inet_server_addr()::text AS address`,
     );
     expect(afterMigrate.rows[0]?.database).toBe(target.database);
-    expect(isLoopbackAddress(afterMigrate.rows[0]?.address ?? null)).toBe(true);
-    record("post-migrate identity: same loopback disposable database (no env fallback)");
+    expectLoopbackClient("post-migrate");
+    const identityAfterMigrate = await readServerIdentity();
+    expect(identityAfterMigrate.systemIdentifier).toBe(systemIdentifier);
+    record("post-migrate identity: same disposable database and cluster (no env fallback)");
 
     pool = new Pool({ connectionString: target.databaseUrl, max: 4 });
     prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
@@ -429,6 +479,9 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
       "23505",
     );
     record("unique: duplicate slug and duplicate (giftId, tagId|customText) rejected (23505)");
+
+    await client.query(`DELETE FROM "GiftTag" WHERE "giftId" = $1`, [giftId]);
+    await client.query(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId]);
   });
 
   it("keeps ON DELETE RESTRICT for a referenced catalog tag", async () => {
@@ -622,6 +675,9 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
     );
     expect(orphans.rows[0]?.count).toBe(0);
     record("delete/insert race: at least one side rejected, zero orphan GiftTag rows");
+
+    await client.query(`DELETE FROM "GiftTag" WHERE "tagId" = $1`, [tagId]);
+    await client.query(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId]);
   });
 
   it("orders card tags by slug then custom text with stored labels", async () => {

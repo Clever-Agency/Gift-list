@@ -1,6 +1,6 @@
 # Спека F5 — harness проверки на одноразовой PostgreSQL (Q-04)
 
-Дата: 2026-11-06. Ветка: `evivanchikov/story-24-25-auth-fixups`, база `192918d`. Пункт очереди: **Q-04**. Статус: **harness готов, реальная PostgreSQL не проверена — окружение заблокировано** (см. `fixup-F5-report.md`).
+Дата: 2026-11-06. Ветка: `evivanchikov/story-24-25-auth-fixups`, база `192918d`. Пункт очереди: **Q-04**. Статус: **проверено на одноразовой PostgreSQL 17.11 2026-11-06; harness исправлен по итогам первого прогона** (см. `fixup-F5-report.md` и `fixup-F5-evidence-2026-11-06T043913.md`).
 
 ## 1. Зачем
 
@@ -33,9 +33,9 @@ F1 добавил data-миграцию `20261106120000_fixed_tags_catalog`, н�
 
 Дополнительно harness:
 
-- перед первой миграцией проверяет, что в БД нет ни одной пользовательской таблицы, а `current_database()` и loopback-адрес сервера совпадают с целью;
+- перед первой миграцией проверяет, что в БД нет ни одной пользовательской таблицы, `current_database()` совпадает с целью, а фактические параметры подключения клиента (`host`, `port`, `database`) — с проверенным loopback-адресом; запоминает `system_identifier` кластера;
 - передаёт дочерним процессам `DATABASE_URL`/`DIRECT_URL` только на время запуска и указывает `DOTENV_CONFIG_PATH` на пустой файл, чтобы `prisma.config.ts` не взял цель из `apps/web/.env`;
-- после `migrate deploy` повторно проверяет `current_database()` — доказательство, что миграция не ушла в другую БД;
+- после `migrate deploy` повторно проверяет `current_database()`, параметры подключения и тот же `system_identifier` — доказательство, что миграция не ушла в другую БД. `inet_server_addr()` для этого не используется: за Docker published port он возвращает адрес контейнера, а не loopback;
 - не печатает и не сохраняет пароль; доказательства пишутся без учётных данных.
 
 ## 4. Что проверяется на реальной БД
@@ -65,23 +65,30 @@ F1 добавил data-миграцию `20261106120000_fixed_tags_catalog`, н�
 - `apps/web/vitest.pg.config.ts` — отдельный конфиг, не пересекается с CI.
 - `apps/web/package.json` — скрипт `verify:disposable-pg`.
 
-## 6. Запуск (после разблокировки окружения)
+## 6. Запуск
 
 ```powershell
-# 1. Поднять одноразовый PostgreSQL на уникальном loopback-порту, без общих volume.
-#    Пример (выполняет человек, не агент): docker run --rm -d --name gift-list-f5 \
-#      -e POSTGRES_PASSWORD=<одноразовый> -p 127.0.0.1:55432:5432 postgres:17
+# 1. Поднять одноразовый PostgreSQL на уникальном loopback-порту, без host-mount и общих volume.
+#    Пример: docker run --rm -d --name gift-f5-<random> \
+#      -e POSTGRES_PASSWORD=<синтетический> -p 127.0.0.1:<49152-65535>:5432 postgres:17-alpine
 # 2. Создать новую пустую БД gift_f5_<random>.
 # 3. Экспортировать ТОЛЬКО на процесс:
-$env:DISPOSABLE_DATABASE_URL = "postgresql://postgres:<пароль>@127.0.0.1:55432/gift_f5_<random>"
+$env:DISPOSABLE_DATABASE_URL = "postgresql://postgres:<пароль>@127.0.0.1:<порт>/gift_f5_<random>"
 $env:DISPOSABLE_DIRECT_URL   = $env:DISPOSABLE_DATABASE_URL
 $env:DISPOSABLE_PG_CONFIRM   = "gift_f5_<random>"
+$env:DATABASE_URL            = $env:DISPOSABLE_DATABASE_URL
+$env:DIRECT_URL              = $env:DISPOSABLE_DIRECT_URL
 npm run verify:disposable-pg -w @gift-list/web
-# 4. Удалить только свой контейнер; env-переменные процесса не сохранять.
+# 4. Удалить только свой контейнер (и его анонимный volume, если остался); env-переменные процесса не сохранять.
 ```
 
-Успешный прогон создаёт `_bmad-output/implementation-artifacts/opencode-microtasks/fixup-F5-evidence-<UTC>.md`; этот файл прикладывается к отчёту F5. Без реального прогона F5 остаётся незакрытым.
+Успешный прогон создаёт `_bmad-output/implementation-artifacts/opencode-microtasks/fixup-F5-evidence-<UTC>.md`; этот файл прикладывается к отчёту F5. Прогон 2026-11-06 завершился **15/15** на PostgreSQL 17.11; evidence — `fixup-F5-evidence-2026-11-06T043913.md`.
 
-## 7. Известное ограничение
+## 7. Итог первого реального прогона
 
-Сам harness на PostgreSQL **не запускался**: окружение Docker недоступно (VirtualMachinePlatform выключен, нужны права администратора и перезагрузка). Проверены только guard-тесты, preflight-отказы, типы и линт. Это ограничение зафиксировано в `fixup-F5-report.md` и не считается доказательством F5.
+До перезагрузки Docker-движок не стартовал (`VirtualMachinePlatform` выключен), поэтому первый harness был проверен только unit-тестами. После перезагрузки прогон выявил два дефекта самого harness, оба исправлены:
+
+1. проверка `inet_server_addr()` на loopback неверна для Docker published port: сервер видит адрес контейнера (`172.17.0.2`), а не loopback. Заменена на проверку фактических параметров подключения клиента и совпадение `system_identifier` кластера до/после миграции;
+2. тест уникальных индексов и гонка удаления оставляли собственные `Tag`-строки, из-за чего финальная проверка «после reseed 3 строки» зависела от порядка. Добавлена очистка тестовых строк.
+
+Продуктовый код не менялся. Ограничение, оставшееся у harness: он не входит в CI и запускается только явно; Docker-образ и контейнер создаёт оператор, а не harness.

@@ -175,6 +175,23 @@ describe("listDataSchema", () => {
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [] }).success).toBe(true);
   });
 
+  /** Story 2.4 (AD-6): only the owner answer carries the share token. */
+  it("accepts the owner's publicToken on open access", () => {
+    expect(
+      listDataSchema.safeParse({ access: "gifts", gifts: [], publicToken: "clx1example" }).success,
+    ).toBe(true);
+    expect(listDataSchema.safeParse({ access: "gifts", gifts: [], publicToken: 42 }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects a publicToken on a closed gate", () => {
+    expect(
+      listDataSchema.safeParse({ access: "not_found", gifts: [], publicToken: "clx1example" })
+        .success,
+    ).toBe(false);
+  });
+
   it("rejects keys outside the list data and unknown access values", () => {
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [], total: 0 }).success).toBe(false);
     expect(listDataSchema.safeParse({ access: "hidden", gifts: [] }).success).toBe(false);

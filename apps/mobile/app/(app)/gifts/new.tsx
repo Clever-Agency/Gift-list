@@ -1,4 +1,4 @@
-import type { GiftInput } from "@gift-list/contracts";
+import type { GiftInputDraft } from "@gift-list/contracts";
 import { Column, Heading, Screen, ScrollView, spacing, Text } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -17,12 +17,15 @@ import {
   type GiftFormServerError,
   type GiftFormValues,
 } from "@/ui/gift-form";
+import { giftTagInputs } from "@/ui/gift-form-tags";
 import { ToastHost } from "@/ui/toast";
+import { useTagCatalog } from "@/ui/use-tag-catalog";
 
 /**
  * «Новое желание» (Story 2.2): the create screen behind `/gifts/new`. The form owns
- * the fields and the client rules; this screen only maps its values onto `GiftInput`
- * (AD-12), keeps the request state and reports the outcome.
+ * the fields and the client rules; this screen only maps its values onto the
+ * contract's create draft (`GiftInputDraft`, AD-12), keeps the request state and
+ * reports the outcome.
  *
  * `EXPERIENCE.md` → State Patterns: an expired session leaves for login with the
  * return path and the «Сессия закончилась» reason (the login screen owns that toast);
@@ -68,6 +71,9 @@ export default function NewGiftScreen() {
   // System back (Android hardware key, swipe) asks before a dirty draft is lost.
   // Our own ways out open the guard's synchronous bypass instead of touching this.
   const guard = useDiscardGuard(dirty && !submitting, openDiscard);
+  // Story 2.5: the fixed catalogue is independent of the draft: a failed or
+  // empty fetch never clears what the owner already chose.
+  const tagCatalog = useTagCatalog();
 
   useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous") {
@@ -227,6 +233,8 @@ export default function NewGiftScreen() {
               submitRequest={submitRequest}
               onDirtyChange={setDirty}
               onCancel={cancel}
+              tagCatalog={tagCatalog.state}
+              onRetryTagCatalog={tagCatalog.retry}
             />
           </ScrollView>
         </Column>
@@ -251,8 +259,15 @@ export default function NewGiftScreen() {
 
 NewGiftScreen.displayName = "NewGiftScreen";
 
-/** `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12). */
-function toGiftInput(values: GiftFormValues): GiftInput {
+/**
+ * `GiftFormValues` names the link `link`; the API body names it `linkUrl` (AD-12).
+ * The form seeds `quantity` from the contract's `DEFAULT_QUANTITY` and sends the
+ * selected value, so this screen holds no `SINGLE` literal of its own.
+ *
+ * Story 2.5: an empty tag set is not sent at all — the create contract defaults
+ * it to `[]`, and a body without the key cannot clear anything on create.
+ */
+function toGiftInput(values: GiftFormValues): GiftInputDraft {
   return {
     title: values.title,
     description: values.description,
@@ -260,5 +275,7 @@ function toGiftInput(values: GiftFormValues): GiftInput {
     priceCurrency: values.priceCurrency,
     linkUrl: values.link,
     visibility: values.visibility,
+    quantity: values.quantity,
+    ...(values.tags.length > 0 ? { tags: giftTagInputs(values.tags) } : {}),
   };
 }

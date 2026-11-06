@@ -1,4 +1,4 @@
-import { giftCardSchema } from "@gift-list/contracts";
+import { giftCardSchema, type SupportedLocale } from "@gift-list/contracts";
 import { describe, expect, it } from "vitest";
 import { toViewerGiftCard, type ViewerGiftRow } from "./viewer-gift-card";
 
@@ -25,6 +25,7 @@ function row(overrides: Partial<ViewerGiftRow> = {}): ViewerGiftRow {
     reservedBy: HOLDER,
     reservationBought: false,
     holderVisibleToOthers: true,
+    tags: [],
     ...overrides,
   };
 }
@@ -164,5 +165,41 @@ describe("toViewerGiftCard", () => {
 
     expect(card.reservedBy).toBeNull();
     expect(card.reservationLabel).toBe("GIVEN");
+  });
+
+  /** Story 2.5/AD-27: the viewer gets the server-resolved label and the custom text. */
+  it("maps fixed and custom tags for a viewer", () => {
+    const card = toViewerGiftCard(
+      row({
+        tags: [
+          { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта" } } },
+          { tagId: null, customText: "своё", tag: null },
+        ],
+      }),
+      OTHER_ID,
+    );
+
+    expect(card.tags).toEqual([
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: null, label: "своё" },
+    ]);
+    expect(giftCardSchema.safeParse(card).success).toBe(true);
+  });
+
+  /** AD-27: the label follows the requested locale, not a caption baked into code. */
+  it("uses the requested locale for a fixed tag label", () => {
+    const futureLocale = "en" as SupportedLocale;
+
+    const card = toViewerGiftCard(
+      row({
+        tags: [
+          { tagId: "tag_dream", customText: null, tag: { slug: "dream", labels: { ru: "мечта", en: "dream" } } },
+        ],
+      }),
+      OTHER_ID,
+      futureLocale,
+    );
+
+    expect(card.tags).toEqual([{ catalogId: "tag_dream", label: "dream" }]);
   });
 });

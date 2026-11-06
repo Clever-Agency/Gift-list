@@ -1,7 +1,8 @@
 import "server-only";
 
-import { listDataSchema, type ListData } from "@gift-list/contracts";
+import { DEFAULT_LOCALE, listDataSchema, type ListData, type SupportedLocale } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
+import type { Prisma } from "@/db/generated/client";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import {
   NO_RELATIONS,
@@ -21,6 +22,11 @@ export type ReadWishlistInput = {
   readonly viewer: VisibilityViewer;
   readonly target: WishlistTarget;
   readonly viaListToken?: boolean;
+  /**
+   * AD-27: the request language for fixed tag labels. The caller negotiates it
+   * from `Accept-Language`; the mapper falls back to `DEFAULT_LOCALE`.
+   */
+  readonly locale?: SupportedLocale;
 };
 
 /** Ports the read depends on; tests hand over a scripted reader. */
@@ -47,7 +53,13 @@ const giftSelect = {
   holderVisibleToOwner: true,
   holderVisibleToOthers: true,
   reservedBy: { select: { id: true, nick: true, name: true } },
-} as const;
+  // Story 2.5/AD-22: only what the card shows. `slug` orders fixed tags like the
+  // catalog (2.5.7) and never reaches the client.
+  tags: {
+    select: { tagId: true, customText: true, tag: { select: { labels: true, slug: true } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  },
+} satisfies Prisma.GiftSelect;
 
 /**
  * The single wishlist read of the server (AD-7, AD-12, NFR-3). Every screen and
@@ -64,7 +76,8 @@ export async function readWishlist(
 
   const list = await prisma.list.findUnique({
     where: "ownerId" in target ? { ownerId: target.ownerId } : { publicToken: target.publicToken },
-    select: { id: true, ownerId: true },
+    // `publicToken` is only handed out below, in the owner's own answer (AD-6).
+    select: { id: true, ownerId: true, publicToken: true },
   });
   // A missing list answers `not_found` before any gift is read, so neither a
   // wrong nick nor a wrong token reveals that a list exists (AD-7).
@@ -109,9 +122,18 @@ export async function readWishlist(
   if (resolved.access === "not_found") return listDataSchema.parse(notFound);
 
   const role = resolved.role;
+  const locale = input.locale ?? DEFAULT_LOCALE;
   const gifts = resolved.gifts.map(function toListGiftCard(gift) {
-    return role === "owner" ? toOwnerGiftCard(gift) : toViewerGiftCard(gift, viewerId);
+    return role === "owner"
+      ? toOwnerGiftCard(gift, locale)
+      : toViewerGiftCard(gift, viewerId, locale);
   });
 
-  return listDataSchema.parse({ access: "gifts", gifts });
+  return listDataSchema.parse({
+    access: "gifts",
+    gifts,
+    // Story 2.4 (AD-6, A-26): only the owner gets the immutable share token; the
+    // link `/l/{publicToken}` is what the owner shares, nobody else.
+    ...(owner ? { publicToken: list.publicToken } : {}),
+  });
 }

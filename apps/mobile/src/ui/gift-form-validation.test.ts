@@ -6,6 +6,7 @@ import {
   firstErrorField,
   isHttpUrl,
   serverErrorField,
+  tagErrorKey,
   validateGiftForm,
 } from "@/ui/gift-form-validation";
 
@@ -67,6 +68,8 @@ describe("firstErrorField", () => {
     expect(firstErrorField({})).toBeNull();
     expect(firstErrorField({ price: true, title: true })).toBe("title");
     expect(firstErrorField({ visibility: true, price: true, link: true })).toBe("link");
+    expect(firstErrorField({ quantity: true, visibility: true })).toBe("visibility");
+    expect(firstErrorField({ quantity: true })).toBe("quantity");
   });
 });
 
@@ -78,12 +81,52 @@ describe("serverErrorField", () => {
     expect(serverErrorField("priceCurrency")).toBe("price");
     expect(serverErrorField("linkUrl")).toBe("link");
     expect(serverErrorField("visibility")).toBe("visibility");
+    expect(serverErrorField("quantity")).toBe("quantity");
+    expect(serverErrorField("tags")).toBe("tags");
+    expect(serverErrorField("tags.0")).toBe("tags");
+    expect(serverErrorField("tags.12.text")).toBe("tags");
+    expect(serverErrorField("tags.3.catalogId")).toBe("tags");
   });
 
   it("has no place for an unknown or missing field", () => {
     expect(serverErrorField(undefined)).toBeNull();
     expect(serverErrorField("")).toBeNull();
-    expect(serverErrorField("tags")).toBeNull();
+    expect(serverErrorField("tagsExtra")).toBeNull();
+  });
+});
+
+describe("tagErrorKey", () => {
+  const submitted = ["catalog:tag_dream", "custom:своё", "catalog:tag_need"];
+
+  it("maps the server index onto the tag that was sent at that position", () => {
+    expect(tagErrorKey("tags.0.catalogId", submitted, submitted)).toBe("catalog:tag_dream");
+    expect(tagErrorKey("tags.1.text", submitted, submitted)).toBe("custom:своё");
+    expect(tagErrorKey("tags.2", submitted, submitted)).toBe("catalog:tag_need");
+  });
+
+  it("follows the tag identity after the chips are reordered", () => {
+    const reordered = ["catalog:tag_need", "catalog:tag_dream", "custom:своё"];
+    expect(tagErrorKey("tags.2.catalogId", submitted, reordered)).toBe("catalog:tag_need");
+    expect(tagErrorKey("tags.1.text", submitted, reordered)).toBe("custom:своё");
+  });
+
+  it("falls back to the group when the offending tag is gone or the index is stale", () => {
+    const withoutCustom = ["catalog:tag_dream", "catalog:tag_need"];
+    // A tag removed after the submit: nothing to highlight.
+    expect(tagErrorKey("tags.1.text", submitted, withoutCustom)).toBeNull();
+    // An index the submitted request never had.
+    expect(tagErrorKey("tags.3.text", submitted, submitted)).toBeNull();
+    expect(tagErrorKey("tags.99", submitted, submitted)).toBeNull();
+    // No submit has happened in this mount yet.
+    expect(tagErrorKey("tags.0.text", [], submitted)).toBeNull();
+  });
+
+  it("is group-level for a path without an item number", () => {
+    expect(tagErrorKey("tags", submitted, submitted)).toBeNull();
+    expect(tagErrorKey("tags.", submitted, submitted)).toBeNull();
+    expect(tagErrorKey("tags.text", submitted, submitted)).toBeNull();
+    expect(tagErrorKey("title", submitted, submitted)).toBeNull();
+    expect(tagErrorKey(undefined, submitted, submitted)).toBeNull();
   });
 });
 
@@ -103,6 +146,39 @@ describe("fieldErrorCopy", () => {
     expect(fieldErrorCopy("visibility")).toEqual({
       catalog: "common",
       key: "errors.code.VALIDATION",
+    });
+    expect(fieldErrorCopy("quantity")).toEqual({
+      catalog: "giftForm",
+      key: "error.quantityLocked",
+    });
+  });
+
+  it("names the custom tag problem behind a tags error", () => {
+    expect(fieldErrorCopy("tags")).toEqual({
+      catalog: "giftForm",
+      key: "error.tags",
+      values: { max: 30 },
+    });
+    expect(fieldErrorCopy("tags", { tagIssue: "empty" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagEmpty",
+    });
+    expect(fieldErrorCopy("tags", { tagIssue: "duplicate" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagDuplicate",
+    });
+    expect(fieldErrorCopy("tags", { tagIssue: "invalid" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagInvalid",
+    });
+    expect(fieldErrorCopy("tags", { tagIssue: "tooLong" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagTooLong",
+      values: { max: 30 },
+    });
+    expect(fieldErrorCopy("tags", { tagServerField: "tags.0.catalogId" })).toEqual({
+      catalog: "giftForm",
+      key: "error.tagUnavailable",
     });
   });
 

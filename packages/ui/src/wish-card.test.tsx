@@ -2,11 +2,16 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { StatusPill } from "./status-pill";
+import { TagChipList } from "./tag-chip";
 import { createMount } from "./test-utils";
 import { VisibilityChip } from "./visibility-chip";
 import { WishCard } from "./wish-card";
 
 const mounted = createMount();
+
+function plusHidden(hidden: number): string {
+  return `+${hidden}`;
+}
 
 
 describe("WishCard", () => {
@@ -38,12 +43,12 @@ describe("WishCard", () => {
         title="Плед"
         status={<StatusPill status="open" label="Свободно" />}
         onPress={onPress}
-        pressLabel="Редактировать «Плед»"
+        pressLabel="Плед, 2 500 ₽, Свободно"
       />,
     );
 
     const button = container.querySelector("[role='button']") as HTMLElement;
-    expect(button.getAttribute("aria-label")).toBe("Редактировать «Плед»");
+    expect(button.getAttribute("aria-label")).toBe("Плед, 2 500 ₽, Свободно");
     await act(async () => {
       button.click();
     });
@@ -52,6 +57,24 @@ describe("WishCard", () => {
       button.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
     });
     expect(onPress).toHaveBeenCalledTimes(3);
+  });
+
+  it("без pressLabel имя кнопки собирается из содержимого, а не из одного названия", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        title="Плед"
+        price="2 500 ₽"
+        status={<StatusPill status="open" label="Свободно" />}
+        onPress={vi.fn()}
+      />,
+    );
+
+    const button = container.querySelector("[role='button']") as HTMLElement;
+    expect(button.getAttribute("aria-label")).toBeNull();
+    expect(button.textContent).toContain("Плед");
+    expect(button.textContent).toContain("2 500 ₽");
+    expect(button.textContent).toContain("Свободно");
   });
 
   it("чип соседний элемент, а не внутри кнопки карточки; Tab: карточка, затем чип", async () => {
@@ -63,7 +86,7 @@ describe("WishCard", () => {
         title="Плед"
         status={<StatusPill status="open" label="Свободно" />}
         onPress={onCard}
-        pressLabel="Редактировать «Плед»"
+        pressLabel="Плед, 2 500 ₽, Свободно"
         chipInteractive
         chip={
           <VisibilityChip
@@ -78,7 +101,7 @@ describe("WishCard", () => {
 
     const buttons = Array.from(container.querySelectorAll("[role='button']"));
     expect(buttons.map((node) => node.getAttribute("aria-label"))).toEqual([
-      "Редактировать «Плед»",
+      "Плед, 2 500 ₽, Свободно",
       "Видимость: всем. Изменить",
     ]);
     expect(buttons[0]?.contains(buttons[1] as Node)).toBe(false);
@@ -105,5 +128,35 @@ describe("WishCard", () => {
 
     expect(container.textContent).toBe("Закрыто");
     expect(container.querySelector("[role='button']")).toBeNull();
+  });
+
+  it("теги идут между статусом и бронью — до трёх и «+N», без лишних кнопок", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        title="Плед"
+        status={<StatusPill status="reserved" label="Забронировано" />}
+        tags={<TagChipList labels={["мечта", "нужно сейчас", "когда-нибудь", "своё"]} moreLabel={plusHidden} />}
+        reservation="Забронировал Аня"
+      />,
+    );
+
+    const card = container.querySelector("[role='listitem']") as HTMLElement;
+    expect(card.textContent).toBe("ПледЗабронированомечтанужно сейчаскогда-нибудь+1Забронировал Аня");
+    expect(card.querySelector("[role='button']")).toBeNull();
+    expect(card.querySelector("[role='checkbox']")).toBeNull();
+  });
+
+  it("без тегов ряда нет", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        title="Плед"
+        status={<StatusPill status="open" label="Открыт" />}
+        reservation="Забронировал Аня"
+      />,
+    );
+
+    expect(container.textContent).toBe("ПледОткрытЗабронировал Аня");
   });
 });

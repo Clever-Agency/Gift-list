@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { CURRENCIES, VISIBILITIES } from "@gift-list/contracts";
+import { CURRENCIES, QUANTITIES, VISIBILITIES } from "@gift-list/contracts";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +7,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { controlByLabel, typeInto } from "@/test/dom";
-import { GiftForm } from "@/ui/gift-form";
+import { GiftForm, type GiftFormValues } from "@/ui/gift-form";
 import { formatMinorToPrice } from "@/ui/gift-price";
 
 /** The same catalogue the app ships, so the copy is asserted without a copy of it. */
@@ -27,6 +27,19 @@ type AppCatalog = {
       visibility: string;
       visibilityHint: Record<string, string>;
       visibilityLocked: string;
+      quantity: string;
+      quantityHint: Record<string, string>;
+      quantityLocked: string;
+      tags: string;
+      tagsLoading: string;
+      tagsEmpty: string;
+      tagsError: string;
+      tagsRetry: string;
+      tagCustom: string;
+      tagCustomPlaceholder: string;
+      tagAdd: string;
+      tagCounter: string;
+      tagRemove: string;
     };
     action: { create: string; save: string; cancel: string };
     error: {
@@ -35,10 +48,20 @@ type AppCatalog = {
       descriptionTooLong: string;
       priceInvalid: string;
       linkInvalid: string;
+      quantityLocked: string;
+      tags: string;
+      tagEmpty: string;
+      tagTooLong: string;
+      tagDuplicate: string;
+      tagInvalid: string;
+      tagUnavailable: string;
       form: string;
     };
   };
-  gift: { visibility: Record<string, string> };
+  gift: {
+    visibility: Record<string, string>;
+    quantity: Record<string, string>;
+  };
 };
 
 const app = JSON.parse(
@@ -54,6 +77,17 @@ const app = JSON.parse(
 
 const form = app.giftForm;
 const visibilityLabel = app.gift.visibility;
+const quantityLabel = app.gift.quantity;
+
+/** The fixed catalogue the form receives; labels stay verbatim from the server. */
+const catalog = {
+  status: "ready" as const,
+  tags: [
+    { id: "tag_dream", slug: "dream", label: "мечта" },
+    { id: "tag_need", slug: "need-now", label: "нужно сейчас" },
+    { id: "tag_someday", slug: "someday", label: "когда-нибудь" },
+  ],
+};
 
 /** `AccessibilityInfo` lives in the React Native mock below; the announcement is an assertion. */
 const announce = vi.hoisted(() => vi.fn());
@@ -110,6 +144,7 @@ type FormProps = Omit<ComponentProps<typeof GiftForm>, "onSubmit">;
 
 let host: Root;
 let container: HTMLDivElement;
+let onSubmitMock: (values: GiftFormValues) => void;
 
 beforeEach(() => {
   announce.mockClear();
@@ -124,11 +159,19 @@ afterEach(async () => {
 });
 
 async function mount(overrides: Partial<FormProps> = {}) {
-  const onSubmit = vi.fn();
+  const onSubmit = vi.fn<(values: GiftFormValues) => void>();
+  onSubmitMock = onSubmit;
   await act(async () => {
     host.render(<GiftForm submitting={false} onSubmit={onSubmit} {...overrides} />);
   });
   return onSubmit;
+}
+
+/** Re-renders the same mounted form, e.g. with the server error a save returned. */
+async function update(overrides: Partial<FormProps> = {}) {
+  await act(async () => {
+    host.render(<GiftForm submitting={false} onSubmit={onSubmitMock} {...overrides} />);
+  });
 }
 
 function text(): string {
@@ -160,6 +203,18 @@ function radio(label: string): HTMLElement | undefined {
   );
 }
 
+function checkbox(label: string): HTMLElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLElement>('[role="checkbox"]')).find(
+    (node) => node.getAttribute("aria-label") === label,
+  );
+}
+
+function tagIsSelected(label: string): boolean {
+  const chip = checkbox(label);
+  expect(chip, `чип «${label}»`).toBeDefined();
+  return chip?.getAttribute("aria-checked") === "true";
+}
+
 function isChecked(label: string): boolean {
   const option = radio(label);
   expect(option, `радио «${label}»`).toBeDefined();
@@ -168,6 +223,10 @@ function isChecked(label: string): boolean {
 
 function submitButton(label: string = form.action.save): HTMLButtonElement | undefined {
   return controlByLabel(label, container) as HTMLButtonElement | undefined;
+}
+
+function button(label: string): HTMLElement | undefined {
+  return controlByLabel(label, container);
 }
 
 function cancelButton(label: string = form.action.cancel): HTMLButtonElement | undefined {
@@ -196,6 +255,7 @@ describe("GiftForm: поля", () => {
       form.field.link,
       form.field.price,
       form.field.visibility,
+      form.field.quantity,
     ]) {
       expect(text()).toContain(label);
     }
@@ -210,6 +270,11 @@ describe("GiftForm: поля", () => {
     for (const visibility of VISIBILITIES) {
       expect(radio(visibilityLabel[visibility]), visibility).toBeDefined();
       expect(text()).toContain(form.field.visibilityHint[visibility]);
+    }
+
+    for (const quantity of QUANTITIES) {
+      expect(radio(quantityLabel[quantity]), quantity).toBeDefined();
+      expect(text()).toContain(form.field.quantityHint[quantity]);
     }
   });
 
@@ -239,6 +304,14 @@ describe("GiftForm: поля", () => {
     expect(isChecked(visibilityLabel.FRIENDS)).toBe(false);
     expect(isChecked(visibilityLabel.SECRET)).toBe(false);
   });
+
+  /** Story 2.5/D-25: a new wish is single unless the owner picks otherwise. */
+  it("тип желания по умолчанию — «Один раз» (SINGLE)", async () => {
+    await mount();
+
+    expect(isChecked(quantityLabel.SINGLE)).toBe(true);
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(false);
+  });
 });
 
 describe("GiftForm: отправка", () => {
@@ -256,6 +329,8 @@ describe("GiftForm: отправка", () => {
       priceAmount: null,
       priceCurrency: null,
       visibility: "PUBLIC",
+      quantity: "SINGLE",
+      tags: [],
     });
   });
 
@@ -277,7 +352,22 @@ describe("GiftForm: отправка", () => {
       priceAmount: 25050,
       priceCurrency: "RUB",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
+      tags: [],
     });
+  });
+
+  /** Story 2.5: the chosen type is what the screen submits. */
+  it("выбранный «Можно дарить снова» уходит как UNLIMITED", async () => {
+    const onSubmit = await mount();
+
+    await type(form.field.title, "Наушники");
+    await press(quantityLabel.UNLIMITED);
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: "UNLIMITED" }),
+    );
   });
 
   it("initialValues заполняют поля, цену в минорных единицах и выбор", async () => {
@@ -289,6 +379,7 @@ describe("GiftForm: отправка", () => {
         priceAmount: 25050,
         priceCurrency: "RUB",
         visibility: "SECRET",
+        quantity: "UNLIMITED",
       },
     });
 
@@ -301,6 +392,8 @@ describe("GiftForm: отправка", () => {
     expect(isChecked("USD")).toBe(false);
     expect(isChecked(visibilityLabel.SECRET)).toBe(true);
     expect(isChecked(visibilityLabel.PUBLIC)).toBe(false);
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
+    expect(isChecked(quantityLabel.SINGLE)).toBe(false);
 
     await submit();
 
@@ -311,6 +404,8 @@ describe("GiftForm: отправка", () => {
       priceAmount: 25050,
       priceCurrency: "RUB",
       visibility: "SECRET",
+      quantity: "UNLIMITED",
+      tags: [],
     });
   });
 
@@ -325,6 +420,13 @@ describe("GiftForm: отправка", () => {
     });
 
     expect(text()).toContain(form.field.visibilityLocked);
+    const group = container.querySelector(
+      `[role="radiogroup"][aria-label="${form.field.visibility}"]`,
+    );
+    const described = document.getElementById(group?.getAttribute("aria-describedby") ?? "");
+    expect(described?.textContent).toBe(form.field.visibilityLocked);
+    expect(described?.getAttribute("role")).toBeNull();
+    expect(group?.getAttribute("aria-invalid")).toBeNull();
     for (const code of VISIBILITIES) {
       const option = radio(visibilityLabel[code]);
       expect(option, visibilityLabel[code]).toBeDefined();
@@ -341,6 +443,58 @@ describe("GiftForm: отправка", () => {
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ visibility: "SECRET" }),
     );
+  });
+
+  /**
+   * Story 2.5: a wish that is no longer open keeps its stored type, disabled,
+   * with the same kind of explanation as the frozen visibility.
+   */
+  it("quantityLocked: строки показывают сохранённое значение, не меняются и подсказка видна", async () => {
+    const onSubmit = await mount({
+      initialValues: { title: "Свитер", quantity: "UNLIMITED" },
+      quantityLocked: true,
+    });
+
+    expect(text()).toContain(form.field.quantityLocked);
+    const group = container.querySelector(
+      `[role="radiogroup"][aria-label="${form.field.quantity}"]`,
+    );
+    const described = document.getElementById(group?.getAttribute("aria-describedby") ?? "");
+    expect(described?.textContent).toBe(form.field.quantityLocked);
+    expect(described?.getAttribute("role")).toBeNull();
+    expect(group?.getAttribute("aria-invalid")).toBeNull();
+    for (const quantity of QUANTITIES) {
+      const option = radio(quantityLabel[quantity]);
+      expect(option, quantityLabel[quantity]).toBeDefined();
+      expect(option?.getAttribute("aria-disabled")).toBe("true");
+    }
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
+
+    await press(quantityLabel.SINGLE);
+
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
+    expect(isChecked(quantityLabel.SINGLE)).toBe(false);
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: "UNLIMITED" }),
+    );
+  });
+
+  it("serverError quantity показывается под группой типа", async () => {
+    await mount({ serverError: { field: "quantity" } });
+
+    const group = container.querySelector(
+      `[role="radiogroup"][aria-label="${form.field.quantity}"]`,
+    );
+    expect(group?.parentElement?.textContent).toContain(form.error.quantityLocked);
+    expect(group?.getAttribute("aria-invalid")).toBe("true");
+    const errorId = group?.getAttribute("aria-describedby");
+    const error = document.getElementById(errorId ?? "");
+    expect(error?.textContent).toBe(form.error.quantityLocked);
+    expect(error?.getAttribute("role")).toBe("alert");
+    // The inline message is the group's, not the form-level one above the button.
+    expect(group?.parentElement?.textContent).not.toContain(form.error.form);
   });
 
   it("пустое название: ошибка под полем, отправки нет, ошибка объявлена", async () => {
@@ -405,7 +559,7 @@ describe("GiftForm: отправка", () => {
   });
 
   it("serverError с неизвестным полем — общая ошибка формы", async () => {
-    await mount({ serverError: { field: "tags", message: "Что-то не так" } });
+    await mount({ serverError: { field: "unknownField", message: "Что-то не так" } });
 
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toBe(form.error.form);
@@ -479,6 +633,457 @@ describe("GiftForm: черновик", () => {
     await press("RUB");
     // The form was already dirty: only the flip is reported, not every keystroke.
     expect(onDirtyChange).toHaveBeenCalledTimes(1);
+  });
+
+  /** Story 2.5: the type is part of the draft; returning to the stored one cleans it. */
+  it("смена типа желания делает форму грязной, возврат к исходному — снова чистой", async () => {
+    const onDirtyChange = vi.fn();
+    await mount({
+      initialValues: { title: "Свитер", quantity: "SINGLE" },
+      onDirtyChange,
+    });
+
+    await press(quantityLabel.UNLIMITED);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    await press(quantityLabel.SINGLE);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+});
+
+describe("GiftForm: теги", () => {
+  it("пока каталог грузится, показывает состояние и оставляет поле своего тега", async () => {
+    await mount({ tagCatalog: { status: "loading" } });
+
+    expect(text()).toContain(form.field.tags);
+    expect(text()).toContain(form.field.tagsLoading);
+    expect(checkbox("мечта")).toBeUndefined();
+    expect(field(form.field.tagCustom)).toBeDefined();
+  });
+
+  it("ошибка каталога: повтор запроса, выбранные теги и свой тег остаются", async () => {
+    const onRetry = vi.fn();
+    const onSubmit = await mount({
+      tagCatalog: { status: "error" },
+      initialValues: {
+        title: "Свитер",
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { text: "своё" },
+        ],
+      },
+      onRetryTagCatalog: onRetry,
+    });
+
+    expect(text()).toContain(form.field.tagsError);
+    // The catalogue failed, but the stored choice is still visible and removable.
+    expect(tagIsSelected("мечта")).toBe(true);
+    expect(text()).toContain("своё");
+
+    await press(form.field.tagsRetry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: [{ catalogId: "tag_dream", label: "мечта" }, { text: "своё" }],
+      }),
+    );
+  });
+
+  it("пустой каталог не сбрасывает выбранное и не мешает своему тегу", async () => {
+    const onSubmit = await mount({
+      tagCatalog: { status: "ready", tags: [] },
+      initialValues: {
+        title: "Свитер",
+        tags: [{ catalogId: "tag_dream", label: "мечта" }],
+      },
+    });
+
+    // Selected tags are still shown; the empty notice would contradict them.
+    expect(tagIsSelected("мечта")).toBe(true);
+
+    await type(form.field.tagCustom, "своё");
+    await press(form.field.tagAdd);
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: [{ catalogId: "tag_dream", label: "мечта" }, { text: "своё" }],
+      }),
+    );
+  });
+
+  it("пустой каталог без выбранных тегов показывает empty state и повтор", async () => {
+    const onRetry = vi.fn();
+    await mount({
+      tagCatalog: { status: "ready", tags: [] },
+      onRetryTagCatalog: onRetry,
+    });
+
+    expect(text()).toContain(form.field.tagsEmpty);
+    await press(form.field.tagsRetry);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("несколько фиксированных тегов выбираются и уходят с catalogId", async () => {
+    const onSubmit = await mount({ tagCatalog: catalog });
+
+    await type(form.field.title, "Свитер");
+    await press("мечта");
+    await press("нужно сейчас");
+    expect(tagIsSelected("мечта")).toBe(true);
+    expect(tagIsSelected("нужно сейчас")).toBe(true);
+    expect(tagIsSelected("когда-нибудь")).toBe(false);
+
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { catalogId: "tag_need", label: "нужно сейчас" },
+        ],
+      }),
+    );
+  });
+
+  it("повторное нажатие снимает фиксированный тег", async () => {
+    const onSubmit = await mount({ tagCatalog: catalog });
+
+    await type(form.field.title, "Свитер");
+    await press("мечта");
+    await press("мечта");
+    expect(tagIsSelected("мечта")).toBe(false);
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: [] }));
+  });
+
+  it("подпись фиксированного тега берётся из каталога, а не из старой карточки", async () => {
+    const onSubmit = await mount({
+      tagCatalog: catalog,
+      initialValues: {
+        title: "Свитер",
+        tags: [{ catalogId: "tag_dream", label: "dream" }],
+      },
+    });
+
+    // Same catalogId: the current server label replaces the stored one.
+    expect(tagIsSelected("мечта")).toBe(true);
+    expect(checkbox("dream")).toBeUndefined();
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: [{ catalogId: "tag_dream", label: "мечта" }],
+      }),
+    );
+  });
+
+  it("свой тег тримится, добавляется чипом и отправляется как text", async () => {
+    const onSubmit = await mount({ tagCatalog: catalog });
+
+    await type(form.field.title, "Свитер");
+    await type(form.field.tagCustom, "  своё  ");
+    expect(fieldText(form.field.tagCustom)).toContain("из 30");
+    await press(form.field.tagAdd);
+
+    expect(field(form.field.tagCustom).value).toBe("");
+    expect(text()).toContain("своё");
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: [{ text: "своё" }] }),
+    );
+  });
+
+  it("дубль своего тега и текст длиннее 30 кодовых точек не добавляются", async () => {
+    await mount({ tagCatalog: catalog });
+
+    await type(form.field.tagCustom, "своё");
+    await press(form.field.tagAdd);
+    await type(form.field.tagCustom, "  своё  ");
+    await press(form.field.tagAdd);
+    expect(fieldText(form.field.tagCustom)).toContain(form.error.tagDuplicate);
+
+    await type(form.field.tagCustom, "😀".repeat(31));
+    await press(form.field.tagAdd);
+    expect(fieldText(form.field.tagCustom)).toContain(
+      form.error.tagTooLong.replace("{max}", "30"),
+    );
+  });
+
+  it("NUL в своём теге отклоняется до запроса", async () => {
+    await mount({ tagCatalog: catalog });
+
+    await type(form.field.tagCustom, "сво\u0000ё");
+    await press(form.field.tagAdd);
+
+    expect(fieldText(form.field.tagCustom)).toContain(form.error.tagInvalid);
+  });
+
+  it("пустой «Добавить тег» недоступен, пока поле пустое", async () => {
+    await mount({ tagCatalog: catalog });
+
+    const add = button(form.field.tagAdd) as HTMLButtonElement | undefined;
+    expect(add).toBeDefined();
+    expect(add?.getAttribute("aria-disabled")).toBe("true");
+
+    await type(form.field.tagCustom, "своё");
+    expect(button(form.field.tagAdd)?.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("удаление тега снимает ошибку дубля: после удаления его снова можно добавить", async () => {
+    await mount({ tagCatalog: catalog });
+
+    await type(form.field.tagCustom, "своё");
+    await press(form.field.tagAdd);
+    await type(form.field.tagCustom, "своё");
+    await press(form.field.tagAdd);
+    expect(fieldText(form.field.tagCustom)).toContain(form.error.tagDuplicate);
+
+    await press("Убрать тег своё");
+    expect(fieldText(form.field.tagCustom)).not.toContain(form.error.tagDuplicate);
+
+    await press(form.field.tagAdd);
+    expect(fieldText(form.field.tagCustom)).not.toContain(form.error.tagDuplicate);
+    expect(text()).toContain("своё");
+  });
+
+  it("30 эмодзи принимаются: длина считается кодовыми точками, как в контракте", async () => {
+    const onSubmit = await mount({ tagCatalog: catalog });
+    const thirty = "😀".repeat(30);
+
+    await type(form.field.title, "Свитер");
+    await type(form.field.tagCustom, thirty);
+    await press(form.field.tagAdd);
+    expect(fieldText(form.field.tagCustom)).not.toContain(form.error.tagTooLong);
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: [{ text: thirty }] }),
+    );
+  });
+
+  it("крестик убирает свой тег, фиксированный снимается повторным нажатием, пустой набор уходит как []", async () => {
+    const onSubmit = await mount({
+      tagCatalog: catalog,
+      initialValues: {
+        title: "Свитер",
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { text: "своё" },
+        ],
+      },
+    });
+
+    await press("Убрать тег своё");
+    expect(text()).not.toContain("своё");
+    await press("мечта");
+    expect(tagIsSelected("мечта")).toBe(false);
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: [] }));
+  });
+
+  it("недобавленный свой тег не теряется: отправка добавляет его", async () => {
+    const onSubmit = await mount({ tagCatalog: catalog });
+
+    await type(form.field.title, "Свитер");
+    await type(form.field.tagCustom, "  своё  ");
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: [{ text: "своё" }] }),
+    );
+    expect(field(form.field.tagCustom).value).toBe("");
+  });
+
+  it("негодный недобавленный свой тег блокирует отправку и объявляется", async () => {
+    const onSubmit = await mount({ tagCatalog: catalog });
+
+    await type(form.field.title, "Свитер");
+    await type(form.field.tagCustom, "😀".repeat(31));
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.tagCustom)).toContain(
+      form.error.tagTooLong.replace("{max}", "30"),
+    );
+    expect(announce).toHaveBeenCalledWith(form.error.tagTooLong.replace("{max}", "30"));
+  });
+
+  it("изменение набора тегов делает форму грязной, возврат к исходному — снова чистой", async () => {
+    const onDirtyChange = vi.fn();
+    await mount({
+      tagCatalog: catalog,
+      initialValues: {
+        title: "Свитер",
+        tags: [{ catalogId: "tag_dream", label: "мечта" }],
+      },
+      onDirtyChange,
+    });
+
+    expect(onDirtyChange).not.toHaveBeenCalled();
+    await press("мечта");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    await press("мечта");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("ошибка сервера tags.N.* показывается в блоке тегов, а не общей ошибкой формы", async () => {
+    await mount({
+      tagCatalog: catalog,
+      serverError: { field: "tags.0.text", message: "Что-то не так" },
+    });
+
+    const alerts = Array.from(container.querySelectorAll('[role="alert"]'));
+    expect(
+      alerts.some(
+        (node) => node.textContent === form.error.tags.replace("{max}", "30"),
+      ),
+    ).toBe(true);
+    const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
+    expect(group?.getAttribute("aria-invalid")).toBe("true");
+    expect(group?.getAttribute("aria-describedby")).toBe(
+      alerts.find((node) => node.getAttribute("id"))?.getAttribute("id"),
+    );
+    expect(text()).not.toContain(form.error.form);
+    expect(text()).not.toContain("Что-то не так");
+  });
+
+  it("ошибка исчезнувшего фиксированного тега говорит об этом, а не о длине", async () => {
+    await mount({ serverError: { field: "tags.0.catalogId", message: "Unknown tag" } });
+
+    const alerts = Array.from(container.querySelectorAll('[role="alert"]'));
+    expect(alerts.some((node) => node.textContent === form.error.tagUnavailable)).toBe(true);
+    expect(text()).not.toContain(form.error.tags.replace("{max}", "30"));
+  });
+
+  /** Q-09: the number counts the submitted body, not the order of the catalogue chips. */
+  it("ошибка tags.N подсвечивает чип, стоявший на этом месте в отправке", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [
+        { catalogId: "tag_need", label: "нужно сейчас" },
+        { catalogId: "tag_dream", label: "мечта" },
+      ],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await submit();
+
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.0.catalogId", message: "Unknown tag" },
+    });
+
+    const target = checkbox("нужно сейчас");
+    expect(target?.getAttribute("aria-invalid")).toBe("true");
+    const described = target?.getAttribute("aria-describedby");
+    expect(document.getElementById(described as string)?.textContent).toBe(
+      form.error.tagUnavailable,
+    );
+    expect(checkbox("мечта")?.getAttribute("aria-invalid")).toBeNull();
+    expect(checkbox("когда-нибудь")?.getAttribute("aria-invalid")).toBeNull();
+    // The group carries the message for a stale index only; one chip is enough here.
+    const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
+    expect(group?.getAttribute("aria-invalid")).toBeNull();
+    // The selected set and its order stay exactly as submitted.
+    expect(tagIsSelected("нужно сейчас")).toBe(true);
+    expect(tagIsSelected("мечта")).toBe(true);
+    expect(tagIsSelected("когда-нибудь")).toBe(false);
+  });
+
+  it("ошибка tags.N без суффикса находит свой тег, добавленный при отправке", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [{ catalogId: "tag_dream", label: "мечта" }],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await type(form.field.tagCustom, "своё");
+    // Submitting moves the pending text into the tag set at the end.
+    await submit();
+
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.1", message: "Invalid input" },
+    });
+
+    const remove = button("Убрать тег своё");
+    expect(remove?.getAttribute("aria-invalid")).toBe("true");
+    expect(remove?.getAttribute("aria-describedby")).toBeTruthy();
+    expect(checkbox("мечта")?.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("снятие и повторный выбор тега не сбивают ошибку с него", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [
+        { catalogId: "tag_dream", label: "мечта" },
+        { catalogId: "tag_need", label: "нужно сейчас" },
+      ],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await submit();
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.0.catalogId", message: "Unknown tag" },
+    });
+    expect(checkbox("мечта")?.getAttribute("aria-invalid")).toBe("true");
+
+    // Remove and re-add the first tag: the set order becomes the second, first.
+    await press("мечта");
+    await press("мечта");
+
+    expect(checkbox("мечта")?.getAttribute("aria-invalid")).toBe("true");
+    expect(checkbox("нужно сейчас")?.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("удаление отвергнутого тега оставляет общую ошибку и не подсвечивает чужой чип", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [
+        { catalogId: "tag_dream", label: "мечта" },
+        { text: "своё" },
+      ],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await submit();
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.1.text", message: "Invalid input" },
+    });
+    expect(button("Убрать тег своё")?.getAttribute("aria-invalid")).toBe("true");
+
+    await press("Убрать тег своё");
+
+    const invalid = container.querySelectorAll('[aria-invalid="true"]');
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0]?.getAttribute("role")).toBe("group");
+    expect(text()).toContain(form.error.tags.replace("{max}", "30"));
+  });
+
+  it("номер вне отправленного набора не подсвечивает ни один чип", async () => {
+    const initialValues = {
+      title: "Свитер",
+      tags: [{ catalogId: "tag_dream", label: "мечта" }],
+    };
+    await mount({ tagCatalog: catalog, initialValues });
+    await submit();
+    await update({
+      tagCatalog: catalog,
+      initialValues,
+      serverError: { field: "tags.5.text", message: "Invalid input" },
+    });
+
+    expect(container.querySelectorAll('[role="checkbox"][aria-invalid="true"]')).toHaveLength(0);
+    const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
+    expect(group?.getAttribute("aria-invalid")).toBe("true");
   });
 });
 

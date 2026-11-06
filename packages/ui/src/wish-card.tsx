@@ -28,6 +28,8 @@ export type WishCardProps = {
   price?: string | null;
   /** The StatusPill. */
   status: ReactNode;
+  /** The tag row, e.g. the app's `TagChipList` (`DESIGN.md` → WishCard). */
+  tags?: ReactNode;
   /** The reservation line, «Подписи брони» in `EXPERIENCE.md`. */
   reservation?: string | null;
   /** The visibility chip; drawn over the reserved footer as a sibling of the main zone. */
@@ -36,7 +38,11 @@ export type WishCardProps = {
   chipInteractive?: boolean;
   /** With `onPress` the whole card is a button; without it, plain list content. */
   onPress?: () => void;
-  /** The accessible name of the card button, e.g. «Редактировать «{title}»». */
+  /**
+   * The accessible name of the card button: the full content phrase from
+   * `DESIGN.md` → Доступность, e.g. «Плед, 2 500 ₽, Открыт, мечта, видимость всем».
+   * With `onPress` the app supplies it; without it the content text is the name.
+   */
   pressLabel?: string;
   /** Card width in px, or a CSS size. Defaults to the full width of the parent. */
   width?: number | string;
@@ -55,6 +61,7 @@ export function WishCard({
   closed,
   price,
   status,
+  tags,
   reservation,
   chip,
   chipInteractive,
@@ -75,6 +82,7 @@ export function WishCard({
           </Text>
         ) : null}
         {status}
+        {tags ? <View>{tags}</View> : null}
         {reservation ? (
           <Text kind="label" tone="reserved">
             {reservation}
@@ -91,7 +99,7 @@ export function WishCard({
     <Card role="listitem" width={width} testID={testID} interactive={Boolean(onPress)}>
       {onPress ? (
         <Pressable
-          aria-label={pressLabel ?? title}
+          aria-label={pressLabel}
           onPress={onPress}
           padding="$card-padding"
           borderRadius="$lg"

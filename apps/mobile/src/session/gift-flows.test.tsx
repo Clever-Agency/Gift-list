@@ -16,6 +16,7 @@ const gifts = vi.hoisted(() => ({
   fetchGift: vi.fn(),
   updateGift: vi.fn(),
 }));
+const tagApi = vi.hoisted(() => ({ fetchTagCatalog: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 
@@ -98,6 +99,7 @@ vi.mock("@/api/client", () => api);
 // The flows live between screens: each screen's `my-gifts` calls are driven
 // directly, so the assertions see the mapped `GiftInput` / `GiftUpdate`.
 vi.mock("@/api/my-gifts", () => gifts);
+vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
@@ -270,13 +272,6 @@ function button(label: string): HTMLElement | undefined {
   );
 }
 
-/** A button found by its accessible name (the wish card's edit target). */
-function labeled(label: string): HTMLElement | undefined {
-  return controls(document).find(
-    (node) => node.getAttribute("aria-label") === label,
-  );
-}
-
 async function press(label: string) {
   const target = button(label);
   expect(target, `кнопка «${label}»`).toBeDefined();
@@ -286,9 +281,10 @@ async function press(label: string) {
   await settle(10);
 }
 
-async function pressLabeled(label: string) {
-  const target = labeled(label);
-  expect(target, `кнопка «${label}»`).toBeDefined();
+/** The wish card's main zone: its content name starts with the title, not an action. */
+async function pressCard(title: string) {
+  const target = container.querySelector('[role="listitem"] > [role="button"]');
+  expect(target?.getAttribute("aria-label")).toContain(title);
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
@@ -322,6 +318,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   navigation.reset();
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
+  tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: [] });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -381,6 +378,7 @@ describe("поток: создание желания из списка", () => 
       priceAmount: 25050,
       priceCurrency: "RUB",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
 
     // `dismissTo` pops the composer and the list shows the handed-over notice.
@@ -445,7 +443,7 @@ describe("поток: редактирование желания из спис�
     expect(text()).toContain("Свитер");
     expect(gifts.fetchMyGifts).toHaveBeenCalledTimes(1);
 
-    await pressLabeled("Изменить «Свитер»");
+    await pressCard("Свитер");
     await flush();
 
     expect(navigation.pathname()).toBe("/gifts/[id]/edit");
@@ -473,6 +471,7 @@ describe("поток: редактирование желания из спис�
       priceCurrency: "BYN",
       linkUrl: "https://example.com/sviter",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
 
     // The edit screen pops back and hands «Изменения сохранены.» to the list.

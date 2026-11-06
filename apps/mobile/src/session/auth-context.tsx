@@ -10,6 +10,7 @@ import {
 } from "react";
 import { apiRequest } from "@/api/client";
 import { clearSessionToken } from "@/platform/session-token";
+import { forgetAuthEmail } from "@/session/auth-navigation";
 import { deviceTimeZone } from "@/session/device-time-zone";
 
 type AuthState =
@@ -84,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (!result.ok && "network" in result) return { ok: false, network: true };
       await clearSessionToken();
+      forgetAuthEmail();
       attempted.current = null;
       setState({ status: "anonymous" });
       return { ok: true };

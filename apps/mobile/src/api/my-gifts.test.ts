@@ -25,12 +25,35 @@ const card = {
 
 describe("fetchMyGifts", () => {
   it("reads the owner list from /api/v1/me/gifts and returns the cards", async () => {
-    api.apiRequest.mockResolvedValue({ ok: true, data: { access: "gifts", gifts: [card] } });
+    api.apiRequest.mockResolvedValue({
+      ok: true,
+      data: { access: "gifts", gifts: [card], publicToken: "tok-1" },
+    });
 
     const result = await fetchMyGifts();
 
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/me/gifts");
-    expect(result).toEqual({ ok: true, access: "gifts", gifts: [card] });
+    expect(result).toEqual({
+      ok: true,
+      access: "gifts",
+      gifts: [card],
+      publicToken: "tok-1",
+    });
+  });
+
+  /** Story 2.4 (AD-6): the screen builds `/l/{publicToken}` from the owner answer. */
+  it("keeps the owner's publicToken, even with an empty wishlist", async () => {
+    api.apiRequest.mockResolvedValue({
+      ok: true,
+      data: { access: "gifts", gifts: [], publicToken: "tok-1" },
+    });
+
+    await expect(fetchMyGifts()).resolves.toEqual({
+      ok: true,
+      access: "gifts",
+      gifts: [],
+      publicToken: "tok-1",
+    });
   });
 
   it("passes a network failure through", async () => {
@@ -80,6 +103,11 @@ describe("fetchMyGifts", () => {
   it("keeps an open gate with no gifts as an empty list", async () => {
     api.apiRequest.mockResolvedValue({ ok: true, data: { access: "gifts", gifts: [] } });
 
-    await expect(fetchMyGifts()).resolves.toEqual({ ok: true, access: "gifts", gifts: [] });
+    await expect(fetchMyGifts()).resolves.toEqual({
+      ok: true,
+      access: "gifts",
+      gifts: [],
+      publicToken: null,
+    });
   });
 });

@@ -9,6 +9,7 @@ import NewGiftScreen from "../../app/(app)/gifts/new";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const gifts = vi.hoisted(() => ({ createGift: vi.fn() }));
+const tagApi = vi.hoisted(() => ({ fetchTagCatalog: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const platform = vi.hoisted(() => ({ os: "android" as "android" | "web" }));
@@ -74,6 +75,7 @@ vi.mock("@/api/client", () => api);
 // The screen under test is the create flow only: the api module's own mapping is
 // covered by its callers, so the screen test drives `createGift` directly.
 vi.mock("@/api/my-gifts", () => gifts);
+vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 // The discard dialog draws its close cross with `expo-symbols`; decorative.
@@ -336,6 +338,9 @@ beforeEach(() => {
   guard.reset();
   platform.os = "android";
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
+  // Story 2.5: the form asks for the fixed catalogue on mount; an empty one is
+  // a normal state and tag tests override this answer.
+  tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: [] });
   // A direct link left nothing to go back to: the screen replaces itself with the list.
   navigation.canGoBack.mockReturnValue(false);
   // A router call that removes this screen is a removal like the system back.
@@ -385,7 +390,108 @@ describe("новое желание: форма", () => {
     expect(text()).toContain("Новое желание");
     expect(text()).toContain("Название");
     expect(text()).toContain("Кто видит");
+    expect(text()).toContain("Сколько раз можно дарить");
     expect(button("Добавить желание")).toBeDefined();
+    // Story 2.5/D-25: a new wish is single by default.
+    const single = container.querySelector('[role="radio"][aria-label="Один раз"]');
+    expect(single?.getAttribute("aria-checked")).toBe("true");
+    const unlimited = container.querySelector(
+      '[role="radio"][aria-label="Можно дарить снова"]',
+    );
+    expect(unlimited?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("выбранный «Можно дарить снова» уходит в createGift как UNLIMITED", async () => {
+    signedIn();
+    gifts.createGift.mockResolvedValue({ ok: true, gift: { ...created, quantity: "UNLIMITED" } });
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Можно дарить снова");
+    await press("Добавить желание");
+
+    expect(gifts.createGift).toHaveBeenCalledTimes(1);
+    expect(gifts.createGift).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: "UNLIMITED" }),
+    );
+  });
+
+  it("фиксированные и свой теги уходят в createGift явным tags", async () => {
+    signedIn();
+    tagApi.fetchTagCatalog.mockResolvedValue({
+      ok: true,
+      tags: [
+        { id: "tag_dream", slug: "dream", label: "мечта" },
+        { id: "tag_need", slug: "need-now", label: "нужно сейчас" },
+      ],
+    });
+    gifts.createGift.mockResolvedValue({ ok: true, gift: created });
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("мечта");
+    await type("Свой тег", "  своё  ");
+    await press("Добавить тег");
+    await press("Добавить желание");
+
+    expect(gifts.createGift).toHaveBeenCalledTimes(1);
+    expect(gifts.createGift).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: [{ catalogId: "tag_dream" }, { text: "своё" }],
+      }),
+    );
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_created" },
+    });
+  });
+
+  it("пустой каталог: свой тег всё равно добавляется и уходит", async () => {
+    signedIn();
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: [] });
+    gifts.createGift.mockResolvedValue({ ok: true, gift: created });
+    await mount();
+
+    expect(text()).toContain("Сейчас нет доступных фиксированных тегов.");
+
+    await type("Название", "Наушники");
+    await type("Свой тег", "своё");
+    await press("Добавить тег");
+    await press("Добавить желание");
+
+    expect(gifts.createGift).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: [{ text: "своё" }] }),
+    );
+  });
+
+  it("пока каталог грузится, форма и своё поле на месте", async () => {
+    signedIn();
+    tagApi.fetchTagCatalog.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    expect(text()).toContain("Загружаем теги…");
+    expect(field("Свой тег")).toBeDefined();
+    expect(button("Добавить тег")).toBeDefined();
+  });
+
+  it("ошибка каталога не мешает создать желание со своим тегом", async () => {
+    signedIn();
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: false, network: true });
+    gifts.createGift.mockResolvedValue({ ok: true, gift: created });
+    await mount();
+
+    expect(text()).toContain(
+      "Не получилось загрузить теги. Свои теги всё равно можно добавить.",
+    );
+
+    await type("Название", "Наушники");
+    await type("Свой тег", "своё");
+    await press("Добавить тег");
+    await press("Добавить желание");
+
+    expect(gifts.createGift).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: [{ text: "своё" }] }),
+    );
   });
 
   it("успех: шлёт GiftInput и уводит к списку с одноразовым параметром toast", async () => {
@@ -405,6 +511,7 @@ describe("новое желание: форма", () => {
       priceAmount: 25000,
       priceCurrency: "USD",
       visibility: "PUBLIC",
+      quantity: "SINGLE",
     });
     // The screen unmounts on the way back, so the confirmation is the list's to show.
     expect(text()).not.toContain("Добавлено в вишлист");
@@ -756,6 +863,7 @@ describe("новое желание: системное «назад»", () => {
       priceAmount: null,
       priceCurrency: null,
       visibility: "PUBLIC",
+      quantity: "SINGLE",
     });
     expect(navigation.dismissTo).toHaveBeenCalledWith({
       pathname: "/",

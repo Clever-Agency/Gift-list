@@ -13,6 +13,7 @@ const gifts = vi.hoisted(() => ({
   updateGift: vi.fn(),
   deleteGift: vi.fn(),
 }));
+const tagApi = vi.hoisted(() => ({ fetchTagCatalog: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const platform = vi.hoisted(() => ({ os: "android" as "android" | "web" }));
@@ -80,6 +81,7 @@ vi.mock("@/api/client", () => api);
 // The screen under test is the edit flow only: the api module's own mapping is
 // covered by its callers, so the screen test drives `fetchGift`/`updateGift` directly.
 vi.mock("@/api/my-gifts", () => gifts);
+vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 // The discard dialog draws its close cross with `expo-symbols`; decorative.
@@ -372,6 +374,9 @@ beforeEach(() => {
   platform.os = "android";
   search.params = { id: "g1" };
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
+  // Story 2.5: the form always asks for the fixed catalogue; an empty one is a
+  // normal state and tests that need tags override this answer.
+  tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: [] });
   // A direct link left nothing to go back to: the screen replaces itself with the list.
   navigation.canGoBack.mockReturnValue(false);
   // A router call that removes this screen is a removal like the system back.
@@ -447,6 +452,7 @@ describe("изменение желания: загрузка", () => {
     expect(field("Цена (необязательно)").value).toBe("250");
     expect(selected("RUB")).toBe(true);
     expect(selected("Друзьям")).toBe(true);
+    expect(selected("Один раз")).toBe(true);
     expect(button("Сохранить")).toBeDefined();
   });
 
@@ -525,6 +531,7 @@ describe("изменение желания: сохранение", () => {
       // `GiftFormValues` calls the field `link`, the API body `linkUrl` (AD-12).
       linkUrl: "https://example.com/x",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
     // The screen unmounts on the way back, so the confirmation is the list's to show.
     expect(text()).not.toContain("Изменения сохранены.");
@@ -562,6 +569,34 @@ describe("изменение желания: сохранение", () => {
       priceCurrency: null,
       linkUrl: "https://example.com/x",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
+    });
+  });
+
+  /** Story 2.5: editing another field still sends the stored type, never `SINGLE`. */
+  it("правка названия не сбрасывает UNLIMITED и остальные поля", async () => {
+    const unlimited: GiftCard = { ...stored, quantity: "UNLIMITED" };
+    loaded(unlimited);
+    gifts.updateGift.mockResolvedValue({
+      ok: true,
+      gift: { ...unlimited, title: "Наушники Sony" },
+    });
+    await mount();
+
+    expect(selected("Можно дарить снова")).toBe(true);
+    expect(selected("Один раз")).toBe(false);
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
+      title: "Наушники Sony",
+      description: "Чёрные, с шумоподавлением",
+      priceAmount: 25000,
+      priceCurrency: "RUB",
+      linkUrl: "https://example.com/x",
+      visibility: "FRIENDS",
+      quantity: "UNLIMITED",
     });
   });
 
@@ -582,6 +617,7 @@ describe("изменение желания: сохранение", () => {
       priceCurrency: "RUB",
       linkUrl: null,
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
   });
 
@@ -926,6 +962,7 @@ describe("изменение желания: системное «назад»",
       priceCurrency: "RUB",
       linkUrl: "https://example.com/x",
       visibility: "FRIENDS",
+      quantity: "SINGLE",
     });
     expect(navigation.dismissTo).toHaveBeenCalledWith({
       pathname: "/",
@@ -1059,18 +1096,33 @@ describe("изменение желания: кнопка «назад» бра�
  * through a confirm step of the same form.
  */
 describe("изменение желания: видимость и удаление", () => {
-  it("RESERVED: подсказка блокировки, сохранение без visibility, кнопки удаления нет", async () => {
-    const reserved: GiftCard = { ...stored, status: "RESERVED" };
+  it("RESERVED: показывает UNLIMITED, блокирует оба поля и не шлёт их", async () => {
+    const reserved: GiftCard = {
+      ...stored,
+      status: "RESERVED",
+      quantity: "UNLIMITED",
+    };
     loaded(reserved);
     gifts.updateGift.mockResolvedValue({ ok: true, gift: reserved });
     await mount();
 
     expect(text()).toContain("Видимость меняется только у открытого желания.");
+    expect(text()).toContain("Сколько раз можно дарить — меняется только у открытого желания.");
+    // Editing shows the stored type, even though the control is frozen.
+    expect(selected("Можно дарить снова")).toBe(true);
+    expect(selected("Один раз")).toBe(false);
+    for (const label of ["Один раз", "Можно дарить снова"]) {
+      const radio = container.querySelector(`[role="radio"][aria-label="${label}"]`);
+      expect(radio, label).not.toBeNull();
+      expect(radio?.getAttribute("aria-disabled"), label).toBe("true");
+    }
     expect(button("Удалить желание")).toBeUndefined();
 
     await press("Сохранить");
 
     expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    // Visibility and quantity are frozen outside OPEN, so the body omits both and
+    // an unchanged save cannot reset the stored values.
     expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
       title: "Наушники",
       description: "Чёрные, с шумоподавлением",
@@ -1252,6 +1304,189 @@ describe("изменение желания: возврат фокуса пос�
     });
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).not.toBe(trigger);
+  });
+});
+
+describe("изменение желания: теги", () => {
+  const tagged: GiftCard = {
+    ...stored,
+    tags: [
+      { catalogId: "tag_dream", label: "мечта" },
+      { catalogId: null, label: "своё" },
+    ],
+  };
+  const catalogue = [
+    { id: "tag_dream", slug: "dream", label: "мечта" },
+    { id: "tag_need", slug: "need-now", label: "нужно сейчас" },
+  ];
+
+  it("показывает сохранённые теги и при неизменной правке не шлёт ключ tags", async () => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: { ...tagged, title: "Наушники Sony" } });
+    await mount();
+
+    expect(text()).toContain("мечта");
+    expect(text()).toContain("своё");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    // Absent tags keep the stored rows; an unchanged set must not rewrite them.
+    expect(body).not.toHaveProperty("tags");
+  });
+
+  it("удаление всех тегов шлёт явный пустой массив", async () => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: { ...tagged, tags: [] } });
+    await mount();
+
+    await pressExact("мечта");
+    await pressExact("Убрать тег своё");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.tags).toEqual([]);
+  });
+
+  it("добавленный фиксированный тег уходит как catalogId вместе с прежними", async () => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: tagged });
+    await mount();
+
+    await pressExact("нужно сейчас");
+    await press("Сохранить");
+
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.tags).toEqual([
+      { catalogId: "tag_dream" },
+      { text: "своё" },
+      { catalogId: "tag_need" },
+    ]);
+  });
+
+  it("ошибка сервера tags.0.text видна в блоке тегов, форма остаётся", async () => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid tag",
+      field: "tags.0.text",
+    });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(text()).toContain("Проверьте теги: до 30 символов и без повторов.");
+    expect(text()).not.toContain("Не получилось сохранить. Попробуйте ещё раз.");
+    // Q-09: the saved order maps N onto the chip; `tags.0` is «мечта», not «своё».
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBe("true");
+    expect(
+      container
+        .querySelector('[role="button"][aria-label="Убрать тег своё"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBeNull();
+    expect(field("Название").value).toBe("Наушники Sony");
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("загрузка каталога не скрывает сохранённые фиксированный и свой теги", async () => {
+    tagApi.fetchTagCatalog.mockReturnValue(new Promise(() => {}));
+    loaded(tagged);
+    await mount();
+
+    expect(text()).toContain("Загружаем теги…");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(text()).toContain("своё");
+  });
+
+  /**
+   * The catalogue is an optional source of chips, not the source of the saved
+   * choice: an error or an empty catalogue must not drop tags from the draft.
+   */
+  it.each([
+    [
+      "ошибка сети",
+      { ok: false, network: true },
+      "Не получилось загрузить теги. Свои теги всё равно можно добавить.",
+    ],
+    [
+      "битый ответ каталога",
+      { ok: false, invalid: true },
+      "Не получилось загрузить теги. Свои теги всё равно можно добавить.",
+    ],
+    // An empty catalogue is `ready`: the saved fixed chip still renders, so the
+    // empty-state copy is intentionally hidden (2.5.6) and only the loading copy must be gone.
+    ["пустой каталог", { ok: true, tags: [] }, null],
+  ] as const)("%s не сбрасывает сохранённые теги и не шлёт tags при неизменном наборе", async (_state, catalog, copy) => {
+    loaded(tagged);
+    tagApi.fetchTagCatalog.mockResolvedValue(catalog);
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: tagged });
+    await mount();
+    await settle(10);
+
+    // The catalogue really left the loading state, so preservation is proven.
+    expect(text()).not.toContain("Загружаем теги…");
+    if (copy === null) {
+      expect(button("Повторить")).toBeUndefined();
+    } else {
+      expect(text()).toContain(copy);
+      expect(button("Повторить")).toBeDefined();
+    }
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(text()).toContain("своё");
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("tags");
+  });
+
+  it("RESERVED: набор тегов меняется, а visibility и quantity остаются вне тела", async () => {
+    const reserved: GiftCard = { ...tagged, status: "RESERVED" };
+    loaded(reserved);
+    tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: reserved });
+    await mount();
+
+    await pressExact("нужно сейчас");
+    await press("Сохранить");
+
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.tags).toEqual([
+      { catalogId: "tag_dream" },
+      { text: "своё" },
+      { catalogId: "tag_need" },
+    ]);
+    // No new status restriction for tags; the frozen fields stay omitted.
+    expect(body).not.toHaveProperty("visibility");
+    expect(body).not.toHaveProperty("quantity");
   });
 });
 

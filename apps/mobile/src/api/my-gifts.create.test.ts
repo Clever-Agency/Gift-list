@@ -37,6 +37,8 @@ const input: GiftInput = {
   priceCurrency: "RUB",
   linkUrl: null,
   visibility: "PUBLIC",
+  quantity: "SINGLE",
+  tags: [],
 };
 
 const card = {

@@ -13,7 +13,7 @@
     "dev": "npm run dev -w @gift-list/web",
     "build": "npm run build -w @gift-list/web",
     "start": "npm run start -w @gift-list/web",
-    "test": "npm run test --workspaces --if-present && node --test scripts/check-boundaries.test.mjs",
+    "test": "node scripts/run-suite.mjs",
     "lint": "npm run lint -w @gift-list/web && npm run lint -w @gift-list/mobile && npm run lint -w @gift-list/contracts && npm run lint -w @gift-list/ui && node scripts/check-boundaries.mjs",
     "mobile:start": "npm run start -w @gift-list/mobile",
     "mobile:web": "npm run web -w @gift-list/mobile",

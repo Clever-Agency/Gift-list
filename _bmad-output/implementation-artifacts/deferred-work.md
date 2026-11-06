@@ -89,8 +89,8 @@
   evidence: текущий `apps/mobile/src/api/client.ts` всегда шлёт `expo-origin: giftlist://`, поэтому сейчас не проявляется. Unverified medium — проверить при входе через `@better-auth/expo/client` (Story 1.6).
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
-  summary: Тест `apps/web/src/lib/auth.test.ts` «exposes handler to toNextJsHandler's `in` check» падает по таймауту 5000 мс на холодном импорте `auth.ts` при параллельном `npm test` на Windows.
-  evidence: прогон CLE-42 — импорт 9.5 с, повторные прогоны зелёные; поднять таймаут теста или `testTimeout`. Low/flaky.
+  summary: ~~Тест `apps/web/src/lib/auth.test.ts` «exposes handler to toNextJsHandler's `in` check» падает по таймауту 5000 мс на холодном импорте `auth.ts` при параллельном `npm test` на Windows.~~ — закрыто CLE-67 2026-11-06: тот же холодный импорт ронял ещё `unknown-routes.test.ts` и хук `password-reset.test.ts`. В `apps/web/vitest.config.ts` `testTimeout` и `hookTimeout` — 30 с. Корневой `npm test` идёт через `scripts/run-suite.mjs` и не пропускает `check-boundaries.test.mjs`.
+  evidence: Приёмка Epic 1: 15,7 с, 9 с и хук 10 с на первом полном прогоне, 5,05 с на втором. Те же три файла отдельно — 24/24. Утверждения тестов не менялись. `scripts/run-suite.mjs` запускает команды из канонического пути диска (`realpathSync.native`): иначе Git Bash (`e:\`) и ESM (`E:\`) дают две копии `@vitest/runner`. На том же прогоне Tamagui и `react-dom` видели разный React, а `expo-modules-core` не находил `__DEV__`: mobile — `vitest.config.mts`, `__DEV__` и `inline: true`; web инлайнит React, `react-dom`, `scheduler`, `tamagui` и `@tamagui/*`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-42-dev-origins-expo.md`
   summary: ~~`npm run build` на Windows падает в `apps/web/scripts/sync-spa.mjs` с `spawnSync npm ENOENT`.~~ — закрыто CLE-44 2026-11-02: Expo CLI запускается через `process.execPath` без `npm` и shell.

@@ -114,11 +114,11 @@ export const giftCardSchema = z.strictObject({
 export type GiftCard = z.infer<typeof giftCardSchema>;
 
 /**
- * Whose list a link read describes (Story 3.3): the owner's public display name
- * and nick, the heading of `/l/:publicToken`. Only a link read carries it, because
- * only there the visitor does not already know whose list they opened. A closed
- * gate answers `not_found` without this block, so a hidden list never names
- * anybody.
+ * Whose list a link or nick read describes (Story 3.3, 3.4.1): the owner's
+ * public display name and nick, the heading of `/l/:publicToken` or `/u/:nick`.
+ * Only those reads carry it, because only there the visitor does not already
+ * know whose list they opened. A closed gate answers `not_found` without this
+ * block, so a hidden list never names anybody.
  */
 const listOwnerSchema = z.strictObject({
   displayName: z.string(),
@@ -134,8 +134,8 @@ const listOwnerSchema = z.strictObject({
  * from it, while another viewer never learns the shareable link. The field is
  * optional because every viewer shares this one schema: a friend, a subscriber or
  * a link visitor answers with no token. `owner` is likewise optional: a read by
- * the link token names the owner, while an `/me` or a nick read has no use for it.
- * The token does not depend on the nick, so renaming never rewrites it (A-26).
+ * the link token or by nick names the owner, while an `/me` read already knows
+ * it. The token does not depend on the nick, so renaming never rewrites it (A-26).
  */
 export const listDataSchema = z.discriminatedUnion("access", [
   z.strictObject({

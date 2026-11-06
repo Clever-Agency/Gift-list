@@ -192,6 +192,26 @@ describe("listDataSchema", () => {
     ).toBe(false);
   });
 
+  /** Story 3.3: a link read names the owner; a closed gate never does. */
+  it("accepts the owner block on open access and rejects it on a closed gate", () => {
+    const owner = { displayName: "Анна", nick: "anna" };
+    expect(listDataSchema.safeParse({ access: "gifts", gifts: [], owner }).success).toBe(true);
+    expect(listDataSchema.safeParse({ access: "not_found", gifts: [], owner }).success).toBe(false);
+  });
+
+  it("rejects an owner block with extra fields or missing names", () => {
+    expect(
+      listDataSchema.safeParse({
+        access: "gifts",
+        gifts: [],
+        owner: { displayName: "Анна", nick: "anna", email: "a@example.com" },
+      }).success,
+    ).toBe(false);
+    expect(listDataSchema.safeParse({ access: "gifts", gifts: [], owner: { nick: "anna" } }).success).toBe(
+      false,
+    );
+  });
+
   it("rejects keys outside the list data and unknown access values", () => {
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [], total: 0 }).success).toBe(false);
     expect(listDataSchema.safeParse({ access: "hidden", gifts: [] }).success).toBe(false);

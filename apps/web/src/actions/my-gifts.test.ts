@@ -89,7 +89,12 @@ describe("getMyGifts", () => {
     await getMyGifts(headers);
     expect(findUnique).toHaveBeenCalledWith({
       where: { ownerId: "u1" },
-      select: { id: true, ownerId: true, publicToken: true },
+      select: {
+        id: true,
+        ownerId: true,
+        publicToken: true,
+        owner: { select: { name: true, nick: true } },
+      },
     });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { listId: "l1", archivedAt: null } }),

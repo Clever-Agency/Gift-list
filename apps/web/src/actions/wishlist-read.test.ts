@@ -113,7 +113,12 @@ function giftsOf(result: ListData) {
 beforeEach(() => {
   findUnique.mockReset();
   findMany.mockReset();
-  findUnique.mockResolvedValue({ id: "l1", ownerId: "u1", publicToken: "tok-1" });
+  findUnique.mockResolvedValue({
+    id: "l1",
+    ownerId: "u1",
+    publicToken: "tok-1",
+    owner: { name: "Анна", nick: "anna" },
+  });
   findMany.mockImplementation(({ where }: { where: GiftWhere }) => Promise.resolve(query(where)));
 });
 
@@ -144,7 +149,12 @@ describe("readWishlist", () => {
     expect(result).toMatchObject({ access: "gifts", publicToken: "tok-1" });
     expect(findUnique).toHaveBeenCalledWith({
       where: { ownerId: "u1" },
-      select: { id: true, ownerId: true, publicToken: true },
+      select: {
+        id: true,
+        ownerId: true,
+        publicToken: true,
+        owner: { select: { name: true, nick: true } },
+      },
     });
   });
 
@@ -175,9 +185,12 @@ describe("readWishlist", () => {
     );
 
     for (const answer of [friend, anonymous, signedInLinkVisitor]) {
-      expect(Object.keys(answer).sort()).toEqual(["access", "gifts"]);
-      // Neither the field nor the token value may slip into a viewer answer.
       expect(JSON.stringify(answer)).not.toContain("tok-1");
+    }
+    // A link read names the owner (Story 3.3); an ownerId read has no use for it.
+    expect(Object.keys(friend).sort()).toEqual(["access", "gifts"]);
+    for (const answer of [anonymous, signedInLinkVisitor]) {
+      expect(Object.keys(answer).sort()).toEqual(["access", "gifts", "owner"]);
     }
   });
 
@@ -214,6 +227,56 @@ describe("readWishlist", () => {
 
     expect(giftsOf(result).map((card) => card.id)).toEqual(["g-public", "g-reserved"]);
     expect(giftsOf(result).find((card) => card.id === "g-reserved")?.reservedBy).toBeNull();
+  });
+
+  /** Story 3.3: the page heading comes from the answer, even for an empty list. */
+  it("names the owner on a link read, including an empty list", async () => {
+    const anonymous = await readWishlist(
+      { viewer: null, target: { publicToken: "tok-1" }, viaListToken: true },
+      reader().deps,
+    );
+    findMany.mockResolvedValue([]);
+    const empty = await readWishlist(
+      { viewer: null, target: { publicToken: "tok-1" }, viaListToken: true },
+      reader().deps,
+    );
+
+    for (const answer of [anonymous, empty]) {
+      expect(answer).toMatchObject({
+        access: "gifts",
+        owner: { displayName: "Анна", nick: "anna" },
+      });
+      expect(Object.keys(answer)).not.toContain("publicToken");
+    }
+    expect(giftsOf(empty)).toEqual([]);
+  });
+
+  /**
+   * Story 3.3: the token fact is what opens `PUBLIC` to a stranger. A caller who
+   * forgets `viaListToken` must not widen the read just because the token was
+   * found.
+   */
+  it("opens nothing without the viaListToken fact", async () => {
+    const result = await readWishlist(
+      { viewer: { id: "u9" }, target: { publicToken: "tok-1" } },
+      reader().deps,
+    );
+
+    expect(giftsOf(result)).toEqual([]);
+    // Even an empty link answer still names the owner for the page heading.
+    expect(result).toMatchObject({ owner: { displayName: "Анна", nick: "anna" } });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  /** Story 3.3: the flag cannot open a read that never arrived through the link. */
+  it("ignores viaListToken on an ownerId read", async () => {
+    const result = await readWishlist(
+      { viewer: { id: "u9" }, target: { ownerId: "u1" }, viaListToken: true },
+      reader().deps,
+    );
+
+    expect(giftsOf(result)).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it("shows a friend PUBLIC and FRIENDS gifts, never SECRET or archived", async () => {

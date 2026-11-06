@@ -77,11 +77,25 @@ export async function readWishlist(
   const list = await prisma.list.findUnique({
     where: "ownerId" in target ? { ownerId: target.ownerId } : { publicToken: target.publicToken },
     // `publicToken` is only handed out below, in the owner's own answer (AD-6).
-    select: { id: true, ownerId: true, publicToken: true },
+    // Story 3.3: a link read also names the owner for the page heading, so the
+    // row carries the two public fields of `User` and nothing else.
+    select: {
+      id: true,
+      ownerId: true,
+      publicToken: true,
+      owner: { select: { name: true, nick: true } },
+    },
   });
   // A missing list answers `not_found` before any gift is read, so neither a
   // wrong nick nor a wrong token reveals that a list exists (AD-7).
   if (list === null) return listDataSchema.parse(notFound);
+
+  // Story 3.3: only a read by the link token names the owner; the owner's own
+  // `/me` read already knows it and keeps its answer unchanged.
+  const ownerFields =
+    "publicToken" in target
+      ? { owner: { displayName: list.owner.name, nick: list.owner.nick } }
+      : {};
 
   const viewerId = viewer?.id ?? null;
   const owner = viewerId !== null && viewerId === list.ownerId;
@@ -91,7 +105,10 @@ export async function readWishlist(
     ? NO_RELATIONS
     : {
         ...(await deps.reader.relationsBetween(viewerId, list.ownerId)),
-        viaListToken: input.viaListToken === true,
+        // Story 3.3: the token fact only exists when the read actually came
+        // through the link, so a nick or `/me` read can never open `PUBLIC` by
+        // accident just because a caller passed the flag.
+        viaListToken: input.viaListToken === true && "publicToken" in target,
       };
 
   // A block hides the whole list, and it must look exactly like a missing list.
@@ -99,7 +116,9 @@ export async function readWishlist(
 
   const allowed = VisibilityPolicy.allowedVisibilities(viewer, relations, list.ownerId);
   // Nothing is visible to this viewer: answer an empty list without a gift query.
-  if (allowed.length === 0) return listDataSchema.parse({ access: "gifts", gifts: [] });
+  if (allowed.length === 0) {
+    return listDataSchema.parse({ access: "gifts", gifts: [], ...ownerFields });
+  }
 
   const rows = await prisma.gift.findMany({
     // The owner is allowed every visibility value, so an `in` filter would only
@@ -132,6 +151,7 @@ export async function readWishlist(
   return listDataSchema.parse({
     access: "gifts",
     gifts,
+    ...ownerFields,
     // Story 2.4 (AD-6, A-26): only the owner gets the immutable share token; the
     // link `/l/{publicToken}` is what the owner shares, nobody else.
     ...(owner ? { publicToken: list.publicToken } : {}),

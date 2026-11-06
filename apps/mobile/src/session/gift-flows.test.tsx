@@ -272,13 +272,6 @@ function button(label: string): HTMLElement | undefined {
   );
 }
 
-/** A button found by its accessible name (the wish card's edit target). */
-function labeled(label: string): HTMLElement | undefined {
-  return controls(document).find(
-    (node) => node.getAttribute("aria-label") === label,
-  );
-}
-
 async function press(label: string) {
   const target = button(label);
   expect(target, `кнопка «${label}»`).toBeDefined();
@@ -288,9 +281,10 @@ async function press(label: string) {
   await settle(10);
 }
 
-async function pressLabeled(label: string) {
-  const target = labeled(label);
-  expect(target, `кнопка «${label}»`).toBeDefined();
+/** The wish card's main zone: its content name starts with the title, not an action. */
+async function pressCard(title: string) {
+  const target = container.querySelector('[role="listitem"] > [role="button"]');
+  expect(target?.getAttribute("aria-label")).toContain(title);
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
@@ -449,7 +443,7 @@ describe("поток: редактирование желания из спис�
     expect(text()).toContain("Свитер");
     expect(gifts.fetchMyGifts).toHaveBeenCalledTimes(1);
 
-    await pressLabeled("Изменить «Свитер»");
+    await pressCard("Свитер");
     await flush();
 
     expect(navigation.pathname()).toBe("/gifts/[id]/edit");

@@ -95,6 +95,7 @@
       "SECRET": "секрет"
     },
     "visibilityChipLabel": "Видимость: {value}. Изменить",
+    "visibilityInCardName": "видимость {value}",
     "visibilityPicker": {
       "title": "Кто видит «{title}»",
       "cancel": "Отмена"
@@ -107,8 +108,6 @@
       "CONFIRM_GIVEN": "Ждёт вашего подтверждения",
       "EXPIRED_NO_REPLY": "Срок брони истёк"
     },
-    "edit": "Изменить «{title}»",
-    "editWithTags": "Изменить «{title}». Теги: {tags}",
     "tagsMore": "+{count}",
     "tagsMoreLabel": "Ещё теги ({count}): {tags}",
     "toast": {

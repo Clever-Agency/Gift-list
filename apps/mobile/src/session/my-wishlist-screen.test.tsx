@@ -479,11 +479,10 @@ describe("мой вишлист: список", () => {
     const items = container.querySelectorAll('[role="list"] [role="listitem"]');
     expect(items).toHaveLength(2);
 
-    // The label comes from `app.gift.edit`; the mock renders Pressable as a button.
-    const card = controls(document).find(
-      (node) => node.getAttribute("aria-label") === "Изменить «Наушники»",
-    );
-    expect(card).toBeDefined();
+    // The label is the `DESIGN.md` content phrase; the mock renders Pressable as a button.
+    const card = items[0]?.querySelector('[role="button"]') as HTMLElement | null;
+    expect(card?.getAttribute("aria-label")).toContain("Наушники");
+    expect(card?.getAttribute("aria-label")).not.toContain("Изменить");
     // The chip sits next to the card button, never inside it; its layer is
     // transparent to presses outside the chip.
     expect(chip("Всем")).toBeDefined();
@@ -510,9 +509,10 @@ describe("мой вишлист: список", () => {
     respond(giftsAnswer([gift()]));
     await mount();
 
-    const card = controls(document).find(
-      (node) => node.getAttribute("aria-label") === "Изменить «Наушники»",
-    );
+    const card = container.querySelector(
+      '[role="listitem"] > [role="button"]',
+    ) as HTMLElement | null;
+    expect(card?.getAttribute("aria-label")).toContain("Наушники");
     const spacer = card?.lastElementChild as HTMLElement | null;
     expect(spacer).not.toBeNull();
     expect(spacer?.getAttribute("aria-label")).toBeNull();

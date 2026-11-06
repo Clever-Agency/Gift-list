@@ -38,7 +38,11 @@ export type WishCardProps = {
   chipInteractive?: boolean;
   /** With `onPress` the whole card is a button; without it, plain list content. */
   onPress?: () => void;
-  /** The accessible name of the card button, e.g. «Редактировать «{title}»». */
+  /**
+   * The accessible name of the card button: the full content phrase from
+   * `DESIGN.md` → Доступность, e.g. «Плед, 2 500 ₽, Открыт, мечта, видимость всем».
+   * With `onPress` the app supplies it; without it the content text is the name.
+   */
   pressLabel?: string;
   /** Card width in px, or a CSS size. Defaults to the full width of the parent. */
   width?: number | string;
@@ -95,7 +99,7 @@ export function WishCard({
     <Card role="listitem" width={width} testID={testID} interactive={Boolean(onPress)}>
       {onPress ? (
         <Pressable
-          aria-label={pressLabel ?? title}
+          aria-label={pressLabel}
           onPress={onPress}
           padding="$card-padding"
           borderRadius="$lg"

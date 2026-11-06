@@ -132,10 +132,13 @@
     "relationship": {
       "addFriend": "Добавить в друзья",
       "acceptInvite": "Принять приглашение",
+      "rejectInvite": "Отклонить",
+      "cooldown": "Можно снова через {hours} ч",
       "chips": {
         "OUTGOING_PENDING": "Ожидает ответа",
         "INCOMING_PENDING": "Зовёт в друзья",
         "FRIENDS": "Друзья",
+        "REJECTED": "Отклонено",
         "SELF": "Это вы"
       },
       "toast": {

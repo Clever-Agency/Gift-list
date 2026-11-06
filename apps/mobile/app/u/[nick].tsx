@@ -1,4 +1,8 @@
-import type { GiftCard, ProfileRelationship } from "@gift-list/contracts";
+import type {
+  GiftCard,
+  ProfileInviteCooldown,
+  ProfileRelationship,
+} from "@gift-list/contracts";
 import {
   Button,
   Column,
@@ -16,7 +20,11 @@ import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
-import { sendFriendInvite } from "@/api/friend-invite";
+import {
+  acceptFriendInvite,
+  rejectFriendInvite,
+  sendFriendInvite,
+} from "@/api/friend-invite";
 import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
 import { profileRoute } from "@/profile/profile-route";
@@ -46,6 +54,11 @@ type ScreenState =
       owner: ProfileOwner;
       /** The viewer's closed relation from 4.1.2, or `NONE` when absent. */
       relationship: ProfileRelationship;
+      /**
+       * Story 4.2.3: the profile-only live rejection window. `null` when the
+       * server did not send the field, which means no cooldown is active.
+       */
+      inviteCooldown: ProfileInviteCooldown | null;
     }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
@@ -54,7 +67,7 @@ const SKELETON_CARDS = [0, 1, 2];
 
 type ToastState = { message: string; tone: "info" | "error"; nick: string };
 
-type InviteAction = "add" | "accept";
+type RelationshipAction = "add" | "accept" | "reject";
 
 /**
  * Story 3.4 / AD-13: the app screen behind `/u/:nick`. An anonymous visitor
@@ -64,8 +77,13 @@ type InviteAction = "add" | "accept";
  *
  * Story 4.1.3 adds the relation actions from the closed `relationship` field of
  * that same answer: one invite button for «нет связи», an accept button for an
- * incoming pending invite (the same API auto-accepts it), and static chips for
- * pending, friends and the viewer's own profile. Nothing else is drawn.
+ * incoming pending invite, and static chips for pending, friends and the
+ * viewer's own profile. Nothing else is drawn.
+ *
+ * Story 4.2.3 adds the explicit accept/reject pair for an incoming invite and
+ * the profile-only `inviteCooldown`: the rejector sees a disabled add button
+ * and the remaining hours, the sender sees «Отклонено» and no new invite
+ * button. The screen never filters wishes by visibility; the server decides.
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
@@ -146,6 +164,7 @@ export default function ProfileScreen() {
                 gifts: result.gifts,
                 owner: result.owner,
                 relationship: result.relationship,
+                inviteCooldown: result.inviteCooldown ?? null,
               },
         );
         return;
@@ -212,17 +231,21 @@ export default function ProfileScreen() {
   const sending = pendingNick === nick;
 
   /**
-   * Story 4.1.3: one invite path for a first invite and for accepting an
-   * incoming one. The optimistic chip is rolled back on every failure, and an
-   * answer that belongs to a previous nick or an older press is ignored.
+   * Story 4.1.3 / 4.2.3: one action path for a first invite, an explicit
+   * accept and an explicit reject. The optimistic relation is rolled back on
+   * every failure, and an answer that belongs to a previous nick or an older
+   * press is ignored.
    */
-  async function invite(kind: InviteAction) {
+  async function relationshipAction(kind: RelationshipAction) {
     if (nick === null || inviteInFlight.current === nick) return;
     const requestedView = view;
     if (requestedView.status !== "ready") return;
 
     const requestedNick = nick;
-    const previous = requestedView.relationship;
+    const previous = {
+      relationship: requestedView.relationship,
+      inviteCooldown: requestedView.inviteCooldown,
+    };
     const seq = requestSeq.current + 1;
     requestSeq.current = seq;
     inviteInFlight.current = requestedNick;
@@ -230,14 +253,23 @@ export default function ProfileScreen() {
     setToast(null);
 
     const optimistic: ProfileRelationship =
-      kind === "accept" ? "FRIENDS" : "OUTGOING_PENDING";
+      kind === "accept" ? "FRIENDS" : kind === "reject" ? "NONE" : "OUTGOING_PENDING";
+    // Reject writes the 24-hour window in the same transaction (AD-10 step 3).
+    // The refetch below replaces this estimate with the server's whole hours.
+    const optimisticCooldown: ProfileInviteCooldown | null =
+      kind === "reject" ? { hours: 24, rejected: false } : null;
     setState(function applyOptimistic(current) {
       return current.status === "ready" && current.nick === requestedNick
-        ? { ...current, relationship: optimistic }
+        ? { ...current, relationship: optimistic, inviteCooldown: optimisticCooldown }
         : current;
     });
 
-    const result = await sendFriendInvite(requestedNick);
+    const result =
+      kind === "reject"
+        ? await rejectFriendInvite(requestedNick)
+        : kind === "accept"
+          ? await acceptFriendInvite(requestedNick)
+          : await sendFriendInvite(requestedNick);
     if (seq !== requestSeq.current || nickRef.current !== requestedNick) {
       // The route moved on: drop this answer and release only its own slot.
       if (inviteInFlight.current === requestedNick) inviteInFlight.current = null;
@@ -256,9 +288,22 @@ export default function ProfileScreen() {
     }
 
     if (result.ok) {
+      if (kind === "reject") {
+        setState(function applyRejection(current) {
+          return stillThisProfile(current)
+            ? { ...current, relationship: "NONE", inviteCooldown: optimisticCooldown }
+            : current;
+        });
+        // The cooldown hours come only from the server's profile answer.
+        setAttempt((value) => value + 1);
+        return;
+      }
+
       if (result.outcome === "FRIENDS_CREATED" || result.outcome === "ALREADY_FRIENDS") {
         setState(function applyFriendship(current) {
-          return stillThisProfile(current) ? { ...current, relationship: "FRIENDS" } : current;
+          return stillThisProfile(current)
+            ? { ...current, relationship: "FRIENDS", inviteCooldown: null }
+            : current;
         });
         setToast({
           message: profile("relationship.toast.friends", {
@@ -274,7 +319,7 @@ export default function ProfileScreen() {
 
       setState(function applyPending(current) {
         return stillThisProfile(current)
-          ? { ...current, relationship: "OUTGOING_PENDING" }
+          ? { ...current, relationship: "OUTGOING_PENDING", inviteCooldown: null }
           : current;
       });
       setToast({
@@ -286,7 +331,13 @@ export default function ProfileScreen() {
     }
 
     setState(function rollback(current) {
-      return stillThisProfile(current) ? { ...current, relationship: previous } : current;
+      return stillThisProfile(current)
+        ? {
+            ...current,
+            relationship: previous.relationship,
+            inviteCooldown: previous.inviteCooldown,
+          }
+        : current;
     });
 
     if ("network" in result) {
@@ -399,6 +450,27 @@ export default function ProfileScreen() {
                       label={profile("relationship.chips.SELF")}
                       testID="profile-relationship-chip"
                     />
+                  ) : view.inviteCooldown !== null ? (
+                    view.inviteCooldown.rejected ? (
+                      <RelationshipChip
+                        label={profile("relationship.chips.REJECTED")}
+                        testID="profile-relationship-chip"
+                      />
+                    ) : (
+                      <>
+                        <Button
+                          label={profile("relationship.addFriend")}
+                          disabled
+                          focusableWhenDisabled
+                          testID="profile-add-friend"
+                        />
+                        <Text kind="caption" tone="muted" testID="profile-invite-cooldown">
+                          {profile("relationship.cooldown", {
+                            hours: view.inviteCooldown.hours,
+                          })}
+                        </Text>
+                      </>
+                    )
                   ) : view.relationship === "FRIENDS" ? (
                     <RelationshipChip
                       label={profile("relationship.chips.FRIENDS")}
@@ -419,17 +491,26 @@ export default function ProfileScreen() {
                       <Button
                         label={profile("relationship.acceptInvite")}
                         onPress={function acceptInvite() {
-                          void invite("accept");
+                          void relationshipAction("accept");
                         }}
                         busy={sending}
                         testID="profile-accept-invite"
+                      />
+                      <Button
+                        label={profile("relationship.rejectInvite")}
+                        variant="ghost"
+                        onPress={function rejectInvite() {
+                          void relationshipAction("reject");
+                        }}
+                        busy={sending}
+                        testID="profile-reject-invite"
                       />
                     </>
                   ) : (
                     <Button
                       label={profile("relationship.addFriend")}
                       onPress={function addFriend() {
-                        void invite("add");
+                        void relationshipAction("add");
                       }}
                       busy={sending}
                       testID="profile-add-friend"

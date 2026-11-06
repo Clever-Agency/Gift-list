@@ -74,6 +74,35 @@ describe("fetchProfile", () => {
     });
   });
 
+  it("passes the profile-only live inviteCooldown through", async () => {
+    api.apiRequest.mockResolvedValue(
+      answer({
+        access: "gifts",
+        gifts: [],
+        owner,
+        relationship: "NONE",
+        inviteCooldown: { hours: 23, rejected: true },
+      }),
+    );
+
+    await expect(fetchProfile("anya")).resolves.toEqual({
+      ok: true,
+      access: "gifts",
+      gifts: [],
+      owner,
+      relationship: "NONE",
+      inviteCooldown: { hours: 23, rejected: true },
+    });
+  });
+
+  it("leaves the field absent when the cooldown window is closed", async () => {
+    api.apiRequest.mockResolvedValue(answer({ access: "gifts", gifts: [], owner }));
+
+    const result = await fetchProfile("anya");
+
+    expect(result).not.toHaveProperty("inviteCooldown");
+  });
+
   it("never filters wishes by visibility on its own", async () => {
     const gifts = [
       card(),

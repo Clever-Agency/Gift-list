@@ -1,6 +1,7 @@
 import {
   listDataSchema,
   type GiftCard,
+  type ProfileInviteCooldown,
   type ProfileRelationship,
 } from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
@@ -25,6 +26,8 @@ export type ProfileResult =
       gifts: GiftCard[];
       owner: ProfileOwner;
       relationship: ProfileRelationship;
+      /** Present only while the server reports a live rejection cooldown. */
+      inviteCooldown?: ProfileInviteCooldown;
     }
   | { ok: true; access: "not_found" }
   | { ok: false; invalid: true }
@@ -39,6 +42,9 @@ export type ProfileResult =
  *
  * Story 4.1.3 reads the closed `relationship` from this same answer and never
  * derives it from the cards it received.
+ *
+ * Story 4.2.3 reads the profile-only `inviteCooldown` from the same answer. It
+ * still never filters wishes by visibility: only the server decides that.
  */
 export async function fetchProfile(nick: string): Promise<ProfileResult> {
   const route = profileRoute(nick);
@@ -61,5 +67,10 @@ export async function fetchProfile(nick: string): Promise<ProfileResult> {
     // Only `/u/:nick` adds this closed field (Story 4.1.2). A body without it
     // cannot claim a friendship: the weakest relation is the safe default.
     relationship: parsed.data.relationship ?? "NONE",
+    // Story 4.2.3: the profile-only live rejection window. Absence means the
+    // window is closed, so the screen shows no cooldown text at all.
+    ...(parsed.data.inviteCooldown === undefined
+      ? {}
+      : { inviteCooldown: parsed.data.inviteCooldown }),
   };
 }

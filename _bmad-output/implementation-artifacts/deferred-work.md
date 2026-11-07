@@ -171,3 +171,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-9-общий-ui-пакет-packages-ui-на-tamagui.md`
   summary: (не проверено, low) На «Мой вишлист» в пустом состоянии два текста Lora («Gift List» в шапке и «Пока пусто»), а DESIGN.md требует один Lora на экран.
   evidence: Видно на эмуляторе 2026-11-05; не сверено, было ли так до Story 1.9.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-2-cooldown-toast-recovery.md`
+  summary: (after Review, low) Сетевой сбой фонового перечитывания профиля заменяет готовый экран на `RetryView` и перекрывает toast только что показанного cooldown.
+  evidence: `loadProfile` при неудаче ставит `state: error`; так же ведут себя существующие рефетчи после accept/reject. Для ветки 429 `INVITE_COOLDOWN` это стирает уже показанную паузу. Вне рамок фикса: смена поведения всех фоновых чтений.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-2-cooldown-toast-recovery.md`
+  summary: (after Review, low) Общий `RATE_LIMITED` на экране профиля не передаёт `unit`/`count`, поэтому минутный лимит говорит «Попробуйте позже» вместо точного времени.
+  evidence: `form-issue.ts` уже умеет `rateLimitValues`, а `relationshipAction` зовёт `common("errors.code.RATE_LIMITED")` без params. Осознанно не менялось: задача требовала сохранить прочие лимиты.

@@ -83,7 +83,10 @@ type RelationshipAction = "add" | "accept" | "reject";
  * Story 4.2.3 adds the explicit accept/reject pair for an incoming invite and
  * the profile-only `inviteCooldown`: the rejector sees a disabled add button
  * and the remaining hours, the sender sees «Отклонено» and no new invite
- * button. The screen never filters wishes by visibility; the server decides.
+ * button. A stale profile can still offer the add button after the server has
+ * opened the window: that answer shows the catalogue hours and rereads the
+ * profile, so the screen lands on the server's cooldown state. The screen never
+ * filters wishes by visibility; the server decides.
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
@@ -369,6 +372,22 @@ export default function ProfileScreen() {
     }
     if (result.code === "NOT_FOUND") {
       setState({ status: "missing" });
+      return;
+    }
+    // A stale screen can still offer the button while the server already holds
+    // the rejection window. The closed reason carries the remaining hours, so
+    // the toast uses the catalogue phrase instead of the generic rate-limit
+    // text, and the profile is reread so the rolled-back relationship and the
+    // stale cooldown are replaced by the server's answer (hours and `rejected`).
+    // A malformed `hours` still rereads: the reason alone proves the window.
+    if (result.code === "RATE_LIMITED" && result.reason === "INVITE_COOLDOWN") {
+      const hours = result.params?.hours;
+      const message =
+        typeof hours === "number" && Number.isInteger(hours) && hours >= 1
+          ? common("errors.reason.INVITE_COOLDOWN", { hours })
+          : common("errors.code.RATE_LIMITED");
+      setToast({ message, tone: "error", nick: requestedNick });
+      setAttempt((value) => value + 1);
       return;
     }
     setToast({

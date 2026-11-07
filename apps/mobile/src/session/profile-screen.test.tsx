@@ -826,3 +826,128 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     });
   });
 });
+
+describe("профиль: устаревший cooldown сервера (Story 4.2)", () => {
+  function cooldownError(hours: unknown) {
+    return {
+      ok: false,
+      code: "RATE_LIMITED",
+      message: "",
+      reason: "INVITE_COOLDOWN",
+      params: hours === undefined ? undefined : { hours },
+    };
+  }
+
+  it("устаревшее «нет связи» у отправителя: часы, «Отклонено» и перечитанный профиль", async () => {
+    let coolingDown = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        coolingDown = true;
+        return Promise.resolve(cooldownError(7));
+      }
+      return Promise.resolve(
+        giftsAnswer(
+          [],
+          owner,
+          "NONE",
+          coolingDown ? { hours: 7, rejected: true } : undefined,
+        ),
+      );
+    });
+    await mount();
+
+    expect(button("Добавить в друзья")).toBeDefined();
+    expect(text()).not.toContain("Отклонено");
+
+    await press("Добавить в друзья");
+
+    expect(inviteCalls()).toBe(1);
+    expect(profileReads()).toBe(2);
+    expect(text()).toContain("Можно снова через 7 ч");
+    expect(text()).toContain("Отклонено");
+    expect(text()).not.toContain("Слишком много попыток");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    const toast = container.querySelector('[data-testid="toast-host"]');
+    expect(toast?.textContent).toContain("Можно снова через 7 ч");
+  });
+
+  it("устаревшее «нет связи» у отклонившего: кнопка выключена, часы без «Отклонено»", async () => {
+    let coolingDown = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        coolingDown = true;
+        return Promise.resolve(cooldownError(24));
+      }
+      return Promise.resolve(
+        giftsAnswer(
+          [],
+          owner,
+          "NONE",
+          coolingDown ? { hours: 24, rejected: false } : undefined,
+        ),
+      );
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+
+    expect(inviteCalls()).toBe(1);
+    expect(profileReads()).toBe(2);
+    expect(text()).toContain("Можно снова через 24 ч");
+    expect(text()).not.toContain("Отклонено");
+    expect(text()).not.toContain("Слишком много попыток");
+    const toast = container.querySelector('[data-testid="toast-host"]');
+    expect(toast?.textContent).toContain("Можно снова через 24 ч");
+    const add = button("Добавить в друзья");
+    expect(add).toBeDefined();
+    expect(add?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("другой RATE_LIMITED остаётся общим текстом, без перечитывания и без часов", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        return Promise.resolve({
+          ok: false,
+          code: "RATE_LIMITED",
+          message: "",
+          params: { unit: "minute", count: 1 },
+        });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+
+    expect(inviteCalls()).toBe(1);
+    expect(profileReads()).toBe(1);
+    expect(text()).toContain("Слишком много попыток");
+    expect(text()).not.toContain("Можно снова через");
+    expect(button("Добавить в друзья")).toBeDefined();
+  });
+
+  it.each([undefined, 0, 2.5, "7"])(
+    "INVITE_COOLDOWN с непригодными часами (%s) даёт общий текст и всё равно перечитывает профиль",
+    async (hours) => {
+      api.apiRequest.mockImplementation((path: string) => {
+        if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+        if (path === "/api/v1/u/boris/invite") {
+          return Promise.resolve(cooldownError(hours));
+        }
+        return Promise.resolve(giftsAnswer([]));
+      });
+      await mount();
+
+      await press("Добавить в друзья");
+
+      expect(inviteCalls()).toBe(1);
+      expect(profileReads()).toBe(2);
+      expect(text()).toContain("Слишком много попыток");
+      expect(text()).not.toContain("Можно снова через");
+      expect(button("Добавить в друзья")).toBeDefined();
+    },
+  );
+});

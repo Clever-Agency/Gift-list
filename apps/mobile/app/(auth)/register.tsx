@@ -1,7 +1,8 @@
-import { Text } from "@gift-list/ui";
+import { focusField, Text } from "@gift-list/ui";
 import { registerBodySchema, safeNextPath, type Me } from "@gift-list/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { TextInputInstance } from "react-native";
 import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
@@ -34,12 +35,35 @@ export default function RegisterScreen() {
   const [nick, setNick] = useState("");
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
+  // UI5: submit moves focus to the invalid field and scrolls it into view.
+  const emailRef = useRef<TextInputInstance | null>(null);
+  const passwordRef = useRef<TextInputInstance | null>(null);
+  const nameRef = useRef<TextInputInstance | null>(null);
+  const nickRef = useRef<TextInputInstance | null>(null);
 
   function change(field: string, setValue: (value: string) => void) {
     return function handleFieldChange(value: string) {
       setValue(value);
       setIssue((current) => (current?.field === field ? null : current));
     };
+  }
+
+  /** UI5: the field of the current issue takes focus. */
+  function focusIssueField(field: string | undefined) {
+    switch (field) {
+      case "email":
+        focusField(emailRef.current);
+        break;
+      case "password":
+        focusField(passwordRef.current);
+        break;
+      case "displayName":
+        focusField(nameRef.current);
+        break;
+      case "nick":
+        focusField(nickRef.current);
+        break;
+    }
   }
 
   useEffect(function redirectWhenReady() {
@@ -63,6 +87,7 @@ export default function RegisterScreen() {
       const field = firstZodField(parsed.error.issues[0]?.path);
       if (field === "password") {
         setIssue(passwordFieldIssue(password, t, common));
+        focusIssueField(field);
         return;
       }
       setIssue(
@@ -73,6 +98,7 @@ export default function RegisterScreen() {
           "register",
         ),
       );
+      focusIssueField(field);
       return;
     }
     setPending(true);
@@ -83,7 +109,10 @@ export default function RegisterScreen() {
     setPending(false);
     if (!result.ok) {
       const issue = formIssue(result, t, common, "register");
-      setIssue(issue.field === "password" ? passwordFieldIssue(password, t, common) : issue);
+      const nextIssue =
+        issue.field === "password" ? passwordFieldIssue(password, t, common) : issue;
+      setIssue(nextIssue);
+      focusIssueField(nextIssue.field);
       return;
     }
     auth.setUser(result.data.user);
@@ -117,6 +146,7 @@ export default function RegisterScreen() {
           </Text>
         ) : null}
         <TextField
+          inputRef={emailRef}
           label={t("form.email")}
           value={email}
           onChangeText={change("email", setEmail)}
@@ -136,6 +166,7 @@ export default function RegisterScreen() {
           </NavLink>
         ) : null}
         <PasswordField
+          inputRef={passwordRef}
           label={t("form.password")}
           value={password}
           onChangeText={change("password", setPassword)}
@@ -151,6 +182,7 @@ export default function RegisterScreen() {
           }}
         />
         <TextField
+          inputRef={nameRef}
           label={t("form.name")}
           value={displayName}
           onChangeText={change("displayName", setDisplayName)}
@@ -158,6 +190,7 @@ export default function RegisterScreen() {
           input={{ autoComplete: "name", textContentType: "name" }}
         />
         <TextField
+          inputRef={nickRef}
           label={t("form.nick")}
           value={nick}
           onChangeText={change("nick", setNick)}

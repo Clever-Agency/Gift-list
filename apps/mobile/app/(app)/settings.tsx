@@ -1,5 +1,5 @@
 import { NICK_PATTERN, type Me } from "@gift-list/contracts";
-import { Column, Heading, Pressable, Screen, ScrollView, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions, type TextInputInstance } from "react-native";
@@ -91,7 +91,8 @@ function SettingsForm({
       : t("settings.nickHint");
 
   function focusNick() {
-    nickInput.current?.focus();
+    // UI5: the invalid nick is focused and scrolled to the middle of the screen.
+    focusField(nickInput.current);
   }
 
   function changeNick(value: string) {
@@ -192,59 +193,60 @@ function SettingsForm({
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: t("settings.pageTitle", { brand }) }} />
         {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
-        <Column
-          size="form"
-          flex={1}
-          paddingHorizontal={gutter}
-          paddingTop="$page-gutter"
-          gap="$2"
-        >
-          <Pressable
-            role="button"
-            aria-label={t("settings.back")}
-            onPress={goBack}
-            alignSelf="flex-start"
-            justifyContent="center"
-            minHeight="$touch-target"
-            minWidth="$touch-target"
-          >
-            <Text kind="button" tone="primary">
-              {t("settings.back")}
-            </Text>
-          </Pressable>
-          <Text kind="display-sm" tone="primary" textAlign="center">
-            {common("brandName", { brand })}
-          </Text>
-          <Heading level={1}>{t("settings.title")}</Heading>
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{
-              paddingTop: spacing["grid-gap"] / 2,
-              paddingBottom: spacing["section-gap"],
-            }}
-            keyboardShouldPersistTaps="handled"
-          >
-            <YStack gap="$grid-gap">
-              <TextField
-                label={t("form.nick")}
-                value={nick}
-                onChangeText={changeNick}
-                error={fieldError ?? undefined}
-                hint={hint}
-                inputRef={nickInput}
-                input={{
-                  autoCapitalize: "none",
-                  autoComplete: "nickname",
-                  autoCorrect: false,
-                  editable: !pending,
-                  textContentType: "nickname",
-                  onSubmitEditing: save,
-                }}
-              />
-              <PrimaryButton label={t("settings.save")} onPress={save} disabled={pending} />
-            </YStack>
-          </ScrollView>
-        </Column>
+        <PageScroll testID="settings-page" keyboardShouldPersistTaps="handled">
+          <PageContainer>
+            <Column
+              size="form"
+              flexGrow={1}
+              paddingHorizontal={gutter}
+              paddingTop="$page-gutter"
+              gap="$2"
+            >
+              <Pressable
+                role="button"
+                aria-label={t("settings.back")}
+                onPress={goBack}
+                alignSelf="flex-start"
+                justifyContent="center"
+                minHeight="$touch-target"
+                minWidth="$touch-target"
+              >
+                <Text kind="button" tone="primary">
+                  {t("settings.back")}
+                </Text>
+              </Pressable>
+              <Text kind="display-sm" tone="primary" textAlign="center">
+                {common("brandName", { brand })}
+              </Text>
+              <Heading level={1}>{t("settings.title")}</Heading>
+              <YStack
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+              >
+                <YStack gap="$grid-gap">
+                  <TextField
+                    label={t("form.nick")}
+                    value={nick}
+                    onChangeText={changeNick}
+                    error={fieldError ?? undefined}
+                    hint={hint}
+                    inputRef={nickInput}
+                    input={{
+                      autoCapitalize: "none",
+                      autoComplete: "nickname",
+                      autoCorrect: false,
+                      editable: !pending,
+                      textContentType: "nickname",
+                      onSubmitEditing: save,
+                    }}
+                  />
+                  <PrimaryButton label={t("settings.save")} onPress={save} disabled={pending} />
+                </YStack>
+              </YStack>
+            </Column>
+          </PageContainer>
+        </PageScroll>
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}

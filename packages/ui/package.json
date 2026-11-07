@@ -14,17 +14,20 @@
   "peerDependencies": {
     "react": ">=19",
     "react-dom": ">=19",
-    "react-native": "*"
+    "react-native": "*",
+    "react-native-svg": ">=15.16.0"
   },
   "dependencies": {
     "@tamagui/animations-css": "3.1.10",
     "@tamagui/animations-react-native": "3.1.10",
     "@tamagui/button": "3.1.10",
     "@tamagui/core": "3.1.10",
+    "@tamagui/helpers-icon": "3.1.10",
     "@tamagui/input": "3.1.10",
     "@tamagui/native": "3.1.10",
     "@tamagui/scroll-view": "3.1.10",
     "@tamagui/stacks": "3.1.10",
+    "@tamagui/tooltip": "3.1.10",
     "tamagui": "3.1.10"
   },
   "devDependencies": {
@@ -41,6 +44,9 @@
   },
   "peerDependenciesMeta": {
     "react-native": {
+      "optional": true
+    },
+    "react-native-svg": {
       "optional": true
     }
   }

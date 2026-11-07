@@ -391,3 +391,20 @@ describe("перезагрузка, глубокий переход и возв�
     expect(consumeAuthEmail("/login")).toBe("");
   });
 });
+
+describe("первый невалидный (UI5)", () => {
+  it("пустой email на восстановлении фокусирует поле и помечает его ошибкой", async () => {
+    await mount(ForgotScreen);
+
+    const submit = Array.from(container.querySelectorAll<HTMLElement>("button")).find((node) =>
+      (node.textContent ?? "").includes("Отправить ссылку"),
+    );
+    expect(submit).toBeDefined();
+    await click(submit);
+
+    const email = input("Email");
+    expect(document.activeElement).toBe(email);
+    expect(email.getAttribute("aria-invalid")).toBe("true");
+    expect(container.textContent ?? "").toContain("Проверьте введённые данные.");
+  });
+});

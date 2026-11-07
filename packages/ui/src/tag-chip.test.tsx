@@ -104,6 +104,65 @@ describe("TagChip: свой тег", () => {
   });
 });
 
+describe("TagChip: свой тег с акцентом (UI4)", () => {
+  it("чип со звездой и акцентной рамкой отличается от фиксированного", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChip
+        variant="custom"
+        label="своё"
+        removeLabel="Убрать тег своё"
+        onRemove={vi.fn()}
+        testID="custom"
+      />,
+    );
+
+    const chip = container.querySelector('[data-testid="custom"]') as HTMLElement;
+    expect(chip.getAttribute("role")).toBe("group");
+    expect(chip.getAttribute("aria-label")).toBe("своё");
+    expect(chip.querySelector('[data-testid="custom-star"]')).not.toBeNull();
+    expect(getComputedStyle(chip).borderColor).toBe("#D4A017");
+  });
+
+  it("триггер «Свой тег» — кнопка с aria-expanded, aria-controls и звездой", async () => {
+    const onPress = vi.fn();
+    const { container, render } = mounted();
+    await render(
+      <TagChip
+        variant="custom"
+        role="button"
+        label="Свой тег"
+        expanded={false}
+        controls="custom-editor"
+        onPress={onPress}
+        testID="trigger"
+      />,
+    );
+
+    const trigger = container.querySelector('[data-testid="trigger"]') as HTMLElement;
+    expect(trigger.getAttribute("role")).toBe("button");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.getAttribute("aria-controls")).toBe("custom-editor");
+    // A button is not a checkbox: no checked state.
+    expect(trigger.getAttribute("aria-checked")).toBeNull();
+    expect(trigger.querySelector('[data-testid="trigger-star"]')).not.toBeNull();
+
+    await click(trigger);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("preview — пунктирный неинтерактивный чип, скрытый от скринридера", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip variant="custom" preview label="своё" testID="preview" />);
+
+    const chip = container.querySelector('[data-testid="preview"]') as HTMLElement;
+    expect(chip.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelector('[role="checkbox"], [role="button"]')).toBeNull();
+    expect(getComputedStyle(chip).borderStyle).toBe("dashed");
+    expect(chip.querySelector('[data-testid="preview-star"]')).not.toBeNull();
+  });
+});
+
 describe("TagChip: карточка", () => {
   it("статичный чип: текст без checkbox и кнопки", async () => {
     const { container, render } = mounted();

@@ -237,6 +237,11 @@ async function press(label: string) {
   await settle(10);
 }
 
+/** UI4: the custom-tag field is hidden until the «Свой тег» chip opens it. */
+async function openCustomTag() {
+  await press("Свой тег");
+}
+
 /** A button inside the open confirm dialog: «Отмена» exists twice on a dirty form. */
 function dialogButton(label: string): HTMLElement | undefined {
   const dialog = dialogElement();
@@ -430,6 +435,7 @@ describe("новое желание: форма", () => {
 
     await type("Название", "Наушники");
     await press("мечта");
+    await openCustomTag();
     await type("Свой тег", "  своё  ");
     await press("Добавить тег");
     await press("Добавить желание");
@@ -455,6 +461,7 @@ describe("новое желание: форма", () => {
     expect(text()).toContain("Сейчас нет доступных фиксированных тегов.");
 
     await type("Название", "Наушники");
+    await openCustomTag();
     await type("Свой тег", "своё");
     await press("Добавить тег");
     await press("Добавить желание");
@@ -464,12 +471,16 @@ describe("новое желание: форма", () => {
     );
   });
 
-  it("пока каталог грузится, форма и своё поле на месте", async () => {
+  it("пока каталог грузится, форма и «Свой тег» на месте", async () => {
     signedIn();
     tagApi.fetchTagCatalog.mockReturnValue(new Promise(() => {}));
     await mount();
 
     expect(text()).toContain("Загружаем теги…");
+    // UI4: the trigger is always there; the field appears after a press.
+    expect(button("Свой тег")).toBeDefined();
+    expect(container.querySelector('input[aria-label="Свой тег"]')).toBeNull();
+    await openCustomTag();
     expect(field("Свой тег")).toBeDefined();
     expect(button("Добавить тег")).toBeDefined();
   });
@@ -485,6 +496,7 @@ describe("новое желание: форма", () => {
     );
 
     await type("Название", "Наушники");
+    await openCustomTag();
     await type("Свой тег", "своё");
     await press("Добавить тег");
     await press("Добавить желание");

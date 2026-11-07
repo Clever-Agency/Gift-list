@@ -42,6 +42,27 @@ describe("actionResultSchema", () => {
     ).toBe(true);
   });
 
+  it("accepts INVITE_COOLDOWN with integer hours (Story 4.2.2)", () => {
+    expect(
+      schema.safeParse({
+        ok: false,
+        code: "RATE_LIMITED",
+        message: "Invite cooldown is active",
+        reason: "INVITE_COOLDOWN",
+        params: { hours: 3 },
+      }).success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({
+        ok: false,
+        code: "RATE_LIMITED",
+        message: "?",
+        reason: "INVITE_COOLDOWN",
+        params: { hours: "3" },
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts an error with reason and field", () => {
     const result = schema.safeParse({
       ok: false,

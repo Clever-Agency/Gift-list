@@ -1,7 +1,8 @@
-import { Text } from "@gift-list/ui";
+import { focusField, Text } from "@gift-list/ui";
 import { passwordResetBodySchema } from "@gift-list/contracts";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
+import type { TextInputInstance } from "react-native";
 import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
@@ -34,6 +35,8 @@ export default function ResetScreen() {
   const [saved, setSaved] = useState(false);
   const auth = useAuth();
   const flight = useRef(false);
+  // UI5: submit moves focus to the invalid field and scrolls it into view.
+  const passwordRef = useRef<TextInputInstance | null>(null);
 
   const stale = linkMissing || issue?.reason === "RESET_LINK_STALE";
 
@@ -52,6 +55,7 @@ export default function ResetScreen() {
       const field = firstZodField(parsed.error.issues[0]?.path);
       if (field === "password") {
         setIssue(passwordFieldIssue(password, t, common));
+        focusField(passwordRef.current);
         return;
       }
       setIssue(
@@ -74,6 +78,7 @@ export default function ResetScreen() {
       flight.current = false;
       const issue = formIssue(result, t, common, "reset");
       setIssue(issue.field === "password" ? passwordFieldIssue(password, t, common) : issue);
+      focusField(passwordRef.current);
       return;
     }
     await auth.signOut();
@@ -114,6 +119,7 @@ export default function ResetScreen() {
         {!saved && !stale ? (
           <>
             <PasswordField
+              inputRef={passwordRef}
               label={t("form.password")}
               value={password}
               onChangeText={change}

@@ -1,8 +1,8 @@
 import "server-only";
 
-import type { ProfileRelationship } from "@gift-list/contracts";
+import type { ProfileInviteCooldown, ProfileRelationship } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
-import { orderFriendPair } from "@/domain/friendship";
+import { liveInviteCooldownHours, orderFriendPair } from "@/domain/friendship";
 import type { RelationshipReader, ViewerRelations } from "@/domain/visibility";
 
 /** Nobody is related to themselves; the owner branch never asks the port. */
@@ -97,4 +97,33 @@ export async function readProfileRelationship(
   if (outgoing !== null) return "OUTGOING_PENDING";
   if (incoming !== null) return "INCOMING_PENDING";
   return "NONE";
+}
+
+/**
+ * The viewer's live rejection cooldown with the profile owner (Story 4.2.2,
+ * AD-10 step 3, A-16). Only an `until > now` row counts; an expired row is not
+ * removed by this read because the next successful send deletes it.
+ *
+ * The answer is profile-only: `/l/:token` and `/me` never ask for it. `rejected`
+ * is true exactly for the sender of the rejected invite (`rejectedFromUserId`),
+ * so A sees "отклонено" while B only learns the remaining hours. The owner and
+ * an anonymous viewer have no pair and cost no query.
+ */
+export async function readProfileInviteCooldown(
+  viewerId: string | null,
+  ownerId: string,
+): Promise<ProfileInviteCooldown | null> {
+  if (viewerId === null || viewerId === ownerId) return null;
+
+  const pair = orderFriendPair(viewerId, ownerId);
+  const row = await prisma.inviteCooldown.findUnique({
+    where: { userLowId_userHighId: pair },
+    select: { until: true, rejectedFromUserId: true },
+  });
+  if (row === null) return null;
+
+  const hours = liveInviteCooldownHours(row);
+  if (hours === null) return null;
+
+  return { hours, rejected: row.rejectedFromUserId === viewerId };
 }

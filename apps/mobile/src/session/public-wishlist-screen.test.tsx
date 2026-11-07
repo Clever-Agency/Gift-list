@@ -145,6 +145,10 @@ function text(): string {
   return document.body.textContent ?? "";
 }
 
+function loadingRegion(): Element | null {
+  return container.querySelector('[data-testid="wishlist-loading"]');
+}
+
 function button(label: string): HTMLElement | undefined {
   return controls(document).find((node) => (node.textContent ?? "").includes(label));
 }
@@ -192,6 +196,21 @@ describe("вишлист по ссылке: вход", () => {
       params: { next: "/wishlist/tok_1" },
     });
     expect(linkReads()).toBe(0);
+    // Until the redirect lands the page still says «Загружаем вишлист», not blank.
+    expect(loadingRegion()).not.toBeNull();
+  });
+
+  it("сетевая ошибка сессии не оставляет белый экран: видна загрузка и переход на вход", async () => {
+    respond(null, { ok: false, network: true });
+    await mount();
+
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/wishlist/tok_1" },
+    });
+    expect(linkReads()).toBe(0);
+    expect(loadingRegion()).not.toBeNull();
   });
 
   it.each(["a/b", "a?b", "a#b", "..", "%2f"])(
@@ -207,7 +226,7 @@ describe("вишлист по ссылке: вход", () => {
     },
   );
 
-  it("пока сессия неизвестна, список не запрашивается", async () => {
+  it("пока сессия неизвестна, список не запрашивается и экран не пустой", async () => {
     api.apiRequest.mockImplementation((path: string) =>
       path === "/api/v1/me" ? new Promise(() => {}) : Promise.resolve(giftsAnswer([])),
     );
@@ -215,6 +234,11 @@ describe("вишлист по ссылке: вход", () => {
 
     expect(linkReads()).toBe(0);
     expect(navigation.replace).not.toHaveBeenCalled();
+    const region = loadingRegion();
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем вишлист");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 });
 
@@ -261,6 +285,20 @@ describe("вишлист по ссылке: список", () => {
     expect(button("Куплю сам")).toBeUndefined();
   });
 
+  it("если сервер не вернул ни одного видимого желания, пустое состояние не намекает на скрытые", async () => {
+    // The server filtered out every FRIENDS/SECRET wish; the screen only sees the
+    // closed `gifts: []` answer and must not invent a count, a title or a reason.
+    respond(giftsAnswer([], owner));
+    await mount();
+
+    expect(text()).toContain("Аня");
+    expect(text()).toContain("Пока нет открытых желаний");
+    expect(text()).not.toContain("Список не найден");
+    expect(text()).not.toContain("Для друзей");
+    expect(text()).not.toContain("Секрет");
+    expect(text()).not.toContain("Всем");
+  });
+
   it("not_found говорит «Список не найден» и не выдаёт пустой список", async () => {
     respond(notFoundAnswer());
     await mount();
@@ -282,9 +320,10 @@ describe("вишлист по ссылке: список", () => {
     respond(new Promise(() => {}));
     await mount();
 
-    const region = container.querySelector('[aria-label="Загружаем вишлист"]');
+    const region = loadingRegion();
     expect(region).not.toBeNull();
     expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем вишлист");
     expect(
       container.querySelectorAll('[data-testid="wish-card-skeleton"]'),
     ).toHaveLength(3);
@@ -297,6 +336,7 @@ describe("вишлист по ссылке: список", () => {
 
     expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(container.querySelector('[data-testid="wishlist-error"]')).not.toBeNull();
     expect(button("Повторить")).toBeDefined();
 
     respond(giftsAnswer([gift()]));

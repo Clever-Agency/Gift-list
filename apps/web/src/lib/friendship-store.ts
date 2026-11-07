@@ -6,6 +6,7 @@ import type {
   FriendshipPair,
   FriendshipStore,
   FriendshipTransaction,
+  InviteCooldownRecord,
 } from "@/domain/friendship";
 
 type TransactionClient = Prisma.TransactionClient;
@@ -101,6 +102,52 @@ async function deleteInvitesBetween(
   });
 }
 
+async function deleteInvite(
+  tx: TransactionClient,
+  fromUserId: string,
+  toUserId: string,
+): Promise<void> {
+  await tx.friendshipInvite.deleteMany({ where: { fromUserId, toUserId } });
+}
+
+async function findInviteCooldown(
+  tx: TransactionClient,
+  pair: FriendshipPair,
+): Promise<InviteCooldownRecord | null> {
+  const row = await tx.inviteCooldown.findUnique({
+    where: { userLowId_userHighId: pair },
+    select: { until: true, rejectedFromUserId: true },
+  });
+  return row;
+}
+
+async function createInviteCooldown(
+  tx: TransactionClient,
+  pair: FriendshipPair,
+  rejectedFromUserId: string,
+  until: Date,
+): Promise<void> {
+  await tx.inviteCooldown.upsert({
+    where: { userLowId_userHighId: pair },
+    create: {
+      userLowId: pair.userLowId,
+      userHighId: pair.userHighId,
+      rejectedFromUserId,
+      until,
+    },
+    update: { rejectedFromUserId, until },
+  });
+}
+
+async function deleteInviteCooldown(
+  tx: TransactionClient,
+  pair: FriendshipPair,
+): Promise<void> {
+  await tx.inviteCooldown.deleteMany({
+    where: { userLowId: pair.userLowId, userHighId: pair.userHighId },
+  });
+}
+
 function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
   return {
     lockPair(pair) {
@@ -123,6 +170,18 @@ function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
     },
     deleteInvitesBetween(firstUserId, secondUserId) {
       return deleteInvitesBetween(tx, firstUserId, secondUserId);
+    },
+    deleteInvite(fromUserId, toUserId) {
+      return deleteInvite(tx, fromUserId, toUserId);
+    },
+    findInviteCooldown(pair) {
+      return findInviteCooldown(tx, pair);
+    },
+    createInviteCooldown(pair, rejectedFromUserId, until) {
+      return createInviteCooldown(tx, pair, rejectedFromUserId, until);
+    },
+    deleteInviteCooldown(pair) {
+      return deleteInviteCooldown(tx, pair);
     },
   };
 }

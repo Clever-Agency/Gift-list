@@ -40,6 +40,10 @@ model User {
   friendshipsAsHigh         Friendship[]       @relation("FriendshipHigh")
   blocksMade                Block[]            @relation("BlockBlocker")
   blocksReceived            Block[]            @relation("BlockBlocked")
+
+  inviteCooldownsAsLow        InviteCooldown[] @relation("InviteCooldownLow")
+  inviteCooldownsAsHigh       InviteCooldown[] @relation("InviteCooldownHigh")
+  inviteCooldownsRejectedFrom InviteCooldown[] @relation("InviteCooldownRejectedFrom")
 }
 
 model Session {
@@ -292,4 +296,33 @@ model Block {
 
   @@unique([blockerId, blockedId])
   @@index([blockedId])
+}
+
+// Rejection cooldown of one canonical pair (AD-10 step 3, A-16, Story 4.2.1).
+//
+// Reject deletes the pending invite and writes this row with `until = now+24h`
+// (UTC); no `Friendship` edge is created. The table is one row per pair, in the
+// same `userLowId < userHighId` order as `Friendship`, so a repeat send reads
+// the same key. `rejectedFromUserId` is the sender of the rejected invite (A):
+// only that side may be shown "rejected"; the recipient (B) sees the remaining
+// hours (Story 4.2.2). There is no cron and no status column: a row is live
+// only while `until > now`, and a successful new send deletes an expired row in
+// the same transaction. `Block` is still only read here (Story 4.5 owns blocks).
+model InviteCooldown {
+  id                 String   @id @default(cuid(2))
+  userLowId          String
+  userHighId         String
+  /// Sender of the rejected invite; must be one of the two pair members.
+  rejectedFromUserId String
+  /// Live only while `until > now`; never extended by a repeat send.
+  until              DateTime @db.Timestamptz(3)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  userLow      User @relation("InviteCooldownLow", fields: [userLowId], references: [id], onDelete: Cascade)
+  userHigh     User @relation("InviteCooldownHigh", fields: [userHighId], references: [id], onDelete: Cascade)
+  rejectedFrom User @relation("InviteCooldownRejectedFrom", fields: [rejectedFromUserId], references: [id], onDelete: Cascade)
+
+  /// One cooldown per canonical pair (CHECK low < high in the migration).
+  @@unique([userLowId, userHighId])
+  @@index([userHighId])
 }

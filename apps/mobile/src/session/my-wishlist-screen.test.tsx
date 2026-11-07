@@ -222,6 +222,33 @@ async function press(label: string) {
   await settle(10);
 }
 
+/** The icon-only «Что видно по ссылке» control next to the copy button. */
+function infoTrigger(): HTMLElement | null {
+  return container.querySelector('[data-testid="wishlist-copy-link-info"]');
+}
+
+/** Opens the web tooltip with the keyboard, not with a mouse hover. */
+async function openInfoByKeyboard() {
+  const trigger = infoTrigger();
+  expect(trigger).not.toBeNull();
+  await act(async () => {
+    trigger?.focus();
+  });
+  await settle(10);
+  return trigger as HTMLElement;
+}
+
+/** Opens the web tooltip by a tap/click, the touch path. */
+async function openInfoByPress() {
+  const trigger = infoTrigger();
+  expect(trigger).not.toBeNull();
+  await act(async () => {
+    trigger?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+  return trigger as HTMLElement;
+}
+
 /** Leaves the screen for another route (the composer), as a push would. */
 async function blur() {
   await act(async () => {
@@ -370,6 +397,24 @@ describe("мой вишлист: гейт сессии", () => {
       params: { next: "/", reason: "session_expired" },
     });
     expect(text()).not.toContain("Сессия закончилась, войдите снова");
+  });
+});
+
+describe("мой вишлист: каркас страницы", () => {
+  it("одна прокрутка на всю страницу: заголовок и подвал внутри неё", async () => {
+    respond(giftsAnswer([]));
+    await mount();
+
+    const page = container.querySelector('[data-testid="wishlist-page"]');
+    expect(page).not.toBeNull();
+    expect(getComputedStyle(page as Element).overflowY).toBe("auto");
+    expect(page?.textContent).toContain("Мой вишлист");
+    expect(page?.querySelector('[data-testid="wishlist-footer"]')).not.toBeNull();
+
+    const scrollers = Array.from(container.querySelectorAll("*")).filter((node) =>
+      ["auto", "scroll"].includes(getComputedStyle(node).overflowY),
+    );
+    expect(scrollers).toEqual([page]);
   });
 });
 
@@ -786,19 +831,138 @@ describe("мой вишлист: копирование ссылки", () => {
     expect(text()).not.toContain("Не получилось скопировать ссылку.");
   });
 
-  it("кнопка есть и в пустом вишлисте", async () => {
+  it("в пустом вишлисте ссылка недоступна, ничего не копирует и объясняет почему", async () => {
     vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
     vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
     respond(giftsAnswer([], "tok-1"));
     await mount();
 
-    expect(button("Скопировать ссылку")).toBeDefined();
+    const copy = button("Скопировать ссылку");
+    expect(copy).toBeDefined();
+    expect(copy?.getAttribute("aria-disabled")).toBe("true");
+    expect(copy?.getAttribute("aria-label")).toBe("Скопировать ссылку");
+    expect(copy?.getAttribute("aria-describedby")).toBe("wishlist-copy-link-reason");
+    expect(copy?.tabIndex).toBe(0);
+    copy?.focus();
+    expect(document.activeElement).toBe(copy);
+    expect(container.querySelector("#wishlist-copy-link-reason")?.textContent).toContain(
+      "Нет желаний, открытых для всех: приватные и архивные не показываются.",
+    );
     expect(text()).toContain("Пока пусто");
+    expect(infoTrigger()).not.toBeNull();
+
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).not.toHaveBeenCalled();
+    expect(text()).not.toContain("Ссылка скопирована");
+  });
+
+  it("только приватные и архивные желания: ссылка недоступна и не копируется", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(
+      giftsAnswer(
+        [
+          gift({ id: "g1", visibility: "FRIENDS" }),
+          gift({ id: "g2", visibility: "SECRET" }),
+          gift({ id: "g3", archivedAt: "2026-10-01T00:00:00.000Z" }),
+        ],
+        "tok-1",
+      ),
+    );
+    await mount();
+
+    const copy = button("Скопировать ссылку");
+    expect(copy?.getAttribute("aria-disabled")).toBe("true");
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).not.toHaveBeenCalled();
+    expect(text()).not.toContain("Ссылка скопирована");
+  });
+
+  it("одно PUBLIC среди приватных включает копирование", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(
+      giftsAnswer(
+        [
+          gift({ id: "g1", visibility: "SECRET" }),
+          gift({ id: "g2", visibility: "PUBLIC" }),
+        ],
+        "tok-1",
+      ),
+    );
+    await mount();
 
     await press("Скопировать ссылку");
 
     expect(clipboard.copyText).toHaveBeenCalledWith("https://gift.example/l/tok-1");
     expect(text()).toContain("Ссылка скопирована");
+  });
+
+  it("Info открывает то же пояснение при выключенной ссылке и связано через aria-describedby", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([], "tok-1"));
+    await mount();
+
+    const trigger = await openInfoByKeyboard();
+
+    expect(trigger.getAttribute("aria-label")).toBe("Что видно по ссылке");
+    expect(text()).toContain(
+      "По ссылке видны только открытые для всех желания. Приватные желания не показываются.",
+    );
+    const describedBy = trigger.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy as string)?.textContent).toContain(
+      "По ссылке видны только открытые для всех желания. Приватные желания не показываются.",
+    );
+  });
+
+  it("Info открывает то же пояснение при включённой ссылке", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([gift()], "tok-1"));
+    await mount();
+
+    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("false");
+    await openInfoByPress();
+
+    expect(text()).toContain(
+      "По ссылке видны только открытые для всех желания. Приватные желания не показываются.",
+    );
+  });
+
+  it("PUBLIC без publicToken оставляет ссылку включённой и даёт понятную ошибку", async () => {
+    vi.stubEnv("EXPO_PUBLIC_WEB_ORIGIN", "https://gift.example");
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "");
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("false");
+    await press("Скопировать ссылку");
+
+    expect(clipboard.copyText).not.toHaveBeenCalled();
+    expect(text()).toContain("Не получилось скопировать ссылку. Попробуйте ещё раз.");
+  });
+
+  it("пока список загружается, кнопки ссылки нет — поделиться нечем", async () => {
+    respond(new Promise(() => {}));
+    await mount();
+
+    expect(container.querySelector('[data-testid="wishlist-copy-link"]')).toBeNull();
+    expect(infoTrigger()).toBeNull();
+    expect(clipboard.copyText).not.toHaveBeenCalled();
+  });
+
+  it("ошибка загрузки не показывает кнопку ссылки", async () => {
+    respond({ ok: false, code: "INTERNAL", message: "" });
+    await mount();
+
+    expect(text()).toContain("Не получилось загрузить. Попробуйте ещё раз.");
+    expect(container.querySelector('[data-testid="wishlist-copy-link"]')).toBeNull();
+    expect(infoTrigger()).toBeNull();
+    expect(clipboard.copyText).not.toHaveBeenCalled();
   });
 
   it("без настроенного адреса сайта на вебе берёт origin текущей страницы", async () => {
@@ -1241,6 +1405,28 @@ describe("мой вишлист: смена видимости с чипа", () 
 
     expect(text()).toContain("Видимость: друзьям");
     expect(chip("Друзьям")).toBeDefined();
+  });
+
+  it("последнее PUBLIC, ставшее FRIENDS, сразу выключает копирование", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("false");
+
+    await press("Всем");
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: true, data: gift({ visibility: "FRIENDS" }) });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("true");
+    expect(container.querySelector("#wishlist-copy-link-reason")?.textContent).toContain(
+      "Нет желаний, открытых для всех",
+    );
   });
 
   it("обрыв сети: чип откатывается ко «Всем» и toast о соединении", async () => {

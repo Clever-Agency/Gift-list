@@ -1,11 +1,16 @@
-import type { GiftCard, ProfileRelationship } from "@gift-list/contracts";
+import type {
+  GiftCard,
+  ProfileInviteCooldown,
+  ProfileRelationship,
+} from "@gift-list/contracts";
 import {
   Button,
   Column,
   Heading,
+  PageContainer,
+  PageScroll,
   RelationshipChip,
   Screen,
-  ScrollView,
   spacing,
   Text,
   XStack,
@@ -16,7 +21,11 @@ import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
-import { sendFriendInvite } from "@/api/friend-invite";
+import {
+  acceptFriendInvite,
+  rejectFriendInvite,
+  sendFriendInvite,
+} from "@/api/friend-invite";
 import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
 import { profileRoute } from "@/profile/profile-route";
@@ -46,6 +55,11 @@ type ScreenState =
       owner: ProfileOwner;
       /** The viewer's closed relation from 4.1.2, or `NONE` when absent. */
       relationship: ProfileRelationship;
+      /**
+       * Story 4.2.3: the profile-only live rejection window. `null` when the
+       * server did not send the field, which means no cooldown is active.
+       */
+      inviteCooldown: ProfileInviteCooldown | null;
     }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
@@ -54,7 +68,7 @@ const SKELETON_CARDS = [0, 1, 2];
 
 type ToastState = { message: string; tone: "info" | "error"; nick: string };
 
-type InviteAction = "add" | "accept";
+type RelationshipAction = "add" | "accept" | "reject";
 
 /**
  * Story 3.4 / AD-13: the app screen behind `/u/:nick`. An anonymous visitor
@@ -64,8 +78,16 @@ type InviteAction = "add" | "accept";
  *
  * Story 4.1.3 adds the relation actions from the closed `relationship` field of
  * that same answer: one invite button for «нет связи», an accept button for an
- * incoming pending invite (the same API auto-accepts it), and static chips for
- * pending, friends and the viewer's own profile. Nothing else is drawn.
+ * incoming pending invite, and static chips for pending, friends and the
+ * viewer's own profile. Nothing else is drawn.
+ *
+ * Story 4.2.3 adds the explicit accept/reject pair for an incoming invite and
+ * the profile-only `inviteCooldown`: the rejector sees a disabled add button
+ * and the remaining hours, the sender sees «Отклонено» and no new invite
+ * button. A stale profile can still offer the add button after the server has
+ * opened the window: that answer shows the catalogue hours and rereads the
+ * profile, so the screen lands on the server's cooldown state. The screen never
+ * filters wishes by visibility; the server decides.
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
@@ -146,6 +168,7 @@ export default function ProfileScreen() {
                 gifts: result.gifts,
                 owner: result.owner,
                 relationship: result.relationship,
+                inviteCooldown: result.inviteCooldown ?? null,
               },
         );
         return;
@@ -212,17 +235,21 @@ export default function ProfileScreen() {
   const sending = pendingNick === nick;
 
   /**
-   * Story 4.1.3: one invite path for a first invite and for accepting an
-   * incoming one. The optimistic chip is rolled back on every failure, and an
-   * answer that belongs to a previous nick or an older press is ignored.
+   * Story 4.1.3 / 4.2.3: one action path for a first invite, an explicit
+   * accept and an explicit reject. The optimistic relation is rolled back on
+   * every failure, and an answer that belongs to a previous nick or an older
+   * press is ignored.
    */
-  async function invite(kind: InviteAction) {
+  async function relationshipAction(kind: RelationshipAction) {
     if (nick === null || inviteInFlight.current === nick) return;
     const requestedView = view;
     if (requestedView.status !== "ready") return;
 
     const requestedNick = nick;
-    const previous = requestedView.relationship;
+    const previous = {
+      relationship: requestedView.relationship,
+      inviteCooldown: requestedView.inviteCooldown,
+    };
     const seq = requestSeq.current + 1;
     requestSeq.current = seq;
     inviteInFlight.current = requestedNick;
@@ -230,14 +257,23 @@ export default function ProfileScreen() {
     setToast(null);
 
     const optimistic: ProfileRelationship =
-      kind === "accept" ? "FRIENDS" : "OUTGOING_PENDING";
+      kind === "accept" ? "FRIENDS" : kind === "reject" ? "NONE" : "OUTGOING_PENDING";
+    // Reject writes the 24-hour window in the same transaction (AD-10 step 3).
+    // The refetch below replaces this estimate with the server's whole hours.
+    const optimisticCooldown: ProfileInviteCooldown | null =
+      kind === "reject" ? { hours: 24, rejected: false } : null;
     setState(function applyOptimistic(current) {
       return current.status === "ready" && current.nick === requestedNick
-        ? { ...current, relationship: optimistic }
+        ? { ...current, relationship: optimistic, inviteCooldown: optimisticCooldown }
         : current;
     });
 
-    const result = await sendFriendInvite(requestedNick);
+    const result =
+      kind === "reject"
+        ? await rejectFriendInvite(requestedNick)
+        : kind === "accept"
+          ? await acceptFriendInvite(requestedNick)
+          : await sendFriendInvite(requestedNick);
     if (seq !== requestSeq.current || nickRef.current !== requestedNick) {
       // The route moved on: drop this answer and release only its own slot.
       if (inviteInFlight.current === requestedNick) inviteInFlight.current = null;
@@ -256,9 +292,22 @@ export default function ProfileScreen() {
     }
 
     if (result.ok) {
+      if (kind === "reject") {
+        setState(function applyRejection(current) {
+          return stillThisProfile(current)
+            ? { ...current, relationship: "NONE", inviteCooldown: optimisticCooldown }
+            : current;
+        });
+        // The cooldown hours come only from the server's profile answer.
+        setAttempt((value) => value + 1);
+        return;
+      }
+
       if (result.outcome === "FRIENDS_CREATED" || result.outcome === "ALREADY_FRIENDS") {
         setState(function applyFriendship(current) {
-          return stillThisProfile(current) ? { ...current, relationship: "FRIENDS" } : current;
+          return stillThisProfile(current)
+            ? { ...current, relationship: "FRIENDS", inviteCooldown: null }
+            : current;
         });
         setToast({
           message: profile("relationship.toast.friends", {
@@ -274,7 +323,7 @@ export default function ProfileScreen() {
 
       setState(function applyPending(current) {
         return stillThisProfile(current)
-          ? { ...current, relationship: "OUTGOING_PENDING" }
+          ? { ...current, relationship: "OUTGOING_PENDING", inviteCooldown: null }
           : current;
       });
       setToast({
@@ -286,7 +335,13 @@ export default function ProfileScreen() {
     }
 
     setState(function rollback(current) {
-      return stillThisProfile(current) ? { ...current, relationship: previous } : current;
+      return stillThisProfile(current)
+        ? {
+            ...current,
+            relationship: previous.relationship,
+            inviteCooldown: previous.inviteCooldown,
+          }
+        : current;
     });
 
     if ("network" in result) {
@@ -320,6 +375,22 @@ export default function ProfileScreen() {
       setState({ status: "missing" });
       return;
     }
+    // A stale screen can still offer the button while the server already holds
+    // the rejection window. The closed reason carries the remaining hours, so
+    // the toast uses the catalogue phrase instead of the generic rate-limit
+    // text, and the profile is reread so the rolled-back relationship and the
+    // stale cooldown are replaced by the server's answer (hours and `rejected`).
+    // A malformed `hours` still rereads: the reason alone proves the window.
+    if (result.code === "RATE_LIMITED" && result.reason === "INVITE_COOLDOWN") {
+      const hours = result.params?.hours;
+      const message =
+        typeof hours === "number" && Number.isInteger(hours) && hours >= 1
+          ? common("errors.reason.INVITE_COOLDOWN", { hours })
+          : common("errors.code.RATE_LIMITED");
+      setToast({ message, tone: "error", nick: requestedNick });
+      setAttempt((value) => value + 1);
+      return;
+    }
     setToast({
       message: common(`errors.code.${result.code}`),
       tone: "error",
@@ -331,126 +402,158 @@ export default function ProfileScreen() {
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: profile("pageTitle", { brand }) }} />
-        <Column
-          size="wide"
-          flex={1}
-          paddingHorizontal={gutter}
-          paddingTop="$page-gutter"
-          gap="$2"
-        >
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{
-              paddingTop: spacing["grid-gap"] / 2,
-              paddingBottom: spacing["section-gap"],
-              gap: spacing["grid-gap"],
-            }}
-          >
-            {view.status === "loading" ? (
-              <XStack
-                flexWrap="wrap"
-                gap="$grid-gap"
-                accessible
-                aria-busy
-                aria-label={profile("loading")}
-              >
-                {SKELETON_CARDS.map((key) => (
-                  <WishCardSkeleton key={key} width={grid.cardWidth} />
-                ))}
-              </XStack>
-            ) : view.status === "error" ? (
-              <RetryView
-                text={
-                  view.kind === "network"
-                    ? myWishlist("loadError")
-                    : myWishlist("loadErrorGeneric")
-                }
-                label={myWishlist("retry")}
-                onPress={retry}
-              />
-            ) : view.status === "missing" ? (
+        <PageScroll testID="profile-page">
+          <PageContainer>
+            <Column
+              size="wide"
+              flexGrow={1}
+              paddingHorizontal={gutter}
+              paddingTop="$page-gutter"
+              gap="$2"
+            >
               <YStack
-                testID="profile-not-found"
-                width="100%"
-                paddingVertical={spacing["section-gap"]}
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+                gap={spacing["grid-gap"]}
               >
-                <Heading level={1} kind="display-sm" textAlign="center">
-                  {profile("notFound")}
-                </Heading>
-              </YStack>
-            ) : (
-              <>
-                <YStack testID="profile-owner" gap="$1">
-                  <Heading level={1} kind="display-sm">
-                    {view.owner.displayName}
-                  </Heading>
-                  <Text kind="caption" tone="muted">
-                    {t("form.nickPreview", { nick: view.owner.nick })}
-                  </Text>
-                </YStack>
-                <XStack
-                  testID="profile-relationship"
-                  alignItems="center"
-                  flexWrap="wrap"
-                  gap="$2"
-                >
-                  {ownProfile ? (
-                    <RelationshipChip
-                      label={profile("relationship.chips.SELF")}
-                      testID="profile-relationship-chip"
-                    />
-                  ) : view.relationship === "FRIENDS" ? (
-                    <RelationshipChip
-                      label={profile("relationship.chips.FRIENDS")}
-                      testID="profile-relationship-chip"
-                    />
-                  ) : view.relationship === "OUTGOING_PENDING" ? (
-                    <RelationshipChip
-                      label={profile("relationship.chips.OUTGOING_PENDING")}
-                      testID="profile-relationship-chip"
-                    />
-                  ) : view.relationship === "INCOMING_PENDING" ? (
-                    <>
-                      <RelationshipChip
-                        label={profile("relationship.chips.INCOMING_PENDING")}
-                        emphasis
-                        testID="profile-relationship-chip"
-                      />
-                      <Button
-                        label={profile("relationship.acceptInvite")}
-                        onPress={function acceptInvite() {
-                          void invite("accept");
-                        }}
-                        busy={sending}
-                        testID="profile-accept-invite"
-                      />
-                    </>
-                  ) : (
-                    <Button
-                      label={profile("relationship.addFriend")}
-                      onPress={function addFriend() {
-                        void invite("add");
-                      }}
-                      busy={sending}
-                      testID="profile-add-friend"
-                    />
-                  )}
-                </XStack>
-                {view.gifts.length === 0 ? (
-                  <EmptyState title={wishlist("emptyTitle")} />
-                ) : (
-                  <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
-                    {view.gifts.map(function renderGift(gift) {
-                      return (
-                        <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
-                      );
-                    })}
+                {view.status === "loading" ? (
+                  <XStack
+                    flexWrap="wrap"
+                    gap="$grid-gap"
+                    accessible
+                    aria-busy
+                    aria-label={profile("loading")}
+                  >
+                    {SKELETON_CARDS.map((key) => (
+                      <WishCardSkeleton key={key} width={grid.cardWidth} />
+                    ))}
                   </XStack>
+                ) : view.status === "error" ? (
+                  <RetryView
+                    text={
+                      view.kind === "network"
+                        ? myWishlist("loadError")
+                        : myWishlist("loadErrorGeneric")
+                    }
+                    label={myWishlist("retry")}
+                    onPress={retry}
+                  />
+                ) : view.status === "missing" ? (
+                  <YStack
+                    testID="profile-not-found"
+                    width="100%"
+                    paddingVertical={spacing["section-gap"]}
+                  >
+                    <Heading level={1} kind="display-sm" textAlign="center">
+                      {profile("notFound")}
+                    </Heading>
+                  </YStack>
+                ) : (
+                  <>
+                    <YStack testID="profile-owner" gap="$1">
+                      <Heading level={1} kind="display-sm">
+                        {view.owner.displayName}
+                      </Heading>
+                      <Text kind="caption" tone="muted">
+                        {t("form.nickPreview", { nick: view.owner.nick })}
+                      </Text>
+                    </YStack>
+                    <XStack
+                      testID="profile-relationship"
+                      alignItems="center"
+                      flexWrap="wrap"
+                      gap="$2"
+                    >
+                      {ownProfile ? (
+                        <RelationshipChip
+                          label={profile("relationship.chips.SELF")}
+                          testID="profile-relationship-chip"
+                        />
+                      ) : view.inviteCooldown !== null ? (
+                        view.inviteCooldown.rejected ? (
+                          <RelationshipChip
+                            label={profile("relationship.chips.REJECTED")}
+                            testID="profile-relationship-chip"
+                          />
+                        ) : (
+                          <>
+                            <Button
+                              label={profile("relationship.addFriend")}
+                              disabled
+                              focusableWhenDisabled
+                              testID="profile-add-friend"
+                            />
+                            <Text kind="caption" tone="muted" testID="profile-invite-cooldown">
+                              {profile("relationship.cooldown", {
+                                hours: view.inviteCooldown.hours,
+                              })}
+                            </Text>
+                          </>
+                        )
+                      ) : view.relationship === "FRIENDS" ? (
+                        <RelationshipChip
+                          label={profile("relationship.chips.FRIENDS")}
+                          testID="profile-relationship-chip"
+                        />
+                      ) : view.relationship === "OUTGOING_PENDING" ? (
+                        <RelationshipChip
+                          label={profile("relationship.chips.OUTGOING_PENDING")}
+                          testID="profile-relationship-chip"
+                        />
+                      ) : view.relationship === "INCOMING_PENDING" ? (
+                        <>
+                          <RelationshipChip
+                            label={profile("relationship.chips.INCOMING_PENDING")}
+                            emphasis
+                            testID="profile-relationship-chip"
+                          />
+                          <Button
+                            label={profile("relationship.acceptInvite")}
+                            onPress={function acceptInvite() {
+                              void relationshipAction("accept");
+                            }}
+                            busy={sending}
+                            testID="profile-accept-invite"
+                          />
+                          <Button
+                            label={profile("relationship.rejectInvite")}
+                            variant="ghost"
+                            onPress={function rejectInvite() {
+                              void relationshipAction("reject");
+                            }}
+                            busy={sending}
+                            testID="profile-reject-invite"
+                          />
+                        </>
+                      ) : (
+                        <Button
+                          label={profile("relationship.addFriend")}
+                          onPress={function addFriend() {
+                            void relationshipAction("add");
+                          }}
+                          busy={sending}
+                          testID="profile-add-friend"
+                        />
+                      )}
+                    </XStack>
+                    {view.gifts.length === 0 ? (
+                      <EmptyState title={wishlist("emptyTitle")} />
+                    ) : (
+                      <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
+                        {view.gifts.map(function renderGift(gift) {
+                          return (
+                            <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                          );
+                        })}
+                      </XStack>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </ScrollView>
-        </Column>
+              </YStack>
+            </Column>
+          </PageContainer>
+        </PageScroll>
         {toast !== null && toast.nick === nick ? (
           <ToastHost
             message={toast.message}
@@ -472,11 +575,15 @@ function NotFoundScreen({ title, pageTitle }: { title: string; pageTitle: string
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: pageTitle }} />
-        <Column size="wide" flex={1} paddingVertical="$section-gap">
-          <Heading level={1} kind="display-sm" textAlign="center">
-            {title}
-          </Heading>
-        </Column>
+        <PageScroll testID="profile-not-found-page">
+          <PageContainer>
+            <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
+              <Heading level={1} kind="display-sm" textAlign="center">
+                {title}
+              </Heading>
+            </Column>
+          </PageContainer>
+        </PageScroll>
       </SafeAreaView>
     </Screen>
   );

@@ -2,8 +2,9 @@ import type { GiftCard } from "@gift-list/contracts";
 import {
   Column,
   Heading,
+  PageContainer,
+  PageScroll,
   Screen,
-  ScrollView,
   spacing,
   Text,
   XStack,
@@ -156,11 +157,16 @@ export default function PublicWishlistScreen() {
     return <NotFoundScreen title={wishlist("notFound")} pageTitle={wishlist("pageTitle", { brand })} />;
   }
 
-  if (auth.state.status !== "ready") return null;
+  // The session read may take the client's whole timeout, and an anonymous visitor
+  // is redirected in an effect. Both cases used to render `null`, so a slow or
+  // unreachable `/api/v1/me` left the link page blank until the redirect fired.
+  const authPending = auth.state.status !== "ready";
 
   // A reused route with a new token reads as loading until its own answer lands.
   const view: ScreenState =
-    state.status === "ready" && state.token !== token ? { status: "loading" } : state;
+    authPending || (state.status === "ready" && state.token !== token)
+      ? { status: "loading" }
+      : state;
 
   function retry() {
     setToast(null);
@@ -176,78 +182,70 @@ export default function PublicWishlistScreen() {
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
-        <Column
-          size="wide"
-          flex={1}
-          paddingHorizontal={gutter}
-          paddingTop="$page-gutter"
-          gap="$2"
-        >
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{
-              paddingTop: spacing["grid-gap"] / 2,
-              paddingBottom: spacing["section-gap"],
-              gap: spacing["grid-gap"],
-            }}
-          >
-            {view.status === "loading" ? (
-              <XStack
-                flexWrap="wrap"
-                gap="$grid-gap"
-                accessible
-                aria-busy
-                aria-label={myWishlist("loading")}
-              >
-                {SKELETON_CARDS.map((key) => (
-                  <WishCardSkeleton key={key} width={grid.cardWidth} />
-                ))}
-              </XStack>
-            ) : view.status === "error" ? (
-              <RetryView
-                text={
-                  view.kind === "network"
-                    ? myWishlist("loadError")
-                    : myWishlist("loadErrorGeneric")
-                }
-                label={myWishlist("retry")}
-                onPress={retry}
-              />
-            ) : view.status === "missing" ? (
+        <PageScroll testID="public-wishlist-page">
+          <PageContainer>
+            <Column
+              size="wide"
+              flexGrow={1}
+              paddingHorizontal={gutter}
+              paddingTop="$page-gutter"
+              gap="$2"
+            >
               <YStack
-                testID="wishlist-not-found"
-                width="100%"
-                paddingVertical={spacing["section-gap"]}
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+                gap={spacing["grid-gap"]}
               >
-                <Heading level={1} kind="display-sm" textAlign="center">
-                  {wishlist("notFound")}
-                </Heading>
-              </YStack>
-            ) : (
-              <>
-                <YStack testID="wishlist-owner" gap="$1">
-                  <Heading level={1} kind="display-sm">
-                    {view.owner.displayName}
-                  </Heading>
-                  <Text kind="caption" tone="muted">
-                    {t("form.nickPreview", { nick: view.owner.nick })}
-                  </Text>
-                </YStack>
-                {view.gifts.length === 0 ? (
-                  <EmptyState title={wishlist("emptyTitle")} />
+                {view.status === "loading" ? (
+                  <WishlistLoading label={myWishlist("loading")} width={grid.cardWidth} />
+                ) : view.status === "error" ? (
+                  <RetryView
+                    text={
+                      view.kind === "network"
+                        ? myWishlist("loadError")
+                        : myWishlist("loadErrorGeneric")
+                    }
+                    label={myWishlist("retry")}
+                    onPress={retry}
+                  />
+                ) : view.status === "missing" ? (
+                  <YStack
+                    testID="wishlist-not-found"
+                    width="100%"
+                    paddingVertical={spacing["section-gap"]}
+                  >
+                    <Heading level={1} kind="display-sm" textAlign="center">
+                      {wishlist("notFound")}
+                    </Heading>
+                  </YStack>
                 ) : (
-                  <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
-                    {view.gifts.map(function renderGift(gift) {
-                      return (
-                        <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
-                      );
-                    })}
-                  </XStack>
+                  <>
+                    <YStack testID="wishlist-owner" gap="$1">
+                      <Heading level={1} kind="display-sm">
+                        {view.owner.displayName}
+                      </Heading>
+                      <Text kind="caption" tone="muted">
+                        {t("form.nickPreview", { nick: view.owner.nick })}
+                      </Text>
+                    </YStack>
+                    {view.gifts.length === 0 ? (
+                      <EmptyState title={wishlist("emptyTitle")} />
+                    ) : (
+                      <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
+                        {view.gifts.map(function renderGift(gift) {
+                          return (
+                            <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                          );
+                        })}
+                      </XStack>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </ScrollView>
-        </Column>
+              </YStack>
+            </Column>
+          </PageContainer>
+        </PageScroll>
         {toast ? (
           <ToastHost
             message={toast.message}
@@ -269,11 +267,15 @@ function NotFoundScreen({ title, pageTitle }: { title: string; pageTitle: string
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: pageTitle }} />
-        <Column size="wide" flex={1} paddingVertical="$section-gap">
-          <Heading level={1} kind="display-sm" textAlign="center">
-            {title}
-          </Heading>
-        </Column>
+        <PageScroll testID="wishlist-not-found-page">
+          <PageContainer>
+            <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
+              <Heading level={1} kind="display-sm" textAlign="center">
+                {title}
+              </Heading>
+            </Column>
+          </PageContainer>
+        </PageScroll>
       </SafeAreaView>
     </Screen>
   );
@@ -281,10 +283,35 @@ function NotFoundScreen({ title, pageTitle }: { title: string; pageTitle: string
 
 NotFoundScreen.displayName = "NotFoundScreen";
 
+/**
+ * The one loading answer, shared by the list read and the session read. A named
+ * busy region with the card skeletons is what makes the page say «идёт загрузка»
+ * instead of showing nothing while `/api/v1/me` or `/api/v1/l` is in flight.
+ */
+function WishlistLoading({ label, width }: { label: string; width: number }) {
+  return (
+    <XStack
+      testID="wishlist-loading"
+      flexWrap="wrap"
+      gap="$grid-gap"
+      accessible
+      aria-busy
+      aria-label={label}
+    >
+      {SKELETON_CARDS.map(function renderSkeleton(key) {
+        return <WishCardSkeleton key={key} width={width} />;
+      })}
+    </XStack>
+  );
+}
+
+WishlistLoading.displayName = "WishlistLoading";
+
 /** A failed read: one line of text and the retry button. */
 function RetryView({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {
   return (
     <YStack
+      testID="wishlist-error"
       width="100%"
       maxWidth="$max-form"
       alignSelf="center"

@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  FRIEND_ACCEPT_OUTCOMES,
   FRIEND_INVITE_OUTCOMES,
+  FRIEND_REJECT_OUTCOMES,
   PROFILE_RELATIONSHIPS,
+  friendAcceptDataSchema,
   friendInviteDataSchema,
+  friendRejectDataSchema,
   listDataSchema,
+  profileInviteCooldownSchema,
   profileRelationshipSchema,
 } from "./index";
 
@@ -72,5 +77,62 @@ describe("profile relationship", () => {
         owner: { displayName: "Анна", nick: "anna", relationship: "FRIENDS" },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("friend accept/reject data (Story 4.2.2)", () => {
+  it.each(FRIEND_ACCEPT_OUTCOMES)("accepts the accept outcome %s", (outcome) => {
+    expect(friendAcceptDataSchema.safeParse({ outcome }).success).toBe(true);
+  });
+
+  it("keeps the accept outcome closed", () => {
+    expect(friendAcceptDataSchema.safeParse({ outcome: "INVITED" }).success).toBe(false);
+    expect(friendAcceptDataSchema.safeParse({ outcome: "REJECTED" }).success).toBe(false);
+    expect(
+      friendAcceptDataSchema.safeParse({ outcome: "FRIENDS_CREATED", userId: "u1" }).success,
+    ).toBe(false);
+  });
+
+  it("accepts exactly the closed reject outcome", () => {
+    expect(FRIEND_REJECT_OUTCOMES).toEqual(["REJECTED"]);
+    expect(friendRejectDataSchema.safeParse({ outcome: "REJECTED" }).success).toBe(true);
+    expect(friendRejectDataSchema.safeParse({ outcome: "INVITED" }).success).toBe(false);
+    expect(
+      friendRejectDataSchema.safeParse({ outcome: "REJECTED", message: "rejected" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("profile invite cooldown (Story 4.2.2)", () => {
+  it("accepts integer hours and the rejected flag", () => {
+    expect(profileInviteCooldownSchema.safeParse({ hours: 1, rejected: true }).success).toBe(true);
+    expect(profileInviteCooldownSchema.safeParse({ hours: 24, rejected: false }).success).toBe(true);
+  });
+
+  it("rejects zero, fractional or negative hours", () => {
+    expect(profileInviteCooldownSchema.safeParse({ hours: 0, rejected: true }).success).toBe(false);
+    expect(profileInviteCooldownSchema.safeParse({ hours: 1.5, rejected: true }).success).toBe(false);
+    expect(profileInviteCooldownSchema.safeParse({ hours: -1, rejected: true }).success).toBe(false);
+  });
+
+  it("rejects extra fields and a missing rejected flag", () => {
+    expect(
+      profileInviteCooldownSchema.safeParse({ hours: 3, rejected: true, active: true }).success,
+    ).toBe(false);
+    expect(profileInviteCooldownSchema.safeParse({ hours: 3 }).success).toBe(false);
+  });
+
+  it("rides only on an open profile answer, never on a closed gate", () => {
+    const inviteCooldown = { hours: 3, rejected: false };
+    expect(
+      listDataSchema.safeParse({ access: "gifts", gifts: [], inviteCooldown }).success,
+    ).toBe(true);
+    expect(
+      listDataSchema.safeParse({ access: "not_found", gifts: [], inviteCooldown }).success,
+    ).toBe(false);
+  });
+
+  it("stays optional, so /l and /me answers parse unchanged", () => {
+    expect(listDataSchema.safeParse({ access: "gifts", gifts: [] }).success).toBe(true);
   });
 });

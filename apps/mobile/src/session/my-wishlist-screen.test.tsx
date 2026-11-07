@@ -400,6 +400,24 @@ describe("мой вишлист: гейт сессии", () => {
   });
 });
 
+describe("мой вишлист: каркас страницы", () => {
+  it("одна прокрутка на всю страницу: заголовок и подвал внутри неё", async () => {
+    respond(giftsAnswer([]));
+    await mount();
+
+    const page = container.querySelector('[data-testid="wishlist-page"]');
+    expect(page).not.toBeNull();
+    expect(getComputedStyle(page as Element).overflowY).toBe("auto");
+    expect(page?.textContent).toContain("Мой вишлист");
+    expect(page?.querySelector('[data-testid="wishlist-footer"]')).not.toBeNull();
+
+    const scrollers = Array.from(container.querySelectorAll("*")).filter((node) =>
+      ["auto", "scroll"].includes(getComputedStyle(node).overflowY),
+    );
+    expect(scrollers).toEqual([page]);
+  });
+});
+
 describe("мой вишлист: список", () => {
   it("шапка, заголовок и «Написать автору» на месте, без smoke", async () => {
     respond(giftsAnswer([]));

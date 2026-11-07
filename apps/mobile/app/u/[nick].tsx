@@ -7,9 +7,10 @@ import {
   Button,
   Column,
   Heading,
+  PageContainer,
+  PageScroll,
   RelationshipChip,
   Screen,
-  ScrollView,
   spacing,
   Text,
   XStack,
@@ -401,156 +402,158 @@ export default function ProfileScreen() {
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: profile("pageTitle", { brand }) }} />
-        <Column
-          size="wide"
-          flex={1}
-          paddingHorizontal={gutter}
-          paddingTop="$page-gutter"
-          gap="$2"
-        >
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{
-              paddingTop: spacing["grid-gap"] / 2,
-              paddingBottom: spacing["section-gap"],
-              gap: spacing["grid-gap"],
-            }}
-          >
-            {view.status === "loading" ? (
-              <XStack
-                flexWrap="wrap"
-                gap="$grid-gap"
-                accessible
-                aria-busy
-                aria-label={profile("loading")}
-              >
-                {SKELETON_CARDS.map((key) => (
-                  <WishCardSkeleton key={key} width={grid.cardWidth} />
-                ))}
-              </XStack>
-            ) : view.status === "error" ? (
-              <RetryView
-                text={
-                  view.kind === "network"
-                    ? myWishlist("loadError")
-                    : myWishlist("loadErrorGeneric")
-                }
-                label={myWishlist("retry")}
-                onPress={retry}
-              />
-            ) : view.status === "missing" ? (
+        <PageScroll testID="profile-page">
+          <PageContainer>
+            <Column
+              size="wide"
+              flexGrow={1}
+              paddingHorizontal={gutter}
+              paddingTop="$page-gutter"
+              gap="$2"
+            >
               <YStack
-                testID="profile-not-found"
-                width="100%"
-                paddingVertical={spacing["section-gap"]}
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+                gap={spacing["grid-gap"]}
               >
-                <Heading level={1} kind="display-sm" textAlign="center">
-                  {profile("notFound")}
-                </Heading>
-              </YStack>
-            ) : (
-              <>
-                <YStack testID="profile-owner" gap="$1">
-                  <Heading level={1} kind="display-sm">
-                    {view.owner.displayName}
-                  </Heading>
-                  <Text kind="caption" tone="muted">
-                    {t("form.nickPreview", { nick: view.owner.nick })}
-                  </Text>
-                </YStack>
-                <XStack
-                  testID="profile-relationship"
-                  alignItems="center"
-                  flexWrap="wrap"
-                  gap="$2"
-                >
-                  {ownProfile ? (
-                    <RelationshipChip
-                      label={profile("relationship.chips.SELF")}
-                      testID="profile-relationship-chip"
-                    />
-                  ) : view.inviteCooldown !== null ? (
-                    view.inviteCooldown.rejected ? (
-                      <RelationshipChip
-                        label={profile("relationship.chips.REJECTED")}
-                        testID="profile-relationship-chip"
-                      />
-                    ) : (
-                      <>
+                {view.status === "loading" ? (
+                  <XStack
+                    flexWrap="wrap"
+                    gap="$grid-gap"
+                    accessible
+                    aria-busy
+                    aria-label={profile("loading")}
+                  >
+                    {SKELETON_CARDS.map((key) => (
+                      <WishCardSkeleton key={key} width={grid.cardWidth} />
+                    ))}
+                  </XStack>
+                ) : view.status === "error" ? (
+                  <RetryView
+                    text={
+                      view.kind === "network"
+                        ? myWishlist("loadError")
+                        : myWishlist("loadErrorGeneric")
+                    }
+                    label={myWishlist("retry")}
+                    onPress={retry}
+                  />
+                ) : view.status === "missing" ? (
+                  <YStack
+                    testID="profile-not-found"
+                    width="100%"
+                    paddingVertical={spacing["section-gap"]}
+                  >
+                    <Heading level={1} kind="display-sm" textAlign="center">
+                      {profile("notFound")}
+                    </Heading>
+                  </YStack>
+                ) : (
+                  <>
+                    <YStack testID="profile-owner" gap="$1">
+                      <Heading level={1} kind="display-sm">
+                        {view.owner.displayName}
+                      </Heading>
+                      <Text kind="caption" tone="muted">
+                        {t("form.nickPreview", { nick: view.owner.nick })}
+                      </Text>
+                    </YStack>
+                    <XStack
+                      testID="profile-relationship"
+                      alignItems="center"
+                      flexWrap="wrap"
+                      gap="$2"
+                    >
+                      {ownProfile ? (
+                        <RelationshipChip
+                          label={profile("relationship.chips.SELF")}
+                          testID="profile-relationship-chip"
+                        />
+                      ) : view.inviteCooldown !== null ? (
+                        view.inviteCooldown.rejected ? (
+                          <RelationshipChip
+                            label={profile("relationship.chips.REJECTED")}
+                            testID="profile-relationship-chip"
+                          />
+                        ) : (
+                          <>
+                            <Button
+                              label={profile("relationship.addFriend")}
+                              disabled
+                              focusableWhenDisabled
+                              testID="profile-add-friend"
+                            />
+                            <Text kind="caption" tone="muted" testID="profile-invite-cooldown">
+                              {profile("relationship.cooldown", {
+                                hours: view.inviteCooldown.hours,
+                              })}
+                            </Text>
+                          </>
+                        )
+                      ) : view.relationship === "FRIENDS" ? (
+                        <RelationshipChip
+                          label={profile("relationship.chips.FRIENDS")}
+                          testID="profile-relationship-chip"
+                        />
+                      ) : view.relationship === "OUTGOING_PENDING" ? (
+                        <RelationshipChip
+                          label={profile("relationship.chips.OUTGOING_PENDING")}
+                          testID="profile-relationship-chip"
+                        />
+                      ) : view.relationship === "INCOMING_PENDING" ? (
+                        <>
+                          <RelationshipChip
+                            label={profile("relationship.chips.INCOMING_PENDING")}
+                            emphasis
+                            testID="profile-relationship-chip"
+                          />
+                          <Button
+                            label={profile("relationship.acceptInvite")}
+                            onPress={function acceptInvite() {
+                              void relationshipAction("accept");
+                            }}
+                            busy={sending}
+                            testID="profile-accept-invite"
+                          />
+                          <Button
+                            label={profile("relationship.rejectInvite")}
+                            variant="ghost"
+                            onPress={function rejectInvite() {
+                              void relationshipAction("reject");
+                            }}
+                            busy={sending}
+                            testID="profile-reject-invite"
+                          />
+                        </>
+                      ) : (
                         <Button
                           label={profile("relationship.addFriend")}
-                          disabled
-                          focusableWhenDisabled
+                          onPress={function addFriend() {
+                            void relationshipAction("add");
+                          }}
+                          busy={sending}
                           testID="profile-add-friend"
                         />
-                        <Text kind="caption" tone="muted" testID="profile-invite-cooldown">
-                          {profile("relationship.cooldown", {
-                            hours: view.inviteCooldown.hours,
-                          })}
-                        </Text>
-                      </>
-                    )
-                  ) : view.relationship === "FRIENDS" ? (
-                    <RelationshipChip
-                      label={profile("relationship.chips.FRIENDS")}
-                      testID="profile-relationship-chip"
-                    />
-                  ) : view.relationship === "OUTGOING_PENDING" ? (
-                    <RelationshipChip
-                      label={profile("relationship.chips.OUTGOING_PENDING")}
-                      testID="profile-relationship-chip"
-                    />
-                  ) : view.relationship === "INCOMING_PENDING" ? (
-                    <>
-                      <RelationshipChip
-                        label={profile("relationship.chips.INCOMING_PENDING")}
-                        emphasis
-                        testID="profile-relationship-chip"
-                      />
-                      <Button
-                        label={profile("relationship.acceptInvite")}
-                        onPress={function acceptInvite() {
-                          void relationshipAction("accept");
-                        }}
-                        busy={sending}
-                        testID="profile-accept-invite"
-                      />
-                      <Button
-                        label={profile("relationship.rejectInvite")}
-                        variant="ghost"
-                        onPress={function rejectInvite() {
-                          void relationshipAction("reject");
-                        }}
-                        busy={sending}
-                        testID="profile-reject-invite"
-                      />
-                    </>
-                  ) : (
-                    <Button
-                      label={profile("relationship.addFriend")}
-                      onPress={function addFriend() {
-                        void relationshipAction("add");
-                      }}
-                      busy={sending}
-                      testID="profile-add-friend"
-                    />
-                  )}
-                </XStack>
-                {view.gifts.length === 0 ? (
-                  <EmptyState title={wishlist("emptyTitle")} />
-                ) : (
-                  <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
-                    {view.gifts.map(function renderGift(gift) {
-                      return (
-                        <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
-                      );
-                    })}
-                  </XStack>
+                      )}
+                    </XStack>
+                    {view.gifts.length === 0 ? (
+                      <EmptyState title={wishlist("emptyTitle")} />
+                    ) : (
+                      <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
+                        {view.gifts.map(function renderGift(gift) {
+                          return (
+                            <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                          );
+                        })}
+                      </XStack>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </ScrollView>
-        </Column>
+              </YStack>
+            </Column>
+          </PageContainer>
+        </PageScroll>
         {toast !== null && toast.nick === nick ? (
           <ToastHost
             message={toast.message}
@@ -572,11 +575,15 @@ function NotFoundScreen({ title, pageTitle }: { title: string; pageTitle: string
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: pageTitle }} />
-        <Column size="wide" flex={1} paddingVertical="$section-gap">
-          <Heading level={1} kind="display-sm" textAlign="center">
-            {title}
-          </Heading>
-        </Column>
+        <PageScroll testID="profile-not-found-page">
+          <PageContainer>
+            <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
+              <Heading level={1} kind="display-sm" textAlign="center">
+                {title}
+              </Heading>
+            </Column>
+          </PageContainer>
+        </PageScroll>
       </SafeAreaView>
     </Screen>
   );

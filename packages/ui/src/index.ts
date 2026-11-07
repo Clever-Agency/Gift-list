@@ -15,7 +15,8 @@ export {
 export { createGiftListConfig, type FontFamilies, type GiftListConfig } from "./config";
 export { GiftListProvider, type GiftListProviderProps } from "./provider";
 
-export { Column, Screen, View, XStack, YStack, ZStack } from "./layout";
+export { Column, PageContainer, Screen, View, XStack, YStack, ZStack } from "./layout";
+export { PageScroll, type PageScrollProps } from "./page-scroll";
 export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./text";
 export { ScrollView, type ScrollViewProps } from "./scroll";
 export { Pressable, focusRing, type PressableProps } from "./pressable";

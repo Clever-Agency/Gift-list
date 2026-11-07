@@ -2,8 +2,9 @@ import type { GiftCard } from "@gift-list/contracts";
 import {
   Column,
   Heading,
+  PageContainer,
+  PageScroll,
   Screen,
-  ScrollView,
   spacing,
   Text,
   XStack,
@@ -181,68 +182,70 @@ export default function PublicWishlistScreen() {
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
-        <Column
-          size="wide"
-          flex={1}
-          paddingHorizontal={gutter}
-          paddingTop="$page-gutter"
-          gap="$2"
-        >
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{
-              paddingTop: spacing["grid-gap"] / 2,
-              paddingBottom: spacing["section-gap"],
-              gap: spacing["grid-gap"],
-            }}
-          >
-            {view.status === "loading" ? (
-              <WishlistLoading label={myWishlist("loading")} width={grid.cardWidth} />
-            ) : view.status === "error" ? (
-              <RetryView
-                text={
-                  view.kind === "network"
-                    ? myWishlist("loadError")
-                    : myWishlist("loadErrorGeneric")
-                }
-                label={myWishlist("retry")}
-                onPress={retry}
-              />
-            ) : view.status === "missing" ? (
+        <PageScroll testID="public-wishlist-page">
+          <PageContainer>
+            <Column
+              size="wide"
+              flexGrow={1}
+              paddingHorizontal={gutter}
+              paddingTop="$page-gutter"
+              gap="$2"
+            >
               <YStack
-                testID="wishlist-not-found"
-                width="100%"
-                paddingVertical={spacing["section-gap"]}
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+                gap={spacing["grid-gap"]}
               >
-                <Heading level={1} kind="display-sm" textAlign="center">
-                  {wishlist("notFound")}
-                </Heading>
-              </YStack>
-            ) : (
-              <>
-                <YStack testID="wishlist-owner" gap="$1">
-                  <Heading level={1} kind="display-sm">
-                    {view.owner.displayName}
-                  </Heading>
-                  <Text kind="caption" tone="muted">
-                    {t("form.nickPreview", { nick: view.owner.nick })}
-                  </Text>
-                </YStack>
-                {view.gifts.length === 0 ? (
-                  <EmptyState title={wishlist("emptyTitle")} />
+                {view.status === "loading" ? (
+                  <WishlistLoading label={myWishlist("loading")} width={grid.cardWidth} />
+                ) : view.status === "error" ? (
+                  <RetryView
+                    text={
+                      view.kind === "network"
+                        ? myWishlist("loadError")
+                        : myWishlist("loadErrorGeneric")
+                    }
+                    label={myWishlist("retry")}
+                    onPress={retry}
+                  />
+                ) : view.status === "missing" ? (
+                  <YStack
+                    testID="wishlist-not-found"
+                    width="100%"
+                    paddingVertical={spacing["section-gap"]}
+                  >
+                    <Heading level={1} kind="display-sm" textAlign="center">
+                      {wishlist("notFound")}
+                    </Heading>
+                  </YStack>
                 ) : (
-                  <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
-                    {view.gifts.map(function renderGift(gift) {
-                      return (
-                        <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
-                      );
-                    })}
-                  </XStack>
+                  <>
+                    <YStack testID="wishlist-owner" gap="$1">
+                      <Heading level={1} kind="display-sm">
+                        {view.owner.displayName}
+                      </Heading>
+                      <Text kind="caption" tone="muted">
+                        {t("form.nickPreview", { nick: view.owner.nick })}
+                      </Text>
+                    </YStack>
+                    {view.gifts.length === 0 ? (
+                      <EmptyState title={wishlist("emptyTitle")} />
+                    ) : (
+                      <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
+                        {view.gifts.map(function renderGift(gift) {
+                          return (
+                            <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                          );
+                        })}
+                      </XStack>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </ScrollView>
-        </Column>
+              </YStack>
+            </Column>
+          </PageContainer>
+        </PageScroll>
         {toast ? (
           <ToastHost
             message={toast.message}
@@ -264,11 +267,15 @@ function NotFoundScreen({ title, pageTitle }: { title: string; pageTitle: string
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: pageTitle }} />
-        <Column size="wide" flex={1} paddingVertical="$section-gap">
-          <Heading level={1} kind="display-sm" textAlign="center">
-            {title}
-          </Heading>
-        </Column>
+        <PageScroll testID="wishlist-not-found-page">
+          <PageContainer>
+            <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
+              <Heading level={1} kind="display-sm" textAlign="center">
+                {title}
+              </Heading>
+            </Column>
+          </PageContainer>
+        </PageScroll>
       </SafeAreaView>
     </Screen>
   );

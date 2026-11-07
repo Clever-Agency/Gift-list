@@ -11,6 +11,19 @@ export const Screen = styled(YStack, {
 });
 
 /**
+ * The one outer frame of every page: the same `max-wide` width and centring on
+ * all screens. A page narrows its own content with `Column` inside this frame,
+ * so a form stays `max-form` while the frame itself never changes.
+ */
+export const PageContainer = styled(YStack, {
+  name: "GLPageContainer",
+  width: "100%",
+  maxWidth: "$max-wide",
+  alignSelf: "center",
+  flexGrow: 1,
+});
+
+/**
  * A centred content column with the page gutter (`DESIGN.md` → spacing:
  * `max-form`, `max-content`, `max-wide`).
  */

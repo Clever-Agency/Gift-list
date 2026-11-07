@@ -4,9 +4,10 @@ import {
   Column,
   Heading,
   InfoButton,
+  PageContainer,
+  PageScroll,
   Pressable,
   Screen,
-  ScrollView,
   spacing,
   Text,
   XStack,
@@ -420,173 +421,175 @@ export default function MyWishlistScreen() {
     <Screen>
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
-        <Column
-          size="wide"
-          flex={1}
-          paddingHorizontal={gutter}
-          paddingTop="$page-gutter"
-          gap="$2"
-        >
-          <Text kind="display-sm" tone="primary" textAlign="center">
-            {common("brandName", { brand })}
-          </Text>
-          <Heading level={1}>{wishlist("title")}</Heading>
+        <PageScroll testID="wishlist-page">
+          <PageContainer>
+            <Column
+              size="wide"
+              flexGrow={1}
+              paddingHorizontal={gutter}
+              paddingTop="$page-gutter"
+              gap="$2"
+            >
+              <Text kind="display-sm" tone="primary" textAlign="center">
+                {common("brandName", { brand })}
+              </Text>
+              <Heading level={1}>{wishlist("title")}</Heading>
 
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{
-              paddingTop: spacing["grid-gap"] / 2,
-              paddingBottom: spacing["section-gap"],
-              gap: spacing["grid-gap"],
-            }}
-          >
-            {/* DESIGN.md → App → «Широкий экран»: the owner's buttons sit in a row
-                above the grid, to the right. Story 2.4 adds «Скопировать ссылку». */}
-            {state.status === "ready" ? (
               <YStack
-                testID="wishlist-actions"
-                gap="$1"
-                {...(width < spacing["bp-medium"]
-                  ? { width: "100%" }
-                  : { alignSelf: "flex-end" })}
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+                gap={spacing["grid-gap"]}
               >
-                <XStack
-                  flexWrap="wrap"
-                  alignItems="center"
-                  gap="$2"
-                  {...(width < spacing["bp-medium"]
-                    ? { width: "100%" }
-                    : { alignSelf: "flex-end" })}
-                >
-                  {state.gifts.length > 0 ? (
-                    <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
-                  ) : null}
-                  <Button
-                    testID="wishlist-copy-link"
-                    label={wishlist("copyLink")}
-                    ariaDescribedBy={canShare ? undefined : COPY_LINK_REASON_ID}
-                    onPress={copyLink}
-                    disabled={!canShare}
-                    focusableWhenDisabled
-                  />
-                  <InfoButton
-                    testID="wishlist-copy-link-info"
-                    label={wishlist("copyLinkHelpLabel")}
-                    explanation={wishlist("copyLinkHelp")}
-                    closeLabel={wishlist("copyLinkHelpClose")}
-                  />
-                </XStack>
-                {!canShare ? (
-                  <Text
-                    id={COPY_LINK_REASON_ID}
-                    testID="wishlist-copy-link-reason"
-                    kind="caption"
-                    tone="muted"
-                    textAlign={width < spacing["bp-medium"] ? "left" : "right"}
+                {/* DESIGN.md → App → «Широкий экран»: the owner's buttons sit in a row
+                    above the grid, to the right. Story 2.4 adds «Скопировать ссылку». */}
+                {state.status === "ready" ? (
+                  <YStack
+                    testID="wishlist-actions"
+                    gap="$1"
+                    {...(width < spacing["bp-medium"]
+                      ? { width: "100%" }
+                      : { alignSelf: "flex-end" })}
                   >
-                    {wishlist("copyLinkDisabledReason")}
-                  </Text>
+                    <XStack
+                      flexWrap="wrap"
+                      alignItems="center"
+                      gap="$2"
+                      {...(width < spacing["bp-medium"]
+                        ? { width: "100%" }
+                        : { alignSelf: "flex-end" })}
+                    >
+                      {state.gifts.length > 0 ? (
+                        <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
+                      ) : null}
+                      <Button
+                        testID="wishlist-copy-link"
+                        label={wishlist("copyLink")}
+                        ariaDescribedBy={canShare ? undefined : COPY_LINK_REASON_ID}
+                        onPress={copyLink}
+                        disabled={!canShare}
+                        focusableWhenDisabled
+                      />
+                      <InfoButton
+                        testID="wishlist-copy-link-info"
+                        label={wishlist("copyLinkHelpLabel")}
+                        explanation={wishlist("copyLinkHelp")}
+                        closeLabel={wishlist("copyLinkHelpClose")}
+                      />
+                    </XStack>
+                    {!canShare ? (
+                      <Text
+                        id={COPY_LINK_REASON_ID}
+                        testID="wishlist-copy-link-reason"
+                        kind="caption"
+                        tone="muted"
+                        textAlign={width < spacing["bp-medium"] ? "left" : "right"}
+                      >
+                        {wishlist("copyLinkDisabledReason")}
+                      </Text>
+                    ) : null}
+                  </YStack>
                 ) : null}
+                {state.status === "loading" ? (
+                  <XStack
+                    flexWrap="wrap"
+                    gap="$grid-gap"
+                    accessible
+                    aria-busy
+                    aria-label={wishlist("loading")}
+                  >
+                    {SKELETON_CARDS.map((key) => (
+                      <WishCardSkeleton key={key} width={grid.cardWidth} />
+                    ))}
+                  </XStack>
+                ) : state.status === "error" ? (
+                  <RetryView
+                    text={
+                      state.kind === "network" ? wishlist("loadError") : wishlist("loadErrorGeneric")
+                    }
+                    label={wishlist("retry")}
+                    onPress={retry}
+                  />
+                ) : state.status === "missing" ? (
+                  <RetryView
+                    text={wishlist("listNotFound")}
+                    label={wishlist("retry")}
+                    onPress={retry}
+                  />
+                ) : state.gifts.length === 0 ? (
+                  <EmptyState
+                    title={wishlist("emptyTitle")}
+                    body={wishlist("emptyText")}
+                    action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
+                  />
+                ) : (
+                  // Review m5: the grid is a list for assistive tech.
+                  <XStack role="list" flexWrap="wrap" gap="$grid-gap">
+                    {state.gifts.map((gift) => {
+                      function handlePress() {
+                        openEditor(gift.id);
+                      }
+
+                      function handleVisibilityPress() {
+                        openVisibilityPicker(gift);
+                      }
+
+                      function setChipNode(node: ChipNode | null) {
+                        chipNodes.current.set(gift.id, node);
+                      }
+
+                      return (
+                        <WishCard
+                          key={gift.id}
+                          gift={gift}
+                          width={grid.cardWidth}
+                          onPress={handlePress}
+                          onVisibilityPress={handleVisibilityPress}
+                          visibilityChipRef={setChipNode}
+                        />
+                      );
+                    })}
+                  </XStack>
+                )}
               </YStack>
-            ) : null}
-            {state.status === "loading" ? (
+
               <XStack
+                testID="wishlist-footer"
                 flexWrap="wrap"
-                gap="$grid-gap"
-                accessible
-                aria-busy
-                aria-label={wishlist("loading")}
+                alignItems="center"
+                justifyContent="space-between"
+                paddingBottom="$page-gutter"
               >
-                {SKELETON_CARDS.map((key) => (
-                  <WishCardSkeleton key={key} width={grid.cardWidth} />
-                ))}
+                <Pressable
+                  role="button"
+                  testID="wishlist-logout"
+                  onPress={signOut}
+                  minHeight="$touch-target"
+                  minWidth="$touch-target"
+                  justifyContent="center"
+                >
+                  <Text kind="button" tone="destructive">
+                    {wishlist("logout")}
+                  </Text>
+                </Pressable>
+                {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}
+                <Pressable
+                  role="button"
+                  testID="wishlist-settings"
+                  onPress={openSettings}
+                  minHeight="$touch-target"
+                  minWidth="$touch-target"
+                  justifyContent="center"
+                >
+                  <Text kind="button" tone="primary">
+                    {wishlist("settings")}
+                  </Text>
+                </Pressable>
+                <AuthorLink />
               </XStack>
-            ) : state.status === "error" ? (
-              <RetryView
-                text={
-                  state.kind === "network" ? wishlist("loadError") : wishlist("loadErrorGeneric")
-                }
-                label={wishlist("retry")}
-                onPress={retry}
-              />
-            ) : state.status === "missing" ? (
-              <RetryView
-                text={wishlist("listNotFound")}
-                label={wishlist("retry")}
-                onPress={retry}
-              />
-            ) : state.gifts.length === 0 ? (
-              <EmptyState
-                title={wishlist("emptyTitle")}
-                body={wishlist("emptyText")}
-                action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
-              />
-            ) : (
-              // Review m5: the grid is a list for assistive tech.
-              <XStack role="list" flexWrap="wrap" gap="$grid-gap">
-                {state.gifts.map((gift) => {
-                  function handlePress() {
-                    openEditor(gift.id);
-                  }
-
-                  function handleVisibilityPress() {
-                    openVisibilityPicker(gift);
-                  }
-
-                  function setChipNode(node: ChipNode | null) {
-                    chipNodes.current.set(gift.id, node);
-                  }
-
-                  return (
-                    <WishCard
-                      key={gift.id}
-                      gift={gift}
-                      width={grid.cardWidth}
-                      onPress={handlePress}
-                      onVisibilityPress={handleVisibilityPress}
-                      visibilityChipRef={setChipNode}
-                    />
-                  );
-                })}
-              </XStack>
-            )}
-          </ScrollView>
-
-          <XStack
-            testID="wishlist-footer"
-            flexWrap="wrap"
-            alignItems="center"
-            justifyContent="space-between"
-            paddingBottom="$page-gutter"
-          >
-            <Pressable
-              role="button"
-              testID="wishlist-logout"
-              onPress={signOut}
-              minHeight="$touch-target"
-              minWidth="$touch-target"
-              justifyContent="center"
-            >
-              <Text kind="button" tone="destructive">
-                {wishlist("logout")}
-              </Text>
-            </Pressable>
-            {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}
-            <Pressable
-              role="button"
-              testID="wishlist-settings"
-              onPress={openSettings}
-              minHeight="$touch-target"
-              minWidth="$touch-target"
-              justifyContent="center"
-            >
-              <Text kind="button" tone="primary">
-                {wishlist("settings")}
-              </Text>
-            </Pressable>
-            <AuthorLink />
-          </XStack>
-        </Column>
+            </Column>
+          </PageContainer>
+        </PageScroll>
         <VisibilityPicker
           visible={picker !== null}
           title={picker?.gift.title ?? ""}

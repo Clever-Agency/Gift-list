@@ -9,6 +9,7 @@ import {
   Button,
   Choice,
   ChoiceList,
+  focusField,
   TagChip,
   Text,
   TextField,
@@ -19,6 +20,7 @@ import {
 } from "@gift-list/ui";
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useId,
   useImperativeHandle,
@@ -258,6 +260,14 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   // `tags.N` error names a position in that list, not in the current chips.
   const submittedTagKeys = useRef<readonly string[]>([]);
   const cancelRef = useRef<FocusTarget>(null);
+  // UI5: the visual order of the form; the first invalid field gets focus and scroll.
+  const titleRef = useRef<FieldInputRef | null>(null);
+  const descriptionRef = useRef<FieldInputRef | null>(null);
+  const linkRef = useRef<FieldInputRef | null>(null);
+  const priceRef = useRef<FieldInputRef | null>(null);
+  const visibilityRef = useRef<FocusTarget | null>(null);
+  const quantityRef = useRef<FocusTarget | null>(null);
+  const tagsRef = useRef<FocusTarget | null>(null);
   useImperativeHandle(
     ref,
     function createFormHandle() {
@@ -281,6 +291,44 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       }
     },
     [customTagOpen],
+  );
+  /**
+   * UI5: move to the first invalid field in visual order. A `tags` problem opens
+   * the custom-tag field first, because that is where the inline tag message is.
+   */
+  const focusGiftField = useCallback(function focusGiftField(field: GiftFormField) {
+    switch (field) {
+      case "title":
+        focusField(titleRef.current);
+        break;
+      case "description":
+        focusField(descriptionRef.current);
+        break;
+      case "link":
+        focusField(linkRef.current);
+        break;
+      case "price":
+        focusField(priceRef.current);
+        break;
+      case "visibility":
+        focusField(visibilityRef.current);
+        break;
+      case "quantity":
+        focusField(quantityRef.current);
+        break;
+      case "tags":
+        focusField(tagsRef.current);
+        break;
+    }
+  }, []);
+  // UI5: a server rejection with a field also takes focus there.
+  useEffect(
+    function focusServerErrorField() {
+      if (!serverError) return;
+      const field = serverErrorField(serverError.field);
+      if (field !== null) focusGiftField(field);
+    },
+    [serverError, focusGiftField],
   );
   // `EXPERIENCE.md` → Price field: an empty amount does not show a currency.
   const showCurrency = price.trim() !== "";
@@ -455,6 +503,13 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       AccessibilityInfo.announceForAccessibility(
         copyText(fieldErrorCopy(first, { title, tagIssue })),
       );
+      // UI5: the same field takes focus and is scrolled to the middle of the screen.
+      // A problem in the typed custom tag opens its field; the open effect moves focus there.
+      if (first === "tags" && tagIssue !== null) {
+        setCustomTagOpen(true);
+      } else {
+        focusGiftField(first);
+      }
       return;
     }
     // `validateGiftForm` already reported it; this only narrows the type.
@@ -492,6 +547,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   return (
     <YStack gap="$grid-gap">
       <TextField
+        ref={titleRef}
         label={t("field.title")}
         value={title}
         onChangeText={handleTitleChange}
@@ -503,6 +559,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         }}
       />
       <TextField
+        ref={descriptionRef}
         label={t("field.description")}
         value={description}
         onChangeText={setDescription}
@@ -516,6 +573,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         }}
       />
       <TextField
+        ref={linkRef}
         label={t("field.link")}
         value={link}
         onChangeText={handleLinkChange}
@@ -529,6 +587,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         }}
       />
       <TextField
+        ref={priceRef}
         label={t("field.price")}
         value={price}
         onChangeText={handlePriceChange}
@@ -557,6 +616,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         error={inlineError("visibility")}
         disabled={visibilityLocked}
         description={visibilityLocked ? t("field.visibilityLocked") : undefined}
+        autoFocusValue={visibility}
+        autoFocusRef={visibilityRef}
         options={VISIBILITIES.map((code) => ({
           value: code,
           label: tVisibility(code),
@@ -571,6 +632,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         error={inlineError("quantity")}
         disabled={quantityLocked}
         description={quantityLocked ? t("field.quantityLocked") : undefined}
+        autoFocusValue={quantity}
+        autoFocusRef={quantityRef}
         options={QUANTITIES.map((code) => ({
           value: code,
           label: tQuantity(code),
@@ -616,6 +679,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
             custom tags and the fixed catalogue. A chip error stays on its chip; the
             group carries the message only when no chip can (Q-09). */}
         <XStack
+          ref={tagsRef as never}
+          tabIndex={-1}
           role="group"
           aria-label={t("field.tags")}
           aria-invalid={tagServerError && tagErrorTargetKey === null ? true : undefined}

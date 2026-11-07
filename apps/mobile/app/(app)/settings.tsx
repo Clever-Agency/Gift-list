@@ -1,5 +1,5 @@
 import { NICK_PATTERN, type Me } from "@gift-list/contracts";
-import { Column, Heading, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions, type TextInputInstance } from "react-native";
@@ -91,7 +91,8 @@ function SettingsForm({
       : t("settings.nickHint");
 
   function focusNick() {
-    nickInput.current?.focus();
+    // UI5: the invalid nick is focused and scrolled to the middle of the screen.
+    focusField(nickInput.current);
   }
 
   function changeNick(value: string) {

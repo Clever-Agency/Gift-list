@@ -40,8 +40,16 @@ function withReadOnly(input: FieldProps["input"]): TextFieldProps["input"] {
 }
 
 /** The password field with its «Показать» toggle (`showLabel` is the catalogue text). */
-export function PasswordField({ input, ...props }: Omit<PasswordFieldProps, "input"> & { input?: FieldProps["input"] }) {
-  return <UiPasswordField {...props} input={withReadOnly(input)} />;
+export function PasswordField({
+  input,
+  inputRef,
+  ...props
+}: Omit<PasswordFieldProps, "input"> & {
+  input?: FieldProps["input"];
+  /** Lets the screen move focus back to the field, e.g. after a validation error. */
+  inputRef?: Ref<TextInputInstance>;
+}) {
+  return <UiPasswordField {...props} input={withReadOnly(input)} ref={inputRef as never} />;
 }
 
 PasswordField.displayName = "PasswordField";

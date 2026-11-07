@@ -16,6 +16,8 @@ const navigation = vi.hoisted(() => ({
   back: vi.fn(),
   canGoBack: vi.fn(),
 }));
+/** UI5: happy-dom has no layout, so the scroll call is the observable effect. */
+const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => me);
@@ -162,6 +164,11 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  scrollIntoView.mockClear();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
   delete probe.auth;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
@@ -240,6 +247,26 @@ describe("настройки: ник", () => {
 
     expect(me.updateNick).toHaveBeenCalledWith("newnick");
     expect(fieldText("Ник")).toContain("Этот ник уже занят.");
+  });
+
+  it("невалидный ник: фокус на поле и прокрутка к нему (UI5)", async () => {
+    signedIn();
+    me.updateNick.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Nick is taken",
+      field: "nick",
+      reason: "NICK_TAKEN",
+    });
+    await mount();
+
+    await type("Ник", "newnick");
+    await press("Сохранить");
+
+    const nick = field("Ник");
+    expect(document.activeElement).toBe(nick);
+    expect(nick.getAttribute("aria-invalid")).toBe("true");
+    expect(scrollIntoView.mock.instances[0]).toBe(nick);
   });
 
   it("успех: тост, сохранённый ник и обновлённый контекст", async () => {

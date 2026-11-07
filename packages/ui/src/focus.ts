@@ -19,6 +19,29 @@ export function focusInLayer(node: FocusTarget | null | undefined): void {
   moveFocus(node);
 }
 
+/**
+ * UI5: a form submit moves to the first invalid field. The browser focuses the
+ * input and brings it to the middle of the screen with `behavior: "auto"` — the
+ * jump is instant on purpose, no smooth scroll and no pulse animation. The phone
+ * has no document scrolling here: focusing the input lets the screen ScrollView
+ * bring it into view, which `focus.native.ts` relies on.
+ */
+export function focusField(node: FocusTarget | null | undefined): void {
+  const target = node as
+    | {
+        focus?: () => void;
+        scrollIntoView?: (options: {
+          block: "center";
+          inline: "nearest";
+          behavior: "auto";
+        }) => void;
+      }
+    | null
+    | undefined;
+  target?.focus?.();
+  target?.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "auto" });
+}
+
 function moveFocus(node: FocusTarget | null | undefined): void {
   // A button or a `tabIndex` element has `focus`; a node without it is skipped.
   (node as { focus?: () => void } | null | undefined)?.focus?.();

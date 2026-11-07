@@ -91,6 +91,8 @@ const catalog = {
 
 /** `AccessibilityInfo` lives in the React Native mock below; the announcement is an assertion. */
 const announce = vi.hoisted(() => vi.fn());
+/** UI5: happy-dom has no layout, so the scroll call is the observable effect. */
+const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
@@ -148,6 +150,11 @@ let onSubmitMock: (values: GiftFormValues) => void;
 
 beforeEach(() => {
   announce.mockClear();
+  scrollIntoView.mockClear();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   host = createRoot(container);
@@ -1206,6 +1213,65 @@ describe("GiftForm: теги", () => {
     expect(container.querySelectorAll('[role="checkbox"][aria-invalid="true"]')).toHaveLength(0);
     const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
     expect(group?.getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+describe("GiftForm: первый невалидный (UI5)", () => {
+  it("submit без названия фокусирует название, прокручивает и показывает ошибку с красной рамкой", async () => {
+    await mount({ tagCatalog: catalog });
+
+    await submit();
+
+    const title = field(form.field.title);
+    expect(document.activeElement).toBe(title);
+    expect(title.getAttribute("aria-invalid")).toBe("true");
+    expect(fieldText(form.field.title)).toContain(form.error.titleRequired);
+    expect(getComputedStyle(title).borderColor).toBe("#B42318");
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "center",
+      inline: "nearest",
+      behavior: "auto",
+    });
+    expect(scrollIntoView.mock.instances[0]).toBe(title);
+  });
+
+  it("заполненное название пропускает фокус к первой невалидной ссылке", async () => {
+    await mount({ tagCatalog: catalog });
+    await type(form.field.title, "Свитер");
+    await type(form.field.link, "ftp://example.test/x");
+
+    await submit();
+
+    const link = field(form.field.link);
+    expect(document.activeElement).toBe(link);
+    expect(link.getAttribute("aria-invalid")).toBe("true");
+    expect(fieldText(form.field.link)).toContain(form.error.linkInvalid);
+    expect(scrollIntoView.mock.instances[0]).toBe(link);
+  });
+
+  it("ошибка сервера фокусирует своё поле", async () => {
+    await mount({
+      tagCatalog: catalog,
+      serverError: { field: "title", message: "Что-то не так" },
+    });
+
+    const title = field(form.field.title);
+    expect(document.activeElement).toBe(title);
+    expect(scrollIntoView.mock.instances[0]).toBe(title);
+  });
+
+  it("ошибка тегов фокусирует полосу тегов", async () => {
+    await mount({
+      tagCatalog: catalog,
+      serverError: { field: "tags", message: "Invalid input" },
+    });
+
+    const group = container.querySelector(
+      `[role="group"][aria-label="${form.field.tags}"]`,
+    ) as HTMLElement;
+    expect(document.activeElement).toBe(group);
+    expect(group.getAttribute("aria-invalid")).toBe("true");
+    expect(scrollIntoView.mock.instances[0]).toBe(group);
   });
 });
 

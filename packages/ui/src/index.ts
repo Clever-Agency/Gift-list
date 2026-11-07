@@ -54,5 +54,5 @@ export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
-export { focusInLayer, restoreFocus, type FocusTarget } from "./focus";
+export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";

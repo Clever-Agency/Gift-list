@@ -11,6 +11,8 @@ const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 const search = vi.hoisted(() => ({ params: {} as Record<string, string> }));
+/** UI5: happy-dom has no layout, so the scroll call is the observable effect. */
+const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/platform/session-token", () => store);
@@ -87,6 +89,20 @@ function text(): string {
   return container.textContent ?? "";
 }
 
+function field(label: string): HTMLInputElement {
+  const input = Array.from(container.querySelectorAll<HTMLInputElement>("input")).find(
+    (node) => node.getAttribute("aria-label") === label,
+  );
+  expect(input, `поле «${label}»`).toBeDefined();
+  return input as HTMLInputElement;
+}
+
+async function press(label: string) {
+  const target = controlByText(label, container);
+  expect(target, `кнопка «${label}»`).toBeDefined();
+  await click(target);
+}
+
 async function mount() {
   await act(async () => {
     root.render(
@@ -99,6 +115,11 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  scrollIntoView.mockClear();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
   search.params = {};
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   api.apiRequest.mockResolvedValue({ ok: false, code: "UNAUTHENTICATED", message: "" });
@@ -136,5 +157,19 @@ describe("вход: сообщение об истёкшей сессии", () =
     await mount();
 
     expect(text()).not.toContain(expiredText);
+  });
+});
+
+describe("вход: первый невалидный (UI5)", () => {
+  it("пустая форма фокусирует email, прокручивает к нему и показывает ошибку", async () => {
+    await mount();
+
+    await press("Войти");
+
+    const email = field("Email");
+    expect(document.activeElement).toBe(email);
+    expect(email.getAttribute("aria-invalid")).toBe("true");
+    expect(scrollIntoView.mock.instances[0]).toBe(email);
+    expect(text()).toContain("Проверьте введённые данные.");
   });
 });

@@ -20,6 +20,8 @@ export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./te
 export { ScrollView, type ScrollViewProps } from "./scroll";
 export { Pressable, focusRing, type PressableProps } from "./pressable";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
+export { InfoButton } from "./info-button";
+export type { InfoButtonProps } from "./info-button.types";
 export {
   PasswordField,
   TextField,

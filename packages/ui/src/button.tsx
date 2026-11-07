@@ -79,6 +79,13 @@ export type ButtonVariant = "primary" | "reserve" | "secondary" | "ghost" | "des
 export type ButtonProps = {
   /** The visible text and the accessible name. Copy comes from the caller. */
   label: string;
+  /**
+   * The accessible name when it has to say more than the visible label, e.g. a
+   * disabled button's reason. Defaults to `label`.
+   */
+  ariaLabel?: string;
+  /** The id of the visible text that explains a disabled button. */
+  ariaDescribedBy?: string;
   onPress?: () => void;
   variant?: ButtonVariant;
   /** Does not take a press and is announced as disabled. */
@@ -105,6 +112,8 @@ export type ButtonProps = {
 export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(function Button(
   {
     label,
+    ariaLabel,
+    ariaDescribedBy,
     onPress,
     variant = "primary",
     disabled = false,
@@ -130,7 +139,8 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
       // A blocked button never submits: it is a plain button for the browser.
       render={native ? <button type="button" disabled /> : <button type={blocked ? "button" : type} />}
       tabIndex={native ? -1 : 0}
-      aria-label={label}
+      aria-label={ariaLabel ?? label}
+      aria-describedby={ariaDescribedBy}
       aria-disabled={blocked}
       aria-busy={busy || undefined}
       data-testid={testID}

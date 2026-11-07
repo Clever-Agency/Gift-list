@@ -3,6 +3,7 @@ import {
   Button,
   Column,
   Heading,
+  InfoButton,
   Pressable,
   Screen,
   ScrollView,
@@ -30,6 +31,7 @@ import { WishCardSkeleton } from "@/ui/skeleton";
 import { ToastHost } from "@/ui/toast";
 import { VisibilityPicker } from "@/ui/visibility-picker";
 import { copyWishlistShareLink } from "@/wishlist/copy-link";
+import { hasWishVisibleToEveryone } from "@/wishlist/share-availability";
 
 /**
  * A failed read offers the retry view; UX-DR6 adds the toast. A missing list is its
@@ -61,6 +63,9 @@ type ToastState = { message: string; tone: "info" | "error" };
 const CREATED_TOAST = "gift_created";
 const UPDATED_TOAST = "gift_updated";
 const DELETED_TOAST = "gift_deleted";
+
+/** The id that ties the disabled copy button to its visible reason. */
+const COPY_LINK_REASON_ID = "wishlist-copy-link-reason";
 
 /**
  * The footer row («Выйти» + «Настройки» + «Написать автору») is pinned to the bottom
@@ -259,12 +264,15 @@ export default function MyWishlistScreen() {
   }
 
   /**
-   * Story 2.4 (FR-28): one button, one URL, no share-sheet. The toast names the
-   * result; a missing origin or token and a refused clipboard write are the same
-   * error, because the link did not reach the clipboard either way.
+   * Story 2.4 (FR-28): one button, one URL, no share-sheet. UI2: the link is only
+   * offered when the public read would show at least one wish (AD-7: an unarchived
+   * `PUBLIC`), so an empty or private-only list cannot create or copy a useless URL.
    */
+  const canShare = state.status === "ready" && hasWishVisibleToEveryone(state.gifts);
+
   async function copyLink() {
-    const token = state.status === "ready" ? state.publicToken : null;
+    if (state.status !== "ready" || !hasWishVisibleToEveryone(state.gifts)) return;
+    const token = state.publicToken;
     const result = await copyWishlistShareLink(token);
     setToast({
       message: result === "copied" ? wishlist("copyLinkDone") : wishlist("copyLinkFailed"),
@@ -435,21 +443,51 @@ export default function MyWishlistScreen() {
             {/* DESIGN.md → App → «Широкий экран»: the owner's buttons sit in a row
                 above the grid, to the right. Story 2.4 adds «Скопировать ссылку». */}
             {state.status === "ready" ? (
-              <XStack
+              <YStack
                 testID="wishlist-actions"
-                flexWrap="wrap"
-                gap="$2"
-                {...(width < spacing["bp-medium"] ? { width: "100%" } : { alignSelf: "flex-end" })}
+                gap="$1"
+                {...(width < spacing["bp-medium"]
+                  ? { width: "100%" }
+                  : { alignSelf: "flex-end" })}
               >
-                {state.gifts.length > 0 ? (
-                  <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
+                <XStack
+                  flexWrap="wrap"
+                  alignItems="center"
+                  gap="$2"
+                  {...(width < spacing["bp-medium"]
+                    ? { width: "100%" }
+                    : { alignSelf: "flex-end" })}
+                >
+                  {state.gifts.length > 0 ? (
+                    <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
+                  ) : null}
+                  <Button
+                    testID="wishlist-copy-link"
+                    label={wishlist("copyLink")}
+                    ariaDescribedBy={canShare ? undefined : COPY_LINK_REASON_ID}
+                    onPress={copyLink}
+                    disabled={!canShare}
+                    focusableWhenDisabled
+                  />
+                  <InfoButton
+                    testID="wishlist-copy-link-info"
+                    label={wishlist("copyLinkHelpLabel")}
+                    explanation={wishlist("copyLinkHelp")}
+                    closeLabel={wishlist("copyLinkHelpClose")}
+                  />
+                </XStack>
+                {!canShare ? (
+                  <Text
+                    id={COPY_LINK_REASON_ID}
+                    testID="wishlist-copy-link-reason"
+                    kind="caption"
+                    tone="muted"
+                    textAlign={width < spacing["bp-medium"] ? "left" : "right"}
+                  >
+                    {wishlist("copyLinkDisabledReason")}
+                  </Text>
                 ) : null}
-                <Button
-                  testID="wishlist-copy-link"
-                  label={wishlist("copyLink")}
-                  onPress={copyLink}
-                />
-              </XStack>
+              </YStack>
             ) : null}
             {state.status === "loading" ? (
               <XStack

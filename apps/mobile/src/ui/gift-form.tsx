@@ -14,6 +14,7 @@ import {
   TextField,
   XStack,
   YStack,
+  type FieldInputRef,
   type FocusTarget,
 } from "@gift-list/ui";
 import {
@@ -247,6 +248,10 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   );
   const [customTag, setCustomTag] = useState("");
   const [customTagError, setCustomTagError] = useState<CustomTagIssue | null>(null);
+  // UI4: the field and «Добавить тег» stay hidden until the «Свой тег» chip opens them.
+  const [customTagOpen, setCustomTagOpen] = useState(false);
+  const customTagInputRef = useRef<FieldInputRef | null>(null);
+  const customTagEditorId = useId();
   const [errors, setErrors] = useState<GiftFormErrors>({});
   const tagErrorId = useId();
   // Q-09: the tag identities in the order the last submit sent them. A server
@@ -266,6 +271,16 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       };
     },
     [],
+  );
+  // UI4: the field takes focus as soon as the trigger opens it, so touch and
+  // keyboard users land straight in the input (and the phone opens the keyboard).
+  useEffect(
+    function focusCustomTagEditor() {
+      if (customTagOpen) {
+        (customTagInputRef.current as { focus?: () => void } | null)?.focus?.();
+      }
+    },
+    [customTagOpen],
   );
   // `EXPERIENCE.md` → Price field: an empty amount does not show a currency.
   const showCurrency = price.trim() !== "";
@@ -391,6 +406,12 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     setCustomTag(value);
     setCustomTagError(null);
     clearError("tags");
+  }
+
+  /** UI4: the «Свой тег» chip is the only entry point to the custom-tag field. */
+  function openCustomTagEditor() {
+    setCustomTagOpen(true);
+    (customTagInputRef.current as { focus?: () => void } | null)?.focus?.();
   }
 
   /** Adds the typed custom tag; empty, invalid, too long and duplicate text never lands. */
@@ -591,81 +612,101 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
             ) : null}
           </YStack>
         ) : null}
-        {fixedOptions.length > 0 ? (
-          // Q-09: a chip-level error belongs to that chip; the group is invalid only when no chip can carry it.
-          <XStack
-            role="group"
-            aria-label={t("field.tags")}
-            aria-invalid={tagServerError && tagErrorTargetKey === null ? true : undefined}
-            aria-describedby={
-              tagServerError && tagErrorTargetKey === null ? tagErrorId : undefined
-            }
-            flexWrap="wrap"
-            gap="$2"
-          >
-            {fixedOptions.map((option) => {
-              function handlePress() {
-                toggleFixedTag(option.id, option.label);
-              }
-
-              const optionKey = giftTagKey({ catalogId: option.id, label: option.label });
-
-              return (
-                <TagChip
-                  key={option.id}
-                  label={option.label}
-                  selected={selectedFixedIds.has(option.id)}
-                  onPress={handlePress}
-                  error={tagErrorTargetKey === optionKey ? tagChipError : undefined}
-                />
-              );
-            })}
-          </XStack>
-        ) : null}
-        {customTags.length > 0 ? (
-          <XStack flexWrap="wrap" gap="$2">
-            {customTags.map((tag) => {
-              const label = giftTagLabel(tag);
-
-              function handleRemove() {
-                removeCustomTag(tag.text);
-              }
-
-              return (
-                <TagChip
-                  key={giftTagKey(tag)}
-                  label={label}
-                  removeLabel={t("field.tagRemove", { name: label })}
-                  onRemove={handleRemove}
-                  error={tagErrorTargetKey === giftTagKey(tag) ? tagChipError : undefined}
-                />
-              );
-            })}
-          </XStack>
-        ) : null}
-        <TextField
-          label={t("field.tagCustom")}
-          value={customTag}
-          onChangeText={handleCustomTagChange}
-          error={customTagErrorCopy}
-          hint={t("field.tagCounter", {
-            count: tagTextLength(customTag),
-            max: GIFT_TAG_TEXT_MAX,
-          })}
-          input={{
-            placeholder: t("field.tagCustomPlaceholder", { max: GIFT_TAG_TEXT_MAX }),
-            autoCapitalize: "sentences",
-            onSubmitEditing: addCustomTag,
-          }}
-        />
-        <XStack>
-          <Button
-            variant="secondary"
-            label={t("field.tagAdd")}
-            onPress={addCustomTag}
-            disabled={customTag.trim() === ""}
+        {/* UI4: one strip — «Свой тег» first, then the live preview, the committed
+            custom tags and the fixed catalogue. A chip error stays on its chip; the
+            group carries the message only when no chip can (Q-09). */}
+        <XStack
+          role="group"
+          aria-label={t("field.tags")}
+          aria-invalid={tagServerError && tagErrorTargetKey === null ? true : undefined}
+          aria-describedby={
+            tagServerError && tagErrorTargetKey === null ? tagErrorId : undefined
+          }
+          flexWrap="wrap"
+          gap="$2"
+        >
+          <TagChip
+            testID="custom-tag-trigger"
+            variant="custom"
+            role="button"
+            label={t("field.tagCustom")}
+            expanded={customTagOpen}
+            controls={customTagOpen ? customTagEditorId : undefined}
+            onPress={openCustomTagEditor}
           />
+          {customTag.trim() !== "" ? (
+            <TagChip
+              testID="custom-tag-preview"
+              variant="custom"
+              preview
+              label={customTag.trim()}
+            />
+          ) : null}
+          {customTags.map((tag, index) => {
+            const label = giftTagLabel(tag);
+
+            function handleRemove() {
+              removeCustomTag(tag.text);
+            }
+
+            return (
+              <TagChip
+                key={giftTagKey(tag)}
+                testID={`custom-tag-${index}`}
+                variant="custom"
+                label={label}
+                removeLabel={t("field.tagRemove", { name: label })}
+                onRemove={handleRemove}
+                error={tagErrorTargetKey === giftTagKey(tag) ? tagChipError : undefined}
+              />
+            );
+          })}
+          {fixedOptions.map((option) => {
+            function handlePress() {
+              toggleFixedTag(option.id, option.label);
+            }
+
+            const optionKey = giftTagKey({ catalogId: option.id, label: option.label });
+
+            return (
+              <TagChip
+                key={option.id}
+                label={option.label}
+                selected={selectedFixedIds.has(option.id)}
+                onPress={handlePress}
+                error={tagErrorTargetKey === optionKey ? tagChipError : undefined}
+              />
+            );
+          })}
         </XStack>
+        {customTagOpen ? (
+          <YStack id={customTagEditorId} gap="$2">
+            <TextField
+              ref={customTagInputRef}
+              label={t("field.tagCustom")}
+              value={customTag}
+              onChangeText={handleCustomTagChange}
+              error={customTagErrorCopy}
+              hint={t("field.tagCounter", {
+                count: tagTextLength(customTag),
+                max: GIFT_TAG_TEXT_MAX,
+              })}
+              input={{
+                placeholder: t("field.tagCustomPlaceholder", { max: GIFT_TAG_TEXT_MAX }),
+                autoCapitalize: "sentences",
+                onSubmitEditing: addCustomTag,
+              }}
+            />
+            <XStack>
+              <Button
+                variant="secondary"
+                label={t("field.tagAdd")}
+                onPress={addCustomTag}
+                disabled={customTag.trim() === ""}
+              />
+            </XStack>
+          </YStack>
+        ) : null}
         {tagServerError ? (
           <Text
             id={tagErrorId}

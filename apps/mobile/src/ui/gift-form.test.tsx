@@ -186,6 +186,13 @@ function field(label: string): HTMLInputElement {
   return input as HTMLInputElement;
 }
 
+/** The custom-tag input, without the assertion of `field` (it may be closed). */
+function customTagInput(): HTMLInputElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLInputElement>("input, textarea")).find(
+    (node) => node.getAttribute("aria-label") === form.field.tagCustom,
+  );
+}
+
 /** The field box: its label, input and the inline message under it. */
 function fieldText(label: string): string {
   return field(label).parentElement?.textContent ?? "";
@@ -239,6 +246,11 @@ async function press(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+}
+
+/** UI4: the custom-tag field is hidden until the «Свой тег» chip opens it. */
+async function openCustomTag() {
+  await press(form.field.tagCustom);
 }
 
 function submit() {
@@ -658,6 +670,10 @@ describe("GiftForm: теги", () => {
     expect(text()).toContain(form.field.tags);
     expect(text()).toContain(form.field.tagsLoading);
     expect(checkbox("мечта")).toBeUndefined();
+    // UI4: the «Свой тег» chip stays available; the field appears after a press.
+    expect(button(form.field.tagCustom)).toBeDefined();
+    expect(customTagInput()).toBeUndefined();
+    await openCustomTag();
     expect(field(form.field.tagCustom)).toBeDefined();
   });
 
@@ -703,6 +719,7 @@ describe("GiftForm: теги", () => {
     // Selected tags are still shown; the empty notice would contradict them.
     expect(tagIsSelected("мечта")).toBe(true);
 
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
     await submit();
@@ -785,6 +802,7 @@ describe("GiftForm: теги", () => {
     const onSubmit = await mount({ tagCatalog: catalog });
 
     await type(form.field.title, "Свитер");
+    await openCustomTag();
     await type(form.field.tagCustom, "  своё  ");
     expect(fieldText(form.field.tagCustom)).toContain("из 30");
     await press(form.field.tagAdd);
@@ -801,12 +819,15 @@ describe("GiftForm: теги", () => {
   it("дубль своего тега и текст длиннее 30 кодовых точек не добавляются", async () => {
     await mount({ tagCatalog: catalog });
 
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
+    await openCustomTag();
     await type(form.field.tagCustom, "  своё  ");
     await press(form.field.tagAdd);
     expect(fieldText(form.field.tagCustom)).toContain(form.error.tagDuplicate);
 
+    await openCustomTag();
     await type(form.field.tagCustom, "😀".repeat(31));
     await press(form.field.tagAdd);
     expect(fieldText(form.field.tagCustom)).toContain(
@@ -817,6 +838,7 @@ describe("GiftForm: теги", () => {
   it("NUL в своём теге отклоняется до запроса", async () => {
     await mount({ tagCatalog: catalog });
 
+    await openCustomTag();
     await type(form.field.tagCustom, "сво\u0000ё");
     await press(form.field.tagAdd);
 
@@ -825,20 +847,116 @@ describe("GiftForm: теги", () => {
 
   it("пустой «Добавить тег» недоступен, пока поле пустое", async () => {
     await mount({ tagCatalog: catalog });
+    await openCustomTag();
 
     const add = button(form.field.tagAdd) as HTMLButtonElement | undefined;
     expect(add).toBeDefined();
     expect(add?.getAttribute("aria-disabled")).toBe("true");
 
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     expect(button(form.field.tagAdd)?.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("UI4: «Свой тег» — первый чип полосы, со звездой, и открывает поле", async () => {
+    await mount({ tagCatalog: catalog });
+
+    const group = container.querySelector(
+      `[role="group"][aria-label="${form.field.tags}"]`,
+    ) as HTMLElement;
+    const trigger = group.querySelector('[data-testid="custom-tag-trigger"]') as HTMLElement;
+    expect(trigger).not.toBeNull();
+    expect(trigger.getAttribute("aria-label")).toBe(form.field.tagCustom);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.querySelector('[data-testid="custom-tag-trigger-star"]')).not.toBeNull();
+
+    // The trigger stands before every fixed tag.
+    const firstFixed = group.querySelector('[role="checkbox"]') as HTMLElement;
+    expect(
+      trigger.compareDocumentPosition(firstFixed) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Empty «Свой тег»: no preview and no field until the press.
+    expect(container.querySelector('[data-testid="custom-tag-preview"]')).toBeNull();
+    expect(customTagInput()).toBeUndefined();
+
+    await openCustomTag();
+
+    expect(customTagInput()).toBeDefined();
+    expect(button(form.field.tagAdd)).toBeDefined();
+    const openedGroup = container.querySelector(
+      `[role="group"][aria-label="${form.field.tags}"]`,
+    ) as HTMLElement;
+    const opened = openedGroup.querySelector('[data-testid="custom-tag-trigger"]') as HTMLElement;
+    expect(opened.getAttribute("aria-expanded")).toBe("true");
+    const editor = document.getElementById(opened.getAttribute("aria-controls") as string);
+    expect(editor).not.toBeNull();
+  });
+
+  it("UI4: livepreview повторяет набранный текст, но не добавляет тег", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    expect(container.querySelector('[data-testid="custom-tag-preview"]')).toBeNull();
+
+    await type(form.field.tagCustom, "  своё  ");
+
+    const preview = container.querySelector('[data-testid="custom-tag-preview"]') as HTMLElement;
+    expect(preview.textContent).toContain("своё");
+    expect(preview.querySelector('[data-testid="custom-tag-preview-star"]')).not.toBeNull();
+    // Not committed yet: no remove control, the input keeps the raw text.
+    expect(button("Убрать тег своё")).toBeUndefined();
+    expect(field(form.field.tagCustom).value).toBe("  своё  ");
+
+    await press(form.field.tagAdd);
+
+    expect(container.querySelector('[data-testid="custom-tag-preview"]')).toBeNull();
+    expect(button("Убрать тег своё")).toBeDefined();
+  });
+
+  it("UI4: добавленный свой тег идёт до фиксированных и несёт звезду", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    await type(form.field.tagCustom, "своё");
+    await press(form.field.tagAdd);
+
+    const group = container.querySelector(
+      `[role="group"][aria-label="${form.field.tags}"]`,
+    ) as HTMLElement;
+    const custom = group.querySelector('[data-testid="custom-tag-0"]') as HTMLElement;
+    const fixed = group.querySelector('[role="checkbox"][aria-label="мечта"]') as HTMLElement;
+
+    expect(custom.textContent).toContain("своё");
+    expect(custom.querySelector('[data-testid="custom-tag-0-star"]')).not.toBeNull();
+    expect(
+      custom.compareDocumentPosition(fixed) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("UI4: клавиатура — Enter на «Свой тег» открывает поле, Enter в поле добавляет тег", async () => {
+    await mount({ tagCatalog: catalog });
+
+    const trigger = container.querySelector('[data-testid="custom-tag-trigger"]') as HTMLElement;
+    await act(async () => {
+      trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(customTagInput()).toBeDefined();
+
+    await type(form.field.tagCustom, "своё");
+    await act(async () => {
+      customTagInput()?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+
+    expect(button("Убрать тег своё")).toBeDefined();
   });
 
   it("удаление тега снимает ошибку дубля: после удаления его снова можно добавить", async () => {
     await mount({ tagCatalog: catalog });
 
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
     expect(fieldText(form.field.tagCustom)).toContain(form.error.tagDuplicate);
@@ -856,6 +974,7 @@ describe("GiftForm: теги", () => {
     const thirty = "😀".repeat(30);
 
     await type(form.field.title, "Свитер");
+    await openCustomTag();
     await type(form.field.tagCustom, thirty);
     await press(form.field.tagAdd);
     expect(fieldText(form.field.tagCustom)).not.toContain(form.error.tagTooLong);
@@ -891,6 +1010,7 @@ describe("GiftForm: теги", () => {
     const onSubmit = await mount({ tagCatalog: catalog });
 
     await type(form.field.title, "Свитер");
+    await openCustomTag();
     await type(form.field.tagCustom, "  своё  ");
     await submit();
 
@@ -904,6 +1024,7 @@ describe("GiftForm: теги", () => {
     const onSubmit = await mount({ tagCatalog: catalog });
 
     await type(form.field.title, "Свитер");
+    await openCustomTag();
     await type(form.field.tagCustom, "😀".repeat(31));
     await submit();
 
@@ -1002,6 +1123,7 @@ describe("GiftForm: теги", () => {
       tags: [{ catalogId: "tag_dream", label: "мечта" }],
     };
     await mount({ tagCatalog: catalog, initialValues });
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     // Submitting moves the pending text into the tag set at the end.
     await submit();

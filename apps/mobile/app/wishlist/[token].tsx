@@ -156,11 +156,16 @@ export default function PublicWishlistScreen() {
     return <NotFoundScreen title={wishlist("notFound")} pageTitle={wishlist("pageTitle", { brand })} />;
   }
 
-  if (auth.state.status !== "ready") return null;
+  // The session read may take the client's whole timeout, and an anonymous visitor
+  // is redirected in an effect. Both cases used to render `null`, so a slow or
+  // unreachable `/api/v1/me` left the link page blank until the redirect fired.
+  const authPending = auth.state.status !== "ready";
 
   // A reused route with a new token reads as loading until its own answer lands.
   const view: ScreenState =
-    state.status === "ready" && state.token !== token ? { status: "loading" } : state;
+    authPending || (state.status === "ready" && state.token !== token)
+      ? { status: "loading" }
+      : state;
 
   function retry() {
     setToast(null);
@@ -192,17 +197,7 @@ export default function PublicWishlistScreen() {
             }}
           >
             {view.status === "loading" ? (
-              <XStack
-                flexWrap="wrap"
-                gap="$grid-gap"
-                accessible
-                aria-busy
-                aria-label={myWishlist("loading")}
-              >
-                {SKELETON_CARDS.map((key) => (
-                  <WishCardSkeleton key={key} width={grid.cardWidth} />
-                ))}
-              </XStack>
+              <WishlistLoading label={myWishlist("loading")} width={grid.cardWidth} />
             ) : view.status === "error" ? (
               <RetryView
                 text={
@@ -281,10 +276,35 @@ function NotFoundScreen({ title, pageTitle }: { title: string; pageTitle: string
 
 NotFoundScreen.displayName = "NotFoundScreen";
 
+/**
+ * The one loading answer, shared by the list read and the session read. A named
+ * busy region with the card skeletons is what makes the page say «идёт загрузка»
+ * instead of showing nothing while `/api/v1/me` or `/api/v1/l` is in flight.
+ */
+function WishlistLoading({ label, width }: { label: string; width: number }) {
+  return (
+    <XStack
+      testID="wishlist-loading"
+      flexWrap="wrap"
+      gap="$grid-gap"
+      accessible
+      aria-busy
+      aria-label={label}
+    >
+      {SKELETON_CARDS.map(function renderSkeleton(key) {
+        return <WishCardSkeleton key={key} width={width} />;
+      })}
+    </XStack>
+  );
+}
+
+WishlistLoading.displayName = "WishlistLoading";
+
 /** A failed read: one line of text and the retry button. */
 function RetryView({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {
   return (
     <YStack
+      testID="wishlist-error"
       width="100%"
       maxWidth="$max-form"
       alignSelf="center"

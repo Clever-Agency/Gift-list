@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-11-06'
+last_updated: '2026-11-07'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -53,7 +53,7 @@ development_status:
   2-3-видимость-и-удаление-желания: done
   2-4-копирование-ссылки-на-вишлист: review # CLE-49: кнопка и toast, тесты AC 2.4.4 2026-11-05; ревью — за code-review
   2-5-тип-желания-и-теги: review # CLE-52: 2.5.8 — тесты и AC-матрица 2026-11-06; не done: сид вне деплоя, нет проверки на PostgreSQL, конверт ошибки каталога
-  2-6-срок-жизни-желания-и-архив: backlog
+  2-6-срок-жизни-желания-и-архив: backlog # без брони и уведомлений, остальное — 6.6 (sprint change proposal 2026-11-07)
   2-7-фото-желания: backlog # нужен ARCH-A18 (хранилище фото)
   epic-2-retrospective: optional
 
@@ -92,6 +92,7 @@ development_status:
   6-3-настройки-контакт-автора-и-удаление-аккаунта: backlog
   6-4-доступность-ключевых-потоков: backlog
   6-5-приложение-в-браузере-на-одном-домене-с-next-js: backlog
+  6-6-срок-жизни-желания-бронь-и-уведомления: backlog # после 5.1, 5.5, 5.7 и 6.1
   epic-6-retrospective: optional
 
   epic-7: backlog

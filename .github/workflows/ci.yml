@@ -52,6 +52,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check web JS gzip budget
+        run: node scripts/measure-web-size.mjs
+
       - name: Check standalone output
         shell: bash
         run: |

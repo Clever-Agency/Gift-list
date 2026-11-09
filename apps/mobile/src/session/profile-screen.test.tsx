@@ -22,11 +22,16 @@ vi.mock("@/platform/session-token", () => store);
 vi.mock("expo-localization", () => ({
   getLocales: () => [{ languageTag: "ru-RU" }],
 }));
-vi.mock("expo-router", () => ({
-  router: navigation,
-  Stack: { Screen: () => null },
-  useLocalSearchParams: () => search.params,
-}));
+vi.mock("expo-router", async () => {
+  const React = await import("react");
+  return {
+    router: navigation,
+    Stack: { Screen: () => null },
+    Link: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
+    useLocalSearchParams: () => search.params,
+  };
+});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -230,7 +235,7 @@ describe("профиль: вход", () => {
   });
 
   it.each(["a/b", "a?b", "a#b", "..", "%2f", "ab", "аня"])(
-    "небезопасный сегмент %s не уводит на вход, не запрашивает API и даёт «Пользователь не найден»",
+    "небезопасный сегмент %s не уводит на вход, не запрашивает API и даёт 404",
     async (nick) => {
       search.params = { nick };
       respond(giftsAnswer([gift()]));
@@ -238,7 +243,7 @@ describe("профиль: вход", () => {
 
       expect(navigation.replace).not.toHaveBeenCalled();
       expect(profileReads()).toBe(0);
-      expect(text()).toContain("Пользователь не найден");
+      expect(text()).toContain("Страница не найдена");
     },
   );
 

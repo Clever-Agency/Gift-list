@@ -21,6 +21,8 @@ import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
+import { NavLink } from "@/ui/nav-link";
+import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
 import { WishCardSkeleton } from "@/ui/skeleton";
@@ -154,7 +156,7 @@ export default function PublicWishlistScreen() {
   }, [ownerId, token, attempt]);
 
   if (token === null) {
-    return <NotFoundScreen title={wishlist("notFound")} pageTitle={wishlist("pageTitle", { brand })} />;
+    return <NotFoundScreen />;
   }
 
   // The session read may take the client's whole timeout, and an anonymous visitor
@@ -210,15 +212,7 @@ export default function PublicWishlistScreen() {
                     onPress={retry}
                   />
                 ) : view.status === "missing" ? (
-                  <YStack
-                    testID="wishlist-not-found"
-                    width="100%"
-                    paddingVertical={spacing["section-gap"]}
-                  >
-                    <Heading level={1} kind="display-sm" textAlign="center">
-                      {wishlist("notFound")}
-                    </Heading>
-                  </YStack>
+                  <WishlistUnavailable />
                 ) : (
                   <>
                     <YStack testID="wishlist-owner" gap="$1">
@@ -261,27 +255,34 @@ export default function PublicWishlistScreen() {
 
 PublicWishlistScreen.displayName = "PublicWishlistScreen";
 
-/** The malformed-segment answer: one heading, no request and no redirect. */
-function NotFoundScreen({ title, pageTitle }: { title: string; pageTitle: string }) {
+/**
+ * UI6: a well-formed link whose list cannot be read. An unknown token, a token
+ * whose list was deleted and a token blocked by visibility all arrive here as
+ * the same closed answer — the screen must not reveal whether anything exists.
+ */
+function WishlistUnavailable() {
+  const wishlist = useTranslations("app.wishlist");
+
   return (
-    <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
-        <Stack.Screen options={{ title: pageTitle }} />
-        <PageScroll testID="wishlist-not-found-page">
-          <PageContainer>
-            <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
-              <Heading level={1} kind="display-sm" textAlign="center">
-                {title}
-              </Heading>
-            </Column>
-          </PageContainer>
-        </PageScroll>
-      </SafeAreaView>
-    </Screen>
+    <YStack
+      testID="wishlist-unavailable"
+      width="100%"
+      alignItems="center"
+      paddingVertical={spacing["section-gap"]}
+      gap="$grid-gap"
+    >
+      <Heading level={1} kind="display-sm" textAlign="center">
+        {wishlist("unavailable")}
+      </Heading>
+      <Text tone="muted" textAlign="center">
+        {wishlist("unavailableText")}
+      </Text>
+      <NavLink href="/">{wishlist("toHome")}</NavLink>
+    </YStack>
   );
 }
 
-NotFoundScreen.displayName = "NotFoundScreen";
+WishlistUnavailable.displayName = "WishlistUnavailable";
 
 /**
  * The one loading answer, shared by the list read and the session read. A named

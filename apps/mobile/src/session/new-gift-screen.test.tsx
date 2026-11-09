@@ -367,12 +367,16 @@ afterEach(async () => {
 });
 
 describe("новое желание: гейт сессии", () => {
-  it("пока сессия неизвестна, ничего не показывает и не уходит со страницы", async () => {
+  it("пока сессия неизвестна, показывает общий экран загрузки, а не пустую страницу", async () => {
     api.apiRequest.mockReturnValue(new Promise(() => {}));
     await mount();
 
     expect(navigation.replace).not.toHaveBeenCalled();
-    expect(text()).toBe("");
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(1);
   });
 
   it("аноним уходит на вход с возвратом в форму", async () => {
@@ -383,7 +387,17 @@ describe("новое желание: гейт сессии", () => {
       pathname: "/login",
       params: { next: "/gifts/new" },
     });
-    expect(text()).toBe("");
+    // Until the redirect lands the page still says «Загружаем», not blank.
+    expect(container.querySelector('[data-testid="session-loading"]')).not.toBeNull();
+  });
+
+  it("обрыв сети при проверке сессии: экран ошибки с «Повторить», без входа", async () => {
+    api.apiRequest.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+    expect(text()).toContain("Нет связи с сервером");
   });
 });
 
@@ -393,6 +407,7 @@ describe("новое желание: форма", () => {
     await mount();
 
     expect(text()).toContain("Новое желание");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(text()).toContain("Название");
     expect(text()).toContain("Кто видит");
     expect(text()).toContain("Сколько раз можно дарить");

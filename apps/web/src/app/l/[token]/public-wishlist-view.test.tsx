@@ -38,6 +38,11 @@ function render(view: PublicWishlistData, wishlistPath: string | null = "/wishli
 
 const owner = { displayName: "Анна", nick: "anna" };
 
+/** L8: a page has exactly one level-1 heading. */
+function levelOneHeadings(html: string): number {
+  return html.match(/aria-level="1"/g)?.length ?? 0;
+}
+
 describe("PublicWishlistView: link page HTML", () => {
   it("renders the owner as the heading, the nick, PUBLIC cards and their CSS on the server", () => {
     const html = render({
@@ -54,8 +59,11 @@ describe("PublicWishlistView: link page HTML", () => {
       ],
     });
 
+    expect(levelOneHeadings(html)).toBe(1);
     expect(html).toContain("Анна");
     expect(html).toContain("@anna");
+    expect(html).toContain("Сделано с любовью командой cleverAgency");
+    expect(html).toContain('role="contentinfo"');
     expect(html).toContain("Плед");
     expect(html).toContain("мечта");
     expect(html).toContain("Открыт");
@@ -97,7 +105,10 @@ describe("PublicWishlistView: link page HTML", () => {
   it("renders one not-found phrase without an owner or wishes", () => {
     const html = render({ kind: "not_found" }, null);
 
+    expect(levelOneHeadings(html)).toBe(1);
     expect(html).toContain("Список не найден");
+    expect(html).toContain("Сделано с любовью командой cleverAgency");
+    expect(html).toContain('role="contentinfo"');
     expect(html).not.toContain("Анна");
     expect(html).not.toContain("Плед");
     expect(html).not.toContain("Пока нет открытых желаний");

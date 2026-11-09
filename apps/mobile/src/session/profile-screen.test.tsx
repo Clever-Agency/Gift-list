@@ -247,7 +247,7 @@ describe("профиль: вход", () => {
     },
   );
 
-  it("пока сессия неизвестна, профиль не запрашивается", async () => {
+  it("пока сессия неизвестна, профиль не запрашивается и экран не пустой", async () => {
     api.apiRequest.mockImplementation((path: string) =>
       path === "/api/v1/me" ? new Promise(() => {}) : Promise.resolve(giftsAnswer([])),
     );
@@ -255,6 +255,37 @@ describe("профиль: вход", () => {
 
     expect(profileReads()).toBe(0);
     expect(navigation.replace).not.toHaveBeenCalled();
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
+  });
+
+  it("сетевая ошибка сессии: экран ошибки с «Повторить», без входа и без чтения профиля", async () => {
+    respond(null, { ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(profileReads()).toBe(0);
+    const region = container.querySelector('[data-testid="session-error"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("role")).toBe("alert");
+    expect(text()).toContain("Нет связи с сервером");
+    expect(button("Повторить")).toBeDefined();
+  });
+
+  it("«Повторить» перечитывает сессию и открывает профиль", async () => {
+    respond(null, { ok: false, network: true });
+    await mount();
+
+    respond(giftsAnswer([gift()]), { ok: true, data: user });
+    await press("Повторить");
+
+    expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(text()).toContain("Борис");
+    expect(text()).toContain("Наушники");
   });
 
   it("истёкшая сессия уводит на вход с тем же next и причиной", async () => {
@@ -290,6 +321,7 @@ describe("профиль: карточка и желания", () => {
     );
     await mount();
 
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/boris");
     expect(text()).toContain("Борис");
     expect(text()).toContain("@boris");
@@ -352,9 +384,11 @@ describe("профиль: карточка и желания", () => {
     respond(new Promise(() => {}));
     await mount();
 
-    const region = container.querySelector('[aria-label="Загружаем профиль"]');
+    const region = container.querySelector('[data-testid="profile-loading"]');
     expect(region).not.toBeNull();
+    expect(region?.getAttribute("role")).toBe("status");
     expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем профиль");
     expect(
       container.querySelectorAll('[data-testid="wish-card-skeleton"]'),
     ).toHaveLength(3);

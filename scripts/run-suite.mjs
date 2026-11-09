@@ -20,7 +20,12 @@ function defaultSteps() {
     ["npm", ["run", "test", "--workspaces", "--if-present"]],
     [
       process.execPath,
-      ["--test", "scripts/check-boundaries.test.mjs", "scripts/run-suite.test.mjs"],
+      [
+        "--test",
+        "scripts/check-boundaries.test.mjs",
+        "scripts/emulator-origin.test.mjs",
+        "scripts/run-suite.test.mjs",
+      ],
     ],
   ];
 }

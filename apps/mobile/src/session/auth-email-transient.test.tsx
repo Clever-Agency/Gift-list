@@ -257,6 +257,7 @@ describe("ссылки экранов входа", () => {
   it("ссылка сброса пароля не содержит email, next сохраняется", async () => {
     route.params = { next: NEXT };
     await mount(ForgotScreen);
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     await typeInto(input("Email"), EMAIL);
 
     const href = anchorByText("Войти").getAttribute("href") ?? "";

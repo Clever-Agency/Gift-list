@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
+import { spacing } from "@gift-list/ui";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -352,11 +353,15 @@ afterEach(async () => {
 });
 
 describe("мой вишлист: гейт сессии", () => {
-  it("пока сессия неизвестна, ничего не показывает и не уходит со страницы", async () => {
+  it("пока сессия неизвестна, показывает общий экран загрузки и не уходит со страницы", async () => {
     api.apiRequest.mockReturnValue(new Promise(() => {}));
     await mount();
     expect(navigation.replace).not.toHaveBeenCalled();
-    expect(text()).toBe("");
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 
   it("аноним с / уходит на вход с возвратом на главную", async () => {
@@ -370,13 +375,26 @@ describe("мой вишлист: гейт сессии", () => {
     expectNoSmoke();
   });
 
-  it("обрыв сети при проверке сессии тоже уводит на вход", async () => {
+  it("обрыв сети при проверке сессии даёт экран ошибки с «Повторить», без входа", async () => {
     respond(null, { ok: false, network: true });
     await mount();
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/" },
-    });
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+    expect(text()).toContain("Нет связи с сервером");
+    expect(text()).toContain("Повторить");
+  });
+
+  it("«Повторить» на экране ошибки сессии перечитывает /api/v1/me", async () => {
+    respond(null, { ok: false, network: true });
+    await mount();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+
+    respond(giftsAnswer([gift()]), { ok: true, data: user });
+    await press("Повторить");
+
+    expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
+    expect(text()).toContain("Мой вишлист");
+    expect(text()).toContain("Наушники");
   });
 
   it("сессия истекла при загрузке желаний — вход с возвратом на главную и причиной", async () => {
@@ -409,7 +427,8 @@ describe("мой вишлист: каркас страницы", () => {
     expect(page).not.toBeNull();
     expect(getComputedStyle(page as Element).overflowY).toBe("auto");
     expect(page?.textContent).toContain("Мой вишлист");
-    expect(page?.querySelector('[data-testid="wishlist-footer"]')).not.toBeNull();
+    expect(page?.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+    expect(page?.textContent).toContain("Сделано с любовью командой cleverAgency");
 
     const scrollers = Array.from(container.querySelectorAll("*")).filter((node) =>
       ["auto", "scroll"].includes(getComputedStyle(node).overflowY),
@@ -445,9 +464,11 @@ describe("мой вишлист: список", () => {
     respond(new Promise(() => {}));
     await mount();
 
-    const region = container.querySelector('[aria-label="Загружаем вишлист"]');
+    const region = container.querySelector('[data-testid="my-wishlist-loading"]');
     expect(region).not.toBeNull();
+    expect(region?.getAttribute("role")).toBe("status");
     expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем вишлист");
     expect(region?.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 
@@ -690,8 +711,8 @@ describe("мой вишлист: список", () => {
   /**
    * Review m4. `pointerEvents` is a View prop: in a style object react-native-web
    * drops it, the full-width overlay then swallows touches meant for the screen.
-   * The toast is also lifted above the footer row, so «Выйти» is never covered
-   * (`DESIGN.md` → Toast: «снизу, над прилипшей кнопкой»).
+   * The footer now scrolls with the page, so the toast keeps the plain bottom
+   * offset and no longer needs the old pinned-row clearance; «Выйти» stays usable.
    */
   it("toast: pointerEvents — проп, а не стиль, и «Выйти» под toast остаётся нажимаемой", async () => {
     respond({ ok: false, network: true });
@@ -704,17 +725,10 @@ describe("мой вишлист: список", () => {
     const hostStyle = getComputedStyle(host as Element);
     expect(hostStyle.pointerEvents).toBe("none");
 
-    // Geometry: the toast bottom sits at or above the top of the footer row.
-    const footerStyle = getComputedStyle(
-      container.querySelector('[data-testid="wishlist-footer"]') as Element,
-    );
-    const logoutStyle = getComputedStyle(
-      container.querySelector('[data-testid="wishlist-logout"]') as Element,
-    );
-    const footerHeight =
-      Number.parseFloat(footerStyle.paddingBottom) + Number.parseFloat(logoutStyle.minHeight);
-    expect(footerHeight).toBeGreaterThan(0);
-    expect(Number.parseFloat(hostStyle.bottom)).toBeGreaterThanOrEqual(footerHeight);
+    // The footer is page content inside the one scroller, not a sticky bar over it.
+    const footer = container.querySelector('[data-testid="page-footer"]');
+    expect(footer?.closest('[data-testid="wishlist-page"]')).not.toBeNull();
+    expect(hostStyle.bottom).toBe(`${spacing["page-gutter"]}px`);
 
     // And the control still works while the toast is on screen.
     api.apiRequest.mockImplementation((path: string) =>
@@ -799,7 +813,7 @@ describe("мой вишлист: список", () => {
     respond(giftsAnswer([]));
     await mount();
 
-    const footer = container.querySelector('[data-testid="wishlist-footer"]');
+    const footer = container.querySelector('[data-testid="page-footer"]');
     const settings = footer?.querySelector('[data-testid="wishlist-settings"]');
     expect(settings?.textContent).toContain("Настройки");
 
@@ -910,12 +924,12 @@ describe("мой вишлист: копирование ссылки", () => {
 
     expect(trigger.getAttribute("aria-label")).toBe("Что видно по ссылке");
     expect(text()).toContain(
-      "По ссылке видны только открытые для всех желания. Приватные желания не показываются.",
+      "По ссылке видны только открытые для всех желания. Приватные и архивные желания не показываются.",
     );
     const describedBy = trigger.getAttribute("aria-describedby");
     expect(describedBy).not.toBeNull();
     expect(document.getElementById(describedBy as string)?.textContent).toContain(
-      "По ссылке видны только открытые для всех желания. Приватные желания не показываются.",
+      "По ссылке видны только открытые для всех желания. Приватные и архивные желания не показываются.",
     );
   });
 
@@ -929,7 +943,7 @@ describe("мой вишлист: копирование ссылки", () => {
     await openInfoByPress();
 
     expect(text()).toContain(
-      "По ссылке видны только открытые для всех желания. Приватные желания не показываются.",
+      "По ссылке видны только открытые для всех желания. Приватные и архивные желания не показываются.",
     );
   });
 

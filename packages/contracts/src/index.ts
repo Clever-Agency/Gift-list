@@ -222,6 +222,12 @@ export {
 } from "./gift";
 
 export {
+  isWishVisibleToEveryone,
+  type GiftVisibilityValue,
+  type WishVisibleToEveryone,
+} from "./visibility";
+
+export {
   tagCatalogItemSchema,
   tagCatalogSchema,
   type TagCatalog,

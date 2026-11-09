@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { controlByLabel, typeInto } from "@/test/dom";
+import { click, controlByLabel, typeInto } from "@/test/dom";
 import { GiftForm, type GiftFormValues } from "@/ui/gift-form";
 import { formatMinorToPrice } from "@/ui/gift-price";
 
@@ -36,8 +36,12 @@ type AppCatalog = {
       tagsError: string;
       tagsRetry: string;
       tagCustom: string;
+      tagCustomLive: string;
       tagCustomPlaceholder: string;
       tagAdd: string;
+      tagSave: string;
+      tagCancel: string;
+      tagEdit: string;
       tagCounter: string;
       tagRemove: string;
     };
@@ -258,6 +262,18 @@ async function press(label: string) {
 /** UI4: the custom-tag field is hidden until the «Свой тег» chip opens it. */
 async function openCustomTag() {
   await press(form.field.tagCustom);
+}
+
+function customTagTrigger(): HTMLElement {
+  const trigger = container.querySelector('[data-testid="custom-tag-trigger"]');
+  expect(trigger, "чип «Свой тег»").not.toBeNull();
+  return trigger as HTMLElement;
+}
+
+function editCustomTagButton(name: string): HTMLElement {
+  const button = controlByLabel(form.field.tagEdit.replace("{name}", name), container);
+  expect(button, `кнопка «Редактировать тег ${name}»`).toBeDefined();
+  return button as HTMLElement;
 }
 
 function submit() {
@@ -829,12 +845,10 @@ describe("GiftForm: теги", () => {
     await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
-    await openCustomTag();
     await type(form.field.tagCustom, "  своё  ");
     await press(form.field.tagAdd);
     expect(fieldText(form.field.tagCustom)).toContain(form.error.tagDuplicate);
 
-    await openCustomTag();
     await type(form.field.tagCustom, "😀".repeat(31));
     await press(form.field.tagAdd);
     expect(fieldText(form.field.tagCustom)).toContain(
@@ -860,7 +874,6 @@ describe("GiftForm: теги", () => {
     expect(add).toBeDefined();
     expect(add?.getAttribute("aria-disabled")).toBe("true");
 
-    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     expect(button(form.field.tagAdd)?.getAttribute("aria-disabled")).toBe("false");
   });
@@ -899,24 +912,188 @@ describe("GiftForm: теги", () => {
     expect(editor).not.toBeNull();
   });
 
-  it("UI4: livepreview повторяет набранный текст, но не добавляет тег", async () => {
+  it("UI4: набранный текст live показывается в первом теге, отдельного превью нет", async () => {
     await mount({ tagCatalog: catalog });
     await openCustomTag();
-    expect(container.querySelector('[data-testid="custom-tag-preview"]')).toBeNull();
+    const trigger = customTagTrigger();
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(trigger.getAttribute("aria-label")).toBe(form.field.tagCustom);
 
     await type(form.field.tagCustom, "  своё  ");
 
-    const preview = container.querySelector('[data-testid="custom-tag-preview"]') as HTMLElement;
-    expect(preview.textContent).toContain("своё");
-    expect(preview.querySelector('[data-testid="custom-tag-preview-star"]')).not.toBeNull();
+    expect(trigger.textContent).toBe("своё");
+    // The draft is visible; the accessible name keeps the control's purpose.
+    expect(trigger.getAttribute("aria-label")).toBe(
+      form.field.tagCustomLive.replace("{text}", "своё"),
+    );
+    expect(container.querySelector('[data-testid="custom-tag-preview"]')).toBeNull();
     // Not committed yet: no remove control, the input keeps the raw text.
     expect(button("Убрать тег своё")).toBeUndefined();
     expect(field(form.field.tagCustom).value).toBe("  своё  ");
 
-    await press(form.field.tagAdd);
+    await type(form.field.tagCustom, "   ");
 
-    expect(container.querySelector('[data-testid="custom-tag-preview"]')).toBeNull();
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(trigger.getAttribute("aria-label")).toBe(form.field.tagCustom);
+  });
+
+  it("UI4: повторное нажатие на тег закрывает поле, возвращает «Свой тег» и фокус", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    const trigger = customTagTrigger();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(customTagInput()).toBeDefined();
+
+    await type(form.field.tagCustom, "своё");
+    expect(trigger.textContent).toBe("своё");
+
+    await click(trigger);
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(customTagInput()).toBeUndefined();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UI4: Escape закрывает поле и возвращает фокус на тег", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    await type(form.field.tagCustom, "своё");
+
+    await act(async () => {
+      customTagInput()?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+
+    const trigger = customTagTrigger();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(customTagInput()).toBeUndefined();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UI4: «Отмена» закрывает поле без добавления тега и возвращает фокус", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    await type(form.field.tagCustom, "своё");
+
+    await press(form.field.tagCancel);
+
+    const trigger = customTagTrigger();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(customTagInput()).toBeUndefined();
+    expect(button("Убрать тег своё")).toBeUndefined();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UI4: добавленный свой тег редактируется в том же поле, текст меняется в теге live", async () => {
+    const onSubmit = await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }] },
+    });
+
+    await click(editCustomTagButton("своё"));
+
+    expect(field(form.field.tagCustom).value).toBe("своё");
+    expect(document.activeElement).toBe(field(form.field.tagCustom));
+    expect(button(form.field.tagSave)).toBeDefined();
+    expect(button(form.field.tagAdd)).toBeUndefined();
+    expect(customTagTrigger().getAttribute("aria-expanded")).toBe("true");
+
+    await type(form.field.tagCustom, "новое");
+
+    const chip = container.querySelector('[data-testid="custom-tag-0"]') as HTMLElement;
+    expect(chip.textContent).toContain("новое");
     expect(button("Убрать тег своё")).toBeDefined();
+
+    await press(form.field.tagSave);
+
+    expect(text()).toContain("новое");
+    expect(text()).not.toContain("своё");
+    expect(customTagInput()).toBeUndefined();
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: [{ text: "новое" }] }),
+    );
+  });
+
+  it("UI4: редактирование в дубль показывает ту же ошибку и не меняет тег", async () => {
+    await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }, { text: "другое" }] },
+    });
+
+    await click(editCustomTagButton("другое"));
+    await type(form.field.tagCustom, "своё");
+    await press(form.field.tagSave);
+
+    expect(fieldText(form.field.tagCustom)).toContain(form.error.tagDuplicate);
+    expect(customTagInput()).toBeDefined();
+    // The live label shows the invalid draft, but the tag set itself is unchanged.
+    expect(container.querySelector('[data-testid="custom-tag-0"]')?.textContent).toContain("своё");
+    expect(container.querySelector('[data-testid="custom-tag-1"]')?.textContent).toContain("своё");
+
+    await press(form.field.tagCancel);
+    expect(container.querySelector('[data-testid="custom-tag-0"]')?.textContent).toContain("своё");
+    expect(container.querySelector('[data-testid="custom-tag-1"]')?.textContent).toContain("другое");
+  });
+
+  it("UI4: Escape при редактировании отменяет правку и оставляет исходный тег", async () => {
+    await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }] },
+    });
+    await click(editCustomTagButton("своё"));
+    await type(form.field.tagCustom, "новое");
+
+    await act(async () => {
+      customTagInput()?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+
+    const trigger = customTagTrigger();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[data-testid="custom-tag-0"]')?.textContent).toContain("своё");
+    expect(text()).not.toContain("новое");
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UI4: удаление редактируемого тега закрывает редактор и возвращает фокус", async () => {
+    await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }] },
+    });
+    await click(editCustomTagButton("своё"));
+
+    await press("Убрать тег своё");
+
+    const trigger = customTagTrigger();
+    expect(customTagInput()).toBeUndefined();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
+    expect(text()).not.toContain("своё");
+  });
+
+  it("UI4: открытие редактирования без правок не делает форму грязной", async () => {
+    const onDirtyChange = vi.fn();
+    await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }] },
+      onDirtyChange,
+    });
+
+    await click(editCustomTagButton("своё"));
+    expect(onDirtyChange).not.toHaveBeenCalled();
+
+    await type(form.field.tagCustom, "новое");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    await press(form.field.tagCancel);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
 
   it("UI4: добавленный свой тег идёт до фиксированных и несёт звезду", async () => {
@@ -963,7 +1140,6 @@ describe("GiftForm: теги", () => {
     await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
-    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
     expect(fieldText(form.field.tagCustom)).toContain(form.error.tagDuplicate);
@@ -1040,6 +1216,10 @@ describe("GiftForm: теги", () => {
       form.error.tagTooLong.replace("{max}", "30"),
     );
     expect(announce).toHaveBeenCalledWith(form.error.tagTooLong.replace("{max}", "30"));
+    // UI5: the invalid custom-tag field is focused and scrolled like any other field.
+    const input = customTagInput() as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect(scrollIntoView.mock.instances[0]).toBe(input);
   });
 
   it("изменение набора тегов делает форму грязной, возврат к исходному — снова чистой", async () => {

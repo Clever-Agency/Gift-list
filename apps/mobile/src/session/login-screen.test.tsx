@@ -140,6 +140,7 @@ describe("вход: сообщение об истёкшей сессии", () =
 
     expect(text()).toContain(expiredText);
     expect(text()).toContain("Вход");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
   });
 
   it("toast можно закрыть", async () => {

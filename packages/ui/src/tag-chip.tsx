@@ -1,9 +1,10 @@
+import { useTheme } from "@tamagui/core";
 import { XStack } from "@tamagui/stacks";
-import type { ReactNode } from "react";
+import { forwardRef, type ComponentRef, type ReactNode } from "react";
 import { Star } from "./icons";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
-import { colors, spacing } from "./tokens";
+import { spacing } from "./tokens";
 
 export type TagChipVariant = "picker" | "card" | "custom";
 
@@ -31,14 +32,12 @@ export type TagChipProps = {
    * outline and the Lucide star before the text (UI4).
    */
   variant?: TagChipVariant;
-  /**
-   * A custom tag being typed. It repeats the input text as a dashed,
-   * non-interactive chip and never reaches the tag set (`UI4`).
-   */
-  preview?: boolean;
   /** A fixed tag is a checkbox: selected chips unfill and show a check. */
   selected?: boolean;
-  /** Toggles the fixed tag or opens the custom-tag field. */
+  /**
+   * Toggles the fixed tag, opens the custom-tag field, or — on a chip with a
+   * cross — opens that custom tag for editing.
+   */
   onPress?: () => void;
   /** `button` for the «Свой тег» trigger; `checkbox` (default) for a fixed tag. */
   role?: TagChipRole;
@@ -52,9 +51,12 @@ export type TagChipProps = {
    */
   removeLabel?: string;
   onRemove?: () => void;
+  /** The accessible name of the pressable label on a removable custom tag, e.g. «Редактировать тег мечта». */
+  editLabel?: string;
   /**
-   * The accessible name of a static card chip when its visible text is not
-   * enough (the «+N» chip names the tags it hides). Unused by picker chips.
+   * The accessible name when the visible text is not enough: the «+N» card chip
+   * names the tags it hides, and a live draft keeps its control's purpose
+   * («Свой тег: …»). Defaults to `label`.
    */
   accessibilityLabel?: string;
   /**
@@ -66,12 +68,19 @@ export type TagChipProps = {
   testID?: string;
 };
 
-/** The star in front of a custom tag; `null` for catalogue and card chips. */
-function star(size: number, testID?: string): ReactNode {
+/**
+ * The node of the pressable chip (the add trigger and fixed tags), so the form
+ * can bring focus back after its editor closes. Removable and card chips render
+ * a different root and do not forward it.
+ */
+export type TagChipRef = ComponentRef<typeof Pressable>;
+
+/** The star in front of a custom tag, in the theme accent; `null` for catalogue and card chips. */
+function star(size: number, color: string | undefined, testID?: string): ReactNode {
   return (
     <Star
       size={size}
-      color={colors.accent}
+      color={color}
       testID={testID ? `${testID}-star` : undefined}
     />
   );
@@ -80,27 +89,36 @@ function star(size: number, testID?: string): ReactNode {
 /**
  * Tag picker chip (`DESIGN.md` → Tag picker, `components.tag-chip`). A fixed
  * tag is a `checkbox` with its own state; a custom tag is a chip with a cross
- * that removes it. Both keep the 44 px touch target and take their copy from
- * the caller: fixed labels come from the server catalogue, never from here.
+ * that removes it and, when `onPress` is set, a pressable label that edits it.
+ * Both keep the 44 px touch target and take their copy from the caller: fixed
+ * labels come from the server catalogue, never from here.
  *
  * `variant="card"` is the same visual without any control semantics: a gift
  * card shows tags that are not pressable in R1 (`DESIGN.md` → WishCard).
  */
-export function TagChip({
-  label,
-  variant = "picker",
-  preview = false,
-  selected = false,
-  onPress,
-  role = "checkbox",
-  expanded,
-  controls,
-  removeLabel,
-  onRemove,
-  accessibilityLabel,
-  error,
-  testID,
-}: TagChipProps) {
+export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
+  {
+    label,
+    variant = "picker",
+    selected = false,
+    onPress,
+    role = "checkbox",
+    expanded,
+    controls,
+    removeLabel,
+    onRemove,
+    editLabel,
+    accessibilityLabel,
+    error,
+    testID,
+  },
+  ref,
+) {
+  const theme = useTheme();
+  const accent = theme.accent;
+  const accentValue =
+    accent && typeof accent.get === "function" ? accent.get("web") : undefined;
+  const starColor = typeof accentValue === "string" ? accentValue : undefined;
   const custom = variant === "custom";
 
   if (variant === "card") {
@@ -128,35 +146,6 @@ export function TagChip({
     );
   }
 
-  if (preview) {
-    // The live preview repeats the input text: a screen reader already hears it
-    // from the field, so the chip itself is hidden from assistive tech.
-    return (
-      <XStack
-        testID={testID}
-        aria-hidden
-        accessible={false}
-        alignSelf="flex-start"
-        flexShrink={0}
-        maxWidth="100%"
-        alignItems="center"
-        gap="$1"
-        minHeight="$chip-height"
-        borderWidth={1}
-        borderStyle="dashed"
-        borderColor="$accent"
-        borderRadius="$sm"
-        backgroundColor="$background"
-        paddingHorizontal="$2"
-      >
-        {star(spacing["icon-small"], testID)}
-        <Text kind="caption" tone="muted" flexShrink={1} minWidth={0}>
-          {label}
-        </Text>
-      </XStack>
-    );
-  }
-
   if (onRemove) {
     return (
       <XStack
@@ -165,16 +154,41 @@ export function TagChip({
         aria-label={label}
         alignItems="center"
         gap="$1"
+        maxWidth="100%"
         borderWidth={1}
         borderColor={custom ? "$accent" : "$border"}
         borderRadius="$sm"
         backgroundColor={custom ? "$surface" : "$background"}
         paddingLeft="$2"
       >
-        {custom ? star(spacing["icon-small"], testID) : null}
-        <Text kind="caption" tone={custom ? "default" : "muted"}>
-          {label}
-        </Text>
+        {onPress ? (
+          <Pressable
+            role="button"
+            aria-label={editLabel ?? label}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error?.id}
+            accessibilityHint={error?.message}
+            onPress={onPress}
+            flexDirection="row"
+            alignItems="center"
+            gap="$1"
+            minHeight="$touch-target"
+            minWidth="$touch-target"
+            flexShrink={1}
+          >
+            {custom ? star(spacing["icon-small"], starColor, testID) : null}
+            <Text kind="caption" tone={custom ? "default" : "muted"} flexShrink={1} minWidth={0}>
+              {label}
+            </Text>
+          </Pressable>
+        ) : (
+          <>
+            {custom ? star(spacing["icon-small"], starColor, testID) : null}
+            <Text kind="caption" tone={custom ? "default" : "muted"} flexShrink={1} minWidth={0}>
+              {label}
+            </Text>
+          </>
+        )}
         <Pressable
           role="button"
           aria-label={removeLabel ?? label}
@@ -198,9 +212,10 @@ export function TagChip({
   const isButton = role === "button";
   return (
     <Pressable
+      ref={ref}
       testID={testID}
       role={role}
-      aria-label={label}
+      aria-label={accessibilityLabel ?? label}
       aria-checked={isButton ? undefined : selected}
       aria-expanded={isButton ? expanded : undefined}
       aria-controls={isButton ? controls : undefined}
@@ -213,14 +228,20 @@ export function TagChip({
       flexDirection="row"
       alignItems="center"
       gap="$1"
+      maxWidth="100%"
       borderWidth={1}
       borderColor={custom ? "$accent" : selected ? "$border-strong" : "$border"}
       borderRadius="$sm"
       backgroundColor={custom ? "$surface" : selected ? "$muted" : "$background"}
       paddingHorizontal="$2"
     >
-      {custom ? star(spacing["icon-small"], testID) : null}
-      <Text kind="caption" tone={custom || selected ? "default" : "muted"}>
+      {custom ? star(spacing["icon-small"], starColor, testID) : null}
+      <Text
+        kind="caption"
+        tone={custom || selected ? "default" : "muted"}
+        flexShrink={1}
+        minWidth={0}
+      >
         {label}
       </Text>
       {selected && !custom ? (
@@ -230,7 +251,7 @@ export function TagChip({
       ) : null}
     </Pressable>
   );
-}
+});
 
 TagChip.displayName = "TagChip";
 

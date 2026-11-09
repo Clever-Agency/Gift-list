@@ -398,12 +398,16 @@ afterEach(async () => {
 });
 
 describe("изменение желания: гейт сессии", () => {
-  it("пока сессия неизвестна, ничего не показывает и не уходит со страницы", async () => {
+  it("пока сессия неизвестна, показывает общий экран загрузки, а не пустую страницу", async () => {
     api.apiRequest.mockReturnValue(new Promise(() => {}));
     await mount();
 
     expect(navigation.replace).not.toHaveBeenCalled();
-    expect(text()).toBe("");
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(1);
   });
 
   it("аноним уходит на вход с возвратом в форму редактирования", async () => {
@@ -414,7 +418,17 @@ describe("изменение желания: гейт сессии", () => {
       pathname: "/login",
       params: { next: "/gifts/g1/edit" },
     });
-    expect(text()).toBe("");
+    // Until the redirect lands the page still says «Загружаем», not blank.
+    expect(container.querySelector('[data-testid="session-loading"]')).not.toBeNull();
+  });
+
+  it("обрыв сети при проверке сессии: экран ошибки с «Повторить», без входа", async () => {
+    api.apiRequest.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+    expect(text()).toContain("Нет связи с сервером");
   });
 });
 
@@ -445,6 +459,7 @@ describe("изменение желания: загрузка", () => {
     await mount();
 
     expect(gifts.fetchGift).toHaveBeenCalledWith("g1");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(text()).toContain("Изменить желание");
     expect(field("Название").value).toBe("Наушники");
     expect(field("Описание (необязательно)").value).toBe("Чёрные, с шумоподавлением");

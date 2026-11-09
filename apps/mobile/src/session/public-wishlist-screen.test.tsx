@@ -192,30 +192,71 @@ afterEach(async () => {
 });
 
 describe("вишлист по ссылке: вход", () => {
-  it("аноним уходит на вход с безопасным next и не запрашивает список", async () => {
-    respond(null, { ok: false, code: "UNAUTHENTICATED", message: "" });
+  it("гость (UNAUTHENTICATED) видит публичный список без входа", async () => {
+    respond(giftsAnswer([gift()]), { ok: false, code: "UNAUTHENTICATED", message: "" });
     await mount();
 
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/wishlist/tok_1" },
-    });
-    expect(linkReads()).toBe(0);
-    // Until the redirect lands the page still says «Загружаем вишлист», not blank.
-    expect(loadingRegion()).not.toBeNull();
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(linkReads()).toBe(1);
+    expect(text()).toContain("Аня");
+    expect(text()).toContain("Наушники");
+    // The stale token is still cleared, but the visitor stays on the public page.
+    expect(store.clearSessionToken).toHaveBeenCalled();
   });
 
-  it("сетевая ошибка сессии не оставляет белый экран: видна загрузка и переход на вход", async () => {
-    respond(null, { ok: false, network: true });
+  it("протухший токен в чтении списка: выходит и сразу повторяет чтение как гость", async () => {
+    let linkReads = 0;
+    function answer(path: string) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      if (String(path).startsWith("/api/v1/l/")) {
+        linkReads += 1;
+        return Promise.resolve(
+          linkReads === 1
+            ? { ok: false, code: "UNAUTHENTICATED", message: "" }
+            : giftsAnswer([gift()]),
+        );
+      }
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
+    }
+    api.apiRequest.mockImplementation(answer);
+    await mount();
+
+    expect(linkReads).toBe(2);
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(text()).toContain("Аня");
+    expect(text()).toContain("Наушники");
+    // The stale session is not a network failure: no network error or toast.
+    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
+  it("сетевая ошибка сессии не уводит на вход: список читается как для гостя", async () => {
+    respond(giftsAnswer([gift()]), { ok: false, network: true });
     await mount();
 
     expect(store.clearSessionToken).not.toHaveBeenCalled();
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/wishlist/tok_1" },
-    });
-    expect(linkReads()).toBe(0);
-    expect(loadingRegion()).not.toBeNull();
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(linkReads()).toBe(1);
+    expect(text()).toContain("Наушники");
+  });
+
+  it("сетевая ошибка сессии и недоступный API дают «Повторить», а не редирект", async () => {
+    respond({ ok: false, network: true }, { ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(button("Повторить")).toBeDefined();
+
+    // «Повторить» rereads both the session and the list.
+    respond(giftsAnswer([gift()]), { ok: true, data: user });
+    await press("Повторить");
+
+    expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
+    expect(text()).toContain("Наушники");
   });
 
   it.each(["a/b", "a?b", "a#b", "..", "%2f"])(
@@ -266,6 +307,9 @@ describe("вишлист по ссылке: список", () => {
     await mount();
 
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/l/tok_1");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+    // L8: the owner is the only level-1 heading on the page.
+    expect(container.querySelectorAll('[role="heading"][aria-level="1"]')).toHaveLength(1);
     expect(text()).toContain("Аня");
     expect(text()).toContain("@anya");
     expect(text()).toContain("Наушники");
@@ -319,6 +363,8 @@ describe("вишлист по ссылке: список", () => {
     expect(text()).not.toContain("Пока нет открытых желаний");
     expect(document.querySelector('[data-testid="wishlist-owner"]')).toBeNull();
     expect(document.querySelector('[data-testid="wishlist-unavailable"]')).not.toBeNull();
+    // L8: the closed state also has exactly one level-1 heading.
+    expect(container.querySelectorAll('[role="heading"][aria-level="1"]')).toHaveLength(1);
   });
 
   it("NOT_FOUND и not_found дают один и тот же нейтральный экран без данных", async () => {

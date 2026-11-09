@@ -18,6 +18,9 @@ import {
   type GiftFormValues,
 } from "@/ui/gift-form";
 import { giftTagInputs } from "@/ui/gift-form-tags";
+import { SessionErrorScreen } from "@/ui/session-error-screen";
+import { SessionLoadingScreen } from "@/ui/session-loading-screen";
+import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useTagCatalog } from "@/ui/use-tag-catalog";
 
@@ -86,7 +89,11 @@ export default function NewGiftScreen() {
     }
   }, [auth.state.status, sessionExpired]);
 
-  if (auth.state.status !== "ready") return null;
+  if (auth.state.status === "error") {
+    return <SessionErrorScreen size="form" onRetry={auth.retry} />;
+  }
+
+  if (auth.state.status !== "ready") return <SessionLoadingScreen size="form" />;
 
   async function save(values: GiftFormValues) {
     if (inFlight.current) return;
@@ -236,6 +243,7 @@ export default function NewGiftScreen() {
                   onRetryTagCatalog={tagCatalog.retry}
                 />
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

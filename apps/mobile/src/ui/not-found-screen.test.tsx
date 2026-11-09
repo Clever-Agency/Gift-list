@@ -97,6 +97,11 @@ describe("UI6: страница 404", () => {
     expect(page?.getAttribute("role")).toBeNull();
     expect(container.querySelectorAll('[role="heading"]')).toHaveLength(1);
     expect(container.querySelector('[role="link"]')?.textContent).toBe("На главную");
+
+    const footer = container.querySelector<HTMLElement>('[data-testid="page-footer"]');
+    expect(footer).not.toBeNull();
+    expect(footer?.getAttribute("role")).toBe("contentinfo");
+    expect(footer?.textContent).toContain("Сделано с любовью командой cleverAgency");
   });
 
   it("это страница целиком: один скролл и контент внутри него", async () => {

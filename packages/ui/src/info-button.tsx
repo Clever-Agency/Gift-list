@@ -1,5 +1,5 @@
 import { Tooltip } from "@tamagui/tooltip";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Info } from "./icons";
 import type { InfoButtonProps } from "./info-button.types";
 import { Pressable } from "./pressable";
@@ -8,19 +8,30 @@ import { Text } from "./text";
 
 /**
  * An icon-only «what does this link show?» control. On the web Tamagui's official
- * `Tooltip` opens on hover, on keyboard focus and on a tap/click; its text is the
- * trigger's `aria-describedby`. Native has no Tooltip output (the package renders
- * only the trigger there), so `info-button.native.tsx` uses a Tamagui `Dialog`.
+ * `Tooltip` opens on hover, on keyboard focus and on a tap/click, and a second
+ * tap closes it; its text is the trigger's `aria-describedby`. Native has no
+ * Tooltip output (the package renders only the trigger there), so
+ * `info-button.native.tsx` uses a Tamagui `Dialog`.
  */
 export function InfoButton({ label, explanation, testID }: InfoButtonProps) {
   const [open, setOpen] = useState(false);
+  // Hover and focus open the tooltip themselves; only a tooltip that a press
+  // opened is closed by the next press. That keeps a touch tap from fighting the
+  // synthesised hover, while a repeated tap on touch-web still closes it.
+  const pressedOpen = useRef(false);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
+    if (!next) pressedOpen.current = false;
   }
 
-  /** Touch and click open the tooltip; hover and focus already do it themselves. */
-  function openInfo() {
+  function toggleInfo() {
+    if (open && pressedOpen.current) {
+      pressedOpen.current = false;
+      setOpen(false);
+      return;
+    }
+    pressedOpen.current = true;
     setOpen(true);
   }
 
@@ -30,7 +41,8 @@ export function InfoButton({ label, explanation, testID }: InfoButtonProps) {
         <Pressable
           testID={testID}
           aria-label={label}
-          onPress={openInfo}
+          aria-expanded={open}
+          onPress={toggleInfo}
           width="$touch-target"
           height="$touch-target"
           alignItems="center"

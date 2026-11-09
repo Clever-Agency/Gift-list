@@ -120,8 +120,56 @@ describe("TagChip: свой тег с акцентом (UI4)", () => {
     const chip = container.querySelector('[data-testid="custom"]') as HTMLElement;
     expect(chip.getAttribute("role")).toBe("group");
     expect(chip.getAttribute("aria-label")).toBe("своё");
-    expect(chip.querySelector('[data-testid="custom-star"]')).not.toBeNull();
+    const star = chip.querySelector('[data-testid="custom-star"]') as SVGElement;
+    expect(star).not.toBeNull();
+    // The star takes its stroke from the theme accent, not a hardcoded color.
+    expect(star.getAttribute("stroke")).toBe("var(--accent)");
     expect(getComputedStyle(chip).borderColor).toBe("#D4A017");
+  });
+
+  it("добавленный свой тег редактируется нажатием на подпись, крестик по-прежнему удаляет", async () => {
+    const onPress = vi.fn();
+    const onRemove = vi.fn();
+    const { container, render } = mounted();
+    await render(
+      <TagChip
+        variant="custom"
+        label="своё"
+        editLabel="Редактировать тег своё"
+        onPress={onPress}
+        removeLabel="Убрать тег своё"
+        onRemove={onRemove}
+        error={{ id: "tags-error", message: "Проверьте теги" }}
+        testID="custom"
+      />,
+    );
+
+    const edit = container.querySelector(
+      '[aria-label="Редактировать тег своё"]',
+    ) as HTMLElement;
+    expect(edit).not.toBeNull();
+    expect(edit.textContent).toBe("своё");
+    // Both controls of the chip carry the error, not only the cross.
+    expect(edit.getAttribute("aria-invalid")).toBe("true");
+    expect(edit.getAttribute("aria-describedby")).toBe("tags-error");
+
+    await click(edit);
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(onRemove).not.toHaveBeenCalled();
+
+    const remove = container.querySelector('[aria-label="Убрать тег своё"]') as HTMLElement;
+    await click(remove);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("длинный свой тег не выходит за ширину полосы", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChip variant="custom" label={"я".repeat(30)} testID="long" />,
+    );
+
+    const chip = container.querySelector('[data-testid="long"]') as HTMLElement;
+    expect(getComputedStyle(chip).maxWidth).toBe("100%");
   });
 
   it("триггер «Свой тег» — кнопка с aria-expanded, aria-controls и звездой", async () => {
@@ -151,16 +199,6 @@ describe("TagChip: свой тег с акцентом (UI4)", () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it("preview — пунктирный неинтерактивный чип, скрытый от скринридера", async () => {
-    const { container, render } = mounted();
-    await render(<TagChip variant="custom" preview label="своё" testID="preview" />);
-
-    const chip = container.querySelector('[data-testid="preview"]') as HTMLElement;
-    expect(chip.getAttribute("aria-hidden")).toBe("true");
-    expect(container.querySelector('[role="checkbox"], [role="button"]')).toBeNull();
-    expect(getComputedStyle(chip).borderStyle).toBe("dashed");
-    expect(chip.querySelector('[data-testid="preview-star"]')).not.toBeNull();
-  });
 });
 
 describe("TagChip: карточка", () => {

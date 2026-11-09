@@ -2,6 +2,13 @@ import type { ReactNode } from "react";
 import { vi } from "vitest";
 
 /**
+ * The shared footer renders `AuthorLink` on every page, so every route test now
+ * imports `expo-linking`. Its native module is not available in Vitest; the stub
+ * keeps the link inert unless a test overrides it.
+ */
+vi.mock("expo-linking", () => ({ openURL: () => Promise.resolve() }));
+
+/**
  * Every mobile test renders through `react-dom/client`, and every `@gift-list/ui`
  * component needs the theme provider above it. Instead of wrapping each `root.render`
  * call by hand, this setup mounts the real `GiftListProvider` around whatever a test

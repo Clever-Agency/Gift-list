@@ -1,5 +1,5 @@
 import type { GiftCard, GiftUpdate } from "@gift-list/contracts";
-import { Column, Heading, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { useWindowDimensions } from "react-native";
@@ -25,7 +25,9 @@ import {
   giftTagsEqual,
 } from "@/ui/gift-form-tags";
 import { PrimaryButton } from "@/ui/primary-button";
-import { WishCardSkeleton } from "@/ui/skeleton";
+import { SessionErrorScreen } from "@/ui/session-error-screen";
+import { SessionLoadingScreen } from "@/ui/session-loading-screen";
+import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useTagCatalog } from "@/ui/use-tag-catalog";
 
@@ -185,8 +187,12 @@ export default function EditGiftScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId, id, attempt]);
 
+  if (auth.state.status === "error") {
+    return <SessionErrorScreen size="form" onRetry={auth.retry} />;
+  }
+
   if (auth.state.status !== "ready") {
-    return null;
+    return <SessionLoadingScreen size="form" />;
   }
 
   function retry() {
@@ -439,10 +445,13 @@ export default function EditGiftScreen() {
                 paddingBottom={spacing["section-gap"]}
               >
                 {state.status === "loading" ? (
-                  // The list's skeleton, announced the same way (EXPERIENCE → «Загрузка»).
-                  <YStack accessible aria-busy aria-label={giftForm("loading")}>
-                    <WishCardSkeleton width={skeletonWidth} />
-                  </YStack>
+                  // The same named busy region as the list, with one form-width card.
+                  <LoadingCards
+                    testID="gift-edit-loading"
+                    label={giftForm("loading")}
+                    width={skeletonWidth}
+                    count={1}
+                  />
                 ) : state.status === "error" ? (
                   <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
                     <Text tone="muted" textAlign="center">
@@ -501,6 +510,7 @@ export default function EditGiftScreen() {
                   </>
                 )}
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

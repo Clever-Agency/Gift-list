@@ -161,31 +161,17 @@ beforeEach(() => {
 });
 
 describe("GET /api/v1/u/:nick", () => {
-  it("answers a guest with the owner and PUBLIC wishes only", async () => {
+  it("answers UNAUTHENTICATED without a gifts body and without touching the database", async () => {
     const { res, body } = await callRoute(["Anna"]);
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
+    expect(body).toEqual({ ok: false, code: "UNAUTHENTICATED", message: "Authentication required" });
+    expect(JSON.stringify(body)).not.toContain("gifts");
     expect(res.headers.get("cache-control")).toBe("private, no-store");
-    expect(body).toEqual({
-      ok: true,
-      data: {
-        access: "gifts",
-        owner: { displayName: "Анна", nick: "Anna" },
-        gifts: [expect.objectContaining({ title: "Публичное" })],
-      },
-    });
-    expect(JSON.stringify(body)).not.toContain("Для друзей");
-    expect(JSON.stringify(body)).not.toContain("Секрет");
-    expect(JSON.stringify(body)).not.toContain("Архивное");
-    expect(JSON.stringify(body)).not.toContain("anna@example.com");
-    expect(body.data).not.toHaveProperty("relationship");
-    expect(body.data).not.toHaveProperty("inviteCooldown");
-    expect(body.data).not.toHaveProperty("publicToken");
-    expect(findUser).toHaveBeenCalled();
-    expect(findList).toHaveBeenCalled();
-    expect(findManyGifts).toHaveBeenCalled();
+    expect(findUser).not.toHaveBeenCalled();
+    expect(findList).not.toHaveBeenCalled();
+    expect(findManyGifts).not.toHaveBeenCalled();
     expect(readProfileRelationship).not.toHaveBeenCalled();
-    expect(readProfileInviteCooldown).not.toHaveBeenCalled();
   });
 
   it("answers an unknown nick with the closed not_found body, without a name or a list read", async () => {
@@ -428,14 +414,11 @@ describe("GET /api/v1/u/:nick", () => {
       expect(JSON.stringify(body)).not.toContain("hours");
     });
 
-    it("does not ask for a cooldown or a relation without a session", async () => {
-      const { res, body } = await callRoute(["Anna"]);
+    it("does not ask for a cooldown without a session", async () => {
+      const { res } = await callRoute(["Anna"]);
 
-      expect(res.status).toBe(200);
-      expect(body.data).not.toHaveProperty("inviteCooldown");
-      expect(body.data).not.toHaveProperty("relationship");
+      expect(res.status).toBe(401);
       expect(readProfileInviteCooldown).not.toHaveBeenCalled();
-      expect(readProfileRelationship).not.toHaveBeenCalled();
     });
   });
 

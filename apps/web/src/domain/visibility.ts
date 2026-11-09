@@ -17,9 +17,7 @@ export type VisibilityViewer = { readonly id: string } | null;
  * - `friend` — an accepted `Friendship` (AD-10, Epic 4);
  * - `subscriber` — a `Subscription` to the owner (AD-19);
  * - `contactMatch` — a `ContactMatch` edge for the viewer's phone (AD-18, Epic 8);
- * - `viaListToken` — the viewer arrived through `/l/:publicToken` (Story 3.3);
- * - `publicProfile` — an anonymous viewer reads a public `/u/:nick` profile. It
- *   opens exactly the same `PUBLIC` wishes as the link token and never more.
+ * - `viaListToken` — the viewer arrived through `/l/:publicToken` (Story 3.3).
  */
 export type ViewerRelations = {
   readonly blocked: boolean;
@@ -27,8 +25,6 @@ export type ViewerRelations = {
   readonly subscriber: boolean;
   readonly contactMatch: boolean;
   readonly viaListToken: boolean;
-  /** Set by the caller for an anonymous public-profile read (R2). */
-  readonly publicProfile?: boolean;
 };
 
 /** No relation facts at all; safe default for callers that have nothing else. */
@@ -45,14 +41,14 @@ export const NO_RELATIONS: ViewerRelations = {
  * AD-18, AD-19). The domain stays free of Prisma: the server adapter behind this
  * interface owns every table lookup.
  *
- * `viaListToken` and `publicProfile` are deliberately absent — only the caller
- * knows how the viewer arrived, so the caller adds those facts itself.
+ * `viaListToken` is deliberately absent — only the caller knows whether the
+ * viewer arrived through `/l/:publicToken`, so the caller adds that fact itself.
  */
 export interface RelationshipReader {
   relationsBetween(
     viewerId: string | null,
     ownerId: string,
-  ): Promise<Omit<ViewerRelations, "viaListToken" | "publicProfile">>;
+  ): Promise<Omit<ViewerRelations, "viaListToken">>;
 }
 
 /** The minimum gift data the gate needs; keeps Prisma rows out of the domain. */
@@ -101,8 +97,8 @@ function canSee(
     return viewer !== null && relations.friend;
   }
 
-  // PUBLIC: an anonymous visitor counts with the list token or on a public profile.
-  if (viewer === null) return relations.viaListToken || relations.publicProfile === true;
+  // PUBLIC: an anonymous visitor only counts when they hold the list token.
+  if (viewer === null) return relations.viaListToken;
   return (
     relations.friend ||
     relations.subscriber ||
@@ -155,7 +151,7 @@ export const VisibilityPolicy = {
     if (relations.blocked) return [];
 
     if (viewer === null) {
-      return relations.viaListToken || relations.publicProfile === true ? ["PUBLIC"] : [];
+      return relations.viaListToken ? ["PUBLIC"] : [];
     }
 
     const allowed: GiftVisibility[] = [];

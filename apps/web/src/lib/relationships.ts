@@ -6,7 +6,7 @@ import { liveInviteCooldownHours, orderFriendPair } from "@/domain/friendship";
 import type { RelationshipReader, ViewerRelations } from "@/domain/visibility";
 
 /** Nobody is related to themselves; the owner branch never asks the port. */
-const noRelations: Omit<ViewerRelations, "viaListToken" | "publicProfile"> = {
+const noRelations: Omit<ViewerRelations, "viaListToken"> = {
   blocked: false,
   friend: false,
   subscriber: false,
@@ -28,7 +28,7 @@ const noRelations: Omit<ViewerRelations, "viaListToken" | "publicProfile"> = {
 async function relationsBetween(
   viewerId: string | null,
   ownerId: string,
-): Promise<Omit<ViewerRelations, "viaListToken" | "publicProfile">> {
+): Promise<Omit<ViewerRelations, "viaListToken">> {
   if (viewerId === null || viewerId === ownerId) return noRelations;
 
   const pair = orderFriendPair(viewerId, ownerId);

@@ -1,8 +1,12 @@
 const path = require("path");
 const { getDefaultConfig } = require("expo/metro-config");
+const { resolve } = require("metro-resolver");
 
 const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, "../..");
+// expo-symbols ships a 4055-name codepoint map (~30 KB gzip). The app draws
+// four Material Symbols; the web bundle uses this list instead.
+const materialSymbols = path.join(projectRoot, "src/ui/material-symbols.json");
 
 const config = getDefaultConfig(projectRoot);
 
@@ -53,5 +57,16 @@ if (keepFnamesEnabled()) {
     config.transformer.minifierConfig,
   );
 }
+
+config.resolver.resolveRequest = function resolveMaterialSymbols(context, moduleName, platform) {
+  const origin = context.originModulePath?.replaceAll("\\", "/");
+  if (
+    moduleName.endsWith("symbols.json") &&
+    origin?.includes("/expo-symbols/build/android/")
+  ) {
+    return { type: "sourceFile", filePath: materialSymbols };
+  }
+  return resolve(context, moduleName, platform);
+};
 
 module.exports = config;

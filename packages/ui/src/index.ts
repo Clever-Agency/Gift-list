@@ -39,6 +39,7 @@ export {
   type TagChipError,
   type TagChipListProps,
   type TagChipProps,
+  type TagChipRef,
   type TagChipVariant,
 } from "./tag-chip";
 export { StatusPill, type StatusPillProps, type StatusPillStatus } from "./status-pill";

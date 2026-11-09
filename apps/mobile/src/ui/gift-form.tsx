@@ -10,6 +10,7 @@ import {
   Choice,
   ChoiceList,
   focusField,
+  restoreFocus,
   TagChip,
   Text,
   TextField,
@@ -17,6 +18,7 @@ import {
   YStack,
   type FieldInputRef,
   type FocusTarget,
+  type TagChipRef,
 } from "@gift-list/ui";
 import {
   forwardRef,
@@ -26,6 +28,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type ComponentRef,
   type RefObject,
 } from "react";
 import { AccessibilityInfo } from "react-native";
@@ -252,7 +255,10 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const [customTagError, setCustomTagError] = useState<CustomTagIssue | null>(null);
   // UI4: the field and «Добавить тег» stay hidden until the «Свой тег» chip opens them.
   const [customTagOpen, setCustomTagOpen] = useState(false);
+  // The text of the custom tag being edited; `null` when the editor adds a new one.
+  const [editingCustomTag, setEditingCustomTag] = useState<string | null>(null);
   const customTagInputRef = useRef<FieldInputRef | null>(null);
+  const customTagTriggerRef = useRef<TagChipRef | null>(null);
   const customTagEditorId = useId();
   const [errors, setErrors] = useState<GiftFormErrors>({});
   const tagErrorId = useId();
@@ -267,7 +273,14 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const priceRef = useRef<FieldInputRef | null>(null);
   const visibilityRef = useRef<FocusTarget | null>(null);
   const quantityRef = useRef<FocusTarget | null>(null);
-  const tagsRef = useRef<FocusTarget | null>(null);
+  const tagsRef = useRef<ComponentRef<typeof XStack>>(null);
+  const closeCustomTagEditor = useCallback(function closeCustomTagEditor() {
+    setCustomTagOpen(false);
+    setEditingCustomTag(null);
+    setCustomTag("");
+    setCustomTagError(null);
+    restoreFocus(customTagTriggerRef.current);
+  }, []);
   useImperativeHandle(
     ref,
     function createFormHandle() {
@@ -291,6 +304,36 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       }
     },
     [customTagOpen],
+  );
+  // Escape closes the custom-tag editor and returns focus to its chip. The
+  // handler is scoped to the editor and its trigger, so a layer opened above the
+  // form keeps its own Escape. Native has no DOM document; the chip toggle and
+  // the cancel button close the editor there.
+  useEffect(
+    function closeCustomTagEditorOnEscape() {
+      if (!customTagOpen || typeof document === "undefined") return undefined;
+
+      function handleKeyDown(event: KeyboardEvent) {
+        if (event.key !== "Escape" || event.defaultPrevented) return;
+        const target = event.target;
+        const editor = document.getElementById(customTagEditorId);
+        const trigger = customTagTriggerRef.current as unknown as Node | null;
+
+        function contains(node: Node | null): boolean {
+          return target instanceof Node && node instanceof Node && node.contains(target);
+        }
+
+        if (!contains(editor) && !contains(trigger)) return;
+        event.preventDefault();
+        closeCustomTagEditor();
+      }
+
+      document.addEventListener("keydown", handleKeyDown);
+      return function removeEscapeListener() {
+        document.removeEventListener("keydown", handleKeyDown);
+      };
+    },
+    [customTagOpen, closeCustomTagEditor, customTagEditorId],
   );
   /**
    * UI5: move to the first invalid field in visual order. A `tags` problem opens
@@ -348,6 +391,18 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     tags.filter(isFixedTag).map((tag) => tag.catalogId),
   );
   const customTags = tags.filter(isCustomTag);
+  const customTagDraft = customTag.trim();
+  // The first chip is the live indicator of what is being added; an empty field
+  // returns it to its «Свой тег» label.
+  const customTagTriggerLabel =
+    customTagOpen && editingCustomTag === null && customTagDraft !== ""
+      ? customTagDraft
+      : t("field.tagCustom");
+  // The live label is the draft; the accessible name keeps saying what the control does.
+  const customTagTriggerAccessibilityLabel =
+    customTagOpen && editingCustomTag === null && customTagDraft !== ""
+      ? t("field.tagCustomLive", { text: customTagDraft })
+      : undefined;
 
   /**
    * The catalogue is the source of fixed-tag labels (AD-27): an untouched tag
@@ -372,7 +427,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     visibility,
     quantity,
     tags: giftTagsKey(tags),
-    customTag,
+    // Opening an existing tag for editing is not an edit until its text changes.
+    customTag:
+      editingCustomTag !== null && customTag.trim() === editingCustomTag ? "" : customTag,
   });
   // Report only flips: the screen listens for «стал грязным» / «снова чистый», not
   // for every keystroke. The first render is not a flip, so nothing fires on mount.
@@ -442,12 +499,66 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     setCustomTagError(null);
   }
 
+  /** The tags a duplicate check compares against, excluding the tag under edit. */
+  function customTagCandidates(): GiftFormTag[] {
+    if (editingCustomTag === null) return tags;
+    return tags.filter(
+      (tag) => !(isCustomTag(tag) && tag.text === editingCustomTag),
+    );
+  }
+
+  /** Adds the text, or replaces the tag the editor opened, keeping its place. */
+  function applyCustomTag(
+    current: readonly GiftFormTag[],
+    edited: string | null,
+    text: string,
+  ): GiftFormTag[] {
+    if (edited === null) return [...current, { text }];
+    return current.map((tag) =>
+      isCustomTag(tag) && tag.text === edited ? { text } : tag,
+    );
+  }
+
+  /** UI4: the «Свой тег» chip opens the field for a new tag; a committed chip edits one. */
+  function openCustomTagEditor() {
+    setEditingCustomTag(null);
+    setCustomTag("");
+    setCustomTagError(null);
+    setCustomTagOpen(true);
+  }
+
+  function toggleCustomTagEditor() {
+    if (customTagOpen) {
+      closeCustomTagEditor();
+    } else {
+      openCustomTagEditor();
+    }
+  }
+
+  /** Opens the same editor on an existing custom tag and pre-fills its text. */
+  function editCustomTag(text: string) {
+    setEditingCustomTag(text);
+    setCustomTag(text);
+    setCustomTagError(null);
+    clearError("tags");
+    setCustomTagOpen(true);
+    // Switching from one tag to another keeps the editor mounted: the open effect
+    // does not run, so the input takes focus here.
+    if (customTagOpen) {
+      (customTagInputRef.current as { focus?: () => void } | null)?.focus?.();
+    }
+  }
+
   function removeCustomTag(text: string) {
     setTags((current) =>
       current.filter((tag) => !(isCustomTag(tag) && tag.text === text)),
     );
     clearError("tags");
-    setCustomTagError(null);
+    if (editingCustomTag === text) {
+      closeCustomTagEditor();
+    } else {
+      setCustomTagError(null);
+    }
   }
 
   function handleCustomTagChange(value: string) {
@@ -456,15 +567,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     clearError("tags");
   }
 
-  /** UI4: the «Свой тег» chip is the only entry point to the custom-tag field. */
-  function openCustomTagEditor() {
-    setCustomTagOpen(true);
-    (customTagInputRef.current as { focus?: () => void } | null)?.focus?.();
-  }
-
-  /** Adds the typed custom tag; empty, invalid, too long and duplicate text never lands. */
-  function addCustomTag() {
-    const issue = customTagIssue(customTag, tags);
+  /** Adds or saves the typed custom tag; empty, invalid, too long and duplicate text never lands. */
+  function commitCustomTag() {
+    const issue = customTagIssue(customTag, customTagCandidates());
     if (issue !== null) {
       setCustomTagError(issue);
       AccessibilityInfo.announceForAccessibility(
@@ -472,23 +577,30 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       );
       return;
     }
-    setTags((current) => [...current, { text: customTag.trim() }]);
-    setCustomTag("");
-    setCustomTagError(null);
+    const text = customTag.trim();
+    setTags((current) => applyCustomTag(current, editingCustomTag, text));
     clearError("tags");
+    setCustomTagError(null);
+    if (editingCustomTag !== null) {
+      closeCustomTagEditor();
+    } else {
+      // Adding keeps the field open for the next tag; the chip toggles it closed.
+      setCustomTag("");
+    }
   }
 
   function submit() {
-    // Text left in the custom field is a tag the owner meant to add: submit it
-    // instead of dropping it silently, but only when it passes the same rule.
+    // Text left in the custom field is a tag the owner meant to add or edit:
+    // submit it instead of dropping it silently, but only when it passes the same rule.
     let tagsForSubmit = tags;
     let tagIssue: CustomTagIssue | null = null;
     if (customTag.trim() !== "") {
-      tagIssue = customTagIssue(customTag, tags);
+      tagIssue = customTagIssue(customTag, customTagCandidates());
       if (tagIssue === null) {
-        tagsForSubmit = [...tags, { text: customTag.trim() }];
+        tagsForSubmit = applyCustomTag(tags, editingCustomTag, customTag.trim());
         setTags(tagsForSubmit);
         setCustomTag("");
+        setEditingCustomTag(null);
       }
     }
     setCustomTagError(tagIssue);
@@ -504,9 +616,14 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         copyText(fieldErrorCopy(first, { title, tagIssue })),
       );
       // UI5: the same field takes focus and is scrolled to the middle of the screen.
-      // A problem in the typed custom tag opens its field; the open effect moves focus there.
+      // A problem in the typed custom tag opens its field; when it is already
+      // open the open effect does not run, so the input takes focus directly.
       if (first === "tags" && tagIssue !== null) {
-        setCustomTagOpen(true);
+        if (customTagOpen) {
+          (customTagInputRef.current as { focus?: () => void } | null)?.focus?.();
+        } else {
+          setCustomTagOpen(true);
+        }
       } else {
         focusGiftField(first);
       }
@@ -675,11 +792,11 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
             ) : null}
           </YStack>
         ) : null}
-        {/* UI4: one strip — «Свой тег» first, then the live preview, the committed
-            custom tags and the fixed catalogue. A chip error stays on its chip; the
-            group carries the message only when no chip can (Q-09). */}
+        {/* UI4: one strip — «Свой тег» first (its label follows the input), then the
+            committed custom tags and the fixed catalogue. A chip error stays on its
+            chip; the group carries the message only when no chip can (Q-09). */}
         <XStack
-          ref={tagsRef as never}
+          ref={tagsRef}
           tabIndex={-1}
           role="group"
           aria-label={t("field.tags")}
@@ -691,27 +808,28 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           gap="$2"
         >
           <TagChip
+            ref={customTagTriggerRef}
             testID="custom-tag-trigger"
             variant="custom"
             role="button"
-            label={t("field.tagCustom")}
+            label={customTagTriggerLabel}
+            accessibilityLabel={customTagTriggerAccessibilityLabel}
             expanded={customTagOpen}
             controls={customTagOpen ? customTagEditorId : undefined}
-            onPress={openCustomTagEditor}
+            onPress={toggleCustomTagEditor}
           />
-          {customTag.trim() !== "" ? (
-            <TagChip
-              testID="custom-tag-preview"
-              variant="custom"
-              preview
-              label={customTag.trim()}
-            />
-          ) : null}
           {customTags.map((tag, index) => {
-            const label = giftTagLabel(tag);
+            const original = giftTagLabel(tag);
+            const editing = customTagOpen && editingCustomTag === tag.text;
+            // While edited, the chip shows the input text: the value changes in the tag.
+            const label = editing && customTagDraft !== "" ? customTagDraft : original;
 
             function handleRemove() {
               removeCustomTag(tag.text);
+            }
+
+            function handleEdit() {
+              editCustomTag(tag.text);
             }
 
             return (
@@ -720,7 +838,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
                 testID={`custom-tag-${index}`}
                 variant="custom"
                 label={label}
-                removeLabel={t("field.tagRemove", { name: label })}
+                editLabel={t("field.tagEdit", { name: label })}
+                onPress={handleEdit}
+                removeLabel={t("field.tagRemove", { name: original })}
                 onRemove={handleRemove}
                 error={tagErrorTargetKey === giftTagKey(tag) ? tagChipError : undefined}
               />
@@ -759,15 +879,22 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
               input={{
                 placeholder: t("field.tagCustomPlaceholder", { max: GIFT_TAG_TEXT_MAX }),
                 autoCapitalize: "sentences",
-                onSubmitEditing: addCustomTag,
+                onSubmitEditing: commitCustomTag,
               }}
             />
-            <XStack>
+            <XStack gap="$2">
               <Button
                 variant="secondary"
-                label={t("field.tagAdd")}
-                onPress={addCustomTag}
+                label={
+                  editingCustomTag === null ? t("field.tagAdd") : t("field.tagSave")
+                }
+                onPress={commitCustomTag}
                 disabled={customTag.trim() === ""}
+              />
+              <Button
+                variant="ghost"
+                label={t("field.tagCancel")}
+                onPress={closeCustomTagEditor}
               />
             </XStack>
           </YStack>

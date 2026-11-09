@@ -33,6 +33,7 @@ import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
+import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
 import { WishCardSkeleton } from "@/ui/skeleton";
@@ -209,7 +210,7 @@ export default function ProfileScreen() {
   }, [ownerId, nick, attempt]);
 
   if (nick === null) {
-    return <NotFoundScreen title={profile("notFound")} pageTitle={profile("pageTitle", { brand })} />;
+    return <NotFoundScreen />;
   }
 
   if (auth.state.status !== "ready") return null;
@@ -568,28 +569,6 @@ export default function ProfileScreen() {
 }
 
 ProfileScreen.displayName = "ProfileScreen";
-
-/** The malformed-segment answer: one heading, no request and no redirect. */
-function NotFoundScreen({ title, pageTitle }: { title: string; pageTitle: string }) {
-  return (
-    <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
-        <Stack.Screen options={{ title: pageTitle }} />
-        <PageScroll testID="profile-not-found-page">
-          <PageContainer>
-            <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
-              <Heading level={1} kind="display-sm" textAlign="center">
-                {title}
-              </Heading>
-            </Column>
-          </PageContainer>
-        </PageScroll>
-      </SafeAreaView>
-    </Screen>
-  );
-}
-
-NotFoundScreen.displayName = "NotFoundScreen";
 
 /** A failed read: one line of text and the retry button. */
 function RetryView({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {

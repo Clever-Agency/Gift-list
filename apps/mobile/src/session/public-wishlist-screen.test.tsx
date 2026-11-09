@@ -22,11 +22,16 @@ vi.mock("@/platform/session-token", () => store);
 vi.mock("expo-localization", () => ({
   getLocales: () => [{ languageTag: "ru-RU" }],
 }));
-vi.mock("expo-router", () => ({
-  router: navigation,
-  Stack: { Screen: () => null },
-  useLocalSearchParams: () => search.params,
-}));
+vi.mock("expo-router", async () => {
+  const React = await import("react");
+  return {
+    router: navigation,
+    Stack: { Screen: () => null },
+    Link: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
+    useLocalSearchParams: () => search.params,
+  };
+});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -214,7 +219,7 @@ describe("вишлист по ссылке: вход", () => {
   });
 
   it.each(["a/b", "a?b", "a#b", "..", "%2f"])(
-    "небезопасный сегмент %s не уводит на вход, не запрашивает API и даёт «Список не найден»",
+    "небезопасный сегмент %s не уводит на вход, не запрашивает API и даёт 404",
     async (token) => {
       search.params = { token };
       respond(giftsAnswer([gift()]));
@@ -222,7 +227,9 @@ describe("вишлист по ссылке: вход", () => {
 
       expect(navigation.replace).not.toHaveBeenCalled();
       expect(linkReads()).toBe(0);
-      expect(text()).toContain("Список не найден");
+      expect(text()).toContain("Страница не найдена");
+      expect(text()).toContain("На главную");
+      expect(document.querySelector('[data-testid="not-found-page"]')).not.toBeNull();
     },
   );
 
@@ -276,12 +283,12 @@ describe("вишлист по ссылке: список", () => {
     expect(text()).not.toContain("Секретный подарок");
   });
 
-  it("пустой список говорит «Пока нет открытых желаний», а не «Список не найден»", async () => {
+  it("пустой список говорит «Пока нет открытых желаний», а не «Вишлист недоступен»", async () => {
     respond(giftsAnswer([]));
     await mount();
 
     expect(text()).toContain("Пока нет открытых желаний");
-    expect(text()).not.toContain("Список не найден");
+    expect(text()).not.toContain("Вишлист недоступен");
     expect(button("Куплю сам")).toBeUndefined();
   });
 
@@ -293,18 +300,34 @@ describe("вишлист по ссылке: список", () => {
 
     expect(text()).toContain("Аня");
     expect(text()).toContain("Пока нет открытых желаний");
-    expect(text()).not.toContain("Список не найден");
+    expect(text()).not.toContain("Вишлист недоступен");
     expect(text()).not.toContain("Для друзей");
     expect(text()).not.toContain("Секрет");
     expect(text()).not.toContain("Всем");
   });
 
-  it("not_found говорит «Список не найден» и не выдаёт пустой список", async () => {
+  it("not_found говорит «Вишлист недоступен» и не выдаёт пустой список", async () => {
     respond(notFoundAnswer());
     await mount();
 
-    expect(text()).toContain("Список не найден");
+    expect(text()).toContain("Вишлист недоступен");
+    expect(text()).toContain("Ссылка недействительна или доступ к вишлисту закрыт.");
+    expect(text()).toContain("Мой вишлист");
+    // The closed state never says «не найден»: it must not reveal whether the
+    // token exists but is hidden or does not exist at all.
+    expect(text()).not.toContain("Список не найден");
     expect(text()).not.toContain("Пока нет открытых желаний");
+    expect(document.querySelector('[data-testid="wishlist-owner"]')).toBeNull();
+    expect(document.querySelector('[data-testid="wishlist-unavailable"]')).not.toBeNull();
+  });
+
+  it("NOT_FOUND и not_found дают один и тот же нейтральный экран без данных", async () => {
+    respond({ ok: false, code: "NOT_FOUND", message: "" });
+    await mount();
+
+    expect(text()).toContain("Вишлист недоступен");
+    expect(text()).not.toContain("Список не найден");
+    expect(text()).not.toContain("Наушники");
     expect(document.querySelector('[data-testid="wishlist-owner"]')).toBeNull();
   });
 
@@ -312,7 +335,7 @@ describe("вишлист по ссылке: список", () => {
     respond({ ok: true, data: { access: "gifts", gifts: [gift()] } });
     await mount();
 
-    expect(text()).toContain("Список не найден");
+    expect(text()).toContain("Вишлист недоступен");
     expect(text()).not.toContain("Наушники");
   });
 

@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  containsEmulatorOrigin,
-  originHost,
-  validateBuildOrigins,
-} from "./api-origin";
+import { originHost, validateBuildOrigins } from "./api-origin";
 
 describe("originHost", () => {
   it("accepts a bare http(s) origin with an optional port", () => {
@@ -83,17 +79,5 @@ describe("validateBuildOrigins", () => {
     expect(
       validateBuildOrigins("web", { apiBase: "http://gift.example/api" }).errors.join(" "),
     ).toContain("without a path");
-  });
-});
-
-describe("containsEmulatorOrigin", () => {
-  it("finds the baked host in a bundle", () => {
-    expect(containsEmulatorOrigin('var a="http://10.0.2.2:3417";')).toBe(true);
-    expect(containsEmulatorOrigin("fetch(`http://10.0.2.2:3417/api/v1/me`)")).toBe(true);
-  });
-
-  it("does not match a longer address", () => {
-    expect(containsEmulatorOrigin("http://110.0.2.23:3417")).toBe(false);
-    expect(containsEmulatorOrigin("http://192.168.100.2:3417")).toBe(false);
   });
 });

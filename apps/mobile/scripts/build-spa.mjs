@@ -17,10 +17,8 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  containsEmulatorOrigin,
-  validateBuildOrigins,
-} from "../src/build/api-origin.ts";
+import { containsEmulatorOrigin } from "../../../scripts/emulator-origin.mjs";
+import { validateBuildOrigins } from "../src/build/api-origin.ts";
 
 const mobileRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaultOutput = path.join(mobileRoot, ".spa-export");

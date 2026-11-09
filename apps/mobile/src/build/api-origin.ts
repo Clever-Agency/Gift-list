@@ -4,10 +4,12 @@
  * The Expo web export bakes `EXPO_PUBLIC_API_BASE_URL` into the JS bundle. A
  * bundle built for the Android emulator (`http://10.0.2.2:...`) works there and
  * nowhere else: a phone, another laptop or a deployed site cannot resolve that
- * host. These helpers are used by both the mobile build CLI and the Next.js SPA
- * sync script, so a web/LAN build never ships that origin by accident. They stay
- * free of Node APIs to be testable and importable from the build scripts (Node
- * 24 strips the types on import).
+ * host. These origin checks are used by the mobile build CLI, so a web/LAN build
+ * never ships that origin by accident. The post-export bundle scan lives in
+ * `scripts/emulator-origin.mjs`, outside both apps, so no script has to import
+ * another package's TypeScript. These helpers stay free of Node APIs to be
+ * testable and importable from the build scripts (Node 24 strips the types on
+ * import).
  */
 
 export type SpaBuildMode = "web" | "lan" | "emulator";
@@ -131,9 +133,4 @@ export function validateBuildOrigins(
   }
 
   return { errors, warnings };
-}
-
-/** True when a built bundle still contains the emulator host. */
-export function containsEmulatorOrigin(source: string): boolean {
-  return /(^|[^\d.])10\.0\.2\.2(?=$|[^\d])/.test(source);
 }

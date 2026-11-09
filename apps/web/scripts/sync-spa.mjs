@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { containsEmulatorOrigin } from "../../mobile/src/build/api-origin.ts";
+import { containsEmulatorOrigin } from "../../../scripts/emulator-origin.mjs";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "../..");

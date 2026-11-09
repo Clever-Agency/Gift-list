@@ -85,43 +85,58 @@ export default function PublicWishlistScreen() {
     let cancelled = false;
 
     async function requestWishlist() {
-      const result = await fetchPublicWishlist(currentToken);
+      let result = await fetchPublicWishlist(currentToken);
       if (cancelled) return;
-      if (result.ok) {
+
+      // A stale token must not be reported as a network failure: the link route
+      // needs no session at all. Drop the session and repeat the read once as a
+      // guest; only the retry's own answer decides what the visitor sees.
+      if (!result.ok && "code" in result && result.code === "UNAUTHENTICATED") {
+        const signedOut = await auth.signOut();
+        if (cancelled) return;
+        if (!signedOut.ok) {
+          // Signing out failed on the network, so the network text is exact here.
+          setState({ status: "error", kind: "network" });
+          setToast({ message: t("form.network"), tone: "error" });
+          return;
+        }
+        result = await fetchPublicWishlist(currentToken);
+        if (cancelled) return;
+      }
+
+      const answer = result;
+      if (answer.ok) {
         setState(
-          result.access === "not_found"
+          answer.access === "not_found"
             ? { status: "missing" }
             : {
                 status: "ready",
                 token: currentToken,
-                gifts: result.gifts,
-                owner: result.owner,
+                gifts: answer.gifts,
+                owner: answer.owner,
               },
         );
         return;
       }
-      if ("code" in result && result.code === "UNAUTHENTICATED") {
-        // The link route itself never requires a session; a stale token is simply
-        // cleared and the same public read is offered again.
-        await auth.signOut();
-        if (!cancelled) {
-          setState({ status: "error", kind: "network" });
-          setToast({ message: t("form.network"), tone: "error" });
-        }
+      if ("code" in answer && answer.code === "UNAUTHENTICATED") {
+        // Even the guest retry was rejected: this is a broken answer, not a
+        // network problem and not a stale session any more.
+        setState({ status: "error", kind: "generic" });
+        setToast({ message: common("errors.generic"), tone: "error" });
         return;
       }
-      if ("code" in result && result.code === "NOT_FOUND") {
+      if ("code" in answer && answer.code === "NOT_FOUND") {
         setState({ status: "missing" });
         return;
       }
-      const network = "network" in result;
+      const network = "network" in answer;
       setState({ status: "error", kind: network ? "network" : "generic" });
       setToast({
         message: network
           ? t("form.network")
-          : "invalid" in result
+          : "invalid" in answer
             ? common("errors.generic")
-            : common(`errors.code.${result.code}`),
+            : common(`errors.code.${answer.code}`),
         tone: "error",
       });
     }

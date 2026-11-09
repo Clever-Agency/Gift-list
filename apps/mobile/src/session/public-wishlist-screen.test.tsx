@@ -204,6 +204,35 @@ describe("вишлист по ссылке: вход", () => {
     expect(store.clearSessionToken).toHaveBeenCalled();
   });
 
+  it("протухший токен в чтении списка: выходит и сразу повторяет чтение как гость", async () => {
+    let linkReads = 0;
+    function answer(path: string) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      if (String(path).startsWith("/api/v1/l/")) {
+        linkReads += 1;
+        return Promise.resolve(
+          linkReads === 1
+            ? { ok: false, code: "UNAUTHENTICATED", message: "" }
+            : giftsAnswer([gift()]),
+        );
+      }
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
+    }
+    api.apiRequest.mockImplementation(answer);
+    await mount();
+
+    expect(linkReads).toBe(2);
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(text()).toContain("Аня");
+    expect(text()).toContain("Наушники");
+    // The stale session is not a network failure: no network error or toast.
+    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
   it("сетевая ошибка сессии не уводит на вход: список читается как для гостя", async () => {
     respond(giftsAnswer([gift()]), { ok: false, network: true });
     await mount();
@@ -279,6 +308,8 @@ describe("вишлист по ссылке: список", () => {
 
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/l/tok_1");
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+    // L8: the owner is the only level-1 heading on the page.
+    expect(container.querySelectorAll('[role="heading"][aria-level="1"]')).toHaveLength(1);
     expect(text()).toContain("Аня");
     expect(text()).toContain("@anya");
     expect(text()).toContain("Наушники");
@@ -332,6 +363,8 @@ describe("вишлист по ссылке: список", () => {
     expect(text()).not.toContain("Пока нет открытых желаний");
     expect(document.querySelector('[data-testid="wishlist-owner"]')).toBeNull();
     expect(document.querySelector('[data-testid="wishlist-unavailable"]')).not.toBeNull();
+    // L8: the closed state also has exactly one level-1 heading.
+    expect(container.querySelectorAll('[role="heading"][aria-level="1"]')).toHaveLength(1);
   });
 
   it("NOT_FOUND и not_found дают один и тот же нейтральный экран без данных", async () => {

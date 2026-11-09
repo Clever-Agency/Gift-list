@@ -299,9 +299,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   // keyboard users land straight in the input (and the phone opens the keyboard).
   useEffect(
     function focusCustomTagEditor() {
-      if (customTagOpen) {
-        (customTagInputRef.current as { focus?: () => void } | null)?.focus?.();
-      }
+      // UI5: the editor is a field of the page too — scroll it into view before
+      // focusing, exactly like the other invalid fields.
+      if (customTagOpen) focusField(customTagInputRef.current);
     },
     [customTagOpen],
   );
@@ -620,7 +620,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       // open the open effect does not run, so the input takes focus directly.
       if (first === "tags" && tagIssue !== null) {
         if (customTagOpen) {
-          (customTagInputRef.current as { focus?: () => void } | null)?.focus?.();
+          focusField(customTagInputRef.current);
         } else {
           setCustomTagOpen(true);
         }

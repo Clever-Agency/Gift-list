@@ -1216,6 +1216,10 @@ describe("GiftForm: теги", () => {
       form.error.tagTooLong.replace("{max}", "30"),
     );
     expect(announce).toHaveBeenCalledWith(form.error.tagTooLong.replace("{max}", "30"));
+    // UI5: the invalid custom-tag field is focused and scrolled like any other field.
+    const input = customTagInput() as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect(scrollIntoView.mock.instances[0]).toBe(input);
   });
 
   it("изменение набора тегов делает форму грязной, возврат к исходному — снова чистой", async () => {

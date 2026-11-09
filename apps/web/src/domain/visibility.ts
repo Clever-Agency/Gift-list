@@ -3,6 +3,8 @@
 // `VisibilityGift` and hand the caller identity plus its relation facts over as
 // `VisibilityViewer` / `ViewerRelations`.
 
+import { isWishVisibleToEveryone } from "@gift-list/contracts";
+
 /** Closed `Gift.visibility` set (AD-7). */
 export type GiftVisibility = "PUBLIC" | "FRIENDS" | "SECRET";
 
@@ -97,7 +99,10 @@ function canSee(
     return viewer !== null && relations.friend;
   }
 
-  // PUBLIC: an anonymous visitor only counts when they hold the list token.
+  // PUBLIC: the same contract rule that decides whether the owner may copy a
+  // share link. An anonymous visitor still needs the list token; a signed-in one
+  // needs a relation (friend, subscriber, contact match) or the token.
+  if (!isWishVisibleToEveryone(gift)) return false;
   if (viewer === null) return relations.viaListToken;
   return (
     relations.friend ||

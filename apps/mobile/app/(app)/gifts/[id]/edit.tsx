@@ -1,5 +1,5 @@
 import type { GiftCard, GiftUpdate } from "@gift-list/contracts";
-import { Column, Heading, Pressable, Screen, ScrollView, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { useWindowDimensions } from "react-native";
@@ -25,7 +25,9 @@ import {
   giftTagsEqual,
 } from "@/ui/gift-form-tags";
 import { PrimaryButton } from "@/ui/primary-button";
-import { WishCardSkeleton } from "@/ui/skeleton";
+import { SessionErrorScreen } from "@/ui/session-error-screen";
+import { SessionLoadingScreen } from "@/ui/session-loading-screen";
+import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useTagCatalog } from "@/ui/use-tag-catalog";
 
@@ -185,8 +187,12 @@ export default function EditGiftScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId, id, attempt]);
 
+  if (auth.state.status === "error") {
+    return <SessionErrorScreen size="form" onRetry={auth.retry} />;
+  }
+
   if (auth.state.status !== "ready") {
-    return null;
+    return <SessionLoadingScreen size="form" />;
   }
 
   function retry() {
@@ -420,89 +426,94 @@ export default function EditGiftScreen() {
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: giftForm("pageTitle.edit", { brand }) }} />
         {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
-        <Column
-          size="form"
-          flex={1}
-          paddingHorizontal={gutter}
-          paddingTop="$page-gutter"
-          gap="$2"
-        >
-          <Text kind="display-sm" tone="primary" textAlign="center">
-            {common("brandName", { brand })}
-          </Text>
-          <Heading level={1}>{giftForm("title.edit")}</Heading>
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{
-              paddingTop: spacing["grid-gap"] / 2,
-              paddingBottom: spacing["section-gap"],
-            }}
-            keyboardShouldPersistTaps="handled"
-          >
-            {state.status === "loading" ? (
-              // The list's skeleton, announced the same way (EXPERIENCE → «Загрузка»).
-              <YStack accessible aria-busy aria-label={giftForm("loading")}>
-                <WishCardSkeleton width={skeletonWidth} />
-              </YStack>
-            ) : state.status === "error" ? (
-              <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
-                <Text tone="muted" textAlign="center">
-                  {state.kind === "network"
-                    ? giftForm("loadError")
-                    : giftForm("loadErrorGeneric")}
-                </Text>
-                <PrimaryButton label={giftForm("retry")} onPress={retry} />
-              </YStack>
-            ) : state.status === "missing" ? (
-              <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
-                <Text tone="muted" textAlign="center">
-                  {giftForm("giftNotFound")}
-                </Text>
-                <PrimaryButton label={giftForm("backToList")} onPress={backToList} />
-              </YStack>
-            ) : (
-              <>
-                <GiftForm
-                  // `GiftForm` reads `initialValues` once, so another wish needs a remount.
-                  key={state.gift.id}
-                  ref={formRef}
-                  initialValues={toFormValues(state.gift)}
-                  submitting={submitting}
-                  onSubmit={submit}
-                  submitLabel={giftForm("action.save")}
-                  serverError={serverError}
-                  submitRequest={submitRequest}
-                  onDirtyChange={setDirty}
-                  onCancel={cancel}
-                  visibilityLocked={state.gift.status !== "OPEN"}
-                  quantityLocked={state.gift.status !== "OPEN"}
-                  tagCatalog={tagCatalog.state}
-                  onRetryTagCatalog={tagCatalog.retry}
-                />
-                {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
-                {state.gift.status === "OPEN" ? (
-                  // Secondary destructive action under the form: text only, 44×44
-                  // (`DESIGN.md` → buttons).
-                  <Pressable
-                    ref={deleteButtonRef}
-                    role="button"
-                    aria-label={giftForm("delete.action")}
-                    onPress={startDelete}
-                    alignSelf="flex-start"
-                    justifyContent="center"
-                    minHeight="$touch-target"
-                    minWidth="$touch-target"
-                    paddingHorizontal="$3"
-                  >
-                    <Text kind="button" tone="destructive">
-                      {giftForm("delete.action")}
+        <PageScroll testID="gift-edit-page" keyboardShouldPersistTaps="handled">
+          <PageContainer>
+            <Column
+              size="form"
+              flexGrow={1}
+              paddingHorizontal={gutter}
+              paddingTop="$page-gutter"
+              gap="$2"
+            >
+              <Text kind="display-sm" tone="primary" textAlign="center">
+                {common("brandName", { brand })}
+              </Text>
+              <Heading level={1}>{giftForm("title.edit")}</Heading>
+              <YStack
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+              >
+                {state.status === "loading" ? (
+                  // The same named busy region as the list, with one form-width card.
+                  <LoadingCards
+                    testID="gift-edit-loading"
+                    label={giftForm("loading")}
+                    width={skeletonWidth}
+                    count={1}
+                  />
+                ) : state.status === "error" ? (
+                  <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
+                    <Text tone="muted" textAlign="center">
+                      {state.kind === "network"
+                        ? giftForm("loadError")
+                        : giftForm("loadErrorGeneric")}
                     </Text>
-                  </Pressable>
-                ) : null}
-              </>
-            )}
-          </ScrollView>
-        </Column>
+                    <PrimaryButton label={giftForm("retry")} onPress={retry} />
+                  </YStack>
+                ) : state.status === "missing" ? (
+                  <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
+                    <Text tone="muted" textAlign="center">
+                      {giftForm("giftNotFound")}
+                    </Text>
+                    <PrimaryButton label={giftForm("backToList")} onPress={backToList} />
+                  </YStack>
+                ) : (
+                  <>
+                    <GiftForm
+                      // `GiftForm` reads `initialValues` once, so another wish needs a remount.
+                      key={state.gift.id}
+                      ref={formRef}
+                      initialValues={toFormValues(state.gift)}
+                      submitting={submitting}
+                      onSubmit={submit}
+                      submitLabel={giftForm("action.save")}
+                      serverError={serverError}
+                      submitRequest={submitRequest}
+                      onDirtyChange={setDirty}
+                      onCancel={cancel}
+                      visibilityLocked={state.gift.status !== "OPEN"}
+                      quantityLocked={state.gift.status !== "OPEN"}
+                      tagCatalog={tagCatalog.state}
+                      onRetryTagCatalog={tagCatalog.retry}
+                    />
+                    {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
+                    {state.gift.status === "OPEN" ? (
+                      // Secondary destructive action under the form: text only, 44×44
+                      // (`DESIGN.md` → buttons).
+                      <Pressable
+                        ref={deleteButtonRef}
+                        role="button"
+                        aria-label={giftForm("delete.action")}
+                        onPress={startDelete}
+                        alignSelf="flex-start"
+                        justifyContent="center"
+                        minHeight="$touch-target"
+                        minWidth="$touch-target"
+                        paddingHorizontal="$3"
+                      >
+                        <Text kind="button" tone="destructive">
+                          {giftForm("delete.action")}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </>
+                )}
+              </YStack>
+              <SiteFooter />
+            </Column>
+          </PageContainer>
+        </PageScroll>
         {state.status === "ready" ? (
           <ConfirmDialog
             variant="confirm"

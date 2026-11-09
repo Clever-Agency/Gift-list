@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "./auth-context";
 import { consumeAuthEmail, forgetAuthEmail, rememberAuthEmail } from "./auth-navigation";
+import { settle } from "@/test/dom";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -93,14 +94,14 @@ describe("AuthProvider", () => {
     expect(auth().state).toEqual({ status: "anonymous" });
   });
 
-  it("при сетевой ошибке не очищает токен", async () => {
+  it("при сетевой ошибке не очищает токен и переходит в error, а не anonymous", async () => {
     api.apiRequest.mockResolvedValue({ ok: false, network: true });
     await mount();
     expect(store.clearSessionToken).not.toHaveBeenCalled();
-    expect(auth().state).toEqual({ status: "anonymous" });
+    expect(auth().state).toEqual({ status: "error" });
   });
 
-  it("при другой ошибке API не очищает токен", async () => {
+  it("при другой ошибке API не очищает токен и тоже переходит в error", async () => {
     api.apiRequest.mockResolvedValue({
       ok: false,
       code: "RATE_LIMITED",
@@ -108,7 +109,43 @@ describe("AuthProvider", () => {
     });
     await mount();
     expect(store.clearSessionToken).not.toHaveBeenCalled();
-    expect(auth().state).toEqual({ status: "anonymous" });
+    expect(auth().state).toEqual({ status: "error" });
+  });
+
+  it("retry перечитывает /api/v1/me и переводит error в ready", async () => {
+    api.apiRequest.mockResolvedValueOnce({ ok: false, network: true });
+    await mount();
+    expect(auth().state).toEqual({ status: "error" });
+
+    api.apiRequest.mockResolvedValueOnce({ ok: true, data: user });
+    await act(async () => auth().retry());
+    await settle();
+
+    expect(api.apiRequest).toHaveBeenCalledTimes(2);
+    expect(api.apiRequest).toHaveBeenLastCalledWith("/api/v1/me");
+    expect(auth().state).toEqual({ status: "ready", user });
+  });
+
+  it("retry показывает loading, пока второй ответ не пришёл", async () => {
+    api.apiRequest.mockResolvedValueOnce({ ok: false, network: true });
+    await mount();
+    expect(auth().state).toEqual({ status: "error" });
+
+    let resolveSecond: ((value: unknown) => void) | undefined;
+    api.apiRequest.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+    );
+    await act(async () => auth().retry());
+    expect(auth().state).toEqual({ status: "loading" });
+
+    await act(async () => {
+      resolveSecond?.({ ok: true, data: user });
+    });
+    await settle();
+    expect(auth().state).toEqual({ status: "ready", user });
   });
 
   it("без часового пояса отправляет пояс устройства и обновляет пользователя", async () => {

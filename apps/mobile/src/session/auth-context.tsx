@@ -1,6 +1,7 @@
 import type { Me } from "@gift-list/contracts";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -13,22 +14,40 @@ import { clearSessionToken } from "@/platform/session-token";
 import { forgetAuthEmail } from "@/session/auth-navigation";
 import { deviceTimeZone } from "@/session/device-time-zone";
 
+/**
+ * The session read has four outcomes. `anonymous` means the server answered
+ * `UNAUTHENTICATED`; `error` means the answer never proved anything about the
+ * session (no network, a timeout or a broken response), so the app must not
+ * pretend the visitor is signed out. Public screens continue as a guest and
+ * guarded screens offer a retry instead of sending the user to login.
+ */
 type AuthState =
   | { status: "loading" }
   | { status: "anonymous" }
-  | { status: "ready"; user: Me };
+  | { status: "ready"; user: Me }
+  | { status: "error" };
 
 type AuthContextValue = {
   state: AuthState;
   setUser: (user: Me) => void;
   signOut: () => Promise<{ ok: true } | { ok: false; network: true }>;
+  /** Reread `/api/v1/me` after a network failure; also used by retry views. */
+  retry: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
   const attempted = useRef<string | null>(null);
+
+  const retry = useCallback(function retrySessionRead() {
+    // A retry starts from the loading state, so a guarded screen shows the shared
+    // skeleton while the second read is in flight instead of the stale error.
+    setState({ status: "loading" });
+    setAttempt((value) => value + 1);
+  }, []);
 
   useEffect(function loadSession() {
     let cancelled = false;
@@ -42,15 +61,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (!("network" in result) && result.code === "UNAUTHENTICATED") {
         await clearSessionToken();
+        if (cancelled) return;
+        setState({ status: "anonymous" });
+        return;
       }
-      setState({ status: "anonymous" });
+      // Anything else — a timeout, a broken envelope or a transient API error —
+      // leaves the stored token alone and is not proof that the visitor is a guest.
+      setState({ status: "error" });
     }
 
     void requestMe();
     return function stopSessionLoad() {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(function syncTimeZone() {
     if (state.status !== "ready" || state.user.timeZone) return;
@@ -91,8 +115,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     }
 
-    return { state, setUser, signOut };
-  }, [state]);
+    return { state, setUser, signOut, retry };
+  }, [state, retry]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

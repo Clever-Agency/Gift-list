@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { controlByLabel, typeInto } from "@/test/dom";
+import { click, controlByLabel, typeInto } from "@/test/dom";
 import { GiftForm, type GiftFormValues } from "@/ui/gift-form";
 import { formatMinorToPrice } from "@/ui/gift-price";
 
@@ -36,8 +36,12 @@ type AppCatalog = {
       tagsError: string;
       tagsRetry: string;
       tagCustom: string;
+      tagCustomLive: string;
       tagCustomPlaceholder: string;
       tagAdd: string;
+      tagSave: string;
+      tagCancel: string;
+      tagEdit: string;
       tagCounter: string;
       tagRemove: string;
     };
@@ -91,6 +95,8 @@ const catalog = {
 
 /** `AccessibilityInfo` lives in the React Native mock below; the announcement is an assertion. */
 const announce = vi.hoisted(() => vi.fn());
+/** UI5: happy-dom has no layout, so the scroll call is the observable effect. */
+const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
@@ -148,6 +154,11 @@ let onSubmitMock: (values: GiftFormValues) => void;
 
 beforeEach(() => {
   announce.mockClear();
+  scrollIntoView.mockClear();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   host = createRoot(container);
@@ -184,6 +195,13 @@ function field(label: string): HTMLInputElement {
   );
   expect(input, `поле «${label}»`).toBeDefined();
   return input as HTMLInputElement;
+}
+
+/** The custom-tag input, without the assertion of `field` (it may be closed). */
+function customTagInput(): HTMLInputElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLInputElement>("input, textarea")).find(
+    (node) => node.getAttribute("aria-label") === form.field.tagCustom,
+  );
 }
 
 /** The field box: its label, input and the inline message under it. */
@@ -239,6 +257,23 @@ async function press(label: string) {
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
+}
+
+/** UI4: the custom-tag field is hidden until the «Свой тег» chip opens it. */
+async function openCustomTag() {
+  await press(form.field.tagCustom);
+}
+
+function customTagTrigger(): HTMLElement {
+  const trigger = container.querySelector('[data-testid="custom-tag-trigger"]');
+  expect(trigger, "чип «Свой тег»").not.toBeNull();
+  return trigger as HTMLElement;
+}
+
+function editCustomTagButton(name: string): HTMLElement {
+  const button = controlByLabel(form.field.tagEdit.replace("{name}", name), container);
+  expect(button, `кнопка «Редактировать тег ${name}»`).toBeDefined();
+  return button as HTMLElement;
 }
 
 function submit() {
@@ -658,6 +693,10 @@ describe("GiftForm: теги", () => {
     expect(text()).toContain(form.field.tags);
     expect(text()).toContain(form.field.tagsLoading);
     expect(checkbox("мечта")).toBeUndefined();
+    // UI4: the «Свой тег» chip stays available; the field appears after a press.
+    expect(button(form.field.tagCustom)).toBeDefined();
+    expect(customTagInput()).toBeUndefined();
+    await openCustomTag();
     expect(field(form.field.tagCustom)).toBeDefined();
   });
 
@@ -703,6 +742,7 @@ describe("GiftForm: теги", () => {
     // Selected tags are still shown; the empty notice would contradict them.
     expect(tagIsSelected("мечта")).toBe(true);
 
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
     await submit();
@@ -785,6 +825,7 @@ describe("GiftForm: теги", () => {
     const onSubmit = await mount({ tagCatalog: catalog });
 
     await type(form.field.title, "Свитер");
+    await openCustomTag();
     await type(form.field.tagCustom, "  своё  ");
     expect(fieldText(form.field.tagCustom)).toContain("из 30");
     await press(form.field.tagAdd);
@@ -801,6 +842,7 @@ describe("GiftForm: теги", () => {
   it("дубль своего тега и текст длиннее 30 кодовых точек не добавляются", async () => {
     await mount({ tagCatalog: catalog });
 
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
     await type(form.field.tagCustom, "  своё  ");
@@ -817,6 +859,7 @@ describe("GiftForm: теги", () => {
   it("NUL в своём теге отклоняется до запроса", async () => {
     await mount({ tagCatalog: catalog });
 
+    await openCustomTag();
     await type(form.field.tagCustom, "сво\u0000ё");
     await press(form.field.tagAdd);
 
@@ -825,6 +868,7 @@ describe("GiftForm: теги", () => {
 
   it("пустой «Добавить тег» недоступен, пока поле пустое", async () => {
     await mount({ tagCatalog: catalog });
+    await openCustomTag();
 
     const add = button(form.field.tagAdd) as HTMLButtonElement | undefined;
     expect(add).toBeDefined();
@@ -834,9 +878,266 @@ describe("GiftForm: теги", () => {
     expect(button(form.field.tagAdd)?.getAttribute("aria-disabled")).toBe("false");
   });
 
+  it("UI4: «Свой тег» — первый чип полосы, со звездой, и открывает поле", async () => {
+    await mount({ tagCatalog: catalog });
+
+    const group = container.querySelector(
+      `[role="group"][aria-label="${form.field.tags}"]`,
+    ) as HTMLElement;
+    const trigger = group.querySelector('[data-testid="custom-tag-trigger"]') as HTMLElement;
+    expect(trigger).not.toBeNull();
+    expect(trigger.getAttribute("aria-label")).toBe(form.field.tagCustom);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.querySelector('[data-testid="custom-tag-trigger-star"]')).not.toBeNull();
+
+    // The trigger stands before every fixed tag.
+    const firstFixed = group.querySelector('[role="checkbox"]') as HTMLElement;
+    expect(
+      trigger.compareDocumentPosition(firstFixed) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Empty «Свой тег»: no preview and no field until the press.
+    expect(container.querySelector('[data-testid="custom-tag-preview"]')).toBeNull();
+    expect(customTagInput()).toBeUndefined();
+
+    await openCustomTag();
+
+    expect(customTagInput()).toBeDefined();
+    expect(button(form.field.tagAdd)).toBeDefined();
+    const openedGroup = container.querySelector(
+      `[role="group"][aria-label="${form.field.tags}"]`,
+    ) as HTMLElement;
+    const opened = openedGroup.querySelector('[data-testid="custom-tag-trigger"]') as HTMLElement;
+    expect(opened.getAttribute("aria-expanded")).toBe("true");
+    const editor = document.getElementById(opened.getAttribute("aria-controls") as string);
+    expect(editor).not.toBeNull();
+  });
+
+  it("UI4: набранный текст live показывается в первом теге, отдельного превью нет", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    const trigger = customTagTrigger();
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(trigger.getAttribute("aria-label")).toBe(form.field.tagCustom);
+
+    await type(form.field.tagCustom, "  своё  ");
+
+    expect(trigger.textContent).toBe("своё");
+    // The draft is visible; the accessible name keeps the control's purpose.
+    expect(trigger.getAttribute("aria-label")).toBe(
+      form.field.tagCustomLive.replace("{text}", "своё"),
+    );
+    expect(container.querySelector('[data-testid="custom-tag-preview"]')).toBeNull();
+    // Not committed yet: no remove control, the input keeps the raw text.
+    expect(button("Убрать тег своё")).toBeUndefined();
+    expect(field(form.field.tagCustom).value).toBe("  своё  ");
+
+    await type(form.field.tagCustom, "   ");
+
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(trigger.getAttribute("aria-label")).toBe(form.field.tagCustom);
+  });
+
+  it("UI4: повторное нажатие на тег закрывает поле, возвращает «Свой тег» и фокус", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    const trigger = customTagTrigger();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(customTagInput()).toBeDefined();
+
+    await type(form.field.tagCustom, "своё");
+    expect(trigger.textContent).toBe("своё");
+
+    await click(trigger);
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(customTagInput()).toBeUndefined();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UI4: Escape закрывает поле и возвращает фокус на тег", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    await type(form.field.tagCustom, "своё");
+
+    await act(async () => {
+      customTagInput()?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+
+    const trigger = customTagTrigger();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(customTagInput()).toBeUndefined();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UI4: «Отмена» закрывает поле без добавления тега и возвращает фокус", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    await type(form.field.tagCustom, "своё");
+
+    await press(form.field.tagCancel);
+
+    const trigger = customTagTrigger();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.textContent).toBe(form.field.tagCustom);
+    expect(customTagInput()).toBeUndefined();
+    expect(button("Убрать тег своё")).toBeUndefined();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UI4: добавленный свой тег редактируется в том же поле, текст меняется в теге live", async () => {
+    const onSubmit = await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }] },
+    });
+
+    await click(editCustomTagButton("своё"));
+
+    expect(field(form.field.tagCustom).value).toBe("своё");
+    expect(document.activeElement).toBe(field(form.field.tagCustom));
+    expect(button(form.field.tagSave)).toBeDefined();
+    expect(button(form.field.tagAdd)).toBeUndefined();
+    expect(customTagTrigger().getAttribute("aria-expanded")).toBe("true");
+
+    await type(form.field.tagCustom, "новое");
+
+    const chip = container.querySelector('[data-testid="custom-tag-0"]') as HTMLElement;
+    expect(chip.textContent).toContain("новое");
+    expect(button("Убрать тег своё")).toBeDefined();
+
+    await press(form.field.tagSave);
+
+    expect(text()).toContain("новое");
+    expect(text()).not.toContain("своё");
+    expect(customTagInput()).toBeUndefined();
+
+    await submit();
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: [{ text: "новое" }] }),
+    );
+  });
+
+  it("UI4: редактирование в дубль показывает ту же ошибку и не меняет тег", async () => {
+    await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }, { text: "другое" }] },
+    });
+
+    await click(editCustomTagButton("другое"));
+    await type(form.field.tagCustom, "своё");
+    await press(form.field.tagSave);
+
+    expect(fieldText(form.field.tagCustom)).toContain(form.error.tagDuplicate);
+    expect(customTagInput()).toBeDefined();
+    // The live label shows the invalid draft, but the tag set itself is unchanged.
+    expect(container.querySelector('[data-testid="custom-tag-0"]')?.textContent).toContain("своё");
+    expect(container.querySelector('[data-testid="custom-tag-1"]')?.textContent).toContain("своё");
+
+    await press(form.field.tagCancel);
+    expect(container.querySelector('[data-testid="custom-tag-0"]')?.textContent).toContain("своё");
+    expect(container.querySelector('[data-testid="custom-tag-1"]')?.textContent).toContain("другое");
+  });
+
+  it("UI4: Escape при редактировании отменяет правку и оставляет исходный тег", async () => {
+    await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }] },
+    });
+    await click(editCustomTagButton("своё"));
+    await type(form.field.tagCustom, "новое");
+
+    await act(async () => {
+      customTagInput()?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+
+    const trigger = customTagTrigger();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[data-testid="custom-tag-0"]')?.textContent).toContain("своё");
+    expect(text()).not.toContain("новое");
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("UI4: удаление редактируемого тега закрывает редактор и возвращает фокус", async () => {
+    await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }] },
+    });
+    await click(editCustomTagButton("своё"));
+
+    await press("Убрать тег своё");
+
+    const trigger = customTagTrigger();
+    expect(customTagInput()).toBeUndefined();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
+    expect(text()).not.toContain("своё");
+  });
+
+  it("UI4: открытие редактирования без правок не делает форму грязной", async () => {
+    const onDirtyChange = vi.fn();
+    await mount({
+      tagCatalog: catalog,
+      initialValues: { title: "Свитер", tags: [{ text: "своё" }] },
+      onDirtyChange,
+    });
+
+    await click(editCustomTagButton("своё"));
+    expect(onDirtyChange).not.toHaveBeenCalled();
+
+    await type(form.field.tagCustom, "новое");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    await press(form.field.tagCancel);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("UI4: добавленный свой тег идёт до фиксированных и несёт звезду", async () => {
+    await mount({ tagCatalog: catalog });
+    await openCustomTag();
+    await type(form.field.tagCustom, "своё");
+    await press(form.field.tagAdd);
+
+    const group = container.querySelector(
+      `[role="group"][aria-label="${form.field.tags}"]`,
+    ) as HTMLElement;
+    const custom = group.querySelector('[data-testid="custom-tag-0"]') as HTMLElement;
+    const fixed = group.querySelector('[role="checkbox"][aria-label="мечта"]') as HTMLElement;
+
+    expect(custom.textContent).toContain("своё");
+    expect(custom.querySelector('[data-testid="custom-tag-0-star"]')).not.toBeNull();
+    expect(
+      custom.compareDocumentPosition(fixed) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("UI4: клавиатура — Enter на «Свой тег» открывает поле, Enter в поле добавляет тег", async () => {
+    await mount({ tagCatalog: catalog });
+
+    const trigger = container.querySelector('[data-testid="custom-tag-trigger"]') as HTMLElement;
+    await act(async () => {
+      trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(customTagInput()).toBeDefined();
+
+    await type(form.field.tagCustom, "своё");
+    await act(async () => {
+      customTagInput()?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+
+    expect(button("Убрать тег своё")).toBeDefined();
+  });
+
   it("удаление тега снимает ошибку дубля: после удаления его снова можно добавить", async () => {
     await mount({ tagCatalog: catalog });
 
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     await press(form.field.tagAdd);
     await type(form.field.tagCustom, "своё");
@@ -856,6 +1157,7 @@ describe("GiftForm: теги", () => {
     const thirty = "😀".repeat(30);
 
     await type(form.field.title, "Свитер");
+    await openCustomTag();
     await type(form.field.tagCustom, thirty);
     await press(form.field.tagAdd);
     expect(fieldText(form.field.tagCustom)).not.toContain(form.error.tagTooLong);
@@ -891,6 +1193,7 @@ describe("GiftForm: теги", () => {
     const onSubmit = await mount({ tagCatalog: catalog });
 
     await type(form.field.title, "Свитер");
+    await openCustomTag();
     await type(form.field.tagCustom, "  своё  ");
     await submit();
 
@@ -904,6 +1207,7 @@ describe("GiftForm: теги", () => {
     const onSubmit = await mount({ tagCatalog: catalog });
 
     await type(form.field.title, "Свитер");
+    await openCustomTag();
     await type(form.field.tagCustom, "😀".repeat(31));
     await submit();
 
@@ -912,6 +1216,10 @@ describe("GiftForm: теги", () => {
       form.error.tagTooLong.replace("{max}", "30"),
     );
     expect(announce).toHaveBeenCalledWith(form.error.tagTooLong.replace("{max}", "30"));
+    // UI5: the invalid custom-tag field is focused and scrolled like any other field.
+    const input = customTagInput() as HTMLInputElement;
+    expect(document.activeElement).toBe(input);
+    expect(scrollIntoView.mock.instances[0]).toBe(input);
   });
 
   it("изменение набора тегов делает форму грязной, возврат к исходному — снова чистой", async () => {
@@ -1002,6 +1310,7 @@ describe("GiftForm: теги", () => {
       tags: [{ catalogId: "tag_dream", label: "мечта" }],
     };
     await mount({ tagCatalog: catalog, initialValues });
+    await openCustomTag();
     await type(form.field.tagCustom, "своё");
     // Submitting moves the pending text into the tag set at the end.
     await submit();
@@ -1084,6 +1393,65 @@ describe("GiftForm: теги", () => {
     expect(container.querySelectorAll('[role="checkbox"][aria-invalid="true"]')).toHaveLength(0);
     const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
     expect(group?.getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+describe("GiftForm: первый невалидный (UI5)", () => {
+  it("submit без названия фокусирует название, прокручивает и показывает ошибку с красной рамкой", async () => {
+    await mount({ tagCatalog: catalog });
+
+    await submit();
+
+    const title = field(form.field.title);
+    expect(document.activeElement).toBe(title);
+    expect(title.getAttribute("aria-invalid")).toBe("true");
+    expect(fieldText(form.field.title)).toContain(form.error.titleRequired);
+    expect(getComputedStyle(title).borderColor).toBe("#B42318");
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "center",
+      inline: "nearest",
+      behavior: "auto",
+    });
+    expect(scrollIntoView.mock.instances[0]).toBe(title);
+  });
+
+  it("заполненное название пропускает фокус к первой невалидной ссылке", async () => {
+    await mount({ tagCatalog: catalog });
+    await type(form.field.title, "Свитер");
+    await type(form.field.link, "ftp://example.test/x");
+
+    await submit();
+
+    const link = field(form.field.link);
+    expect(document.activeElement).toBe(link);
+    expect(link.getAttribute("aria-invalid")).toBe("true");
+    expect(fieldText(form.field.link)).toContain(form.error.linkInvalid);
+    expect(scrollIntoView.mock.instances[0]).toBe(link);
+  });
+
+  it("ошибка сервера фокусирует своё поле", async () => {
+    await mount({
+      tagCatalog: catalog,
+      serverError: { field: "title", message: "Что-то не так" },
+    });
+
+    const title = field(form.field.title);
+    expect(document.activeElement).toBe(title);
+    expect(scrollIntoView.mock.instances[0]).toBe(title);
+  });
+
+  it("ошибка тегов фокусирует полосу тегов", async () => {
+    await mount({
+      tagCatalog: catalog,
+      serverError: { field: "tags", message: "Invalid input" },
+    });
+
+    const group = container.querySelector(
+      `[role="group"][aria-label="${form.field.tags}"]`,
+    ) as HTMLElement;
+    expect(document.activeElement).toBe(group);
+    expect(group.getAttribute("aria-invalid")).toBe("true");
+    expect(scrollIntoView.mock.instances[0]).toBe(group);
   });
 });
 

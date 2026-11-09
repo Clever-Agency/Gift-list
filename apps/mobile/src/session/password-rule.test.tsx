@@ -12,6 +12,8 @@ const GENERIC = "Проверьте введённые данные.";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const route = vi.hoisted(() => ({ params: {} as Record<string, string> }));
+/** UI5: happy-dom has no layout, so the scroll call is the observable effect. */
+const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/session/auth-context", () => ({
@@ -114,6 +116,11 @@ async function press(label: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  scrollIntoView.mockClear();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -127,6 +134,7 @@ afterEach(async () => {
 describe("требование к паролю", () => {
   it("на регистрации короткий пароль показывает подсказку, а после отправки — ошибку поля", async () => {
     await mount("register");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(toneText("hint")).toContain(RULE);
     expect(toneText("error")).not.toContain(RULE);
     expect(describedBy("Пароль")).toBe(RULE);
@@ -181,6 +189,7 @@ describe("требование к паролю", () => {
 
   it("на новом пароле короткий пароль показывает подсказку и ошибку, а длинный ответ сервера — общий текст", async () => {
     await mount("reset");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(toneText("hint")).toContain(RULE);
     expect(describedBy("Пароль")).toBe(RULE);
 
@@ -208,5 +217,32 @@ describe("требование к паролю", () => {
     expect(container.textContent ?? "").not.toContain(RULE);
     await fill("Пароль", "1234567");
     expect(container.textContent ?? "").not.toContain(RULE);
+  });
+});
+
+describe("первый невалидный (UI5)", () => {
+  it("короткий пароль на регистрации фокусирует поле пароля и прокручивает к нему", async () => {
+    await mount("register");
+    await fill("Email", "a@b.test");
+    await fill("Пароль", "1234567");
+    await fill("Имя", "Анна");
+    await fill("Ник", "anna");
+
+    await press("Зарегистрироваться");
+
+    const password = container.querySelector<HTMLInputElement>('input[aria-label="Пароль"]');
+    expect(document.activeElement).toBe(password);
+    expect(scrollIntoView.mock.instances[0]).toBe(password);
+  });
+
+  it("короткий пароль на сбросе фокусирует поле пароля и прокручивает к нему", async () => {
+    await mount("reset");
+    await fill("Пароль", "1234567");
+
+    await press("Сохранить пароль");
+
+    const password = container.querySelector<HTMLInputElement>('input[aria-label="Пароль"]');
+    expect(document.activeElement).toBe(password);
+    expect(scrollIntoView.mock.instances[0]).toBe(password);
   });
 });

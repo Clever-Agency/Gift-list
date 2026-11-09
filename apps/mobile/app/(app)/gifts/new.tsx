@@ -1,5 +1,5 @@
 import type { GiftInputDraft } from "@gift-list/contracts";
-import { Column, Heading, Screen, ScrollView, spacing, Text } from "@gift-list/ui";
+import { Column, Heading, PageContainer, PageScroll, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
@@ -18,6 +18,9 @@ import {
   type GiftFormValues,
 } from "@/ui/gift-form";
 import { giftTagInputs } from "@/ui/gift-form-tags";
+import { SessionErrorScreen } from "@/ui/session-error-screen";
+import { SessionLoadingScreen } from "@/ui/session-loading-screen";
+import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useTagCatalog } from "@/ui/use-tag-catalog";
 
@@ -86,7 +89,11 @@ export default function NewGiftScreen() {
     }
   }, [auth.state.status, sessionExpired]);
 
-  if (auth.state.status !== "ready") return null;
+  if (auth.state.status === "error") {
+    return <SessionErrorScreen size="form" onRetry={auth.retry} />;
+  }
+
+  if (auth.state.status !== "ready") return <SessionLoadingScreen size="form" />;
 
   async function save(values: GiftFormValues) {
     if (inFlight.current) return;
@@ -205,39 +212,41 @@ export default function NewGiftScreen() {
       <SafeAreaView style={{ flex: 1 }}>
         <Stack.Screen options={{ title: giftForm("pageTitle.create", { brand }) }} />
         {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
-        <Column
-          size="form"
-          flex={1}
-          paddingHorizontal={gutter}
-          paddingTop="$page-gutter"
-          gap="$2"
-        >
-          <Text kind="display-sm" tone="primary" textAlign="center">
-            {common("brandName", { brand })}
-          </Text>
-          <Heading level={1}>{giftForm("title.create")}</Heading>
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{
-              paddingTop: spacing["grid-gap"] / 2,
-              paddingBottom: spacing["section-gap"],
-            }}
-            keyboardShouldPersistTaps="handled"
-          >
-            <GiftForm
-              ref={formRef}
-              submitting={submitting}
-              onSubmit={submit}
-              submitLabel={giftForm("action.create")}
-              serverError={serverError}
-              submitRequest={submitRequest}
-              onDirtyChange={setDirty}
-              onCancel={cancel}
-              tagCatalog={tagCatalog.state}
-              onRetryTagCatalog={tagCatalog.retry}
-            />
-          </ScrollView>
-        </Column>
+        <PageScroll testID="gift-new-page" keyboardShouldPersistTaps="handled">
+          <PageContainer>
+            <Column
+              size="form"
+              flexGrow={1}
+              paddingHorizontal={gutter}
+              paddingTop="$page-gutter"
+              gap="$2"
+            >
+              <Text kind="display-sm" tone="primary" textAlign="center">
+                {common("brandName", { brand })}
+              </Text>
+              <Heading level={1}>{giftForm("title.create")}</Heading>
+              <YStack
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+              >
+                <GiftForm
+                  ref={formRef}
+                  submitting={submitting}
+                  onSubmit={submit}
+                  submitLabel={giftForm("action.create")}
+                  serverError={serverError}
+                  submitRequest={submitRequest}
+                  onDirtyChange={setDirty}
+                  onCancel={cancel}
+                  tagCatalog={tagCatalog.state}
+                  onRetryTagCatalog={tagCatalog.retry}
+                />
+              </YStack>
+              <SiteFooter />
+            </Column>
+          </PageContainer>
+        </PageScroll>
         {toast ? <ToastHost message={toast} onDismiss={dismissToast} /> : null}
         <ConfirmDialog
           variant="discard"

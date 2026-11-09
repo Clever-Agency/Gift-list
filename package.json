@@ -17,6 +17,9 @@
     "lint": "npm run lint -w @gift-list/web && npm run lint -w @gift-list/mobile && npm run lint -w @gift-list/contracts && npm run lint -w @gift-list/ui && node scripts/check-boundaries.mjs",
     "mobile:start": "npm run start -w @gift-list/mobile",
     "mobile:web": "npm run web -w @gift-list/mobile",
+    "mobile:build:web": "npm run build:web -w @gift-list/mobile",
+    "mobile:build:lan": "npm run build:lan -w @gift-list/mobile",
+    "mobile:build:emulator": "npm run build:emulator -w @gift-list/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "migrate": "npm run migrate -w @gift-list/web"
   },

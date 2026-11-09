@@ -237,6 +237,11 @@ async function press(label: string) {
   await settle(10);
 }
 
+/** UI4: the custom-tag field is hidden until the «Свой тег» chip opens it. */
+async function openCustomTag() {
+  await press("Свой тег");
+}
+
 /** A button inside the open confirm dialog: «Отмена» exists twice on a dirty form. */
 function dialogButton(label: string): HTMLElement | undefined {
   const dialog = dialogElement();
@@ -362,12 +367,16 @@ afterEach(async () => {
 });
 
 describe("новое желание: гейт сессии", () => {
-  it("пока сессия неизвестна, ничего не показывает и не уходит со страницы", async () => {
+  it("пока сессия неизвестна, показывает общий экран загрузки, а не пустую страницу", async () => {
     api.apiRequest.mockReturnValue(new Promise(() => {}));
     await mount();
 
     expect(navigation.replace).not.toHaveBeenCalled();
-    expect(text()).toBe("");
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(1);
   });
 
   it("аноним уходит на вход с возвратом в форму", async () => {
@@ -378,7 +387,17 @@ describe("новое желание: гейт сессии", () => {
       pathname: "/login",
       params: { next: "/gifts/new" },
     });
-    expect(text()).toBe("");
+    // Until the redirect lands the page still says «Загружаем», not blank.
+    expect(container.querySelector('[data-testid="session-loading"]')).not.toBeNull();
+  });
+
+  it("обрыв сети при проверке сессии: экран ошибки с «Повторить», без входа", async () => {
+    api.apiRequest.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+    expect(text()).toContain("Нет связи с сервером");
   });
 });
 
@@ -388,6 +407,7 @@ describe("новое желание: форма", () => {
     await mount();
 
     expect(text()).toContain("Новое желание");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(text()).toContain("Название");
     expect(text()).toContain("Кто видит");
     expect(text()).toContain("Сколько раз можно дарить");
@@ -430,6 +450,7 @@ describe("новое желание: форма", () => {
 
     await type("Название", "Наушники");
     await press("мечта");
+    await openCustomTag();
     await type("Свой тег", "  своё  ");
     await press("Добавить тег");
     await press("Добавить желание");
@@ -455,6 +476,7 @@ describe("новое желание: форма", () => {
     expect(text()).toContain("Сейчас нет доступных фиксированных тегов.");
 
     await type("Название", "Наушники");
+    await openCustomTag();
     await type("Свой тег", "своё");
     await press("Добавить тег");
     await press("Добавить желание");
@@ -464,12 +486,16 @@ describe("новое желание: форма", () => {
     );
   });
 
-  it("пока каталог грузится, форма и своё поле на месте", async () => {
+  it("пока каталог грузится, форма и «Свой тег» на месте", async () => {
     signedIn();
     tagApi.fetchTagCatalog.mockReturnValue(new Promise(() => {}));
     await mount();
 
     expect(text()).toContain("Загружаем теги…");
+    // UI4: the trigger is always there; the field appears after a press.
+    expect(button("Свой тег")).toBeDefined();
+    expect(container.querySelector('input[aria-label="Свой тег"]')).toBeNull();
+    await openCustomTag();
     expect(field("Свой тег")).toBeDefined();
     expect(button("Добавить тег")).toBeDefined();
   });
@@ -485,6 +511,7 @@ describe("новое желание: форма", () => {
     );
 
     await type("Название", "Наушники");
+    await openCustomTag();
     await type("Свой тег", "своё");
     await press("Добавить тег");
     await press("Добавить желание");

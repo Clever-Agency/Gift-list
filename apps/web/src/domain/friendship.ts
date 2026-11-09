@@ -5,7 +5,8 @@
 // Pending is the presence of a directed `FriendshipInvite` row, never a status.
 // An accepted friendship is one undirected `Friendship` edge stored as
 // `userLowId < userHighId`, so the pair can only exist once. A `Block` in either
-// direction forbids any write.
+// direction forbids any write. After a rejection an `InviteCooldown` row blocks
+// a new invite for 24 hours (AD-10 step 3, A-16).
 
 /** Canonical, ascending pair of a `Friendship` edge (AD-10). */
 export type FriendshipPair = {
@@ -30,13 +31,68 @@ export type FriendInviteOutcome = (typeof FRIEND_INVITE_OUTCOMES)[number];
 /** The two refusals of the protocol; both answer `FORBIDDEN` on the wire (AD-12). */
 export type FriendInviteRefusalReason = "SELF_INVITE" | "BLOCKED";
 
+/** 24 hours of A-16: a rejected invite cannot be repeated before this window. */
+export const INVITE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+/** The live rejection cooldown of one canonical pair, as stored. */
+export type InviteCooldownRecord = {
+  readonly until: Date;
+  /** Sender of the rejected invite (A); only that side may be shown "rejected". */
+  readonly rejectedFromUserId: string;
+};
+
+/**
+ * A live cooldown refuses the send. This is a closed domain outcome, not a wire
+ * payload: Story 4.2.2 maps it to `RATE_LIMITED` + `reason: INVITE_COOLDOWN` and
+ * `params: { hours }`. `hours` is a whole number, at least 1 while the window
+ * is open.
+ */
+export type FriendInviteCooldownRefusal = {
+  readonly ok: false;
+  readonly code: "RATE_LIMITED";
+  readonly reason: "INVITE_COOLDOWN";
+  readonly hours: number;
+};
+
 export type SendFriendInviteResult =
   | { readonly ok: true; readonly outcome: FriendInviteOutcome }
   | {
       readonly ok: false;
       readonly code: "FORBIDDEN";
       readonly reason: FriendInviteRefusalReason;
-    };
+    }
+  | FriendInviteCooldownRefusal;
+
+/** Closed success outcomes of accepting an incoming invite (Story 4.2.1). */
+export type FriendAcceptOutcome = "FRIENDS_CREATED" | "ALREADY_FRIENDS";
+
+/**
+ * Accepting is recipient-only: `fromUserId` is the inviter whose pending row is
+ * accepted, `viewerId` is the authenticated recipient. A missing pending row is
+ * a closed `NOT_FOUND` without a name; a Block is `FORBIDDEN` and writes
+ * nothing.
+ */
+export type AcceptFriendInviteResult =
+  | { readonly ok: true; readonly outcome: FriendAcceptOutcome }
+  | { readonly ok: false; readonly code: "FORBIDDEN" | "NOT_FOUND" };
+
+/**
+ * The actor is explicit (`viewerId`, the session) so the sender cannot pass the
+ * pending row's own direction and cancel their invite: the sender calling with
+ * their own id is a self pair, and any other direction has no pending row.
+ */
+export type IncomingInvite = {
+  readonly fromUserId: string;
+  readonly viewerId: string;
+};
+
+/**
+ * Rejecting is recipient-only as well. Success deletes exactly that pending
+ * invite and writes one cooldown row; no friendship edge is created.
+ */
+export type RejectFriendInviteResult =
+  | { readonly ok: true; readonly outcome: "REJECTED" }
+  | { readonly ok: false; readonly code: "FORBIDDEN" | "NOT_FOUND" };
 
 /**
  * The operations the protocol needs inside one transaction. The adapter answers
@@ -52,7 +108,8 @@ export interface FriendshipTransaction {
    * adapter therefore takes a transaction-scoped lock on the canonical pair as
    * the first statement of the transaction. Both directions use the same key,
    * so the second send waits, then sees the first committed invite and
-   * auto-accepts it (AD-10 step 2, ARCH-A12).
+   * auto-accepts it (AD-10 step 2, ARCH-A12). Accept, reject and send all take
+   * this one lock before reading the pair; there is no second lock design.
    */
   lockPair(pair: FriendshipPair): Promise<void>;
   /** A `Block` row between the two users in either direction (AD-10 step 4). */
@@ -62,10 +119,21 @@ export interface FriendshipTransaction {
   /** Whether `fromUserId` already has a pending invite to `toUserId`. */
   findPendingInvite(fromUserId: string, toUserId: string): Promise<boolean>;
   createInvite(fromUserId: string, toUserId: string): Promise<void>;
+  /** Removes exactly one directed invite (recipient rejection). */
+  deleteInvite(fromUserId: string, toUserId: string): Promise<void>;
   /** Inserts the single edge of the pair; the UNIQUE index is the last guard. */
   createFriendship(pair: FriendshipPair): Promise<void>;
   /** Removes every invite between the two users, in both directions (AD-10 step 2). */
   deleteInvitesBetween(firstUserId: string, secondUserId: string): Promise<void>;
+  /** The pair's rejection cooldown row, or `null` when none was ever written. */
+  findInviteCooldown(pair: FriendshipPair): Promise<InviteCooldownRecord | null>;
+  /** Upserts one row per pair; a repeated rejection refreshes `until`. */
+  createInviteCooldown(
+    pair: FriendshipPair,
+    rejectedFromUserId: string,
+    until: Date,
+  ): Promise<void>;
+  deleteInviteCooldown(pair: FriendshipPair): Promise<void>;
 }
 
 /** Transactional boundary around the protocol (Prisma `$transaction` behind it). */
@@ -87,9 +155,49 @@ function forbidden(reason: FriendInviteRefusalReason): SendFriendInviteResult {
   return { ok: false, code: "FORBIDDEN", reason };
 }
 
+const NOT_FOUND_RESULT = { ok: false, code: "NOT_FOUND" } as const;
+const FORBIDDEN_RESULT = { ok: false, code: "FORBIDDEN" } as const;
+
+/** Whole hours left until `until`, never below 1 while the window is open. */
+export function inviteCooldownHoursLeft(until: Date, now: Date = new Date()): number {
+  return Math.max(1, Math.ceil((until.getTime() - now.getTime()) / 3_600_000));
+}
+
+/**
+ * Whole hours left while the rejection window is live, or `null` once `until`
+ * has passed. `sendFriendInvite` and the profile DTO of Story 4.2.2 share this
+ * one calculation, so the wire never disagrees with the write gate.
+ */
+export function liveInviteCooldownHours(
+  record: InviteCooldownRecord,
+  now: Date = new Date(),
+): number | null {
+  return record.until.getTime() > now.getTime()
+    ? inviteCooldownHoursLeft(record.until, now)
+    : null;
+}
+
+/**
+ * The single accept primitive (AD-10 step 2, Story 4.2.1): one canonical
+ * `Friendship` edge, every invite of the pair deleted, and the pair's rejection
+ * cooldown cleared. Both the reverse-pending auto-accept in `sendFriendInvite`
+ * and an explicit `acceptFriendInvite` call this function, so there is exactly
+ * one accept protocol and no second insert.
+ */
+async function acceptFriendPair(
+  tx: FriendshipTransaction,
+  pair: FriendshipPair,
+  firstUserId: string,
+  secondUserId: string,
+): Promise<void> {
+  await tx.createFriendship(pair);
+  await tx.deleteInvitesBetween(firstUserId, secondUserId);
+  await tx.deleteInviteCooldown(pair);
+}
+
 /**
  * Send a friendship invite from an already authenticated viewer to a resolved
- * target user (AD-10, ARCH-A12, Story 4.1).
+ * target user (AD-10, ARCH-A12, Story 4.1; cooldown in Story 4.2.1).
  *
  * All checks and writes happen in one transaction:
  *
@@ -99,9 +207,12 @@ function forbidden(reason: FriendInviteRefusalReason): SendFriendInviteResult {
  * 2. a block in either direction refuses the write;
  * 3. an existing friendship is a no-op (`ALREADY_FRIENDS`);
  * 4. the sender's own pending invite is returned unchanged, never duplicated;
- * 5. a reverse pending invite auto-accepts the pair: one ordered edge, all pair
- *    invites deleted (`FRIENDS_CREATED`);
- * 6. otherwise exactly one directed invite is inserted (`INVITED`).
+ * 5. a live rejection cooldown refuses the send (`RATE_LIMITED` /
+ *    `INVITE_COOLDOWN` + hours); an expired row is deleted in this transaction;
+ * 6. a reverse pending invite auto-accepts the pair through the shared accept
+ *    primitive: one ordered edge, all pair invites deleted, cooldown cleared
+ *    (`FRIENDS_CREATED`);
+ * 7. otherwise exactly one directed invite is inserted (`INVITED`).
  *
  * The function never reads a wishlist and never fakes a subscriber; visibility
  * stays with `VisibilityPolicy` (AD-7).
@@ -130,15 +241,102 @@ export async function sendFriendInvite(
       return { ok: true, outcome: "PENDING" };
     }
 
-    // A reverse invite means both people asked; accept the pair right away,
-    // exactly as Story 4.2 will accept a single invite.
+    // A rejection left a 24-hour gate on the pair (A-16). Only `until > now`
+    // is live; an expired row is removed by this successful send, so no cron
+    // is needed. The gate is read before the reverse-pending auto-accept too:
+    // while the pair is cooling down no send may produce an edge, even if a
+    // legacy/inconsistent reverse row exists. Block still wins above and never
+    // touches the cooldown row.
+    const cooldown = await tx.findInviteCooldown(pair);
+    if (cooldown !== null) {
+      const now = new Date();
+      const hours = liveInviteCooldownHours(cooldown, now);
+      if (hours !== null) {
+        return {
+          ok: false,
+          code: "RATE_LIMITED",
+          reason: "INVITE_COOLDOWN",
+          hours,
+        };
+      }
+      await tx.deleteInviteCooldown(pair);
+    }
+
+    // A reverse invite means both people asked; accept the pair right away
+    // through the same primitive an explicit acceptance uses (Story 4.2.1).
     if (await tx.findPendingInvite(toUserId, fromUserId)) {
-      await tx.createFriendship(pair);
-      await tx.deleteInvitesBetween(fromUserId, toUserId);
+      await acceptFriendPair(tx, pair, fromUserId, toUserId);
       return { ok: true, outcome: "FRIENDS_CREATED" };
     }
 
     await tx.createInvite(fromUserId, toUserId);
     return { ok: true, outcome: "INVITED" };
+  });
+}
+
+/**
+ * Explicit acceptance of an incoming invite (Story 4.2.1, AD-10 step 2).
+ *
+ * `fromUserId` is the inviter and `viewerId` is the authenticated recipient;
+ * only a pending row in exactly this direction is accepted, so the sender
+ * cannot accept on the recipient's behalf and a missing pending row is a closed
+ * `NOT_FOUND`. A Block in either direction is `FORBIDDEN` and writes nothing.
+ * Success uses the same `acceptFriendPair` primitive as the reverse-pending
+ * auto-accept: one ordered edge, all pair invites deleted, the pair's cooldown
+ * cleared. An already-friends call inserts no second edge but still clears a
+ * stale pair invite/cooldown, so the cooldown invariant holds for every accept.
+ */
+export async function acceptFriendInvite(
+  input: IncomingInvite,
+  store: FriendshipStore,
+): Promise<AcceptFriendInviteResult> {
+  const { fromUserId, viewerId } = input;
+  if (fromUserId === viewerId) return NOT_FOUND_RESULT;
+
+  return store.transaction(async function runAcceptProtocol(tx) {
+    const pair = orderFriendPair(fromUserId, viewerId);
+    await tx.lockPair(pair);
+
+    if (await tx.hasBlockBetween(fromUserId, viewerId)) return FORBIDDEN_RESULT;
+    if (await tx.findFriendship(pair)) {
+      await tx.deleteInvitesBetween(fromUserId, viewerId);
+      await tx.deleteInviteCooldown(pair);
+      return { ok: true, outcome: "ALREADY_FRIENDS" };
+    }
+    if (!(await tx.findPendingInvite(fromUserId, viewerId))) return NOT_FOUND_RESULT;
+
+    await acceptFriendPair(tx, pair, fromUserId, viewerId);
+    return { ok: true, outcome: "FRIENDS_CREATED" };
+  });
+}
+
+/**
+ * Recipient-only rejection of an incoming invite (Story 4.2.1, AD-10 step 3,
+ * A-16). `viewerId` is the authenticated actor and must be the recipient of the
+ * pending row; the sender has no valid direction to call, so a sender-side
+ * cancel is impossible here (that is Story 4.3).
+ *
+ * Success deletes exactly that invite and writes one `InviteCooldown` row for
+ * the canonical pair with `until = now + 24h` UTC and `rejectedFromUserId` set
+ * to the inviter. No `Friendship` edge is created. A Block is `FORBIDDEN` and
+ * writes no cooldown row.
+ */
+export async function rejectFriendInvite(
+  input: IncomingInvite,
+  store: FriendshipStore,
+): Promise<RejectFriendInviteResult> {
+  const { fromUserId, viewerId } = input;
+  if (fromUserId === viewerId) return NOT_FOUND_RESULT;
+
+  return store.transaction(async function runRejectProtocol(tx) {
+    const pair = orderFriendPair(fromUserId, viewerId);
+    await tx.lockPair(pair);
+
+    if (await tx.hasBlockBetween(fromUserId, viewerId)) return FORBIDDEN_RESULT;
+    if (!(await tx.findPendingInvite(fromUserId, viewerId))) return NOT_FOUND_RESULT;
+
+    await tx.deleteInvite(fromUserId, viewerId);
+    await tx.createInviteCooldown(pair, fromUserId, new Date(Date.now() + INVITE_COOLDOWN_MS));
+    return { ok: true, outcome: "REJECTED" };
   });
 }

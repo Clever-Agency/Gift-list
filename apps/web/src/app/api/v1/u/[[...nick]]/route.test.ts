@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUser, findList, findManyGifts, relationsBetween, readProfileRelationship } =
+const { getSession, findUser, findList, findManyGifts, relationsBetween, readProfileRelationship, readProfileInviteCooldown } =
   vi.hoisted(() => ({
     getSession: vi.fn(),
     findUser: vi.fn(),
@@ -10,6 +10,7 @@ const { getSession, findUser, findList, findManyGifts, relationsBetween, readPro
     findManyGifts: vi.fn(),
     relationsBetween: vi.fn(),
     readProfileRelationship: vi.fn(),
+    readProfileInviteCooldown: vi.fn(),
   }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
@@ -23,6 +24,7 @@ vi.mock("@/db/client", () => ({
 vi.mock("@/lib/relationships", () => ({
   relationshipReader: { relationsBetween },
   readProfileRelationship,
+  readProfileInviteCooldown,
 }));
 
 type Row = {
@@ -139,9 +141,11 @@ beforeEach(() => {
   findManyGifts.mockReset();
   relationsBetween.mockReset();
   readProfileRelationship.mockReset();
+  readProfileInviteCooldown.mockReset();
 
   getSession.mockResolvedValue(null);
   readProfileRelationship.mockResolvedValue("NONE");
+  readProfileInviteCooldown.mockResolvedValue(null);
   findUser.mockImplementation(({ where }: { where: { nickNormalized: string } }) =>
     Promise.resolve(users.find((user) => user.nickNormalized === where.nickNormalized) ?? null),
   );
@@ -350,6 +354,72 @@ describe("GET /api/v1/u/:nick", () => {
     const [{ headers }] = getSession.mock.calls[0];
     expect(headers.get("cookie")).toBe("sid=forged");
     expect(headers.get("accept-language")).toBe("ru");
+  });
+
+  describe("profile invite cooldown (Story 4.2.2)", () => {
+    it("gives the rejected sender A `rejected: true` and hours, with relationship NONE", async () => {
+      signIn("u9");
+      // A stale fact must not survive a live cooldown: the protocol leaves no edge.
+      readProfileRelationship.mockResolvedValue("OUTGOING_PENDING");
+      readProfileInviteCooldown.mockResolvedValue({ hours: 5, rejected: true });
+
+      const { body } = await callRoute(["Anna"]);
+
+      expect(readProfileInviteCooldown).toHaveBeenCalledWith("u9", "u1");
+      expect(body.data.inviteCooldown).toEqual({ hours: 5, rejected: true });
+      expect(body.data.relationship).toBe("NONE");
+    });
+
+    it("gives the rejecting recipient B hours without the rejected word", async () => {
+      signIn("u9");
+      readProfileRelationship.mockResolvedValue("NONE");
+      readProfileInviteCooldown.mockResolvedValue({ hours: 5, rejected: false });
+
+      const { body } = await callRoute(["Anna"]);
+
+      expect(body.data.inviteCooldown).toEqual({ hours: 5, rejected: false });
+      expect(body.data.inviteCooldown).not.toHaveProperty("reason");
+      expect(JSON.stringify(body)).not.toContain("отклонено");
+    });
+
+    it("never reports FRIENDS while the cooldown is live", async () => {
+      signIn("u9");
+      readProfileRelationship.mockResolvedValue("FRIENDS");
+      readProfileInviteCooldown.mockResolvedValue({ hours: 1, rejected: false });
+
+      const { body } = await callRoute(["Anna"]);
+
+      expect(body.data.relationship).toBe("NONE");
+      expect(body.data.inviteCooldown).toEqual({ hours: 1, rejected: false });
+    });
+
+    it("omits the field when there is no live cooldown", async () => {
+      signIn("u9");
+
+      const { body } = await callRoute(["Anna"]);
+
+      expect(body.data).not.toHaveProperty("inviteCooldown");
+      expect(body.data.relationship).toBe("NONE");
+    });
+
+    it("discards a live cooldown with a Block, like the rest of the profile", async () => {
+      signIn("u9");
+      relationsBetween.mockResolvedValue(relations({ blocked: true }));
+      readProfileInviteCooldown.mockResolvedValue({ hours: 5, rejected: true });
+
+      const { body } = await callRoute(["Anna"]);
+
+      expect(body).toEqual({ ok: true, data: { access: "not_found", gifts: [] } });
+      expect(JSON.stringify(body)).not.toContain("inviteCooldown");
+      expect(JSON.stringify(body)).not.toContain("hours");
+    });
+
+    it("does not ask for a cooldown without a session", async () => {
+      const { res } = await callRoute(["Anna"]);
+
+      expect(res.status).toBe(401);
+      expect(readProfileInviteCooldown).not.toHaveBeenCalled();
+    });
   });
 
   it("keeps the AD-12 envelope for unsupported methods", async () => {

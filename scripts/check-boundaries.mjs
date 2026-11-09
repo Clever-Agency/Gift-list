@@ -35,6 +35,9 @@ const mobileAppConfig = path.join(root, "apps/mobile/app.config.ts");
 // Metro evaluates metro.config.js with Node too; it is build-time config, not
 // bundled into the app, so it may read the build-time KEEP_FNAMES flag.
 const mobileMetroConfig = path.join(root, "apps/mobile/metro.config.js");
+// The SPA export CLI is build-time tooling, not bundled into the app: it reads
+// EXPO_PUBLIC_API_BASE_URL and writes the per-target export.
+const mobileBuildScript = path.join(root, "apps/mobile/scripts/build-spa.mjs");
 
 for await (const file of walk(path.join(root, "apps/mobile"))) {
   const text = await readFile(file, "utf8");
@@ -50,6 +53,7 @@ for await (const file of walk(path.join(root, "apps/mobile"))) {
     file !== mobileEnv &&
     file !== mobileAppConfig &&
     file !== mobileMetroConfig &&
+    file !== mobileBuildScript &&
     /\bprocess\.env\b/.test(text)
   ) {
     failures.push(`${relative}: reads process.env outside src/config/env.ts`);

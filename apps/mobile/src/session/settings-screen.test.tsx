@@ -16,6 +16,8 @@ const navigation = vi.hoisted(() => ({
   back: vi.fn(),
   canGoBack: vi.fn(),
 }));
+/** UI5: happy-dom has no layout, so the scroll call is the observable effect. */
+const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => me);
@@ -162,6 +164,11 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  scrollIntoView.mockClear();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
   delete probe.auth;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
@@ -176,6 +183,18 @@ afterEach(async () => {
 });
 
 describe("настройки: гейт сессии", () => {
+  it("пока сессия неизвестна, показывает общий экран загрузки, а не пустую страницу", async () => {
+    api.apiRequest.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(1);
+  });
+
   it("аноним уходит на вход с возвратом в настройки", async () => {
     api.apiRequest.mockResolvedValue({ ok: false, code: "UNAUTHENTICATED", message: "" });
     await mount();
@@ -184,7 +203,22 @@ describe("настройки: гейт сессии", () => {
       pathname: "/login",
       params: { next: "/settings" },
     });
-    expect(text()).toBe("");
+    // Until the redirect lands the page still says «Загружаем», not blank.
+    expect(container.querySelector('[data-testid="session-loading"]')).not.toBeNull();
+  });
+
+  it("обрыв сети при проверке сессии: экран ошибки с «Повторить», без входа", async () => {
+    api.apiRequest.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+    expect(text()).toContain("Нет связи с сервером");
+
+    signedIn();
+    await press("Повторить");
+    expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
+    expect(field("Ник").value).toBe("anya");
   });
 });
 
@@ -195,6 +229,7 @@ describe("настройки: ник", () => {
 
     expect(field("Ник").value).toBe("anya");
     expect(fieldText("Ник")).toContain("@anya");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
 
     await type("Ник", "New_Nick");
     expect(fieldText("Ник")).toContain("@new_nick");
@@ -240,6 +275,26 @@ describe("настройки: ник", () => {
 
     expect(me.updateNick).toHaveBeenCalledWith("newnick");
     expect(fieldText("Ник")).toContain("Этот ник уже занят.");
+  });
+
+  it("невалидный ник: фокус на поле и прокрутка к нему (UI5)", async () => {
+    signedIn();
+    me.updateNick.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Nick is taken",
+      field: "nick",
+      reason: "NICK_TAKEN",
+    });
+    await mount();
+
+    await type("Ник", "newnick");
+    await press("Сохранить");
+
+    const nick = field("Ник");
+    expect(document.activeElement).toBe(nick);
+    expect(nick.getAttribute("aria-invalid")).toBe("true");
+    expect(scrollIntoView.mock.instances[0]).toBe(nick);
   });
 
   it("успех: тост, сохранённый ник и обновлённый контекст", async () => {

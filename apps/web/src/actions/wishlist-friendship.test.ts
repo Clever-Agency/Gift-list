@@ -12,6 +12,12 @@ const fake = vi.hoisted(() => {
   type Invite = { fromUserId: string; toUserId: string };
   type Friendship = { userLowId: string; userHighId: string };
   type Block = { blockerId: string; blockedId: string };
+  type Cooldown = {
+    userLowId: string;
+    userHighId: string;
+    rejectedFromUserId: string;
+    until: Date;
+  };
   type ListRow = {
     id: string;
     ownerId: string;
@@ -31,13 +37,26 @@ const fake = vi.hoisted(() => {
         where: { fromUserId_toUserId: { fromUserId: string; toUserId: string } };
       }): Promise<{ id: string } | null>;
       create(args: { data: Invite }): Promise<{ id: string }>;
-      deleteMany(args: { where: { OR: Invite[] } }): Promise<{ count: number }>;
+      deleteMany(args: {
+        where: { OR: Invite[] } | Invite;
+      }): Promise<{ count: number }>;
     };
     friendship: {
       findUnique(args: {
         where: { userLowId_userHighId: Friendship };
       }): Promise<{ id: string } | null>;
       create(args: { data: Friendship }): Promise<{ id: string }>;
+    };
+    inviteCooldown: {
+      findUnique(args: {
+        where: { userLowId_userHighId: Friendship };
+      }): Promise<{ until: Date; rejectedFromUserId: string } | null>;
+      upsert(args: {
+        where: { userLowId_userHighId: Friendship };
+        create: Cooldown;
+        update: { rejectedFromUserId: string; until: Date };
+      }): Promise<{ id: string }>;
+      deleteMany(args: { where: Friendship }): Promise<{ count: number }>;
     };
     block: {
       findFirst(args: { where: { OR: Block[] } }): Promise<{ id: string } | null>;
@@ -55,6 +74,7 @@ const fake = vi.hoisted(() => {
     invites: [] as Invite[],
     friendships: [] as Friendship[],
     blocks: [] as Block[],
+    cooldowns: [] as Cooldown[],
     locks: [] as string[],
     lockStatements: [] as string[],
     transactionOptions: [] as { isolationLevel?: string }[],
@@ -95,7 +115,7 @@ const fake = vi.hoisted(() => {
         return { id: "invite_1" };
       },
       async deleteMany(args) {
-        const pairs = args.where.OR;
+        const pairs = "OR" in args.where ? args.where.OR : [args.where];
         state.invites = state.invites.filter(
           (invite) =>
             !pairs.some(
@@ -117,6 +137,35 @@ const fake = vi.hoisted(() => {
       async create(args) {
         state.friendships.push({ ...args.data });
         return { id: "friendship_1" };
+      },
+    },
+    inviteCooldown: {
+      async findUnique(args) {
+        const { userLowId, userHighId } = args.where.userLowId_userHighId;
+        const found = state.cooldowns.find(
+          (row) => row.userLowId === userLowId && row.userHighId === userHighId,
+        );
+        return found ? { until: found.until, rejectedFromUserId: found.rejectedFromUserId } : null;
+      },
+      async upsert(args) {
+        const { userLowId, userHighId } = args.where.userLowId_userHighId;
+        const existing = state.cooldowns.find(
+          (row) => row.userLowId === userLowId && row.userHighId === userHighId,
+        );
+        if (existing !== undefined) {
+          existing.rejectedFromUserId = args.update.rejectedFromUserId;
+          existing.until = args.update.until;
+        } else {
+          state.cooldowns.push({ ...args.create });
+        }
+        return { id: "cooldown_1" };
+      },
+      async deleteMany(args) {
+        const { userLowId, userHighId } = args.where;
+        state.cooldowns = state.cooldowns.filter(
+          (row) => !(row.userLowId === userLowId && row.userHighId === userHighId),
+        );
+        return { count: 0 };
       },
     },
     block: {
@@ -192,6 +241,7 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
     fake.state.invites = [];
     fake.state.friendships = [];
     fake.state.blocks = [];
+    fake.state.cooldowns = [];
     fake.state.locks = [];
     fake.state.lockStatements = [];
     fake.state.transactionOptions = [];

@@ -65,6 +65,7 @@ describe("GET /api/v1/me/gifts", () => {
     expect(res.headers.get("cache-control")).toBe("private, no-store");
     const body = await res.json();
     expect(body.data).not.toHaveProperty("relationship");
+    expect(body.data).not.toHaveProperty("inviteCooldown");
     expect(body).toEqual({
       ok: true,
       data: {

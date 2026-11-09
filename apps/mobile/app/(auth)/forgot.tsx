@@ -1,7 +1,8 @@
-import { Text } from "@gift-list/ui";
+import { focusField, Text } from "@gift-list/ui";
 import { passwordForgotBodySchema } from "@gift-list/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
+import type { TextInputInstance } from "react-native";
 import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
@@ -30,6 +31,8 @@ export default function ForgotScreen() {
   const [sent, setSent] = useState(false);
   const flight = useRef(false);
   const requestId = useRef(0);
+  // UI5: submit moves focus to the invalid field and scrolls it into view.
+  const emailRef = useRef<TextInputInstance | null>(null);
 
   function change(value: string) {
     requestId.current += 1;
@@ -59,6 +62,7 @@ export default function ForgotScreen() {
           "forgot",
         ),
       );
+      focusField(emailRef.current);
       return;
     }
     setPending(true);
@@ -72,6 +76,7 @@ export default function ForgotScreen() {
     if (!result.ok) {
       setIssue(formIssue(result, t, common, "forgot"));
       setSent(false);
+      focusField(emailRef.current);
       return;
     }
     setSent(true);
@@ -103,6 +108,7 @@ export default function ForgotScreen() {
           </Text>
         ) : null}
         <TextField
+          inputRef={emailRef}
           label={t("form.email")}
           value={email}
           onChangeText={change}

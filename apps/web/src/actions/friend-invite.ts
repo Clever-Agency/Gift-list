@@ -1,8 +1,17 @@
 import "server-only";
 
-import type { ActionResult, FriendInviteData } from "@gift-list/contracts";
+import type {
+  ActionResult,
+  FriendAcceptData,
+  FriendInviteData,
+  FriendRejectData,
+} from "@gift-list/contracts";
 import { prisma } from "@/db/client";
-import { sendFriendInvite } from "@/domain/friendship";
+import {
+  acceptFriendInvite,
+  rejectFriendInvite,
+  sendFriendInvite,
+} from "@/domain/friendship";
 import { isValidNick, normalizeNick } from "@/domain/nick";
 import { auth } from "@/lib/auth";
 import { friendshipStore } from "@/lib/friendship-store";
@@ -32,6 +41,23 @@ const forbidden = {
 };
 
 /**
+ * The target is exactly one nick path segment. `normalizeNick` is the same gate
+ * `GET /api/v1/u/:nick` uses: case does not matter, and a nick left behind by a
+ * rename does not resolve. A `null` answer covers both an unknown and a
+ * malformed nick, so the caller answers one closed `NOT_FOUND`.
+ */
+async function findOwnerIdByNick(nick: string): Promise<string | null> {
+  const nickNormalized = normalizeNick(nick);
+  if (!isValidNick(nickNormalized)) return null;
+
+  const owner = await prisma.user.findUnique({
+    where: { nickNormalized },
+    select: { id: true },
+  });
+  return owner?.id ?? null;
+}
+
+/**
  * Story 4.1.2 (AD-10, AD-12, ARCH-A12): a signed-in user invites somebody by
  * nick. The route resolves exactly one path segment to this function, so the
  * target can never come from a request body or an arbitrary user id.
@@ -42,6 +68,11 @@ const forbidden = {
  * existing friendship are successful no-ops. All checks and writes belong to
  * `sendFriendInvite`, including the canonical-pair lock of Story 4.1.1 R1, so
  * this adapter cannot regress the concurrency protocol.
+ *
+ * Story 4.2.2: a live rejection cooldown is not collapsed into `FORBIDDEN` any
+ * more. It keeps the closed `RATE_LIMITED` code and carries the machine-readable
+ * `reason: INVITE_COOLDOWN` with `params: { hours }`, so the client can show
+ * "Можно снова через {hours} ч" instead of the generic rate-limit text.
  */
 export async function sendInviteByNick(
   nick: string,
@@ -50,22 +81,93 @@ export async function sendInviteByNick(
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
-  const nickNormalized = normalizeNick(nick);
-  if (!isValidNick(nickNormalized)) return notFound;
-
-  const owner = await prisma.user.findUnique({
-    where: { nickNormalized },
-    select: { id: true },
-  });
-  if (owner === null) return notFound;
+  const ownerId = await findOwnerIdByNick(nick);
+  if (ownerId === null) return notFound;
 
   const result = await sendFriendInvite(
-    { fromUserId: session.user.id, toUserId: owner.id },
+    { fromUserId: session.user.id, toUserId: ownerId },
     friendshipStore,
   );
-  // The domain refusal carries SELF_INVITE/BLOCKED for tests; the wire keeps one
-  // closed FORBIDDEN answer and never says which one happened.
-  if (!result.ok) return forbidden;
+  if (!result.ok) {
+    if (result.code === "RATE_LIMITED") {
+      return {
+        ok: false,
+        code: "RATE_LIMITED",
+        message: "Invite cooldown is active",
+        reason: "INVITE_COOLDOWN",
+        params: { hours: result.hours },
+      };
+    }
+    // The domain refusal carries SELF_INVITE/BLOCKED for tests; the wire keeps
+    // one closed FORBIDDEN answer and never says which one happened.
+    return forbidden;
+  }
+
+  return { ok: true, data: { outcome: result.outcome } };
+}
+
+/**
+ * Story 4.2.2 (FR-14, AD-10 step 2): the recipient of the pending invite from
+ * the nick's owner accepts it. The session user is the recipient (`viewerId`),
+ * the path nick is the inviter (`fromUserId`), so neither the body nor another
+ * user id can choose the pair.
+ *
+ * Acceptance uses the domain protocol of Story 4.2.1 unchanged: one canonical
+ * edge, all pair invites deleted, the pair's cooldown cleared, under the same
+ * pair lock. Success mirrors the reverse-pending auto-accept: `FRIENDS_CREATED`
+ * or `ALREADY_FRIENDS`. Missing pending, a non-recipient, a renamed nick and a
+ * self pair are the same closed `NOT_FOUND`; a Block is `FORBIDDEN` without a
+ * reason and writes nothing.
+ */
+export async function acceptInviteByNick(
+  nick: string,
+  headers: Headers,
+): Promise<ActionResult<FriendAcceptData>> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return unauthenticated;
+
+  const ownerId = await findOwnerIdByNick(nick);
+  if (ownerId === null) return notFound;
+
+  const result = await acceptFriendInvite(
+    { fromUserId: ownerId, viewerId: session.user.id },
+    friendshipStore,
+  );
+  if (!result.ok) {
+    return result.code === "FORBIDDEN" ? forbidden : notFound;
+  }
+
+  return { ok: true, data: { outcome: result.outcome } };
+}
+
+/**
+ * Story 4.2.2 (FR-14, AD-10 step 3): the recipient rejects the pending invite
+ * from the nick's owner. Rejection is recipient-only: the sender calling this
+ * route has no pending row in the requested direction, so it answers the same
+ * closed `NOT_FOUND` and never writes a cooldown (a sender-side cancel is Story
+ * 4.3).
+ *
+ * Success is the closed `REJECTED` acknowledgement; the domain has already
+ * deleted exactly that invite and written one 24-hour cooldown row. A Block is
+ * `FORBIDDEN` without a reason and writes no cooldown.
+ */
+export async function rejectInviteByNick(
+  nick: string,
+  headers: Headers,
+): Promise<ActionResult<FriendRejectData>> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return unauthenticated;
+
+  const ownerId = await findOwnerIdByNick(nick);
+  if (ownerId === null) return notFound;
+
+  const result = await rejectFriendInvite(
+    { fromUserId: ownerId, viewerId: session.user.id },
+    friendshipStore,
+  );
+  if (!result.ok) {
+    return result.code === "FORBIDDEN" ? forbidden : notFound;
+  }
 
   return { ok: true, data: { outcome: result.outcome } };
 }

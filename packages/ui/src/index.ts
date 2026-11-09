@@ -15,11 +15,15 @@ export {
 export { createGiftListConfig, type FontFamilies, type GiftListConfig } from "./config";
 export { GiftListProvider, type GiftListProviderProps } from "./provider";
 
-export { Column, Screen, View, XStack, YStack, ZStack } from "./layout";
+export { Column, PageContainer, Screen, View, XStack, YStack, ZStack } from "./layout";
+export { PageScroll, type PageScrollProps } from "./page-scroll";
+export { PageFooter, type PageFooterProps } from "./page-footer";
 export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./text";
 export { ScrollView, type ScrollViewProps } from "./scroll";
 export { Pressable, focusRing, type PressableProps } from "./pressable";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
+export { InfoButton } from "./info-button";
+export type { InfoButtonProps } from "./info-button.types";
 export {
   PasswordField,
   TextField,
@@ -35,6 +39,7 @@ export {
   type TagChipError,
   type TagChipListProps,
   type TagChipProps,
+  type TagChipRef,
   type TagChipVariant,
 } from "./tag-chip";
 export { StatusPill, type StatusPillProps, type StatusPillStatus } from "./status-pill";
@@ -47,9 +52,10 @@ export {
 } from "./visibility-chip";
 export { WishCard, type WishCardProps } from "./wish-card";
 export { Skeleton, WishCardSkeleton, type WishCardSkeletonProps } from "./skeleton";
+export { LoadingCards, type LoadingCardsProps } from "./loading-cards";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
-export { focusInLayer, restoreFocus, type FocusTarget } from "./focus";
+export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";

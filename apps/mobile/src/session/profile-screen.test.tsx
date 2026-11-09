@@ -22,11 +22,16 @@ vi.mock("@/platform/session-token", () => store);
 vi.mock("expo-localization", () => ({
   getLocales: () => [{ languageTag: "ru-RU" }],
 }));
-vi.mock("expo-router", () => ({
-  router: navigation,
-  Stack: { Screen: () => null },
-  useLocalSearchParams: () => search.params,
-}));
+vi.mock("expo-router", async () => {
+  const React = await import("react");
+  return {
+    router: navigation,
+    Stack: { Screen: () => null },
+    Link: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
+    useLocalSearchParams: () => search.params,
+  };
+});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -114,6 +119,7 @@ function giftsAnswer(
   cards: unknown[],
   ownerBlock: unknown = owner,
   relationship: string | undefined = "NONE",
+  inviteCooldown?: unknown,
 ) {
   return {
     ok: true,
@@ -122,6 +128,7 @@ function giftsAnswer(
       gifts: cards,
       ...(ownerBlock === undefined ? {} : { owner: ownerBlock }),
       ...(relationship === undefined ? {} : { relationship }),
+      ...(inviteCooldown === undefined ? {} : { inviteCooldown }),
     },
   };
 }
@@ -143,14 +150,19 @@ function respond(profile: unknown, session: unknown = { ok: true, data: user }) 
 
 function profileReads(): number {
   return api.apiRequest.mock.calls.filter(
-    ([path]) =>
-      String(path).startsWith("/api/v1/u/") && !String(path).endsWith("/invite"),
+    ([path]) => String(path).startsWith("/api/v1/u/") && !String(path).includes("/invite"),
   ).length;
 }
 
 function inviteCalls(): number {
   return api.apiRequest.mock.calls.filter(([path]) =>
     String(path).endsWith("/invite"),
+  ).length;
+}
+
+function actionCalls(suffix: string): number {
+  return api.apiRequest.mock.calls.filter(([path]) =>
+    String(path).endsWith(`/invite/${suffix}`),
   ).length;
 }
 
@@ -223,7 +235,7 @@ describe("профиль: вход", () => {
   });
 
   it.each(["a/b", "a?b", "a#b", "..", "%2f", "ab", "аня"])(
-    "небезопасный сегмент %s не уводит на вход, не запрашивает API и даёт «Пользователь не найден»",
+    "небезопасный сегмент %s не уводит на вход, не запрашивает API и даёт 404",
     async (nick) => {
       search.params = { nick };
       respond(giftsAnswer([gift()]));
@@ -231,11 +243,11 @@ describe("профиль: вход", () => {
 
       expect(navigation.replace).not.toHaveBeenCalled();
       expect(profileReads()).toBe(0);
-      expect(text()).toContain("Пользователь не найден");
+      expect(text()).toContain("Страница не найдена");
     },
   );
 
-  it("пока сессия неизвестна, профиль не запрашивается", async () => {
+  it("пока сессия неизвестна, профиль не запрашивается и экран не пустой", async () => {
     api.apiRequest.mockImplementation((path: string) =>
       path === "/api/v1/me" ? new Promise(() => {}) : Promise.resolve(giftsAnswer([])),
     );
@@ -243,6 +255,37 @@ describe("профиль: вход", () => {
 
     expect(profileReads()).toBe(0);
     expect(navigation.replace).not.toHaveBeenCalled();
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
+  });
+
+  it("сетевая ошибка сессии: экран ошибки с «Повторить», без входа и без чтения профиля", async () => {
+    respond(null, { ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(profileReads()).toBe(0);
+    const region = container.querySelector('[data-testid="session-error"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("role")).toBe("alert");
+    expect(text()).toContain("Нет связи с сервером");
+    expect(button("Повторить")).toBeDefined();
+  });
+
+  it("«Повторить» перечитывает сессию и открывает профиль", async () => {
+    respond(null, { ok: false, network: true });
+    await mount();
+
+    respond(giftsAnswer([gift()]), { ok: true, data: user });
+    await press("Повторить");
+
+    expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(text()).toContain("Борис");
+    expect(text()).toContain("Наушники");
   });
 
   it("истёкшая сессия уводит на вход с тем же next и причиной", async () => {
@@ -278,6 +321,7 @@ describe("профиль: карточка и желания", () => {
     );
     await mount();
 
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/boris");
     expect(text()).toContain("Борис");
     expect(text()).toContain("@boris");
@@ -340,9 +384,11 @@ describe("профиль: карточка и желания", () => {
     respond(new Promise(() => {}));
     await mount();
 
-    const region = container.querySelector('[aria-label="Загружаем профиль"]');
+    const region = container.querySelector('[data-testid="profile-loading"]');
     expect(region).not.toBeNull();
+    expect(region?.getAttribute("role")).toBe("status");
     expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем профиль");
     expect(
       container.querySelectorAll('[data-testid="wish-card-skeleton"]'),
     ).toHaveLength(3);
@@ -400,6 +446,199 @@ describe("профиль: карточка и желания", () => {
   });
 });
 
+describe("профиль: принятие и отказ (Story 4.2.3)", () => {
+  it("входящий pending: рядом «Принять приглашение» и «Отклонить», без подписки и блока", async () => {
+    respond(giftsAnswer([], owner, "INCOMING_PENDING"));
+    await mount();
+
+    expect(text()).toContain("Зовёт в друзья");
+    expect(button("Принять приглашение")).toBeDefined();
+    expect(button("Отклонить")).toBeDefined();
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Отписаться")).toBeUndefined();
+    expect(button("Заблокировать")).toBeUndefined();
+    expect(button("Отменить приглашение")).toBeUndefined();
+  });
+
+  it("отказ: перечитывает профиль, у отклонившего нет chip «Отклонено», есть часы", async () => {
+    let rejected = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite/reject") {
+        rejected = true;
+        return Promise.resolve(inviteAnswer("REJECTED"));
+      }
+      return Promise.resolve(
+        rejected
+          ? giftsAnswer([], owner, "NONE", { hours: 23, rejected: false })
+          : giftsAnswer([], owner, "INCOMING_PENDING"),
+      );
+    });
+    await mount();
+
+    expect(button("Отклонить")).toBeDefined();
+    await press("Отклонить");
+
+    expect(actionCalls("reject")).toBe(1);
+    expect(inviteCalls()).toBe(0);
+    expect(profileReads()).toBe(2);
+    expect(text()).not.toContain("Зовёт в друзья");
+    expect(text()).not.toContain("Отклонено");
+    expect(text()).toContain("Можно снова через 23 ч");
+    expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
+    expect(button("Отменить приглашение")).toBeUndefined();
+
+    const add = button("Добавить в друзья");
+    expect(add).toBeDefined();
+    expect(add?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("отправитель после отказа: chip «Отклонено», кнопки новой заявки нет", async () => {
+    respond(giftsAnswer([], owner, "NONE", { hours: 5, rejected: true }));
+    await mount();
+
+    expect(text()).toContain("Отклонено");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
+    expect(button("Отменить приглашение")).toBeUndefined();
+    expect(text()).not.toContain("Можно снова через");
+  });
+
+  it("после принятия оба видят chip «Друзья» и только желания из ответа сервера", async () => {
+    let accepted = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite/accept") {
+        accepted = true;
+        return Promise.resolve(inviteAnswer("FRIENDS_CREATED"));
+      }
+      return Promise.resolve(
+        accepted
+          ? giftsAnswer(
+              [
+                gift(),
+                gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" }),
+              ],
+              owner,
+              "FRIENDS",
+            )
+          : giftsAnswer([], owner, "INCOMING_PENDING"),
+      );
+    });
+    await mount();
+
+    await press("Принять приглашение");
+
+    expect(actionCalls("accept")).toBe(1);
+    expect(profileReads()).toBe(2);
+    expect(text()).toContain("Друзья");
+    expect(text()).toContain("Наушники");
+    expect(text()).toContain("Свитер");
+    expect(text()).not.toContain("Зовёт в друзья");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
+  });
+
+  it("свой профиль: ни принятия, ни отказа, ни cooldown", async () => {
+    search.params = { nick: "anya" };
+    respond(
+      giftsAnswer([], { displayName: "Аня", nick: "anya" }, "NONE", {
+        hours: 4,
+        rejected: false,
+      }),
+    );
+    await mount();
+
+    expect(text()).toContain("Это вы");
+    expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(text()).not.toContain("Можно снова через");
+  });
+
+  it("повторное нажатие «Отклонить» не отправляет второй запрос", async () => {
+    let resolveReject: (value: unknown) => void = () => {};
+    const reject = new Promise((resolve) => {
+      resolveReject = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite/reject") return reject;
+      return Promise.resolve(giftsAnswer([], owner, "INCOMING_PENDING"));
+    });
+    await mount();
+
+    const target = button("Отклонить");
+    await act(async () => {
+      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+
+    expect(actionCalls("reject")).toBe(1);
+
+    await act(async () => resolveReject(inviteAnswer("REJECTED")));
+    await settle(10);
+  });
+
+  it("сеть при отказе: cooldown откатывается, кнопки возвращаются, тост остаётся", async () => {
+    let resolveReject: (value: unknown) => void = () => {};
+    const reject = new Promise((resolve) => {
+      resolveReject = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite/reject") return reject;
+      return Promise.resolve(giftsAnswer([], owner, "INCOMING_PENDING"));
+    });
+    await mount();
+
+    await press("Отклонить");
+
+    expect(text()).toContain("Можно снова через 24 ч");
+    expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
+
+    await act(async () => resolveReject({ ok: false, network: true }));
+    await settle(10);
+
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Можно снова через");
+    expect(text()).toContain("Зовёт в друзья");
+    expect(button("Принять приглашение")).toBeDefined();
+    expect(button("Отклонить")).toBeDefined();
+  });
+
+  it("сеть при принятии: chip дружбы откатывается, входящее возвращается", async () => {
+    let resolveAccept: (value: unknown) => void = () => {};
+    const accept = new Promise((resolve) => {
+      resolveAccept = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite/accept") return accept;
+      return Promise.resolve(giftsAnswer([], owner, "INCOMING_PENDING"));
+    });
+    await mount();
+
+    await press("Принять приглашение");
+
+    expect(text()).toContain("Друзья");
+    expect(button("Отклонить")).toBeUndefined();
+
+    await act(async () => resolveAccept({ ok: false, network: true }));
+    await settle(10);
+
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).toContain("Зовёт в друзья");
+    expect(button("Принять приглашение")).toBeDefined();
+    expect(button("Отклонить")).toBeDefined();
+  });
+});
+
 describe("профиль: приглашение в друзья (Story 4.1.3)", () => {
   function expectNoForeignActions() {
     expect(button("Подписаться")).toBeUndefined();
@@ -452,11 +691,11 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expectNoForeignActions();
   });
 
-  it("входящий pending: «Принять приглашение» вызывает тот же API, даёт дружбу и перечитывает желания", async () => {
+  it("входящий pending: «Принять приглашение» идёт в accept, даёт дружбу и перечитывает желания", async () => {
     let accepted = false;
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path === "/api/v1/u/boris/invite") {
+      if (path === "/api/v1/u/boris/invite/accept") {
         accepted = true;
         return Promise.resolve(inviteAnswer("FRIENDS_CREATED"));
       }
@@ -474,16 +713,19 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
 
     expect(text()).toContain("Зовёт в друзья");
     expect(button("Принять приглашение")).toBeDefined();
+    expect(button("Отклонить")).toBeDefined();
     expect(button("Добавить в друзья")).toBeUndefined();
 
     await press("Принять приглашение");
 
-    expect(inviteCalls()).toBe(1);
+    expect(actionCalls("accept")).toBe(1);
+    expect(inviteCalls()).toBe(0);
     expect(text()).toContain("Борис теперь в друзьях");
     expect(text()).toContain("Друзья");
     expect(text()).toContain("Свитер");
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
     expectNoForeignActions();
   });
 
@@ -622,4 +864,129 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
       params: { next: "/u/boris", reason: "session_expired" },
     });
   });
+});
+
+describe("профиль: устаревший cooldown сервера (Story 4.2)", () => {
+  function cooldownError(hours: unknown) {
+    return {
+      ok: false,
+      code: "RATE_LIMITED",
+      message: "",
+      reason: "INVITE_COOLDOWN",
+      params: hours === undefined ? undefined : { hours },
+    };
+  }
+
+  it("устаревшее «нет связи» у отправителя: часы, «Отклонено» и перечитанный профиль", async () => {
+    let coolingDown = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        coolingDown = true;
+        return Promise.resolve(cooldownError(7));
+      }
+      return Promise.resolve(
+        giftsAnswer(
+          [],
+          owner,
+          "NONE",
+          coolingDown ? { hours: 7, rejected: true } : undefined,
+        ),
+      );
+    });
+    await mount();
+
+    expect(button("Добавить в друзья")).toBeDefined();
+    expect(text()).not.toContain("Отклонено");
+
+    await press("Добавить в друзья");
+
+    expect(inviteCalls()).toBe(1);
+    expect(profileReads()).toBe(2);
+    expect(text()).toContain("Можно снова через 7 ч");
+    expect(text()).toContain("Отклонено");
+    expect(text()).not.toContain("Слишком много попыток");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    const toast = container.querySelector('[data-testid="toast-host"]');
+    expect(toast?.textContent).toContain("Можно снова через 7 ч");
+  });
+
+  it("устаревшее «нет связи» у отклонившего: кнопка выключена, часы без «Отклонено»", async () => {
+    let coolingDown = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        coolingDown = true;
+        return Promise.resolve(cooldownError(24));
+      }
+      return Promise.resolve(
+        giftsAnswer(
+          [],
+          owner,
+          "NONE",
+          coolingDown ? { hours: 24, rejected: false } : undefined,
+        ),
+      );
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+
+    expect(inviteCalls()).toBe(1);
+    expect(profileReads()).toBe(2);
+    expect(text()).toContain("Можно снова через 24 ч");
+    expect(text()).not.toContain("Отклонено");
+    expect(text()).not.toContain("Слишком много попыток");
+    const toast = container.querySelector('[data-testid="toast-host"]');
+    expect(toast?.textContent).toContain("Можно снова через 24 ч");
+    const add = button("Добавить в друзья");
+    expect(add).toBeDefined();
+    expect(add?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("другой RATE_LIMITED остаётся общим текстом, без перечитывания и без часов", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        return Promise.resolve({
+          ok: false,
+          code: "RATE_LIMITED",
+          message: "",
+          params: { unit: "minute", count: 1 },
+        });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+
+    expect(inviteCalls()).toBe(1);
+    expect(profileReads()).toBe(1);
+    expect(text()).toContain("Слишком много попыток");
+    expect(text()).not.toContain("Можно снова через");
+    expect(button("Добавить в друзья")).toBeDefined();
+  });
+
+  it.each([undefined, 0, 2.5, "7"])(
+    "INVITE_COOLDOWN с непригодными часами (%s) даёт общий текст и всё равно перечитывает профиль",
+    async (hours) => {
+      api.apiRequest.mockImplementation((path: string) => {
+        if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+        if (path === "/api/v1/u/boris/invite") {
+          return Promise.resolve(cooldownError(hours));
+        }
+        return Promise.resolve(giftsAnswer([]));
+      });
+      await mount();
+
+      await press("Добавить в друзья");
+
+      expect(inviteCalls()).toBe(1);
+      expect(profileReads()).toBe(2);
+      expect(text()).toContain("Слишком много попыток");
+      expect(text()).not.toContain("Можно снова через");
+      expect(button("Добавить в друзья")).toBeDefined();
+    },
+  );
 });

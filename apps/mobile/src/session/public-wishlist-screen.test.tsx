@@ -22,11 +22,16 @@ vi.mock("@/platform/session-token", () => store);
 vi.mock("expo-localization", () => ({
   getLocales: () => [{ languageTag: "ru-RU" }],
 }));
-vi.mock("expo-router", () => ({
-  router: navigation,
-  Stack: { Screen: () => null },
-  useLocalSearchParams: () => search.params,
-}));
+vi.mock("expo-router", async () => {
+  const React = await import("react");
+  return {
+    router: navigation,
+    Stack: { Screen: () => null },
+    Link: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
+    useLocalSearchParams: () => search.params,
+  };
+});
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
   return {
@@ -145,6 +150,10 @@ function text(): string {
   return document.body.textContent ?? "";
 }
 
+function loadingRegion(): Element | null {
+  return container.querySelector('[data-testid="wishlist-loading"]');
+}
+
 function button(label: string): HTMLElement | undefined {
   return controls(document).find((node) => (node.textContent ?? "").includes(label));
 }
@@ -183,19 +192,75 @@ afterEach(async () => {
 });
 
 describe("вишлист по ссылке: вход", () => {
-  it("аноним уходит на вход с безопасным next и не запрашивает список", async () => {
-    respond(null, { ok: false, code: "UNAUTHENTICATED", message: "" });
+  it("гость (UNAUTHENTICATED) видит публичный список без входа", async () => {
+    respond(giftsAnswer([gift()]), { ok: false, code: "UNAUTHENTICATED", message: "" });
     await mount();
 
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/wishlist/tok_1" },
-    });
-    expect(linkReads()).toBe(0);
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(linkReads()).toBe(1);
+    expect(text()).toContain("Аня");
+    expect(text()).toContain("Наушники");
+    // The stale token is still cleared, but the visitor stays on the public page.
+    expect(store.clearSessionToken).toHaveBeenCalled();
+  });
+
+  it("протухший токен в чтении списка: выходит и сразу повторяет чтение как гость", async () => {
+    let linkReads = 0;
+    function answer(path: string) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      if (String(path).startsWith("/api/v1/l/")) {
+        linkReads += 1;
+        return Promise.resolve(
+          linkReads === 1
+            ? { ok: false, code: "UNAUTHENTICATED", message: "" }
+            : giftsAnswer([gift()]),
+        );
+      }
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
+    }
+    api.apiRequest.mockImplementation(answer);
+    await mount();
+
+    expect(linkReads).toBe(2);
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(text()).toContain("Аня");
+    expect(text()).toContain("Наушники");
+    // The stale session is not a network failure: no network error or toast.
+    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
+  it("сетевая ошибка сессии не уводит на вход: список читается как для гостя", async () => {
+    respond(giftsAnswer([gift()]), { ok: false, network: true });
+    await mount();
+
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(linkReads()).toBe(1);
+    expect(text()).toContain("Наушники");
+  });
+
+  it("сетевая ошибка сессии и недоступный API дают «Повторить», а не редирект", async () => {
+    respond({ ok: false, network: true }, { ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(button("Повторить")).toBeDefined();
+
+    // «Повторить» rereads both the session and the list.
+    respond(giftsAnswer([gift()]), { ok: true, data: user });
+    await press("Повторить");
+
+    expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
+    expect(text()).toContain("Наушники");
   });
 
   it.each(["a/b", "a?b", "a#b", "..", "%2f"])(
-    "небезопасный сегмент %s не уводит на вход, не запрашивает API и даёт «Список не найден»",
+    "небезопасный сегмент %s не уводит на вход, не запрашивает API и даёт 404",
     async (token) => {
       search.params = { token };
       respond(giftsAnswer([gift()]));
@@ -203,11 +268,13 @@ describe("вишлист по ссылке: вход", () => {
 
       expect(navigation.replace).not.toHaveBeenCalled();
       expect(linkReads()).toBe(0);
-      expect(text()).toContain("Список не найден");
+      expect(text()).toContain("Страница не найдена");
+      expect(text()).toContain("На главную");
+      expect(document.querySelector('[data-testid="not-found-page"]')).not.toBeNull();
     },
   );
 
-  it("пока сессия неизвестна, список не запрашивается", async () => {
+  it("пока сессия неизвестна, список не запрашивается и экран не пустой", async () => {
     api.apiRequest.mockImplementation((path: string) =>
       path === "/api/v1/me" ? new Promise(() => {}) : Promise.resolve(giftsAnswer([])),
     );
@@ -215,6 +282,11 @@ describe("вишлист по ссылке: вход", () => {
 
     expect(linkReads()).toBe(0);
     expect(navigation.replace).not.toHaveBeenCalled();
+    const region = loadingRegion();
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем вишлист");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 });
 
@@ -235,6 +307,9 @@ describe("вишлист по ссылке: список", () => {
     await mount();
 
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/l/tok_1");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+    // L8: the owner is the only level-1 heading on the page.
+    expect(container.querySelectorAll('[role="heading"][aria-level="1"]')).toHaveLength(1);
     expect(text()).toContain("Аня");
     expect(text()).toContain("@anya");
     expect(text()).toContain("Наушники");
@@ -252,21 +327,53 @@ describe("вишлист по ссылке: список", () => {
     expect(text()).not.toContain("Секретный подарок");
   });
 
-  it("пустой список говорит «Пока нет открытых желаний», а не «Список не найден»", async () => {
+  it("пустой список говорит «Пока нет открытых желаний», а не «Вишлист недоступен»", async () => {
     respond(giftsAnswer([]));
     await mount();
 
     expect(text()).toContain("Пока нет открытых желаний");
-    expect(text()).not.toContain("Список не найден");
+    expect(text()).not.toContain("Вишлист недоступен");
     expect(button("Куплю сам")).toBeUndefined();
   });
 
-  it("not_found говорит «Список не найден» и не выдаёт пустой список", async () => {
+  it("если сервер не вернул ни одного видимого желания, пустое состояние не намекает на скрытые", async () => {
+    // The server filtered out every FRIENDS/SECRET wish; the screen only sees the
+    // closed `gifts: []` answer and must not invent a count, a title or a reason.
+    respond(giftsAnswer([], owner));
+    await mount();
+
+    expect(text()).toContain("Аня");
+    expect(text()).toContain("Пока нет открытых желаний");
+    expect(text()).not.toContain("Вишлист недоступен");
+    expect(text()).not.toContain("Для друзей");
+    expect(text()).not.toContain("Секрет");
+    expect(text()).not.toContain("Всем");
+  });
+
+  it("not_found говорит «Вишлист недоступен» и не выдаёт пустой список", async () => {
     respond(notFoundAnswer());
     await mount();
 
-    expect(text()).toContain("Список не найден");
+    expect(text()).toContain("Вишлист недоступен");
+    expect(text()).toContain("Ссылка недействительна или доступ к вишлисту закрыт.");
+    expect(text()).toContain("Мой вишлист");
+    // The closed state never says «не найден»: it must not reveal whether the
+    // token exists but is hidden or does not exist at all.
+    expect(text()).not.toContain("Список не найден");
     expect(text()).not.toContain("Пока нет открытых желаний");
+    expect(document.querySelector('[data-testid="wishlist-owner"]')).toBeNull();
+    expect(document.querySelector('[data-testid="wishlist-unavailable"]')).not.toBeNull();
+    // L8: the closed state also has exactly one level-1 heading.
+    expect(container.querySelectorAll('[role="heading"][aria-level="1"]')).toHaveLength(1);
+  });
+
+  it("NOT_FOUND и not_found дают один и тот же нейтральный экран без данных", async () => {
+    respond({ ok: false, code: "NOT_FOUND", message: "" });
+    await mount();
+
+    expect(text()).toContain("Вишлист недоступен");
+    expect(text()).not.toContain("Список не найден");
+    expect(text()).not.toContain("Наушники");
     expect(document.querySelector('[data-testid="wishlist-owner"]')).toBeNull();
   });
 
@@ -274,7 +381,7 @@ describe("вишлист по ссылке: список", () => {
     respond({ ok: true, data: { access: "gifts", gifts: [gift()] } });
     await mount();
 
-    expect(text()).toContain("Список не найден");
+    expect(text()).toContain("Вишлист недоступен");
     expect(text()).not.toContain("Наушники");
   });
 
@@ -282,9 +389,10 @@ describe("вишлист по ссылке: список", () => {
     respond(new Promise(() => {}));
     await mount();
 
-    const region = container.querySelector('[aria-label="Загружаем вишлист"]');
+    const region = loadingRegion();
     expect(region).not.toBeNull();
     expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем вишлист");
     expect(
       container.querySelectorAll('[data-testid="wish-card-skeleton"]'),
     ).toHaveLength(3);
@@ -297,6 +405,7 @@ describe("вишлист по ссылке: список", () => {
 
     expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(container.querySelector('[data-testid="wishlist-error"]')).not.toBeNull();
     expect(button("Повторить")).toBeDefined();
 
     respond(giftsAnswer([gift()]));

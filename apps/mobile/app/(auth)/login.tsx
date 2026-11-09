@@ -1,7 +1,8 @@
-import { Text } from "@gift-list/ui";
+import { focusField, Text } from "@gift-list/ui";
 import { loginBodySchema, safeNextPath } from "@gift-list/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { TextInputInstance } from "react-native";
 import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
@@ -28,6 +29,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
+  // UI5: submit moves focus to the invalid field and scrolls it into view.
+  const emailRef = useRef<TextInputInstance | null>(null);
+  const passwordRef = useRef<TextInputInstance | null>(null);
   // The my-wishlist screen signs out on an expired session and hands the notice over
   // in `?reason=`, so it is still on screen after that screen unmounts.
   const [toast, setToast] = useState<string | null>(
@@ -39,6 +43,12 @@ export default function LoginScreen() {
       setValue(value);
       setIssue((current) => (current?.field === field ? null : current));
     };
+  }
+
+  /** UI5: the field of the current issue takes focus. */
+  function focusIssueField(field: string | undefined) {
+    if (field === "email") focusField(emailRef.current);
+    else if (field === "password") focusField(passwordRef.current);
   }
 
   useEffect(function redirectWhenReady() {
@@ -58,6 +68,7 @@ export default function LoginScreen() {
           "login",
         ),
       );
+      focusIssueField(field);
       return;
     }
     setPending(true);
@@ -67,7 +78,9 @@ export default function LoginScreen() {
     });
     setPending(false);
     if (!result.ok) {
-      setIssue(formIssue(result, t, common, "login"));
+      const nextIssue = formIssue(result, t, common, "login");
+      setIssue(nextIssue);
+      focusIssueField(nextIssue.field);
       return;
     }
     auth.setUser(result.data.user);
@@ -108,6 +121,7 @@ export default function LoginScreen() {
           </Text>
         ) : null}
         <TextField
+          inputRef={emailRef}
           label={t("form.email")}
           value={email}
           onChangeText={change("email", setEmail)}
@@ -122,6 +136,7 @@ export default function LoginScreen() {
           }}
         />
         <PasswordField
+          inputRef={passwordRef}
           label={t("form.password")}
           value={password}
           onChangeText={change("password", setPassword)}

@@ -146,6 +146,14 @@ export function ChoiceList({
           aria-describedby={describedBy || undefined}
           accessibilityHint={hint}
           gap="$2"
+          {...(error
+            ? {
+                borderWidth: 1,
+                borderColor: "$destructive",
+                borderRadius: "$sm",
+                padding: "$2",
+              }
+            : null)}
           {...(variant === "chip" ? { flexWrap: "wrap" } : null)}
         >
           {children}

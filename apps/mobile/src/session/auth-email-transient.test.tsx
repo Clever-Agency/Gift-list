@@ -257,6 +257,7 @@ describe("ссылки экранов входа", () => {
   it("ссылка сброса пароля не содержит email, next сохраняется", async () => {
     route.params = { next: NEXT };
     await mount(ForgotScreen);
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     await typeInto(input("Email"), EMAIL);
 
     const href = anchorByText("Войти").getAttribute("href") ?? "";
@@ -389,5 +390,22 @@ describe("перезагрузка, глубокий переход и возв�
 
     expect(input("Email").value).toBe(EMAIL);
     expect(consumeAuthEmail("/login")).toBe("");
+  });
+});
+
+describe("первый невалидный (UI5)", () => {
+  it("пустой email на восстановлении фокусирует поле и помечает его ошибкой", async () => {
+    await mount(ForgotScreen);
+
+    const submit = Array.from(container.querySelectorAll<HTMLElement>("button")).find((node) =>
+      (node.textContent ?? "").includes("Отправить ссылку"),
+    );
+    expect(submit).toBeDefined();
+    await click(submit);
+
+    const email = input("Email");
+    expect(document.activeElement).toBe(email);
+    expect(email.getAttribute("aria-invalid")).toBe("true");
+    expect(container.textContent ?? "").toContain("Проверьте введённые данные.");
   });
 });

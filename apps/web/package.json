@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:disposable-pg": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg.config.ts",
-    "verify:friendship-concurrency": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg-friendship.config.ts"
+    "verify:friendship-concurrency": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg-friendship.config.ts",
+    "verify:friendship-42-http": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/verify-friendship-42-http.mjs"
   },
   "dependencies": {
     "@better-auth/core": "1.7.14",

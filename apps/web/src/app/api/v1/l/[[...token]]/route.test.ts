@@ -127,8 +127,37 @@ describe("GET /api/v1/l/:token", () => {
     });
     expect(Object.keys(body.data)).not.toContain("publicToken");
     expect(body.data).not.toHaveProperty("relationship");
+    expect(body.data).not.toHaveProperty("inviteCooldown");
     expect(JSON.stringify(body)).not.toContain("Для друзей");
     expect(JSON.stringify(body)).not.toContain("Секрет");
+  });
+
+  it("names the owner with an empty list when every wish is FRIENDS, SECRET or archived", async () => {
+    findMany.mockResolvedValue([
+      gift({ id: "g-friends", title: "Для друзей", visibility: "FRIENDS" }),
+      gift({ id: "g-secret", title: "Секрет", visibility: "SECRET" }),
+      gift({
+        id: "g-archived",
+        title: "Архивное",
+        archivedAt: new Date("2026-01-01T00:00:00.000Z"),
+      }),
+    ]);
+
+    const { res, body } = await callRoute(["tok-1"]);
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      data: {
+        access: "gifts",
+        owner: { displayName: "Анна", nick: "anna" },
+        gifts: [],
+      },
+    });
+    const text = JSON.stringify(body);
+    expect(text).not.toContain("Для друзей");
+    expect(text).not.toContain("Секрет");
+    expect(text).not.toContain("Архивное");
   });
 
   it("sets Cache-Control: private, no-store", async () => {
@@ -164,6 +193,7 @@ describe("GET /api/v1/l/:token", () => {
     expect(titles).toEqual(["Публичное", "Для друзей", "Секрет"]);
     expect(body.data.publicToken).toBe("tok-1");
     expect(body.data).not.toHaveProperty("relationship");
+    expect(body.data).not.toHaveProperty("inviteCooldown");
     expect(body.data.owner).toEqual({ displayName: "Анна", nick: "anna" });
   });
 

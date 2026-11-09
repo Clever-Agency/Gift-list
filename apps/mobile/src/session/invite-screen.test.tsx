@@ -156,5 +156,6 @@ describe("приглашение: гейт сессии", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
     expect(container.querySelector('[data-testid="session-loading"]')).toBeNull();
     expect(text()).toContain("Приглашение");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
   });
 });

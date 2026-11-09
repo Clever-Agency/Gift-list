@@ -2,6 +2,7 @@
   "brandName": "{brand}",
   "loading": "Загружаем",
   "writeToAuthor": "Написать автору",
+  "footerTagline": "Сделано с любовью командой cleverAgency",
   "apiUnset": "не задан",
   "apiSet": "задан",
   "notFound": {

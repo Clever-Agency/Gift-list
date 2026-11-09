@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { pageGutter } from "@/ui/card-grid";
 import { PrimaryButton } from "@/ui/primary-button";
+import { SiteFooter } from "@/ui/site-footer";
 
 export type SessionErrorScreenProps = {
   /** A form reads best narrow; a list uses the wide page column. */
@@ -74,6 +75,7 @@ export function SessionErrorScreen({
                 </Text>
                 <PrimaryButton label={t("sessionError.retry")} onPress={onRetry} />
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

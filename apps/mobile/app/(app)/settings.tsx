@@ -13,6 +13,7 @@ import { pageGutter } from "@/ui/card-grid";
 import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
+import { SiteFooter } from "@/ui/site-footer";
 import { TextField } from "@/ui/text-field";
 import { ToastHost } from "@/ui/toast";
 
@@ -250,6 +251,7 @@ function SettingsForm({
                   <PrimaryButton label={t("settings.save")} onPress={save} disabled={pending} />
                 </YStack>
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

@@ -56,6 +56,8 @@ describe("PublicWishlistView: link page HTML", () => {
 
     expect(html).toContain("Анна");
     expect(html).toContain("@anna");
+    expect(html).toContain("Сделано с любовью командой cleverAgency");
+    expect(html).toContain('role="contentinfo"');
     expect(html).toContain("Плед");
     expect(html).toContain("мечта");
     expect(html).toContain("Открыт");
@@ -98,6 +100,8 @@ describe("PublicWishlistView: link page HTML", () => {
     const html = render({ kind: "not_found" }, null);
 
     expect(html).toContain("Список не найден");
+    expect(html).toContain("Сделано с любовью командой cleverAgency");
+    expect(html).toContain('role="contentinfo"');
     expect(html).not.toContain("Анна");
     expect(html).not.toContain("Плед");
     expect(html).not.toContain("Пока нет открытых желаний");

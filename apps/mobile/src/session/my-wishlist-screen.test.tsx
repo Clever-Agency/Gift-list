@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
+import { spacing } from "@gift-list/ui";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -426,7 +427,8 @@ describe("мой вишлист: каркас страницы", () => {
     expect(page).not.toBeNull();
     expect(getComputedStyle(page as Element).overflowY).toBe("auto");
     expect(page?.textContent).toContain("Мой вишлист");
-    expect(page?.querySelector('[data-testid="wishlist-footer"]')).not.toBeNull();
+    expect(page?.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+    expect(page?.textContent).toContain("Сделано с любовью командой cleverAgency");
 
     const scrollers = Array.from(container.querySelectorAll("*")).filter((node) =>
       ["auto", "scroll"].includes(getComputedStyle(node).overflowY),
@@ -709,8 +711,8 @@ describe("мой вишлист: список", () => {
   /**
    * Review m4. `pointerEvents` is a View prop: in a style object react-native-web
    * drops it, the full-width overlay then swallows touches meant for the screen.
-   * The toast is also lifted above the footer row, so «Выйти» is never covered
-   * (`DESIGN.md` → Toast: «снизу, над прилипшей кнопкой»).
+   * The footer now scrolls with the page, so the toast keeps the plain bottom
+   * offset and no longer needs the old pinned-row clearance; «Выйти» stays usable.
    */
   it("toast: pointerEvents — проп, а не стиль, и «Выйти» под toast остаётся нажимаемой", async () => {
     respond({ ok: false, network: true });
@@ -723,17 +725,10 @@ describe("мой вишлист: список", () => {
     const hostStyle = getComputedStyle(host as Element);
     expect(hostStyle.pointerEvents).toBe("none");
 
-    // Geometry: the toast bottom sits at or above the top of the footer row.
-    const footerStyle = getComputedStyle(
-      container.querySelector('[data-testid="wishlist-footer"]') as Element,
-    );
-    const logoutStyle = getComputedStyle(
-      container.querySelector('[data-testid="wishlist-logout"]') as Element,
-    );
-    const footerHeight =
-      Number.parseFloat(footerStyle.paddingBottom) + Number.parseFloat(logoutStyle.minHeight);
-    expect(footerHeight).toBeGreaterThan(0);
-    expect(Number.parseFloat(hostStyle.bottom)).toBeGreaterThanOrEqual(footerHeight);
+    // The footer is page content inside the one scroller, not a sticky bar over it.
+    const footer = container.querySelector('[data-testid="page-footer"]');
+    expect(footer?.closest('[data-testid="wishlist-page"]')).not.toBeNull();
+    expect(hostStyle.bottom).toBe(`${spacing["page-gutter"]}px`);
 
     // And the control still works while the toast is on screen.
     api.apiRequest.mockImplementation((path: string) =>
@@ -818,7 +813,7 @@ describe("мой вишлист: список", () => {
     respond(giftsAnswer([]));
     await mount();
 
-    const footer = container.querySelector('[data-testid="wishlist-footer"]');
+    const footer = container.querySelector('[data-testid="page-footer"]');
     const settings = footer?.querySelector('[data-testid="wishlist-settings"]');
     expect(settings?.textContent).toContain("Настройки");
 

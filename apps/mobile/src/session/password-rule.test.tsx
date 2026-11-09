@@ -134,6 +134,7 @@ afterEach(async () => {
 describe("требование к паролю", () => {
   it("на регистрации короткий пароль показывает подсказку, а после отправки — ошибку поля", async () => {
     await mount("register");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(toneText("hint")).toContain(RULE);
     expect(toneText("error")).not.toContain(RULE);
     expect(describedBy("Пароль")).toBe(RULE);
@@ -188,6 +189,7 @@ describe("требование к паролю", () => {
 
   it("на новом пароле короткий пароль показывает подсказку и ошибку, а длинный ответ сервера — общий текст", async () => {
     await mount("reset");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(toneText("hint")).toContain(RULE);
     expect(describedBy("Пароль")).toBe(RULE);
 

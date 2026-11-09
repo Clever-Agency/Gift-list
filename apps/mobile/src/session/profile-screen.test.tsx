@@ -321,6 +321,7 @@ describe("профиль: карточка и желания", () => {
     );
     await mount();
 
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/boris");
     expect(text()).toContain("Борис");
     expect(text()).toContain("@boris");

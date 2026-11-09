@@ -20,6 +20,7 @@ import {
 import { giftTagInputs } from "@/ui/gift-form-tags";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
+import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useTagCatalog } from "@/ui/use-tag-catalog";
 
@@ -242,6 +243,7 @@ export default function NewGiftScreen() {
                   onRetryTagCatalog={tagCatalog.retry}
                 />
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

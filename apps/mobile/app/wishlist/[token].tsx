@@ -26,6 +26,7 @@ import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
+import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { publicWishlistRoute } from "@/wishlist/public-token";
 
@@ -218,6 +219,7 @@ export default function PublicWishlistScreen() {
                   </>
                 )}
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

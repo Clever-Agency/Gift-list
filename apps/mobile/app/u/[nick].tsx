@@ -39,6 +39,7 @@ import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
+import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 
 /**
@@ -552,6 +553,7 @@ export default function ProfileScreen() {
                   </>
                 )}
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

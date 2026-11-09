@@ -14,6 +14,7 @@ import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
 import { pageGutter } from "@/ui/card-grid";
 import { NavLink } from "@/ui/nav-link";
+import { SiteFooter } from "@/ui/site-footer";
 
 /**
  * UI6: the one 404 page of the app. It answers an unknown or malformed route —
@@ -36,7 +37,7 @@ export function NotFoundScreen({ testID = "not-found-page" }: { testID?: string 
               size="form"
               flexGrow={1}
               paddingHorizontal={gutter}
-              paddingVertical="$page-gutter"
+              paddingTop="$page-gutter"
               gap="$2"
             >
               <Text kind="display-sm" tone="primary" textAlign="center">
@@ -54,6 +55,7 @@ export function NotFoundScreen({ testID = "not-found-page" }: { testID?: string 
                 </Text>
                 <NavLink href="/">{t("notFound.toHome")}</NavLink>
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

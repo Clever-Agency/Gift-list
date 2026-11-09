@@ -407,6 +407,7 @@ describe("новое желание: форма", () => {
     await mount();
 
     expect(text()).toContain("Новое желание");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(text()).toContain("Название");
     expect(text()).toContain("Кто видит");
     expect(text()).toContain("Сколько раз можно дарить");

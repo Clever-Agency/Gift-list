@@ -7,6 +7,7 @@ import {
   EmptyState,
   Heading,
   LinkText,
+  PageFooter,
   Screen,
   StatusPill,
   TagChipList,
@@ -47,12 +48,15 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
 
   if (view.kind === "not_found") {
     return (
-      <Screen role="main">
-        <Column size="wide" paddingVertical="$section-gap">
-          <Heading level={1} kind="display-sm" textAlign="center">
-            {t("notFound")}
-          </Heading>
-        </Column>
+      <Screen>
+        <YStack flexGrow={1} role="main">
+          <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
+            <Heading level={1} kind="display-sm" textAlign="center">
+              {t("notFound")}
+            </Heading>
+          </Column>
+        </YStack>
+        <PageFooter tagline={messages.common.footerTagline} />
       </Screen>
     );
   }
@@ -131,24 +135,27 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
   }
 
   return (
-    <Screen role="main">
-      <Column size="wide" paddingVertical="$section-gap" gap="$section-gap">
-        <YStack gap="$1">
-          <Heading level={1} kind="display-sm">
-            {view.owner.displayName}
-          </Heading>
-          <Text kind="caption" tone="muted">
-            {t("nick", { nick: view.owner.nick })}
-          </Text>
-        </YStack>
-        {view.gifts.length === 0 ? (
-          <EmptyState title={t("emptyTitle")} />
-        ) : (
-          <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
-            {view.gifts.map(renderGift)}
-          </XStack>
-        )}
-      </Column>
+    <Screen>
+      <YStack flexGrow={1} role="main">
+        <Column size="wide" flexGrow={1} paddingVertical="$section-gap" gap="$section-gap">
+          <YStack gap="$1">
+            <Heading level={1} kind="display-sm">
+              {view.owner.displayName}
+            </Heading>
+            <Text kind="caption" tone="muted">
+              {t("nick", { nick: view.owner.nick })}
+            </Text>
+          </YStack>
+          {view.gifts.length === 0 ? (
+            <EmptyState title={t("emptyTitle")} />
+          ) : (
+            <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
+              {view.gifts.map(renderGift)}
+            </XStack>
+          )}
+        </Column>
+      </YStack>
+      <PageFooter tagline={messages.common.footerTagline} />
     </Screen>
   );
 }

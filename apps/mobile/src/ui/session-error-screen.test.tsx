@@ -73,6 +73,11 @@ describe("SessionErrorScreen", () => {
     expect(region?.textContent).toContain("Нет связи с сервером");
     expect(region?.textContent).toContain("Проверьте сеть");
 
+    const footer = container.querySelector<HTMLElement>('[data-testid="page-footer"]');
+    expect(footer).not.toBeNull();
+    expect(footer?.getAttribute("role")).toBe("contentinfo");
+    expect(footer?.textContent).toContain("Сделано с любовью командой cleverAgency");
+
     const scrollers = Array.from(container.querySelectorAll("*")).filter((node) =>
       ["auto", "scroll"].includes(getComputedStyle(node).overflowY),
     );

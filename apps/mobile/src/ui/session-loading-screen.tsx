@@ -11,6 +11,7 @@ import { useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
+import { SiteFooter } from "@/ui/site-footer";
 
 export type SessionLoadingScreenProps = {
   /** A form reads best narrow; a list uses the wide page column. */
@@ -62,6 +63,7 @@ export function SessionLoadingScreen({ size = "wide", testID = "session-loading"
                   count={size === "form" ? 1 : 3}
                 />
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

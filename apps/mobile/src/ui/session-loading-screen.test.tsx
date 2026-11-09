@@ -73,6 +73,11 @@ describe("SessionLoadingScreen", () => {
     expect(region?.getAttribute("aria-label")).toBe("Загружаем");
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
 
+    const footer = container.querySelector<HTMLElement>('[data-testid="page-footer"]');
+    expect(footer).not.toBeNull();
+    expect(footer?.getAttribute("role")).toBe("contentinfo");
+    expect(footer?.textContent).toContain("Сделано с любовью командой cleverAgency");
+
     const scrollers = Array.from(container.querySelectorAll("*")).filter((node) =>
       ["auto", "scroll"].includes(getComputedStyle(node).overflowY),
     );

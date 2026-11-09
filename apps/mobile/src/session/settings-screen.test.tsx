@@ -229,6 +229,7 @@ describe("настройки: ник", () => {
 
     expect(field("Ник").value).toBe("anya");
     expect(fieldText("Ник")).toContain("@anya");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
 
     await type("Ник", "New_Nick");
     expect(fieldText("Ник")).toContain("@new_nick");

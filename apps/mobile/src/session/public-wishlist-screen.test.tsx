@@ -278,6 +278,7 @@ describe("вишлист по ссылке: список", () => {
     await mount();
 
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/l/tok_1");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(text()).toContain("Аня");
     expect(text()).toContain("@anya");
     expect(text()).toContain("Наушники");

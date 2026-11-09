@@ -17,6 +17,7 @@ export { GiftListProvider, type GiftListProviderProps } from "./provider";
 
 export { Column, PageContainer, Screen, View, XStack, YStack, ZStack } from "./layout";
 export { PageScroll, type PageScrollProps } from "./page-scroll";
+export { PageFooter, type PageFooterProps } from "./page-footer";
 export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./text";
 export { ScrollView, type ScrollViewProps } from "./scroll";
 export { Pressable, focusRing, type PressableProps } from "./pressable";

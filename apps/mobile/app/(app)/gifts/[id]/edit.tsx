@@ -27,6 +27,7 @@ import {
 import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
+import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useTagCatalog } from "@/ui/use-tag-catalog";
 
@@ -509,6 +510,7 @@ export default function EditGiftScreen() {
                   </>
                 )}
               </YStack>
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

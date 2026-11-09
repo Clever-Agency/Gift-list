@@ -459,6 +459,7 @@ describe("изменение желания: загрузка", () => {
     await mount();
 
     expect(gifts.fetchGift).toHaveBeenCalledWith("g1");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
     expect(text()).toContain("Изменить желание");
     expect(field("Название").value).toBe("Наушники");
     expect(field("Описание (необязательно)").value).toBe("Чёрные, с шумоподавлением");

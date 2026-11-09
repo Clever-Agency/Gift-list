@@ -4,8 +4,8 @@ import { useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
-import { AuthorLink } from "@/ui/author-link";
 import { pageGutter } from "@/ui/card-grid";
+import { SiteFooter } from "@/ui/site-footer";
 
 export function AnonymousScreen({ title, children }: { title: string; children?: ReactNode }) {
   const t = useTranslations("common");
@@ -21,7 +21,7 @@ export function AnonymousScreen({ title, children }: { title: string; children?:
               size="form"
               flexGrow={1}
               paddingHorizontal={gutter}
-              paddingVertical="$page-gutter"
+              paddingTop="$page-gutter"
             >
               <Heading level={1} kind="display-sm" tone="primary" textAlign="center">
                 {t("brandName", { brand: getBrandName() })}
@@ -31,7 +31,7 @@ export function AnonymousScreen({ title, children }: { title: string; children?:
                 {children}
               </YStack>
               <YStack flex={1} />
-              <AuthorLink />
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { containsEmulatorOrigin } from "../../mobile/src/build/api-origin.ts";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "../..");
@@ -15,7 +16,15 @@ function run(command, args, cwd) {
   const result = spawnSync(command, args, {
     cwd,
     stdio: "inherit",
-    env: { ...process.env, CI: "1", EXPO_NO_TELEMETRY: "1" },
+    env: {
+      ...process.env,
+      CI: "1",
+      EXPO_NO_TELEMETRY: "1",
+      // The web build is served same-origin by Next.js (AD-26). Clearing the
+      // variable overrides a developer `.env` written for the Android emulator;
+      // the post-export scan below is the second guard.
+      EXPO_PUBLIC_API_BASE_URL: "",
+    },
   });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
@@ -33,6 +42,15 @@ await mkdir(exportDir, { recursive: true });
 // paths with spaces.
 const expoCli = resolveBin(mobileRoot, "expo", "expo");
 run(process.execPath, [expoCli, "export", "--platform", "web", "--output-dir", exportDir], mobileRoot);
+
+const emulatorOrigin = findEmulatorOrigin(exportDir);
+if (emulatorOrigin !== null) {
+  console.error(
+    `The web export at ${emulatorOrigin} still contains 10.0.2.2. ` +
+      "The Next build is served same-origin; remove the emulator API origin from apps/mobile/.env or the build environment.",
+  );
+  process.exit(1);
+}
 
 await cp(exportDir, stagingDir, { recursive: true });
 
@@ -59,4 +77,18 @@ function absolutizeAssetUrls(source) {
     if (/^(?:[a-z]+:|\/\/|#|\/)/i.test(url)) return match;
     return `${attr}${quote}/${url.replace(/^\.\//, "")}${quote}`;
   });
+}
+
+/** Absolute path of the first exported JS file that still names the emulator host. */
+function findEmulatorOrigin(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const found = findEmulatorOrigin(full);
+      if (found !== null) return found;
+    } else if (entry.name.endsWith(".js")) {
+      if (containsEmulatorOrigin(readFileSync(full, "utf8"))) return full;
+    }
+  }
+  return null;
 }

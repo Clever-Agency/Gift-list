@@ -11,6 +11,7 @@ import { useAuth } from "@/session/auth-context";
 import { formIssue } from "@/session/form-issue";
 import { pageGutter } from "@/ui/card-grid";
 import { PrimaryButton } from "@/ui/primary-button";
+import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { TextField } from "@/ui/text-field";
 import { ToastHost } from "@/ui/toast";
@@ -45,6 +46,10 @@ export default function SettingsScreen() {
 
   function handleSessionExpired(expired: boolean) {
     setSessionExpired(expired);
+  }
+
+  if (auth.state.status === "error") {
+    return <SessionErrorScreen size="form" onRetry={auth.retry} />;
   }
 
   if (auth.state.status !== "ready") return <SessionLoadingScreen size="form" />;

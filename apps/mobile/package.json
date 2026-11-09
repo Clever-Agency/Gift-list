@@ -6,6 +6,9 @@
   "scripts": {
     "start": "expo start",
     "web": "expo start --web",
+    "build:web": "node scripts/build-spa.mjs --mode web",
+    "build:lan": "node scripts/build-spa.mjs --mode lan",
+    "build:emulator": "node scripts/build-spa.mjs --mode emulator",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

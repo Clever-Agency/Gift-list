@@ -30,6 +30,11 @@ const visitors: readonly VisitorCase[] = [
     viewer: null,
     relations: relations({ viaListToken: true }),
   },
+  {
+    name: "anonymous on a public profile",
+    viewer: null,
+    relations: relations({ publicProfile: true }),
+  },
   { name: "signed-in without relations", viewer: { id: VISITOR_ID }, relations: NO_RELATIONS },
   {
     name: "signed-in via list link",
@@ -59,6 +64,7 @@ const visibleWhenActive: Record<string, readonly GiftVisibility[]> = {
   owner: ["PUBLIC", "FRIENDS", "SECRET"],
   "anonymous without link": [],
   "anonymous via list link": ["PUBLIC"],
+  "anonymous on a public profile": ["PUBLIC"],
   "signed-in without relations": [],
   "signed-in via list link": ["PUBLIC"],
   subscriber: ["PUBLIC"],

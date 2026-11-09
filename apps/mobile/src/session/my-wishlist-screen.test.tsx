@@ -374,13 +374,26 @@ describe("мой вишлист: гейт сессии", () => {
     expectNoSmoke();
   });
 
-  it("обрыв сети при проверке сессии тоже уводит на вход", async () => {
+  it("обрыв сети при проверке сессии даёт экран ошибки с «Повторить», без входа", async () => {
     respond(null, { ok: false, network: true });
     await mount();
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/" },
-    });
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+    expect(text()).toContain("Нет связи с сервером");
+    expect(text()).toContain("Повторить");
+  });
+
+  it("«Повторить» на экране ошибки сессии перечитывает /api/v1/me", async () => {
+    respond(null, { ok: false, network: true });
+    await mount();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+
+    respond(giftsAnswer([gift()]), { ok: true, data: user });
+    await press("Повторить");
+
+    expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
+    expect(text()).toContain("Мой вишлист");
+    expect(text()).toContain("Наушники");
   });
 
   it("сессия истекла при загрузке желаний — вход с возвратом на главную и причиной", async () => {

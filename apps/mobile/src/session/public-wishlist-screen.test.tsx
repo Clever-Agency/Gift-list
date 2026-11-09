@@ -192,30 +192,42 @@ afterEach(async () => {
 });
 
 describe("вишлист по ссылке: вход", () => {
-  it("аноним уходит на вход с безопасным next и не запрашивает список", async () => {
-    respond(null, { ok: false, code: "UNAUTHENTICATED", message: "" });
+  it("гость (UNAUTHENTICATED) видит публичный список без входа", async () => {
+    respond(giftsAnswer([gift()]), { ok: false, code: "UNAUTHENTICATED", message: "" });
     await mount();
 
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/wishlist/tok_1" },
-    });
-    expect(linkReads()).toBe(0);
-    // Until the redirect lands the page still says «Загружаем вишлист», not blank.
-    expect(loadingRegion()).not.toBeNull();
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(linkReads()).toBe(1);
+    expect(text()).toContain("Аня");
+    expect(text()).toContain("Наушники");
+    // The stale token is still cleared, but the visitor stays on the public page.
+    expect(store.clearSessionToken).toHaveBeenCalled();
   });
 
-  it("сетевая ошибка сессии не оставляет белый экран: видна загрузка и переход на вход", async () => {
-    respond(null, { ok: false, network: true });
+  it("сетевая ошибка сессии не уводит на вход: список читается как для гостя", async () => {
+    respond(giftsAnswer([gift()]), { ok: false, network: true });
     await mount();
 
     expect(store.clearSessionToken).not.toHaveBeenCalled();
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/wishlist/tok_1" },
-    });
-    expect(linkReads()).toBe(0);
-    expect(loadingRegion()).not.toBeNull();
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(linkReads()).toBe(1);
+    expect(text()).toContain("Наушники");
+  });
+
+  it("сетевая ошибка сессии и недоступный API дают «Повторить», а не редирект", async () => {
+    respond({ ok: false, network: true }, { ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(button("Повторить")).toBeDefined();
+
+    // «Повторить» rereads both the session and the list.
+    respond(giftsAnswer([gift()]), { ok: true, data: user });
+    await press("Повторить");
+
+    expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
+    expect(text()).toContain("Наушники");
   });
 
   it.each(["a/b", "a?b", "a#b", "..", "%2f"])(

@@ -29,6 +29,7 @@ import { EmptyState } from "@/ui/empty-state";
 import { restoreFocus, type ChipNode } from "@/ui/focus";
 import { WishCard } from "@/ui/gift-card";
 import { PrimaryButton } from "@/ui/primary-button";
+import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { ToastHost } from "@/ui/toast";
 import { VisibilityPicker } from "@/ui/visibility-picker";
@@ -248,6 +249,10 @@ export default function MyWishlistScreen() {
     // every auth context update would refetch the list for no reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId, attempt]);
+
+  if (auth.state.status === "error") {
+    return <SessionErrorScreen onRetry={auth.retry} />;
+  }
 
   if (auth.state.status !== "ready") {
     return <SessionLoadingScreen />;

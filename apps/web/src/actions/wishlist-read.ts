@@ -23,6 +23,11 @@ export type ReadWishlistInput = {
   readonly target: WishlistTarget;
   readonly viaListToken?: boolean;
   /**
+   * R2: an anonymous read of a public `/u/:nick` profile. Like `viaListToken`,
+   * it opens only `PUBLIC` wishes and is ignored for an owner-target read.
+   */
+  readonly viaPublicProfile?: boolean;
+  /**
    * AD-27: the request language for fixed tag labels. The caller negotiates it
    * from `Accept-Language`; the mapper falls back to `DEFAULT_LOCALE`.
    */
@@ -109,6 +114,8 @@ export async function readWishlist(
         // through the link, so a nick or `/me` read can never open `PUBLIC` by
         // accident just because a caller passed the flag.
         viaListToken: input.viaListToken === true && "publicToken" in target,
+        // R2: a guest profile read is a public discovery read, never an owner read.
+        publicProfile: input.viaPublicProfile === true && "ownerId" in target,
       };
 
   // A block hides the whole list, and it must look exactly like a missing list.

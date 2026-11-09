@@ -11,7 +11,7 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -46,12 +46,11 @@ type ScreenState =
 type ToastState = { message: string; tone: "info" | "error" };
 
 /**
- * Story 3.3 / AD-26: the app screen behind `/l/:token` (the link is rewritten to
- * `/wishlist/:token` by `safeNextPath`). An anonymous visitor goes to login with
- * that validated path as `next`, so signing in comes back here. A signed-in
- * visitor reads through `GET /api/v1/l/:token`; the answer is the same
- * `{ access, gifts, owner }` the Next page renders, and only the server decides
- * which wishes a friend may see.
+ * Story 3.3 / AD-26: the app screen behind `/l/:token`. A guest opens the link
+ * directly: the server's link read opens only PUBLIC wishes, so there is no
+ * reason to demand a session first. A signed-in visitor reads through
+ * `GET /api/v1/l/:token`; the answer is the same `{ access, gifts, owner }` the
+ * Next page renders, and only the server decides which wishes a friend may see.
  */
 export default function PublicWishlistScreen() {
   const t = useTranslations("app");
@@ -67,39 +66,20 @@ export default function PublicWishlistScreen() {
   const params = useLocalSearchParams<{ token?: string }>();
   const route = publicWishlistRoute(paramValue(params.token));
   const token = route?.token ?? null;
-  const next = route?.next ?? null;
   const [state, setState] = useState<ScreenState>(
     token === null ? { status: "missing" } : { status: "loading" },
   );
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [sessionExpired, setSessionExpired] = useState(false);
 
-  const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
-
-  useEffect(function redirectAnonymous() {
-    if (auth.state.status === "anonymous" && next !== null) {
-      // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
-      router.replace({
-        pathname: "/login",
-        params: sessionExpired ? { next, reason: "session_expired" } : { next },
-      });
-    }
-  }, [auth.state.status, next, sessionExpired]);
-
-  /**
-   * The stored session is dead: `signOut` clears the token and marks the app
-   * anonymous, and the guard above opens login with the same safe `next`.
-   */
-  async function expireSession(): Promise<boolean> {
-    setSessionExpired(true);
-    const signedOut = await auth.signOut();
-    if (!signedOut.ok) setSessionExpired(false);
-    return signedOut.ok;
-  }
+  // A guest is a first-class visitor here: the server's link read already opens
+  // only PUBLIC wishes, so the screen never sends an anonymous visitor to login.
+  // A failed session read is treated the same way as a guest and the list is read
+  // anonymously; the list read reports its own network failure with «Повторить».
+  const authPending = auth.state.status === "loading";
 
   useEffect(function loadWishlist() {
-    if (ownerId === null || token === null) return;
+    if (authPending || token === null) return;
     const currentToken = token;
     let cancelled = false;
 
@@ -120,9 +100,10 @@ export default function PublicWishlistScreen() {
         return;
       }
       if ("code" in result && result.code === "UNAUTHENTICATED") {
-        const signedOut = await expireSession();
-        // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
-        if (!signedOut && !cancelled) {
+        // The link route itself never requires a session; a stale token is simply
+        // cleared and the same public read is offered again.
+        await auth.signOut();
+        if (!cancelled) {
           setState({ status: "error", kind: "network" });
           setToast({ message: t("form.network"), tone: "error" });
         }
@@ -151,16 +132,11 @@ export default function PublicWishlistScreen() {
     // `auth` is only read on the expired-session branch; re-running the fetch on
     // every auth context update would refetch the list for no reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownerId, token, attempt]);
+  }, [authPending, token, attempt]);
 
   if (token === null) {
     return <NotFoundScreen />;
   }
-
-  // The session read may take the client's whole timeout, and an anonymous visitor
-  // is redirected in an effect. Both cases used to render `null`, so a slow or
-  // unreachable `/api/v1/me` left the link page blank until the redirect fired.
-  const authPending = auth.state.status !== "ready";
 
   // A reused route with a new token reads as loading until its own answer lands.
   const view: ScreenState =
@@ -171,6 +147,9 @@ export default function PublicWishlistScreen() {
   function retry() {
     setToast(null);
     setState({ status: "loading" });
+    // A failed session read is retried together with the list so a signed-in
+    // visitor gets the wider answer as soon as the network returns.
+    if (auth.state.status === "error") auth.retry();
     setAttempt((value) => value + 1);
   }
 

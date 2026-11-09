@@ -219,6 +219,30 @@ describe("readWishlist", () => {
     expect(body).not.toMatch(/count|hidden|filtered/);
   });
 
+  it("shows an anonymous public-profile visitor only PUBLIC gifts", async () => {
+    const result = await readWishlist(
+      { viewer: null, target: { ownerId: "u1" }, viaPublicProfile: true },
+      reader().deps,
+    );
+
+    expect(giftsOf(result).map((card) => card.id)).toEqual(["g-public", "g-reserved"]);
+    const body = JSON.stringify(result);
+    expect(body).not.toContain("Для друзей");
+    expect(body).not.toContain("Секрет");
+    expect(body).not.toContain("Архивное");
+    expect(Object.keys(result)).not.toContain("publicToken");
+  });
+
+  it("ignores viaPublicProfile on a link read", async () => {
+    const result = await readWishlist(
+      { viewer: null, target: { publicToken: "tok-1" }, viaPublicProfile: true },
+      reader().deps,
+    );
+
+    expect(giftsOf(result)).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it("shows an anonymous link visitor only PUBLIC gifts and hides the holder", async () => {
     const result = await readWishlist(
       { viewer: null, target: { publicToken: "tok" }, viaListToken: true },

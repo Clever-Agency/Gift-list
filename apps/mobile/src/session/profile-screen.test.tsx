@@ -223,15 +223,35 @@ afterEach(async () => {
 });
 
 describe("профиль: вход", () => {
-  it("аноним уходит на вход с безопасным next и не запрашивает профиль", async () => {
-    respond(null, { ok: false, code: "UNAUTHENTICATED", message: "" });
+  it("гость (UNAUTHENTICATED) видит публичный профиль без входа и без действий отношения", async () => {
+    respond(giftsAnswer([gift()]), { ok: false, code: "UNAUTHENTICATED", message: "" });
     await mount();
 
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/u/boris" },
-    });
-    expect(profileReads()).toBe(0);
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(profileReads()).toBe(1);
+    expect(text()).toContain("Борис");
+    expect(text()).toContain("Наушники");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(store.clearSessionToken).toHaveBeenCalled();
+  });
+
+  it("сетевая ошибка сессии не уводит на вход: профиль читается как для гостя", async () => {
+    respond(giftsAnswer([gift()]), { ok: false, network: true });
+    await mount();
+
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(profileReads()).toBe(1);
+    expect(text()).toContain("Наушники");
+  });
+
+  it("сетевая ошибка сессии и недоступный API дают «Повторить»", async () => {
+    respond({ ok: false, network: true }, { ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(button("Повторить")).toBeDefined();
   });
 
   it.each(["a/b", "a?b", "a#b", "..", "%2f", "ab", "аня"])(
@@ -262,7 +282,7 @@ describe("профиль: вход", () => {
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 
-  it("истёкшая сессия уводит на вход с тем же next и причиной", async () => {
+  it("истёкшая сессия при чтении профиля очищается, но не уводит со страницы", async () => {
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/session") {
@@ -272,10 +292,9 @@ describe("профиль: вход", () => {
     });
     await mount();
 
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/u/boris", reason: "session_expired" },
-    });
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
   });
 });
 
@@ -817,7 +836,7 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(button("Добавить в друзья")).toBeDefined();
   });
 
-  it("401 при отправке уводит на вход с прежним безопасным next", async () => {
+  it("401 при отправке очищает сессию, но не уводит со страницы", async () => {
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/invite") {
@@ -832,10 +851,9 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
 
     await press("Добавить в друзья");
 
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/u/boris", reason: "session_expired" },
-    });
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(text()).toContain("Войдите в аккаунт.");
   });
 });
 

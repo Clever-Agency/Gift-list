@@ -137,6 +137,18 @@ describe("приглашение: гейт сессии", () => {
     expect(container.querySelector('[data-testid="session-loading"]')).not.toBeNull();
   });
 
+  it("сетевая ошибка сессии даёт «Повторить», а не переход на регистрацию", async () => {
+    api.apiRequest.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    const region = container.querySelector('[data-testid="session-error"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("role")).toBe("alert");
+    expect(text()).toContain("Нет связи с сервером");
+    expect(text()).toContain("Повторить");
+  });
+
   it("после готовой сессии показывает приглашение", async () => {
     api.apiRequest.mockResolvedValue({ ok: true, data: user });
     await mount();

@@ -17,7 +17,7 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -71,15 +71,17 @@ type ToastState = { message: string; tone: "info" | "error"; nick: string };
 type RelationshipAction = "add" | "accept" | "reject";
 
 /**
- * Story 3.4 / AD-13: the app screen behind `/u/:nick`. An anonymous visitor
- * goes to login with that validated path as `next`, so signing in comes back
- * here. A signed-in visitor reads through `GET /api/v1/u/:nick`, and only the
- * server decides which wishes this viewer may see.
+ * Story 3.4 / AD-13: the app screen behind `/u/:nick`. The profile is a public
+ * page: a guest sees the same server-filtered wishlist as an anonymous link
+ * visitor, and a failed session read does not send them to login. Only an
+ * explicit `UNAUTHENTICATED` from the profile read clears the dead session; the
+ * public answer still carries the owner and PUBLIC wishes only.
  *
  * Story 4.1.3 adds the relation actions from the closed `relationship` field of
  * that same answer: one invite button for «нет связи», an accept button for an
  * incoming pending invite, and static chips for pending, friends and the
- * viewer's own profile. Nothing else is drawn.
+ * viewer's own profile. Nothing else is drawn, and a guest sees no relation
+ * actions because sending an invite requires a session.
  *
  * Story 4.2.3 adds the explicit accept/reject pair for an incoming invite and
  * the profile-only `inviteCooldown`: the rejector sees a disabled add button
@@ -104,40 +106,21 @@ export default function ProfileScreen() {
   const params = useLocalSearchParams<{ nick?: string }>();
   const route = profileRoute(paramValue(params.nick));
   const nick = route?.nick ?? null;
-  const next = route?.next ?? null;
   const [state, setState] = useState<ScreenState>(
     nick === null ? { status: "missing" } : { status: "loading" },
   );
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [sessionExpired, setSessionExpired] = useState(false);
   const [pendingNick, setPendingNick] = useState<string | null>(null);
   const requestSeq = useRef(0);
   const inviteInFlight = useRef<string | null>(null);
   const nickRef = useRef(nick);
 
-  const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
-
-  useEffect(function redirectAnonymous() {
-    if (auth.state.status === "anonymous" && next !== null) {
-      // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
-      router.replace({
-        pathname: "/login",
-        params: sessionExpired ? { next, reason: "session_expired" } : { next },
-      });
-    }
-  }, [auth.state.status, next, sessionExpired]);
-
-  /**
-   * The stored session is dead: `signOut` clears the token and marks the app
-   * anonymous, and the guard above opens login with the same safe `next`.
-   */
-  async function expireSession(): Promise<boolean> {
-    setSessionExpired(true);
-    const signedOut = await auth.signOut();
-    if (!signedOut.ok) setSessionExpired(false);
-    return signedOut.ok;
-  }
+  // A guest is a first-class visitor on a public profile. While the session read
+  // is in flight the screen waits; after `anonymous` or `error` it reads the
+  // profile anonymously, and the server opens only PUBLIC wishes.
+  const authPending = auth.state.status === "loading";
+  const viewer = auth.state.status === "ready" ? auth.state.user : null;
 
   /**
    * A reused route with another nick is a different person: the current nick
@@ -151,7 +134,7 @@ export default function ProfileScreen() {
   }, [nick]);
 
   useEffect(function loadProfile() {
-    if (ownerId === null || nick === null) return;
+    if (authPending || nick === null) return;
     const currentNick = nick;
     let cancelled = false;
 
@@ -174,9 +157,10 @@ export default function ProfileScreen() {
         return;
       }
       if ("code" in result && result.code === "UNAUTHENTICATED") {
-        const signedOut = await expireSession();
-        // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
-        if (!signedOut && !cancelled) {
+        // Defensive: the profile route answers anonymously now, but a stale token
+        // must still be cleared without sending the visitor away from the page.
+        await auth.signOut();
+        if (!cancelled) {
           setState({ status: "error", kind: "network" });
           setToast({ message: t("form.network"), tone: "error", nick: currentNick });
         }
@@ -206,22 +190,24 @@ export default function ProfileScreen() {
     // `auth` is only read on the expired-session branch; re-running the fetch on
     // every auth context update would refetch the profile for no reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownerId, nick, attempt]);
+  }, [authPending, nick, attempt]);
 
   if (nick === null) {
     return <NotFoundScreen />;
   }
 
-  if (auth.state.status !== "ready") return <SessionLoadingScreen />;
+  if (auth.state.status === "loading") return <SessionLoadingScreen />;
 
   // A reused route with a new nick reads as loading until its own answer lands.
   const view: ScreenState =
     state.status === "ready" && state.nick !== nick ? { status: "loading" } : state;
-  const viewer = auth.state.user;
 
   function retry() {
     setToast(null);
     setState({ status: "loading" });
+    // A failed session read is retried too, so a signed-in visitor gets relation
+    // actions and the wider answer once the network returns.
+    if (auth.state.status === "error") auth.retry();
     setAttempt((value) => value + 1);
   }
 
@@ -230,6 +216,7 @@ export default function ProfileScreen() {
   }
 
   const ownProfile =
+    viewer !== null &&
     view.status === "ready" &&
     view.owner.nick.toLowerCase() === viewer.nick.toLowerCase();
   const sending = pendingNick === nick;
@@ -361,14 +348,14 @@ export default function ProfileScreen() {
       return;
     }
     if (result.code === "UNAUTHENTICATED") {
-      const signedOut = await expireSession();
-      if (!signedOut) {
-        setToast({
-          message: profile("relationship.network"),
-          tone: "error",
-          nick: requestedNick,
-        });
-      }
+      const signedOut = await auth.signOut();
+      setToast({
+        message: signedOut.ok
+          ? common("errors.code.UNAUTHENTICATED")
+          : profile("relationship.network"),
+        tone: "error",
+        nick: requestedNick,
+      });
       return;
     }
     if (result.code === "NOT_FOUND") {
@@ -453,84 +440,86 @@ export default function ProfileScreen() {
                         {t("form.nickPreview", { nick: view.owner.nick })}
                       </Text>
                     </YStack>
-                    <XStack
-                      testID="profile-relationship"
-                      alignItems="center"
-                      flexWrap="wrap"
-                      gap="$2"
-                    >
-                      {ownProfile ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.SELF")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.inviteCooldown !== null ? (
-                        view.inviteCooldown.rejected ? (
+                    {viewer !== null ? (
+                      <XStack
+                        testID="profile-relationship"
+                        alignItems="center"
+                        flexWrap="wrap"
+                        gap="$2"
+                      >
+                        {ownProfile ? (
                           <RelationshipChip
-                            label={profile("relationship.chips.REJECTED")}
+                            label={profile("relationship.chips.SELF")}
                             testID="profile-relationship-chip"
                           />
-                        ) : (
-                          <>
-                            <Button
-                              label={profile("relationship.addFriend")}
-                              disabled
-                              focusableWhenDisabled
-                              testID="profile-add-friend"
+                        ) : view.inviteCooldown !== null ? (
+                          view.inviteCooldown.rejected ? (
+                            <RelationshipChip
+                              label={profile("relationship.chips.REJECTED")}
+                              testID="profile-relationship-chip"
                             />
-                            <Text kind="caption" tone="muted" testID="profile-invite-cooldown">
-                              {profile("relationship.cooldown", {
-                                hours: view.inviteCooldown.hours,
-                              })}
-                            </Text>
-                          </>
-                        )
-                      ) : view.relationship === "FRIENDS" ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.FRIENDS")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.relationship === "OUTGOING_PENDING" ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.OUTGOING_PENDING")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.relationship === "INCOMING_PENDING" ? (
-                        <>
+                          ) : (
+                            <>
+                              <Button
+                                label={profile("relationship.addFriend")}
+                                disabled
+                                focusableWhenDisabled
+                                testID="profile-add-friend"
+                              />
+                              <Text kind="caption" tone="muted" testID="profile-invite-cooldown">
+                                {profile("relationship.cooldown", {
+                                  hours: view.inviteCooldown.hours,
+                                })}
+                              </Text>
+                            </>
+                          )
+                        ) : view.relationship === "FRIENDS" ? (
                           <RelationshipChip
-                            label={profile("relationship.chips.INCOMING_PENDING")}
-                            emphasis
+                            label={profile("relationship.chips.FRIENDS")}
                             testID="profile-relationship-chip"
                           />
+                        ) : view.relationship === "OUTGOING_PENDING" ? (
+                          <RelationshipChip
+                            label={profile("relationship.chips.OUTGOING_PENDING")}
+                            testID="profile-relationship-chip"
+                          />
+                        ) : view.relationship === "INCOMING_PENDING" ? (
+                          <>
+                            <RelationshipChip
+                              label={profile("relationship.chips.INCOMING_PENDING")}
+                              emphasis
+                              testID="profile-relationship-chip"
+                            />
+                            <Button
+                              label={profile("relationship.acceptInvite")}
+                              onPress={function acceptInvite() {
+                                void relationshipAction("accept");
+                              }}
+                              busy={sending}
+                              testID="profile-accept-invite"
+                            />
+                            <Button
+                              label={profile("relationship.rejectInvite")}
+                              variant="ghost"
+                              onPress={function rejectInvite() {
+                                void relationshipAction("reject");
+                              }}
+                              busy={sending}
+                              testID="profile-reject-invite"
+                            />
+                          </>
+                        ) : (
                           <Button
-                            label={profile("relationship.acceptInvite")}
-                            onPress={function acceptInvite() {
-                              void relationshipAction("accept");
+                            label={profile("relationship.addFriend")}
+                            onPress={function addFriend() {
+                              void relationshipAction("add");
                             }}
                             busy={sending}
-                            testID="profile-accept-invite"
+                            testID="profile-add-friend"
                           />
-                          <Button
-                            label={profile("relationship.rejectInvite")}
-                            variant="ghost"
-                            onPress={function rejectInvite() {
-                              void relationshipAction("reject");
-                            }}
-                            busy={sending}
-                            testID="profile-reject-invite"
-                          />
-                        </>
-                      ) : (
-                        <Button
-                          label={profile("relationship.addFriend")}
-                          onPress={function addFriend() {
-                            void relationshipAction("add");
-                          }}
-                          busy={sending}
-                          testID="profile-add-friend"
-                        />
-                      )}
-                    </XStack>
+                        )}
+                      </XStack>
+                    ) : null}
                     {view.gifts.length === 0 ? (
                       <EmptyState title={wishlist("emptyTitle")} />
                     ) : (

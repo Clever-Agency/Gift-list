@@ -421,6 +421,15 @@ describe("изменение желания: гейт сессии", () => {
     // Until the redirect lands the page still says «Загружаем», not blank.
     expect(container.querySelector('[data-testid="session-loading"]')).not.toBeNull();
   });
+
+  it("обрыв сети при проверке сессии: экран ошибки с «Повторить», без входа", async () => {
+    api.apiRequest.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="session-error"]')).not.toBeNull();
+    expect(text()).toContain("Нет связи с сервером");
+  });
 });
 
 describe("изменение желания: загрузка", () => {

@@ -25,6 +25,7 @@ import {
   giftTagsEqual,
 } from "@/ui/gift-form-tags";
 import { PrimaryButton } from "@/ui/primary-button";
+import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { ToastHost } from "@/ui/toast";
 import { useTagCatalog } from "@/ui/use-tag-catalog";
@@ -184,6 +185,10 @@ export default function EditGiftScreen() {
     // every auth context update would refetch the wish for no reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId, id, attempt]);
+
+  if (auth.state.status === "error") {
+    return <SessionErrorScreen size="form" onRetry={auth.retry} />;
+  }
 
   if (auth.state.status !== "ready") {
     return <SessionLoadingScreen size="form" />;

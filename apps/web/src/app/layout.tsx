@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Lora, Manrope } from "next/font/google";
+import localFont from "next/font/local";
 import { createTranslator } from "next-intl";
 import { DEFAULT_LOCALE, getMessages } from "@gift-list/contracts";
 import { getBrandName } from "@/lib/env";
@@ -14,18 +14,28 @@ const webCopy = createTranslator({
   namespace: "web",
 });
 
-const manrope = Manrope({
+// Subsets of the faces Expo loads (latin, latin-ext, cyrillic, cyrillic-ext).
+// woff2 is in the repo, so `next build` does not call fonts.googleapis.com.
+// Licenses: ./fonts/OFL-Manrope.txt, ./fonts/OFL-Lora.txt. The Lora file is a
+// subset, so its internal name is Gift List Display (OFL reserved name "Lora").
+const manrope = localFont({
+  src: [
+    { path: "./fonts/manrope-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/manrope-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/manrope-600.woff2", weight: "600", style: "normal" },
+  ],
   variable: "--font-sans",
-  subsets: ["latin", "latin-ext", "cyrillic", "cyrillic-ext"],
-  weight: ["400", "500", "600"],
   display: "swap",
+  adjustFontFallback: "Arial",
 });
 
-const lora = Lora({
-  variable: "--font-heading",
-  subsets: ["latin", "latin-ext", "cyrillic", "cyrillic-ext"],
+const lora = localFont({
+  src: "./fonts/lora-600.woff2",
   weight: "600",
+  style: "normal",
+  variable: "--font-heading",
   display: "swap",
+  adjustFontFallback: "Times New Roman",
 });
 
 export async function generateMetadata(): Promise<Metadata> {

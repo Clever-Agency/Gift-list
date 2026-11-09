@@ -6,6 +6,7 @@ import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { NavLink } from "@/ui/nav-link";
+import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 
 // NOTE FOR UX: цель возврата после регистрации по приглашению. Дружба и подтверждение — Story 4.7.
 
@@ -22,7 +23,7 @@ export default function InviteReturnScreen() {
     }
   }, [auth.state.status, token]);
 
-  if (auth.state.status !== "ready") return null;
+  if (auth.state.status !== "ready") return <SessionLoadingScreen size="form" />;
 
   return (
     <>

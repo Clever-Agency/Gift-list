@@ -2,6 +2,7 @@ import type { GiftCard } from "@gift-list/contracts";
 import {
   Column,
   Heading,
+  LoadingCards,
   PageContainer,
   PageScroll,
   Screen,
@@ -25,7 +26,6 @@ import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
-import { WishCardSkeleton } from "@/ui/skeleton";
 import { ToastHost } from "@/ui/toast";
 import { publicWishlistRoute } from "@/wishlist/public-token";
 
@@ -42,8 +42,6 @@ type ScreenState =
   | { status: "ready"; token: string; gifts: GiftCard[]; owner: PublicWishlistOwner }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
-
-const SKELETON_CARDS = [0, 1, 2];
 
 type ToastState = { message: string; tone: "info" | "error" };
 
@@ -200,7 +198,11 @@ export default function PublicWishlistScreen() {
                 gap={spacing["grid-gap"]}
               >
                 {view.status === "loading" ? (
-                  <WishlistLoading label={myWishlist("loading")} width={grid.cardWidth} />
+                  <LoadingCards
+                    testID="wishlist-loading"
+                    label={myWishlist("loading")}
+                    width={grid.cardWidth}
+                  />
                 ) : view.status === "error" ? (
                   <RetryView
                     text={
@@ -283,30 +285,6 @@ function WishlistUnavailable() {
 }
 
 WishlistUnavailable.displayName = "WishlistUnavailable";
-
-/**
- * The one loading answer, shared by the list read and the session read. A named
- * busy region with the card skeletons is what makes the page say «идёт загрузка»
- * instead of showing nothing while `/api/v1/me` or `/api/v1/l` is in flight.
- */
-function WishlistLoading({ label, width }: { label: string; width: number }) {
-  return (
-    <XStack
-      testID="wishlist-loading"
-      flexWrap="wrap"
-      gap="$grid-gap"
-      accessible
-      aria-busy
-      aria-label={label}
-    >
-      {SKELETON_CARDS.map(function renderSkeleton(key) {
-        return <WishCardSkeleton key={key} width={width} />;
-      })}
-    </XStack>
-  );
-}
-
-WishlistLoading.displayName = "WishlistLoading";
 
 /** A failed read: one line of text and the retry button. */
 function RetryView({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {

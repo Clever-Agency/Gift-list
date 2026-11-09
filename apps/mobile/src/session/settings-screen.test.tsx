@@ -183,6 +183,18 @@ afterEach(async () => {
 });
 
 describe("настройки: гейт сессии", () => {
+  it("пока сессия неизвестна, показывает общий экран загрузки, а не пустую страницу", async () => {
+    api.apiRequest.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    expect(navigation.replace).not.toHaveBeenCalled();
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(1);
+  });
+
   it("аноним уходит на вход с возвратом в настройки", async () => {
     api.apiRequest.mockResolvedValue({ ok: false, code: "UNAUTHENTICATED", message: "" });
     await mount();
@@ -191,7 +203,8 @@ describe("настройки: гейт сессии", () => {
       pathname: "/login",
       params: { next: "/settings" },
     });
-    expect(text()).toBe("");
+    // Until the redirect lands the page still says «Загружаем», not blank.
+    expect(container.querySelector('[data-testid="session-loading"]')).not.toBeNull();
   });
 });
 

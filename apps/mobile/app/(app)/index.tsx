@@ -4,6 +4,7 @@ import {
   Column,
   Heading,
   InfoButton,
+  LoadingCards,
   PageContainer,
   PageScroll,
   Pressable,
@@ -28,7 +29,7 @@ import { EmptyState } from "@/ui/empty-state";
 import { restoreFocus, type ChipNode } from "@/ui/focus";
 import { WishCard } from "@/ui/gift-card";
 import { PrimaryButton } from "@/ui/primary-button";
-import { WishCardSkeleton } from "@/ui/skeleton";
+import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { ToastHost } from "@/ui/toast";
 import { VisibilityPicker } from "@/ui/visibility-picker";
 import { copyWishlistShareLink } from "@/wishlist/copy-link";
@@ -47,8 +48,6 @@ type ScreenState =
   // Only a broken connection claims a network problem; other failed reads get the
   // generic body (EXPERIENCE → State Patterns → «Нет сети при загрузке / ошибка загрузки»).
   | { status: "error"; kind: "network" | "generic" };
-
-const SKELETON_CARDS = [0, 1, 2];
 
 /**
  * One toast at a time: a failed read is destructive, the composer's «Добавлено в
@@ -251,7 +250,7 @@ export default function MyWishlistScreen() {
   }, [ownerId, attempt]);
 
   if (auth.state.status !== "ready") {
-    return null;
+    return <SessionLoadingScreen />;
   }
 
   function retry() {
@@ -491,17 +490,11 @@ export default function MyWishlistScreen() {
                   </YStack>
                 ) : null}
                 {state.status === "loading" ? (
-                  <XStack
-                    flexWrap="wrap"
-                    gap="$grid-gap"
-                    accessible
-                    aria-busy
-                    aria-label={wishlist("loading")}
-                  >
-                    {SKELETON_CARDS.map((key) => (
-                      <WishCardSkeleton key={key} width={grid.cardWidth} />
-                    ))}
-                  </XStack>
+                  <LoadingCards
+                    testID="my-wishlist-loading"
+                    label={wishlist("loading")}
+                    width={grid.cardWidth}
+                  />
                 ) : state.status === "error" ? (
                   <RetryView
                     text={

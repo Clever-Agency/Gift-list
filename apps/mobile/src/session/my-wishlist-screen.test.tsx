@@ -352,11 +352,15 @@ afterEach(async () => {
 });
 
 describe("мой вишлист: гейт сессии", () => {
-  it("пока сессия неизвестна, ничего не показывает и не уходит со страницы", async () => {
+  it("пока сессия неизвестна, показывает общий экран загрузки и не уходит со страницы", async () => {
     api.apiRequest.mockReturnValue(new Promise(() => {}));
     await mount();
     expect(navigation.replace).not.toHaveBeenCalled();
-    expect(text()).toBe("");
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 
   it("аноним с / уходит на вход с возвратом на главную", async () => {
@@ -445,9 +449,11 @@ describe("мой вишлист: список", () => {
     respond(new Promise(() => {}));
     await mount();
 
-    const region = container.querySelector('[aria-label="Загружаем вишлист"]');
+    const region = container.querySelector('[data-testid="my-wishlist-loading"]');
     expect(region).not.toBeNull();
+    expect(region?.getAttribute("role")).toBe("status");
     expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем вишлист");
     expect(region?.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 

@@ -247,7 +247,7 @@ describe("профиль: вход", () => {
     },
   );
 
-  it("пока сессия неизвестна, профиль не запрашивается", async () => {
+  it("пока сессия неизвестна, профиль не запрашивается и экран не пустой", async () => {
     api.apiRequest.mockImplementation((path: string) =>
       path === "/api/v1/me" ? new Promise(() => {}) : Promise.resolve(giftsAnswer([])),
     );
@@ -255,6 +255,11 @@ describe("профиль: вход", () => {
 
     expect(profileReads()).toBe(0);
     expect(navigation.replace).not.toHaveBeenCalled();
+    const region = container.querySelector('[data-testid="session-loading"]');
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем");
+    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 
   it("истёкшая сессия уводит на вход с тем же next и причиной", async () => {
@@ -352,9 +357,11 @@ describe("профиль: карточка и желания", () => {
     respond(new Promise(() => {}));
     await mount();
 
-    const region = container.querySelector('[aria-label="Загружаем профиль"]');
+    const region = container.querySelector('[data-testid="profile-loading"]');
     expect(region).not.toBeNull();
+    expect(region?.getAttribute("role")).toBe("status");
     expect(region?.getAttribute("aria-busy")).toBe("true");
+    expect(region?.getAttribute("aria-label")).toBe("Загружаем профиль");
     expect(
       container.querySelectorAll('[data-testid="wish-card-skeleton"]'),
     ).toHaveLength(3);

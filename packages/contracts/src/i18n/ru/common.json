@@ -1,5 +1,6 @@
 {
   "brandName": "{brand}",
+  "loading": "Загружаем",
   "writeToAuthor": "Написать автору",
   "apiUnset": "не задан",
   "apiSet": "задан",

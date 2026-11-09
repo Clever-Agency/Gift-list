@@ -47,6 +47,11 @@ export default function RootLayout() {
     }
   }, [loaded, error]);
 
+  // This is the font/splash gate, not the session gate: on native the splash is kept
+  // up by `preventAutoHideAsync` until `loaded || error`, so `null` is never a visible
+  // blank page; on web the font fetch is short and a page cannot be themed before its
+  // faces exist. Every guarded route handles the session itself with
+  // `SessionLoadingScreen`.
   if (!loaded && !error) return null;
 
   const preferred = getLocales()

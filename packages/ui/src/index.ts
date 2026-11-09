@@ -50,6 +50,7 @@ export {
 } from "./visibility-chip";
 export { WishCard, type WishCardProps } from "./wish-card";
 export { Skeleton, WishCardSkeleton, type WishCardSkeletonProps } from "./skeleton";
+export { LoadingCards, type LoadingCardsProps } from "./loading-cards";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";

@@ -7,6 +7,7 @@ import {
   Button,
   Column,
   Heading,
+  LoadingCards,
   PageContainer,
   PageScroll,
   RelationshipChip,
@@ -36,7 +37,7 @@ import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
-import { WishCardSkeleton } from "@/ui/skeleton";
+import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { ToastHost } from "@/ui/toast";
 
 /**
@@ -64,8 +65,6 @@ type ScreenState =
     }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
-
-const SKELETON_CARDS = [0, 1, 2];
 
 type ToastState = { message: string; tone: "info" | "error"; nick: string };
 
@@ -213,7 +212,7 @@ export default function ProfileScreen() {
     return <NotFoundScreen />;
   }
 
-  if (auth.state.status !== "ready") return null;
+  if (auth.state.status !== "ready") return <SessionLoadingScreen />;
 
   // A reused route with a new nick reads as loading until its own answer lands.
   const view: ScreenState =
@@ -419,17 +418,11 @@ export default function ProfileScreen() {
                 gap={spacing["grid-gap"]}
               >
                 {view.status === "loading" ? (
-                  <XStack
-                    flexWrap="wrap"
-                    gap="$grid-gap"
-                    accessible
-                    aria-busy
-                    aria-label={profile("loading")}
-                  >
-                    {SKELETON_CARDS.map((key) => (
-                      <WishCardSkeleton key={key} width={grid.cardWidth} />
-                    ))}
-                  </XStack>
+                  <LoadingCards
+                    testID="profile-loading"
+                    label={profile("loading")}
+                    width={grid.cardWidth}
+                  />
                 ) : view.status === "error" ? (
                   <RetryView
                     text={

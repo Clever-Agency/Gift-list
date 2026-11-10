@@ -9,9 +9,9 @@ import type { StorybookConfig } from "@storybook/react-native-web-vite";
  */
 const config: StorybookConfig = {
   stories: ["../packages/ui/src/**/*.stories.tsx"],
-  // No addons on purpose: the catalog shows components and their states; behaviour
-  // (focus, hover, motion) is checked on the real screens and in unit tests.
-  addons: [],
+  // Viewport and backgrounds are part of Storybook 10 core; a11y is the one addon:
+  // it shows axe-core violations next to every story (`parameters.a11y.test`).
+  addons: ["@storybook/addon-a11y"],
   framework: {
     name: "@storybook/react-native-web-vite",
     options: {

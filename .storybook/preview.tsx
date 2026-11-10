@@ -46,6 +46,47 @@ const preview: Preview = {
     // The catalog is the light theme only (UX-A8); a dark variant would show colors
     // the app never paints.
     backgrounds: { disable: true },
+    // The window widths `DESIGN.md` → Точки перехода reasons about: 360/390/412 are
+    // phones, 768 the tablet portrait (medium), 1280 the wide desktop. The built-in
+    // Storybook 10 viewport drives real media queries in the iframe, so a preset
+    // story is the same code path as a resized browser window.
+    viewport: {
+      options: {
+        w360: {
+          name: "Phone 360 (compact)",
+          styles: { width: "360px", height: "780px" },
+          type: "mobile",
+        },
+        w390: {
+          name: "Phone 390 (compact)",
+          styles: { width: "390px", height: "844px" },
+          type: "mobile",
+        },
+        w412: {
+          name: "Phone 412 (compact)",
+          styles: { width: "412px", height: "915px" },
+          type: "mobile",
+        },
+        w768: {
+          name: "Tablet 768 (medium)",
+          styles: { width: "768px", height: "1024px" },
+          type: "tablet",
+        },
+        w1280: {
+          name: "Desktop 1280 (wide)",
+          styles: { width: "1280px", height: "800px" },
+          type: "desktop",
+        },
+      },
+    },
+    // axe-core runs on every story; `todo` reports violations in the panel without
+    // failing the build (failing the build is W12's job, after the known defects).
+    a11y: { test: "todo" },
+  },
+  // Start in the tool's responsive mode; component stories pin a preset via
+  // `globals: { viewport: { value: "w360" } }` where the narrow width is the point.
+  initialGlobals: {
+    viewport: { value: "responsive" },
   },
 };
 

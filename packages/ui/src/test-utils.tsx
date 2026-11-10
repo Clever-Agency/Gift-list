@@ -57,3 +57,23 @@ export async function settle(ms = 50): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
   });
 }
+
+/**
+ * Every attribute of the tree whose name starts with `accessibility`. The props
+ * are React Native only: in the web DOM they would be unknown `accessibilityhint`
+ * attributes a browser never reads.
+ */
+export function nativeOnlyAttributes(root: ParentNode): string[] {
+  const names: string[] = [];
+  for (const node of Array.from(root.querySelectorAll("*"))) {
+    for (const attribute of Array.from(node.attributes)) {
+      if (attribute.name.toLowerCase().startsWith("accessibility")) names.push(attribute.name);
+    }
+  }
+  return names;
+}
+
+/** All `console.error` calls of a spy joined into one string for a readable assertion. */
+export function errorMessages(spy: { mock: { calls: unknown[][] } }): string {
+  return spy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+}

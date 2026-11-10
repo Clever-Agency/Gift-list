@@ -2,9 +2,11 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TagChip, TagChipList } from "./tag-chip";
-import { createMount } from "./test-utils";
+import { createMount, errorMessages, nativeOnlyAttributes } from "./test-utils";
 
 const mounted = createMount();
+
+function noop() {}
 
 async function click(node: Element) {
   await act(async () => {
@@ -350,5 +352,45 @@ describe("TagChipList", () => {
 
     expect(container.querySelector('[data-testid="tags"]')).toBeNull();
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("TagChip: на вебе нет нативных a11y-пропсов", () => {
+  it("ошибка тега остаётся в aria-describedby, accessibility* в DOM не попадают", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+    try {
+      const error = { id: "tags-error", message: "Проверьте теги" };
+      const { container, render } = mounted();
+      await render(
+        <>
+          <TagChip label="мечта" selected onPress={vi.fn()} error={error} />
+          <TagChip
+            variant="custom"
+            label="своё"
+            editLabel="Редактировать тег своё"
+            onPress={vi.fn()}
+            removeLabel="Убрать тег своё"
+            onRemove={vi.fn()}
+            error={error}
+          />
+          <TagChip variant="card" label="мечта" accessibilityLabel="Тег мечта" />
+        </>,
+      );
+
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+
+      const checkbox = container.querySelector('[role="checkbox"]') as HTMLElement;
+      expect(checkbox.getAttribute("aria-describedby")).toBe("tags-error");
+      for (const label of ["Редактировать тег своё", "Убрать тег своё"]) {
+        const control = container.querySelector(`[aria-label="${label}"]`) as HTMLElement;
+        expect(control.getAttribute("aria-invalid")).toBe("true");
+        expect(control.getAttribute("aria-describedby")).toBe("tags-error");
+      }
+      // Имя статичного чипа по-прежнему приходит из aria-label, а не из нативного пропса.
+      expect(container.querySelector('[role="note"]')?.getAttribute("aria-label")).toBe("Тег мечта");
+    } finally {
+      errors.mockRestore();
+    }
   });
 });

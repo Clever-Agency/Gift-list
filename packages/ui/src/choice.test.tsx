@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import { Choice, ChoiceList } from "./choice";
-import { createMount } from "./test-utils";
+import { createMount, errorMessages, nativeOnlyAttributes } from "./test-utils";
 
 const mounted = createMount();
 
@@ -142,5 +142,60 @@ describe("ChoiceList: ошибка и описание группы", () => {
     expect(radios[0].getAttribute("aria-checked")).toBe("false");
     expect(radios[1].getAttribute("aria-checked")).toBe("true");
     expect(radios[1].getAttribute("aria-disabled")).toBe("true");
+  });
+});
+
+describe("ChoiceList: на вебе нет нативных a11y-пропсов", () => {
+  it("подсказка строки связана с радио через свой aria-describedby, в DOM нет accessibility*", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+    try {
+      const { container, render } = mounted();
+      await render(
+        <ChoiceList label="Кто видит" variant="row" description="Меняется только у открытого желания">
+          <Choice variant="row" label="Всем" hint="Видно всем" selected onPress={noop} />
+          <Choice variant="row" label="Друзьям" hint="Видно друзьям" selected={false} onPress={noop} />
+        </ChoiceList>,
+      );
+
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+
+      const [first, second] = Array.from(
+        container.querySelectorAll('[role="radio"]'),
+        (radio) => radio.getAttribute("aria-describedby"),
+      );
+      expect(first).toBeTruthy();
+      expect(second).toBeTruthy();
+      expect(first).not.toBe(second);
+      expect(byId(first)?.textContent).toBe("Видно всем");
+      expect(byId(second)?.textContent).toBe("Видно друзьям");
+      // Описание группы по-прежнему одно и то же для всех радио — на группе.
+      expect(byId(group(container).getAttribute("aria-describedby"))?.textContent).toBe(
+        "Меняется только у открытого желания",
+      );
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("чип без видимой подсказки не ставит висячий aria-describedby", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+    try {
+      const { container, render } = mounted();
+      await render(
+        <ChoiceList label="Валюта" variant="chip" description="Пять кодов">
+          <Choice variant="chip" label="RUB" selected onPress={noop} />
+          <Choice variant="chip" label="USD" selected={false} onPress={noop} />
+        </ChoiceList>,
+      );
+
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+      const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+      expect(radios.map((radio) => radio.getAttribute("aria-describedby"))).toEqual([null, null]);
+      expect(byId(group(container).getAttribute("aria-describedby"))?.textContent).toBe("Пять кодов");
+    } finally {
+      errors.mockRestore();
+    }
   });
 });

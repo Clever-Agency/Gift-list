@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { createMount } from "./test-utils";
+import { createMount, errorMessages, nativeOnlyAttributes } from "./test-utils";
 import { PasswordField, TextField } from "./text-field";
 
 const mounted = createMount();
@@ -72,6 +72,37 @@ describe("TextField", () => {
     const described = document.getElementById(input.getAttribute("aria-describedby") as string);
     expect(described?.textContent).toBe("От 3 до 20 символов");
     expect(described?.getAttribute("role")).toBeNull();
+  });
+
+  it("не отдаёт нативный hint в DOM: подсказка и ошибка остаются в aria-describedby", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+    try {
+      const { container, render } = mounted();
+      await render(
+        <TextField label="Почта" value="" onChangeText={noop} hint="До 254 символов" />,
+      );
+
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+      const described = container.querySelector("input") as HTMLInputElement;
+      expect(document.getElementById(described.getAttribute("aria-describedby") as string)?.textContent).toBe(
+        "До 254 символов",
+      );
+
+      await render(
+        <TextField label="Почта" value="" onChangeText={noop} error="Введите адрес" />,
+      );
+
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+      const invalid = container.querySelector("input") as HTMLInputElement;
+      expect(invalid.getAttribute("aria-invalid")).toBe("true");
+      expect(document.getElementById(invalid.getAttribute("aria-describedby") as string)?.textContent).toBe(
+        "Введите адрес",
+      );
+    } finally {
+      errors.mockRestore();
+    }
   });
 });
 
@@ -185,6 +216,31 @@ describe("PasswordField", () => {
 
       expect(toggle.getAttribute("aria-pressed")).toBe("true");
       expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("не отдаёт нативный hint в DOM: подсказка пароля остаётся в aria-describedby", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+    try {
+      const { container, render } = mounted();
+      await render(
+        <PasswordField
+          label="Пароль"
+          value="secret"
+          onChangeText={noop}
+          showLabel="Показать пароль"
+          hint="От 8 символов"
+        />,
+      );
+
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+      const input = container.querySelector("input") as HTMLInputElement;
+      expect(document.getElementById(input.getAttribute("aria-describedby") as string)?.textContent).toBe(
+        "От 8 символов",
+      );
     } finally {
       errors.mockRestore();
     }

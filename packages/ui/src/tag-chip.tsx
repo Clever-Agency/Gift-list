@@ -1,6 +1,7 @@
 import { useTheme } from "@tamagui/core";
 import { XStack } from "@tamagui/stacks";
 import { forwardRef, type ComponentRef, type ReactNode } from "react";
+import { a11yHintProps } from "./a11y-hint";
 import { Star } from "./icons";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
@@ -166,8 +167,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
             role="button"
             aria-label={editLabel ?? label}
             aria-invalid={error ? true : undefined}
-            aria-describedby={error?.id}
-            accessibilityHint={error?.message}
+            {...a11yHintProps({ hint: error?.message, describedBy: error?.id })}
             onPress={onPress}
             flexDirection="row"
             alignItems="center"
@@ -193,8 +193,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
           role="button"
           aria-label={removeLabel ?? label}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error?.id}
-          accessibilityHint={error?.message}
+          {...a11yHintProps({ hint: error?.message, describedBy: error?.id })}
           onPress={onRemove}
           minHeight="$touch-target"
           minWidth="$touch-target"
@@ -220,8 +219,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
       aria-expanded={isButton ? expanded : undefined}
       aria-controls={isButton ? controls : undefined}
       aria-invalid={error ? true : undefined}
-      aria-describedby={error?.id}
-      accessibilityHint={error?.message}
+      {...a11yHintProps({ hint: error?.message, describedBy: error?.id })}
       onPress={onPress}
       minHeight="$touch-target"
       minWidth="$touch-target"

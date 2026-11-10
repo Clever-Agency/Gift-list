@@ -2,6 +2,7 @@ import { isWeb, styled } from "@tamagui/core";
 import { Input as BehaviorInput, TextArea as BehaviorTextArea } from "@tamagui/input";
 import { YStack } from "@tamagui/stacks";
 import { forwardRef, useId, useState, type ComponentProps, type ComponentRef } from "react";
+import { a11yHintProps } from "./a11y-hint";
 import { fontFor } from "./font-style";
 import { Eye, EyeOff } from "./icons";
 import { passwordToggleA11yProps } from "./password-toggle-a11y";
@@ -128,8 +129,10 @@ export const TextField = forwardRef<FieldInputRef, TextFieldProps>(function Text
         invalid={Boolean(error)}
         aria-label={label}
         aria-invalid={error ? true : undefined}
-        aria-describedby={described ? `${id}-description` : undefined}
-        accessibilityHint={described}
+        {...a11yHintProps({
+          hint: described,
+          describedBy: described ? `${id}-description` : undefined,
+        })}
         {...(multiline ? { rows: rows ?? 3, multiline: true } : null)}
       />
     </FieldShell>
@@ -187,8 +190,10 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
             invalid={Boolean(error)}
             aria-label={label}
             aria-invalid={error ? true : undefined}
-            aria-describedby={described ? `${id}-description` : undefined}
-            accessibilityHint={described}
+            {...a11yHintProps({
+              hint: described,
+              describedBy: described ? `${id}-description` : undefined,
+            })}
           />
           <Pressable
             {...passwordToggleA11yProps(visible)}

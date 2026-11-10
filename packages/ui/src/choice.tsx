@@ -1,6 +1,7 @@
 import { View } from "@tamagui/core";
 import { XStack, YStack } from "@tamagui/stacks";
 import { createContext, forwardRef, useContext, useId, type ComponentRef, type ReactNode } from "react";
+import { a11yHintProps } from "./a11y-hint";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { spacing, typography } from "./tokens";
@@ -38,6 +39,7 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
 ) {
   const groupHint = useContext(ChoiceListHintContext);
   const accessibleHint = joinSentences([hint, groupHint]);
+  const hintId = useId();
   const row = variant === "row";
   return (
     <Pressable
@@ -45,7 +47,11 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
       role="radio"
       aria-label={label}
       aria-checked={selected}
-      accessibilityHint={accessibleHint}
+      {...a11yHintProps({
+        hint: accessibleHint,
+        // The web reads the visible line under the label; a chip has none.
+        describedBy: row && hint ? hintId : undefined,
+      })}
       disabled={disabled}
       onPress={onPress}
       testID={testID}
@@ -90,7 +96,7 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
               {label}
             </Text>
             {hint ? (
-              <Text kind="caption" tone="muted">
+              <Text id={hintId} kind="caption" tone="muted">
                 {hint}
               </Text>
             ) : null}
@@ -143,8 +149,7 @@ export function ChoiceList({
           role="radiogroup"
           aria-label={label}
           aria-invalid={error ? true : undefined}
-          aria-describedby={describedBy || undefined}
-          accessibilityHint={hint}
+          {...a11yHintProps({ hint, describedBy: describedBy || undefined })}
           gap="$2"
           {...(error
             ? {

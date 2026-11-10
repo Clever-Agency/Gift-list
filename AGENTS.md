@@ -51,7 +51,7 @@
 
 - `packages/contracts` и `packages/ui` не собираются: отдают исходники TS (`exports` → `src/index.ts`), веб транспилирует их через `transpilePackages`. Не добавляйте build-шаг и `dist/`.
 - `packages/ui` — тема (`src/tokens.ts` и `src/config.ts`, значения из frontmatter `DESIGN.md`) и компоненты обоих клиентов. В пакете нет API, env, Prisma и строк интерфейса: тексты приходят пропсами, шрифты — из `expo-font` (приложение) и `next/font` (Next). Платформенные различия хранятся в парах `*.ts`/`*.native.ts`. Чего не хватает экрану, добавляйте в пакет, а не в `StyleSheet` приложения. `scripts/check-boundaries.mjs` (часть `npm run lint`) падает на второй копии `react`, `react-dom`, `tamagui` и `@tamagui/*` в lock и на импорте из `"tamagui"`.
-- Тонкая обёртка над `SafeAreaView` / `useSafeAreaInsets` из `react-native-safe-area-context` в `packages/ui` — единственное исключение из «только Tamagui и React»: обёртка без API, env, данных и текстов, экраны не повторяют `SafeAreaView style={{ flex: 1 }}`, вложенных обёрток не ставится (AD-2, уточнение 2026-11-10).
+- Тонкая обёртка над `SafeAreaView` / `useSafeAreaInsets` из `react-native-safe-area-context` в `packages/ui` — **утверждённое** исключение из «только Tamagui и React» (AD-2, уточнение 2026-11-10): обёртка без API, env, данных и текстов, экраны не повторяют `SafeAreaView style={{ flex: 1 }}`, вложенных обёрток не ставится. Обёртки пока нет — её реализует W12.11; до неё экраны используют `SafeAreaView style={{ flex: 1 }}`.
 - `apps/web/public/` генерируется: `npm run build` пересоздаёт его из Expo-web экспорта `apps/mobile` (`scripts/sync-spa.mjs`). Не правьте его — меняйте исходники в `apps/mobile`.
 
 <!-- /bmad:context -->

@@ -4,6 +4,24 @@ import { forwardRef, type ComponentRef } from "react";
 import { fontFor } from "./font-style";
 import { focusRing } from "./pressable";
 
+/**
+ * A blocked button (`disabled` or `busy`) keeps its resting look: no hover, no press.
+ *
+ * Tamagui 3.1.10 compiles `hover:` / `press:` into the atomic class of the *variant*
+ * (`._b-…:where(:hover)` inside `@media (hover: hover)`, see
+ * `@tamagui/web/dist/cjs/helpers/getSplitStyles.cjs:181-186`), so the class is the same
+ * for a live and a blocked button and no rule outside the variant can switch the state
+ * off. A blocked button therefore gets its own variant value: the same tokens without
+ * the state keys. No colour is added or duplicated.
+ */
+const BLOCKED_VARIANT = {
+  primary: "primaryBlocked",
+  reserve: "reserveBlocked",
+  secondary: "secondaryBlocked",
+  ghost: "ghostBlocked",
+  destructive: "destructiveBlocked",
+} as const;
+
 const Frame = styled(BehaviorFrame, {
   name: "GLButton",
   borderWidth: 1,
@@ -19,11 +37,19 @@ const Frame = styled(BehaviorFrame, {
         backgroundColor: "$primary hover:$primary-hover",
         opacity: "press:0.9",
       },
+      primaryBlocked: {
+        minHeight: "$control-height",
+        backgroundColor: "$primary",
+      },
       // `button-reserve`: only «Куплю сам» and «Подтвердить» in the reservation confirm.
       reserve: {
         minHeight: "$control-height",
         backgroundColor: "$accent hover:$accent-hover",
         opacity: "press:0.9",
+      },
+      reserveBlocked: {
+        minHeight: "$control-height",
+        backgroundColor: "$accent",
       },
       secondary: {
         minHeight: "$control-height",
@@ -31,15 +57,29 @@ const Frame = styled(BehaviorFrame, {
         borderColor: "$border-strong hover:$foreground",
         opacity: "press:0.9",
       },
+      secondaryBlocked: {
+        minHeight: "$control-height",
+        backgroundColor: "$surface",
+        borderColor: "$border-strong",
+      },
       ghost: {
         minHeight: "$touch-target",
         minWidth: "$touch-target",
         backgroundColor: "transparent hover:$muted press:$muted",
       },
+      ghostBlocked: {
+        minHeight: "$touch-target",
+        minWidth: "$touch-target",
+        backgroundColor: "transparent",
+      },
       destructive: {
         minHeight: "$control-height",
         backgroundColor: "$destructive hover:$destructive-hover",
         opacity: "press:0.9",
+      },
+      destructiveBlocked: {
+        minHeight: "$control-height",
+        backgroundColor: "$destructive",
       },
     },
     fullWidth: {
@@ -74,7 +114,7 @@ const Label = styled(BehaviorText, {
   defaultVariants: { variant: "primary" },
 });
 
-export type ButtonVariant = "primary" | "reserve" | "secondary" | "ghost" | "destructive";
+export type ButtonVariant = keyof typeof BLOCKED_VARIANT;
 
 export type ButtonProps = {
   /** The visible text and the accessible name. Copy comes from the caller. */
@@ -126,13 +166,17 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
   ref,
 ) {
   const blocked = disabled || busy;
+  // A blocked button must not react to hover or press (`DESIGN.md` → Состояния): it
+  // takes the variant value without those states. Focus, clicks and the Tab order stay
+  // as they are.
+  const frameVariant = blocked ? BLOCKED_VARIANT[variant] : variant;
   // `busy` keeps the button in the Tab order (focus must not drop to <body> when a
   // form is submitted); only a plain `disabled` is a native disabled button.
   const native = disabled && !focusableWhenDisabled;
   return (
     <Frame
       ref={ref}
-      variant={variant}
+      variant={frameVariant}
       fullWidth={fullWidth}
       inactive={disabled}
       busy={busy}

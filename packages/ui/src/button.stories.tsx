@@ -10,9 +10,9 @@ function noop() {}
  * button, hold it, press Tab. On hover the fill of `primary`, `reserve` and
  * `destructive` darkens by 8% (`primary-hover`, `accent-hover`,
  * `destructive-hover` in `DESIGN.md` → Colors); `secondary` darkens its frame and
- * `ghost` takes the `muted` fill. A disabled or busy button keeps its 40% / 60%
- * dim and also darkens on hover — Tamagui 3.1.10 has no `:hover:not(:disabled)`
- * state, and the same was already true of `secondary` and `ghost`.
+ * `ghost` takes the `muted` fill. A disabled or busy button keeps its 40% / 60% dim
+ * and does not react to hover or press at all (`DESIGN.md` → Состояния кнопок,
+ * DECISION 2026-11-10): it is painted by a variant value without those states.
  */
 const meta = {
   title: "UI/Button",
@@ -104,7 +104,8 @@ export const PrimaryFullWidth: Story = {
  * The three hover fills side by side at 360 px: hover each button in turn —
  * `primary` `#2F5D3A` → `primary-hover` `#2B5635`, `reserve` `#D4A017` →
  * `accent-hover` `#C39315`, `destructive` `#B42318` → `destructive-hover` `#A62016`.
- * The row under it shows the same fill dimmed by `disabled` and `busy`.
+ * The rows under them show the same fills dimmed by `disabled` and `busy`: hover and
+ * hold those — the fill stays as it is (DECISION 2026-11-10, t312u).
  */
 export const HoverMatrixNarrow: Story = {
   render: function HoverMatrixNarrowStory() {

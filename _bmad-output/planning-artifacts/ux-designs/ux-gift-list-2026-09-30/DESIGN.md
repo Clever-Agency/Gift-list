@@ -401,7 +401,7 @@ Gift List — тихий координатор подарков для узко
 
 **Состояния кнопок и нажимаемых поверхностей** (DECISION 2026-11-10; одни и те же у Button, Pressable, Choice, TagChip, VisibilityChip и WishCard):
 
-- **hover** — только при указателе: фон кнопки темнее на 8% (`primary-hover`, `accent-hover`, `destructive-hover`, раздел Colors), secondary — граница `{colors.foreground}`, ghost — фон `{colors.muted}`; у полей, чипов, toast и ⋯ вид не меняется, курсор — указатель.
+- **hover** — только при указателе: фон кнопки темнее на 8% (`primary-hover`, `accent-hover`, `destructive-hover`, раздел Colors), secondary — граница `{colors.foreground}`, ghost — фон `{colors.muted}`; у полей, чипов, toast и ⋯ вид не меняется, курсор — указатель. disabled и busy не реагируют на hover и press — вид не меняется (DECISION 2026-11-10, t312u).
 - **pressed** — затемнение фона на 8% (в коде это непрозрачность 0.9; отдельных pressed-токенов не вводится, чтобы не удваивать палитру); у ghost — фон `{colors.muted}`.
 - **disabled** — непрозрачность 0.4, `aria-disabled` / `accessibilityState.disabled`, элемент остаётся в порядке фокуса, причина рядом связана с ним (`aria-describedby`) и не бледнеет. Правило одно для кнопок, `Pressable`, радио-строк и чипов: 0.4, не 0.6.
 - **busy** — непрозрачность 0.6, `aria-busy`, нажатие и отправка формы заблокированы, рядом с текстом — индикатор ожидания (спиннер 16 px в `currentColor`, вращение линейное); при `prefers-reduced-motion` спиннер статичный, ожидание объявляется `aria-busy`.

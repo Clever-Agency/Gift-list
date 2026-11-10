@@ -159,6 +159,37 @@ describe("PasswordField", () => {
     expect(input.type).toBe("text");
   });
 
+  it("на вебе отдаёт состояние aria-pressed и не протаскивает нативные пропсы в DOM", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+    try {
+      const { container, render } = mounted();
+      await render(
+        <PasswordField
+          label="Пароль"
+          value="secret"
+          onChangeText={noop}
+          showLabel="Показать пароль"
+        />,
+      );
+
+      const toggle = container.querySelector("[aria-label='Показать пароль']") as HTMLElement;
+      const names = Array.from(toggle.attributes, (attribute) => attribute.name);
+      // Только веб-семантика: role + aria-pressed, без accessibilityState/accessibilityRole.
+      expect(toggle.getAttribute("role")).toBe("button");
+      expect(toggle.getAttribute("aria-pressed")).toBe("false");
+      expect(names.filter((name) => name.startsWith("accessibility"))).toEqual([]);
+      expect(names).not.toContain("accessibilitystate");
+      expect(errors).not.toHaveBeenCalled();
+
+      await act(async () => toggle.click());
+
+      expect(toggle.getAttribute("aria-pressed")).toBe("true");
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it("переключается с клавиатуры и остаётся в порядке табуляции", async () => {
     const { container, render } = mounted();
     await render(

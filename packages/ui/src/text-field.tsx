@@ -4,6 +4,7 @@ import { YStack } from "@tamagui/stacks";
 import { forwardRef, useId, useState, type ComponentProps, type ComponentRef } from "react";
 import { fontFor } from "./font-style";
 import { Eye, EyeOff } from "./icons";
+import { passwordToggleA11yProps } from "./password-toggle-a11y";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { spacing } from "./tokens";
@@ -140,7 +141,8 @@ TextField.displayName = "TextField";
 export type PasswordFieldProps = Omit<TextFieldProps, "multiline" | "rows"> & {
   /**
    * The reveal toggle's accessible name, e.g. «Показать пароль». The button shows
-   * only an icon and keeps this name in both states; the state is `aria-pressed`.
+   * only an icon and keeps this name in both states; the state is `aria-pressed`
+   * on the web and `accessibilityState.checked` on the phone.
    */
   showLabel: string;
 };
@@ -148,8 +150,9 @@ export type PasswordFieldProps = Omit<TextFieldProps, "multiline" | "rows"> & {
 /**
  * `TextField` that hides its text, with an icon-only button to reveal it
  * (`DESIGN.md` → «Поля входа»): the button sits inside the field on the right,
- * its name is `showLabel` and its state is `aria-pressed`, so the visible words
- * are not needed. A hidden password shows `Eye`, a revealed one `EyeOff`.
+ * its name is `showLabel` and its state is `aria-pressed` on the web,
+ * `accessibilityState.checked` on the phone, so the visible words are not
+ * needed. A hidden password shows `Eye`, a revealed one `EyeOff`.
  */
 export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
   function PasswordField({ label, value, onChangeText, error, hint, showLabel, input }, ref) {
@@ -188,9 +191,8 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
             accessibilityHint={described}
           />
           <Pressable
-            role="button"
+            {...passwordToggleA11yProps(visible)}
             aria-label={showLabel}
-            aria-pressed={visible}
             onPress={handleToggleVisibility}
             onMouseDown={isWeb ? keepFieldFocus : undefined}
             position="absolute"

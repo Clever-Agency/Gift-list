@@ -168,7 +168,13 @@ export const listDataSchema = z.discriminatedUnion("access", [
 export type ListData = z.infer<typeof listDataSchema>;
 
 export {
+  DISPLAY_NAME_MAX,
+  EMAIL_MAX,
+  NICK_MAX,
+  NICK_MIN,
   NICK_PATTERN,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
   loginBodySchema,
   nickUpdateBodySchema,
   passwordForgotBodySchema,
@@ -211,7 +217,11 @@ export {
 
 export {
   DEFAULT_QUANTITY,
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_PRICE_AMOUNT_MAX,
   GIFT_TAG_TEXT_MAX,
+  GIFT_TITLE_MAX,
   giftInputSchema,
   giftTagInputSchema,
   giftUpdateSchema,

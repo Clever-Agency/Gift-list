@@ -74,6 +74,24 @@ describe("POST /api/v1/session", () => {
     expect(signInEmail).not.toHaveBeenCalled();
   });
 
+  it("does not cap the length of a stored address, so an older account is never locked out", async () => {
+    // Registration caps a new address at 254 characters; sign-in only looks one
+    // up, so a longer address stored before that rule still reaches the hash check.
+    const legacy = `${"a".repeat(60)}@${"b".repeat(230)}.com`;
+    expect(legacy.length).toBeGreaterThan(254);
+    findUnique.mockResolvedValue({ ...user, email: legacy });
+    signInEmail.mockResolvedValue(new Response(null, { status: 200 }));
+
+    const res = await POST(post({ email: legacy, password: "password1" }));
+
+    expect(res.status).toBe(200);
+    expect(signInEmail).toHaveBeenCalledWith({
+      body: { email: legacy, password: "password1" },
+      headers: expect.any(Headers),
+      asResponse: true,
+    });
+  });
+
   it("answers 429 after 5 attempts from one IP, for a known or unknown email", async () => {
     const calls: string[] = [];
     consumeRateLimit.mockImplementation(async (key: string, limit: { max: number; windowSeconds: number }) => {

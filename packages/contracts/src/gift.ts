@@ -5,19 +5,29 @@ import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
  * Create/edit body of a gift (Story 2.2, FR-10). The spec fixes no lengths, so
  * these caps only keep a card readable: a title is shown on two lines, a
  * description is a note, not an article.
+ *
+ * Units: Zod 4 measures `max()` in Unicode code points, while the `maxLength`
+ * attribute of both clients measures UTF-16 units. Text outside the BMP (an
+ * emoji) is therefore one code point for the schema and two units for the field,
+ * so the form cuts first and the schema accepts what the form already limited.
+ *
+ * Exported because the gift form repeats the same numbers in its `maxLength` and
+ * counters; it must import them from here instead of declaring its own copies.
+ * The custom tag text has its own rule and unit — see {@link GIFT_TAG_TEXT_MAX}.
  */
-const TITLE_MAX = 120;
-const DESCRIPTION_MAX = 2000;
+export const GIFT_TITLE_MAX = 120;
+export const GIFT_DESCRIPTION_MAX = 2000;
 /** Prisma `Int` is signed 32-bit; the amount is minor units (AD-25). */
-const PRICE_AMOUNT_MAX = 2_147_483_647;
+export const GIFT_PRICE_AMOUNT_MAX = 2_147_483_647;
 /** Same ceiling as `safeNextPath`; links are free-form `text` in the DB. */
-const LINK_URL_MAX = 2048;
+export const GIFT_LINK_URL_MAX = 2048;
 
 /**
- * Story 2.5 / AD-22: custom tag text is at most 30 characters. Counted in
- * Unicode code points, not UTF-16 units, because PostgreSQL `VARCHAR(30)` counts
- * characters the same way: an emoji outside the BMP is one character there but
- * two JS units, and `z.string().max(30)` would reject text the database accepts.
+ * Story 2.5 / AD-22: custom tag text is at most 30 characters, counted in
+ * Unicode code points — the unit of PostgreSQL `VARCHAR(30)` and of `[...text]`,
+ * where an emoji outside the BMP is one character but two JS units. The cap is
+ * checked by an explicit `refine` below, so the unit stays written down here and
+ * does not depend on how the library measures a string.
  */
 export const GIFT_TAG_TEXT_MAX = 30;
 
@@ -30,16 +40,16 @@ function blankToNull(value: unknown): unknown {
 
 // Per-field rules shared by the create and the edit bodies, so an edit cannot
 // drift from what creation accepts. The optionality is applied per body.
-const titleFieldSchema = z.string().trim().min(1).max(TITLE_MAX);
+const titleFieldSchema = z.string().trim().min(1).max(GIFT_TITLE_MAX);
 const descriptionFieldSchema = z.preprocess(
   blankToNull,
-  z.string().trim().max(DESCRIPTION_MAX).nullable().optional(),
+  z.string().trim().max(GIFT_DESCRIPTION_MAX).nullable().optional(),
 );
-const priceAmountFieldSchema = z.number().int().min(0).max(PRICE_AMOUNT_MAX).nullable().optional();
+const priceAmountFieldSchema = z.number().int().min(0).max(GIFT_PRICE_AMOUNT_MAX).nullable().optional();
 const priceCurrencyFieldSchema = z.enum(CURRENCIES).nullable().optional();
 const linkUrlFieldSchema = z.preprocess(
   blankToNull,
-  z.string().trim().max(LINK_URL_MAX).pipe(httpUrlSchema).nullable().optional(),
+  z.string().trim().max(GIFT_LINK_URL_MAX).pipe(httpUrlSchema).nullable().optional(),
 );
 const visibilityFieldSchema = z.enum(VISIBILITIES);
 const quantityFieldSchema = z.enum(QUANTITIES);

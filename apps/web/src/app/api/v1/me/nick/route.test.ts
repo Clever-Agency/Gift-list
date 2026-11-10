@@ -81,6 +81,20 @@ describe("PUT /api/v1/me/nick", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("accepts a nick at the cap and rejects one character more", async () => {
+    const atCap = await PUT(put(JSON.stringify({ nick: "a".repeat(24) })));
+    expect(atCap.status).toBe(200);
+
+    const overCap = await PUT(put(JSON.stringify({ nick: "a".repeat(25) })));
+    expect(overCap.status).toBe(400);
+    expect(await overCap.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "nick",
+    });
+  });
+
   it("answers 400 for broken JSON without calling the use-case", async () => {
     const res = await PUT(put("{not json"));
 

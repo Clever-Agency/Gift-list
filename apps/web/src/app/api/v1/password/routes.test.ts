@@ -74,6 +74,22 @@ describe("POST /api/v1/password/forgot", () => {
     expect(requestPasswordReset).not.toHaveBeenCalled();
   });
 
+  it("forgot-legacy accepts an address longer than the registration cap", async () => {
+    // The registration cap protects new rows only; an older account must still
+    // be able to ask for a reset link with the address it was created with.
+    const legacy = `${"a".repeat(60)}@${"b".repeat(230)}.com`;
+    expect(legacy.length).toBeGreaterThan(254);
+
+    const res = await forgot(post("/api/v1/password/forgot", { email: legacy }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, data: { accepted: true } });
+    expect(requestPasswordReset).toHaveBeenCalledWith({
+      body: { email: legacy, redirectTo: "http://127.0.0.1:3000/reset" },
+      headers: expect.any(Headers),
+    });
+  });
+
   it("forgot-limit spends the counter with the configured auth limit", async () => {
     authRateLimit.mockReturnValue({ max: 9, windowSeconds: 120 });
     const res = await forgot(post("/api/v1/password/forgot", { email: "known@example.com" }));
@@ -162,6 +178,20 @@ describe("POST /api/v1/password/reset", () => {
     const body = await res.json();
     expect(body).toMatchObject({ ok: false, code: "VALIDATION", field: "password" });
     expect(body.reason).toBeUndefined();
+    expect(resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("reset-long rejects a password over the cap and leaves the token unspent", async () => {
+    const res = await reset(
+      post("/api/v1/password/reset", { token: "live-token", password: "x".repeat(129) }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+    });
     expect(resetPassword).not.toHaveBeenCalled();
   });
 });

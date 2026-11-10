@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
-import { GIFT_TAG_TEXT_MAX, giftInputSchema, giftUpdateSchema } from "./gift";
+import {
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_TAG_TEXT_MAX,
+  GIFT_TITLE_MAX,
+  giftInputSchema,
+  giftUpdateSchema,
+} from "./gift";
 
 describe("giftInputSchema", () => {
   it("fills an empty body with nulls and PUBLIC visibility", () => {
@@ -29,8 +36,8 @@ describe("giftInputSchema", () => {
   });
 
   it("rejects a title over the cap", () => {
-    expect(giftInputSchema.safeParse({ title: "x".repeat(120) }).success).toBe(true);
-    expect(giftInputSchema.safeParse({ title: "x".repeat(121) }).success).toBe(false);
+    expect(giftInputSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
   });
 
   it("defaults the currency to USD when only the amount is set", () => {
@@ -245,12 +252,12 @@ describe("giftUpdateSchema", () => {
   });
 
   it("rejects a null or over-long title", () => {
-    for (const title of [null, "x".repeat(121)]) {
+    for (const title of [null, "x".repeat(GIFT_TITLE_MAX + 1)]) {
       const parsed = giftUpdateSchema.safeParse({ title });
       expect(parsed.success).toBe(false);
       if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["title"]);
     }
-    expect(giftUpdateSchema.safeParse({ title: "x".repeat(120) }).success).toBe(true);
+    expect(giftUpdateSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX) }).success).toBe(true);
   });
 
   it.each([
@@ -344,3 +351,87 @@ describe("giftUpdateSchema", () => {
     expect(giftUpdateSchema.safeParse({ bought: true }).success).toBe(false);
   });
 });
+
+/**
+ * The caps are the contract's single source. Zod 4 counts them in Unicode code
+ * points, while the `maxLength` attribute of both clients counts UTF-16 units;
+ * these tests pin both measures down so the form, the schema and Better Auth
+ * cannot drift silently.
+ */
+describe("gift text caps", () => {
+  function linkOfLength(length: number): string {
+    const prefix = "https://example.com/";
+    return `${prefix}${"a".repeat(length - prefix.length)}`;
+  }
+
+  it("accepts exactly the title, description and link caps and rejects one more", () => {
+    expect(giftInputSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
+
+    expect(
+      giftInputSchema.safeParse({ title: "Книга", description: "x".repeat(GIFT_DESCRIPTION_MAX) })
+        .success,
+    ).toBe(true);
+    const longDescription = giftInputSchema.safeParse({
+      title: "Книга",
+      description: "x".repeat(GIFT_DESCRIPTION_MAX + 1),
+    });
+    expect(longDescription.success).toBe(false);
+    if (!longDescription.success) {
+      expect(longDescription.error.issues[0]?.path).toEqual(["description"]);
+    }
+
+    const atCap = linkOfLength(GIFT_LINK_URL_MAX);
+    expect(atCap).toHaveLength(GIFT_LINK_URL_MAX);
+    expect(giftInputSchema.safeParse({ title: "Книга", linkUrl: atCap }).success).toBe(true);
+    const longLink = giftInputSchema.safeParse({ title: "Книга", linkUrl: linkOfLength(GIFT_LINK_URL_MAX + 1) });
+    expect(longLink.success).toBe(false);
+    if (!longLink.success) expect(longLink.error.issues[0]?.path).toEqual(["linkUrl"]);
+  });
+
+  it("counts an emoji as one code point, while the form's maxLength counts two units", () => {
+    const emoji = "😀";
+    expect(emoji).toHaveLength(2);
+    expect([...emoji]).toHaveLength(1);
+    // The schema cap is in code points: 120 emoji fit, 121 do not. The same text
+    // is 240 UTF-16 units, so a `maxLength` of 120 cuts it at 60 emoji first.
+    expect(giftInputSchema.safeParse({ title: emoji.repeat(GIFT_TITLE_MAX) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: emoji.repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
+    expect(emoji.repeat(GIFT_TITLE_MAX).length).toBe(GIFT_TITLE_MAX * 2);
+
+    expect(
+      giftInputSchema.safeParse({
+        title: "Книга",
+        description: emoji.repeat(GIFT_DESCRIPTION_MAX + 1),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("counts Cyrillic and combining marks one per code point", () => {
+    expect(giftInputSchema.safeParse({ title: "я".repeat(GIFT_TITLE_MAX) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: "я".repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
+
+    // "е" followed by U+0301 is two code points (and two units), so half as many signed fit.
+    const combining = "е\u0301";
+    expect([...combining]).toHaveLength(2);
+    expect(giftInputSchema.safeParse({ title: combining.repeat(GIFT_TITLE_MAX / 2) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: combining.repeat(GIFT_TITLE_MAX / 2 + 1) }).success).toBe(false);
+  });
+
+  it("trims before applying the cap", () => {
+    const padded = `  ${"x".repeat(GIFT_TITLE_MAX)}  `;
+    expect(padded.length).toBeGreaterThan(GIFT_TITLE_MAX);
+    expect(giftInputSchema.parse({ title: padded }).title).toHaveLength(GIFT_TITLE_MAX);
+  });
+
+  it("checks only the fields an edit carries, so a stored over-long value cannot block another edit", () => {
+    // A row written before the cap (or outside the API) may hold a longer title;
+    // an edit body that does not send that field never puts it through the cap.
+    expect(giftUpdateSchema.parse({ visibility: "SECRET" })).toEqual({ visibility: "SECRET" });
+    expect(giftUpdateSchema.parse({ description: "Заметка", tags: [] })).toEqual({
+      description: "Заметка",
+      tags: [],
+    });
+  });
+});
+

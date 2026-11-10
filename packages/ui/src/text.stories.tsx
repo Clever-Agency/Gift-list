@@ -6,8 +6,9 @@ import type { TypographyRole } from "./tokens";
 /**
  * `Text` takes a `kind` from the typography roles of `DESIGN.md` and a `tone`
  * from the palette; `Heading` adds the screen-reader level, `LinkText` is the
- * «Назад» / navigation link. Hover and focus are real CSS states: hover the link
- * and press Tab to see the focus ring.
+ * «Назад» / navigation link. Hover (the menu-item `$background`) and focus (the
+ * `$ring` ring on `:focus-visible`) are real CSS states: hover the link and
+ * press Tab.
  */
 const meta = {
   title: "UI/Text",
@@ -100,7 +101,7 @@ export const Headings: Story = {
   },
 };
 
-/** `LinkText` is the router link text: 44 px tall, primary, focus ring on Tab, pointer cursor on hover. */
+/** `LinkText` is the router link text: 44 px tall, primary, `$background` on hover, dimmed on press, focus ring on Tab. */
 export const Link: Story = {
   render: function LinkStory() {
     return (

@@ -8,8 +8,10 @@ import { Text } from "./text";
 /**
  * `Dialog` is the centred layer of the app: a question, one description line,
  * the content and the actions, over a 40% scrim. Esc, a scrim press and the cross
- * close it; focus is trapped inside on the web. The stories open it with a real
- * press on «Открыть диалог» and close it again with «Отмена».
+ * close it; focus is trapped inside on the web. The scrim and the panel fade in
+ * and out with `quick` (160 ms, `DESIGN.md` → Движение); with «уменьшить
+ * движение» the fade is 100 ms. The stories open it with a real press on
+ * «Открыть диалог» and close it again with «Отмена».
  */
 const meta = {
   title: "UI/Dialog",

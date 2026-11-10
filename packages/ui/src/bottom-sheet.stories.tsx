@@ -8,7 +8,9 @@ import { Text } from "./text";
 /**
  * `BottomSheet` is the layer of the compact widths: it comes from the bottom, is
  * as high as its content and closes with a drag down, Esc, a scrim press and the
- * system «назад» on Android. The stories open it with a real press on the trigger.
+ * system «назад» on Android. It rises and the scrim fades with `quick` (160 ms,
+ * `DESIGN.md` → Движение); with «уменьшить движение» the position jumps and only
+ * the scrim fades, for 100 ms. The stories open it with a real press on the trigger.
  */
 const meta = {
   title: "UI/BottomSheet",

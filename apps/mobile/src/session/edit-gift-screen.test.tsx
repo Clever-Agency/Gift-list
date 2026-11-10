@@ -1354,6 +1354,8 @@ describe("изменение желания: возврат фокуса пос�
     const trigger = await openConfirm();
 
     await pressExact("Отмена");
+    // Фокус возвращается после exit-fade диалога (160 мс).
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1365,6 +1367,7 @@ describe("изменение желания: возврат фокуса пос�
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1374,6 +1377,7 @@ describe("изменение желания: возврат фокуса пос�
     const trigger = await openConfirm();
 
     await pressScrim("confirm-dialog-scrim");
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1608,6 +1612,8 @@ describe("изменение желания: фокус в вопросе о ч�
     expect(dialog?.contains(document.activeElement)).toBe(true);
 
     await escapeDialog();
+    // Фокус возвращается после exit-fade диалога (160 мс), а не сразу.
+    await settle(300);
 
     expect(document.activeElement).toBe(cancel);
     expect(field("Название").value).toBe("Наушники Sony");

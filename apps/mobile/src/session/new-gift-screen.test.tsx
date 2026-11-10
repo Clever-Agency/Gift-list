@@ -582,6 +582,26 @@ describe("новое желание: форма", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
+  it("413: причина локализуется, сырой текст сервера не показывается", async () => {
+    signedIn();
+    gifts.createGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("Добавить желание");
+
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(text()).not.toContain("Не получилось сохранить. Попробуйте ещё раз.");
+    expect(field("Название").value).toBe("Наушники");
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
   it("401: гасит сессию и уводит на вход с возвратом в форму и причиной", async () => {
     signedIn();
     gifts.createGift.mockResolvedValue({ ok: false, code: "UNAUTHENTICATED", message: "" });

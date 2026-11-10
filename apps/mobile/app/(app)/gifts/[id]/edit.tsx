@@ -15,6 +15,7 @@ import { useTranslations } from "use-intl";
 import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { useDiscardGuard } from "@/session/use-discard-guard";
 import { pageGutter } from "@/ui/card-grid";
@@ -268,8 +269,14 @@ export default function EditGiftScreen() {
       return;
     }
     if (result.code === "VALIDATION") {
+      if (result.reason === "PAYLOAD_TOO_LARGE") {
+        // Not a field problem: the body is over the transport budget, and the
+        // catalog reason says so instead of the form's generic sentence.
+        setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+        return;
+      }
       // `GiftForm` shows the error under the field; phrase stays in the catalog.
-      setServerError({ field: result.field, message: result.message });
+      setServerError({ field: result.field });
       return;
     }
     setToast({ message: common(`errors.code.${result.code}`), tone: "error" });

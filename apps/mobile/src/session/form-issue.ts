@@ -61,6 +61,22 @@ export function issueFromError(
   return { text: common(`errors.code.${error.code as ErrorCode}`) };
 }
 
+/**
+ * Catalog sentence for a failed mutation whose error is shown outside a form
+ * (gift save, visibility change, friend action). A known reason wins over the
+ * generic code text: an oversized body must say the request was too large
+ * instead of "check your input". Reasons that interpolate `params`
+ * (`INVITE_COOLDOWN`) are handled by their screens before this helper. The
+ * server `message` never reaches the user: it is English API prose, not copy.
+ */
+export function mutationErrorMessage(
+  error: Pick<ActionError, "code" | "reason">,
+  common: Translate,
+): string {
+  if (error.reason === "PAYLOAD_TOO_LARGE") return common("errors.reason.PAYLOAD_TOO_LARGE");
+  return common(`errors.code.${error.code as ErrorCode}`);
+}
+
 function rateLimitValues(
   params: ActionError["params"],
 ): Record<string, string | number> | undefined {

@@ -277,6 +277,24 @@ describe("настройки: ник", () => {
     expect(fieldText("Ник")).toContain("Этот ник уже занят.");
   });
 
+  it("413: причина показывается тостом, сырой текст сервера не виден", async () => {
+    signedIn();
+    me.updateNick.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    await mount();
+
+    await type("Ник", "newnick");
+    await press("Сохранить");
+
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(field("Ник").value).toBe("newnick");
+  });
+
   it("невалидный ник: фокус на поле и прокрутка к нему (UI5)", async () => {
     signedIn();
     me.updateNick.mockResolvedValue({

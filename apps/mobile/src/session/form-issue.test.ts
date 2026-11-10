@@ -3,6 +3,7 @@ import {
   formIssue,
   issueFromError,
   loginPasswordFieldIssue,
+  mutationErrorMessage,
   passwordFieldIssue,
 } from "./form-issue";
 
@@ -180,5 +181,19 @@ describe("formIssue", () => {
       field: "x",
       text: "errors.code.CONFLICT",
     });
+  });
+});
+
+describe("mutationErrorMessage", () => {
+  it("maps PAYLOAD_TOO_LARGE to the catalog reason instead of the code text", () => {
+    expect(
+      mutationErrorMessage({ code: "VALIDATION", reason: "PAYLOAD_TOO_LARGE" }, common),
+    ).toBe("common:errors.reason.PAYLOAD_TOO_LARGE");
+  });
+
+  it("falls back to the code text; the server message has no path here", () => {
+    expect(mutationErrorMessage({ code: "CONFLICT" }, common)).toBe(
+      "common:errors.code.CONFLICT",
+    );
   });
 });

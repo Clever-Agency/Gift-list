@@ -691,6 +691,25 @@ describe("изменение желания: сохранение", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
+  it("413 при сохранении: причина локализуется, сырой текст сервера не показывается", async () => {
+    loaded();
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    await mount();
+
+    await press("Сохранить");
+
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(text()).not.toContain("Не получилось сохранить. Попробуйте ещё раз.");
+    expect(button("Сохранить")).toBeDefined();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
   it("NOT_FOUND при сохранении: toast и состояние «Желание не найдено.»", async () => {
     loaded();
     gifts.updateGift.mockResolvedValue({ ok: false, code: "NOT_FOUND", message: "" });

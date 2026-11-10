@@ -1602,6 +1602,34 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
   });
 
+  it("413: откат, причина «слишком большой запрос» и тихая перезагрузка", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({
+          ok: false,
+          code: "VALIDATION",
+          message: "Payload too large",
+          reason: "PAYLOAD_TOO_LARGE",
+        });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(text()).not.toContain("Желание уже забронировано — видимость не изменить.");
+    expect(listReads()).toBe(reads + 1);
+  });
+
   it("NOT_FOUND: откат, прежний текст ошибки и тихая перезагрузка списка", async () => {
     respond(giftsAnswer([gift()]));
     await mount();

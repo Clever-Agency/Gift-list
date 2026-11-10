@@ -31,6 +31,7 @@ import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
 import { profileRoute } from "@/profile/profile-route";
 import { useAuth } from "@/session/auth-context";
+import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
@@ -400,7 +401,7 @@ export default function ProfileScreen() {
       return;
     }
     setToast({
-      message: common(`errors.code.${result.code}`),
+      message: mutationErrorMessage(result, common),
       tone: "error",
       nick: requestedNick,
     });

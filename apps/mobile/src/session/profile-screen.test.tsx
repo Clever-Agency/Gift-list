@@ -785,6 +785,30 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(inviteCalls()).toBe(1);
   });
 
+  it("413 на приглашении: причина локализуется, кнопка возвращается", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") {
+        return Promise.resolve({
+          ok: false,
+          code: "VALIDATION",
+          message: "Payload too large",
+          reason: "PAYLOAD_TOO_LARGE",
+        });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(text()).not.toContain("Ожидает ответа");
+    expect(button("Добавить в друзья")).toBeDefined();
+    expect(inviteCalls()).toBe(1);
+  });
+
   it("повторное нажатие не отправляет второй запрос", async () => {
     let resolveInvite: (value: unknown) => void = () => {};
     const invite = new Promise((resolve) => {

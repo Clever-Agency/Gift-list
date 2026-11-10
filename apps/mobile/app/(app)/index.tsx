@@ -22,6 +22,7 @@ import { useTranslations } from "use-intl";
 import { fetchMyGifts, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
@@ -378,7 +379,15 @@ export default function MyWishlistScreen() {
         return;
       }
       if ("code" in result && result.code === "VALIDATION") {
-        setToast({ message: t("gift.toast.visibilityLocked"), tone: "error" });
+        // An oversized body is not the "frozen wish" case: say the request was
+        // too large, and still reload so the card shows its real status.
+        setToast({
+          message:
+            result.reason === "PAYLOAD_TOO_LARGE"
+              ? mutationErrorMessage(result, common)
+              : t("gift.toast.visibilityLocked"),
+          tone: "error",
+        });
         setAttempt((value) => value + 1);
         return;
       }

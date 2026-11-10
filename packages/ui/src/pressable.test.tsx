@@ -2,7 +2,7 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Pressable } from "./pressable";
-import { createMount, stateValues } from "./test-utils";
+import { createMount, nativeOnlyAttributes, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -52,6 +52,34 @@ describe("Pressable: клавиатура", () => {
     );
     await key(container.querySelector("[role='button']") as HTMLElement, { key: "Enter" });
     expect(order).toEqual(["keydown", "press"]);
+  });
+});
+
+/**
+ * W12.10: the web keeps `role="button"` in the DOM while the phone default moved
+ * to `accessibilityRole`. A native-only prop must not appear in the DOM: React
+ * would warn about an unknown attribute and no browser would read it (W12.1).
+ */
+describe("Pressable: роль на вебе", () => {
+  it("по умолчанию это div role=button без accessibilityRole в DOM", async () => {
+    const { container, render } = mounted();
+    await render(<Pressable aria-label="Ещё" onPress={vi.fn()} />);
+    const node = container.querySelector("[role='button']") as HTMLElement;
+
+    expect(node.tagName).toBe("DIV");
+    expect(node.getAttribute("role")).toBe("button");
+    expect(node.hasAttribute("accessibilityrole")).toBe(false);
+    expect(node.hasAttribute("accessibilityRole")).toBe(false);
+    expect(nativeOnlyAttributes(container)).toEqual([]);
+  });
+
+  it("роль вызывающего заменяет дефолт", async () => {
+    const { container, render } = mounted();
+    await render(<Pressable role="radio" aria-checked aria-label="Друзьям" onPress={vi.fn()} />);
+
+    expect(container.querySelector("[role='radio']")).not.toBeNull();
+    expect(container.querySelector("[role='button']")).toBeNull();
+    expect(nativeOnlyAttributes(container)).toEqual([]);
   });
 });
 

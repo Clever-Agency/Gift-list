@@ -2,10 +2,13 @@ import { View, styled, type GetProps } from "@tamagui/core";
 import { forwardRef, type ComponentRef, type KeyboardEvent } from "react";
 import { focusRing } from "./focus-ring";
 import { pressOnKeyDown } from "./press";
+import { pressableRole } from "./pressable-role";
 
 const PressableFrame = styled(View, {
   name: "GLPressable",
-  role: "button",
+  // Web: `role="button"`, phone: `accessibilityRole="button"` and no `role`, so a
+  // caller can pass `accessibilityRole="togglebutton"` (W12.10). See the pair.
+  ...pressableRole,
   tabIndex: 0,
   cursor: "pointer",
   ...focusRing,

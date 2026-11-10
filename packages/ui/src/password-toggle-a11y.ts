@@ -5,8 +5,9 @@
  * which is exactly the ARIA pattern for a button whose pressed state changes
  * (`https://www.w3.org/WAI/ARIA/apg/patterns/button/`). React Native's own
  * mapping has no native equivalent for `aria-pressed`
- * (`@tamagui/web/src/dom/html.native.tsx:91`), so the phone gets the state
- * through `accessibilityState` instead — see `password-toggle-a11y.native.ts`.
+ * (`@tamagui/web/src/dom/html.native.tsx:91`), so the phone gets the same state
+ * as `accessibilityRole: "togglebutton"` + `accessibilityState.checked` — see
+ * `password-toggle-a11y.native.ts`. The web half is unchanged by W12.10.
  */
 export function passwordToggleA11yProps(visible: boolean) {
   return {

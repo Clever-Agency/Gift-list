@@ -8,18 +8,23 @@ import { passwordToggleA11yProps } from "./password-toggle-a11y.native";
  * not a TalkBack/VoiceOver run on a device.
  */
 describe("PasswordField (native): состояние переключателя для скринридера", () => {
-  it("скрытый пароль — button с checked: false", () => {
+  it("скрытый пароль — togglebutton с checked: false", () => {
     expect(passwordToggleA11yProps(false)).toEqual({
-      role: "button",
+      accessibilityRole: "togglebutton",
       accessibilityState: { checked: false },
     });
   });
 
-  it("видимый пароль — checked: true", () => {
+  it("видимый пароль — togglebutton с checked: true", () => {
     expect(passwordToggleA11yProps(true)).toEqual({
-      role: "button",
+      accessibilityRole: "togglebutton",
       accessibilityState: { checked: true },
     });
+  });
+
+  it("role не отдаётся: на телефоне он перекрыл бы togglebutton", () => {
+    expect(passwordToggleA11yProps(true)).not.toHaveProperty("role");
+    expect(passwordToggleA11yProps(false)).not.toHaveProperty("role");
   });
 
   it("не отдаёт веб-атрибут aria-pressed: на native его нет", () => {

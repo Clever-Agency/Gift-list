@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { click, controlByText, typeInto } from "@/test/dom";
+import { click, controlByLabel, controlByText, typeInto } from "@/test/dom";
 import LoginScreen from "../../app/(auth)/login";
 import RegisterScreen from "../../app/(auth)/register";
 import ResetScreen from "../../app/(auth)/reset";
@@ -218,6 +218,32 @@ describe("требование к паролю", () => {
     await fill("Пароль", "1234567");
     expect(container.textContent ?? "").not.toContain(RULE);
   });
+});
+
+describe("показ пароля иконкой", () => {
+  it.each(["login", "register", "reset"] as const)(
+    "на экране «%s» переключатель без видимого текста показывает и скрывает введённое",
+    async (screen) => {
+      await mount(screen);
+      const input = container.querySelector<HTMLInputElement>('input[aria-label="Пароль"]');
+      expect(input?.type).toBe("password");
+      await fill("Пароль", "12345678");
+
+      const toggle = controlByLabel("Показать пароль", container);
+      expect(toggle, "переключатель пароля").toBeDefined();
+      expect(toggle?.textContent?.trim()).toBe("");
+      expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+
+      await click(toggle);
+      expect(input?.type).toBe("text");
+      expect(input?.value).toBe("12345678");
+      expect(toggle?.getAttribute("aria-pressed")).toBe("true");
+
+      await click(toggle);
+      expect(input?.type).toBe("password");
+      expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+    },
+  );
 });
 
 describe("первый невалидный (UI5)", () => {

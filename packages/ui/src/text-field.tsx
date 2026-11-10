@@ -1,10 +1,12 @@
-import { styled } from "@tamagui/core";
+import { isWeb, styled } from "@tamagui/core";
 import { Input as BehaviorInput, TextArea as BehaviorTextArea } from "@tamagui/input";
-import { XStack, YStack } from "@tamagui/stacks";
+import { YStack } from "@tamagui/stacks";
 import { forwardRef, useId, useState, type ComponentProps, type ComponentRef } from "react";
 import { fontFor } from "./font-style";
+import { Eye, EyeOff } from "./icons";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
+import { spacing } from "./tokens";
 
 const inputSkin = {
   ...fontFor("body"),
@@ -136,13 +138,18 @@ export const TextField = forwardRef<FieldInputRef, TextFieldProps>(function Text
 TextField.displayName = "TextField";
 
 export type PasswordFieldProps = Omit<TextFieldProps, "multiline" | "rows"> & {
-  /** The reveal button's text and name, e.g. «Показать». */
+  /**
+   * The reveal toggle's accessible name, e.g. «Показать пароль». The button shows
+   * only an icon and keeps this name in both states; the state is `aria-pressed`.
+   */
   showLabel: string;
 };
 
 /**
- * `TextField` that hides its text, with a button to reveal it. The button reports
- * its state with `aria-pressed`.
+ * `TextField` that hides its text, with an icon-only button to reveal it
+ * (`DESIGN.md` → «Поля входа»): the button sits inside the field on the right,
+ * its name is `showLabel` and its state is `aria-pressed`, so the visible words
+ * are not needed. A hidden password shows `Eye`, a revealed one `EyeOff`.
  */
 export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
   function PasswordField({ label, value, onChangeText, error, hint, showLabel, input }, ref) {
@@ -154,18 +161,26 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
       setVisible((current) => !current);
     }
 
+    // In a browser a press on a focusable element moves focus (and the caret) out
+    // of the input; the toggle types nothing, so the field keeps both.
+    function keepFieldFocus(event: { preventDefault: () => void }) {
+      event.preventDefault();
+    }
+
     return (
       <FieldShell id={id} label={label} error={error} hint={hint}>
-        <XStack alignItems="center" gap="$2">
+        <YStack position="relative" justifyContent="center">
           <InputFrame
             {...(input as object)}
             ref={ref as never}
             id={id}
-            flex={1}
+            width="100%"
             value={value}
             onChangeText={onChangeText}
             secureTextEntry={!visible}
             type={visible ? "text" : "password"}
+            // The text never runs under the toggle: its width is the field's right inset.
+            paddingRight={spacing["touch-target"]}
             invalid={Boolean(error)}
             aria-label={label}
             aria-invalid={error ? true : undefined}
@@ -177,17 +192,23 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
             aria-label={showLabel}
             aria-pressed={visible}
             onPress={handleToggleVisibility}
-            minHeight="$touch-target"
-            minWidth="$touch-target"
+            onMouseDown={isWeb ? keepFieldFocus : undefined}
+            position="absolute"
+            right={0}
+            top={0}
+            bottom={0}
+            width="$touch-target"
             alignItems="center"
             justifyContent="center"
-            paddingHorizontal="$2"
+            color="$foreground"
           >
-            <Text kind="caption" tone="primary">
-              {showLabel}
-            </Text>
+            {visible ? (
+              <EyeOff size={spacing["icon-inline"]} />
+            ) : (
+              <Eye size={spacing["icon-inline"]} />
+            )}
           </Pressable>
-        </XStack>
+        </YStack>
       </FieldShell>
     );
   },

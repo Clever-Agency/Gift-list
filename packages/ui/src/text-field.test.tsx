@@ -76,22 +76,110 @@ describe("TextField", () => {
 });
 
 describe("PasswordField", () => {
-  it("скрывает текст и по кнопке показывает его", async () => {
+  it("скрывает пароль, показывает его иконкой и снова скрывает", async () => {
     const { container, render } = mounted();
     await render(
-      <PasswordField label="Пароль" value="secret" onChangeText={noop} showLabel="Показать" />,
+      <PasswordField
+        label="Пароль"
+        value="secret"
+        onChangeText={noop}
+        showLabel="Показать пароль"
+      />,
+    );
+
+    const input = () => container.querySelector("input") as HTMLInputElement;
+    const toggle = () =>
+      container.querySelector("[aria-label='Показать пароль']") as HTMLElement;
+
+    expect(input().type).toBe("password");
+    expect(input().value).toBe("secret");
+    expect(toggle().getAttribute("role")).toBe("button");
+    expect(toggle().getAttribute("aria-pressed")).toBe("false");
+    // Слов «показать/скрыть» не видно: в кнопке только иконка.
+    expect(toggle().textContent?.trim()).toBe("");
+    expect(toggle().querySelector("circle")).not.toBeNull();
+    expect(toggle().querySelector("line")).toBeNull();
+
+    await act(async () => toggle().click());
+
+    expect(input().type).toBe("text");
+    expect(input().value).toBe("secret");
+    expect(toggle().getAttribute("aria-pressed")).toBe("true");
+    // Пароль виден — иконка зачёркнутого глаза.
+    expect(toggle().querySelector("circle")).toBeNull();
+    expect(toggle().querySelector("line")).not.toBeNull();
+
+    await act(async () => toggle().click());
+
+    expect(input().type).toBe("password");
+    expect(input().value).toBe("secret");
+    expect(toggle().getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("не отправляет форму, не триггерит onSubmitEditing и не забирает фокус у поля", async () => {
+    const onSubmit = vi.fn();
+    const onSubmitEditing = vi.fn();
+    const { container, render } = mounted();
+    await render(
+      <form onSubmit={onSubmit}>
+        <PasswordField
+          label="Пароль"
+          value="secret"
+          onChangeText={noop}
+          showLabel="Показать пароль"
+          input={{
+            autoComplete: "current-password",
+            textContentType: "password",
+            onSubmitEditing,
+          }}
+        />
+      </form>,
     );
 
     const input = container.querySelector("input") as HTMLInputElement;
-    expect(input.type).toBe("password");
+    const toggle = container.querySelector("[aria-label='Показать пароль']") as HTMLElement;
+    input.focus();
+    input.setSelectionRange(2, 2);
 
-    const reveal = container.querySelector("[aria-label='Показать']") as HTMLElement;
-    expect(reveal.getAttribute("aria-pressed")).toBe("false");
+    let mouseDown: MouseEvent | undefined;
     await act(async () => {
-      reveal.click();
+      mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+      toggle.dispatchEvent(mouseDown);
+      toggle.click();
     });
-    expect((container.querySelector("input") as HTMLInputElement).type).toBe("text");
-    const revealed = container.querySelector("[aria-label='Показать']") as HTMLElement;
-    expect(revealed.getAttribute("aria-pressed")).toBe("true");
+
+    // Браузер не уводит фокус из поля: нажатие отменяет действие mousedown.
+    expect(mouseDown?.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(2);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmitEditing).not.toHaveBeenCalled();
+    expect(input.value).toBe("secret");
+    expect(input.getAttribute("autocomplete")).toBe("current-password");
+    expect(input.type).toBe("text");
+  });
+
+  it("переключается с клавиатуры и остаётся в порядке табуляции", async () => {
+    const { container, render } = mounted();
+    await render(
+      <PasswordField
+        label="Пароль"
+        value="secret"
+        onChangeText={noop}
+        showLabel="Показать пароль"
+      />,
+    );
+
+    const input = container.querySelector("input") as HTMLInputElement;
+    const toggle = container.querySelector("[aria-label='Показать пароль']") as HTMLElement;
+    expect(toggle.getAttribute("tabindex")).toBe("0");
+
+    toggle.focus();
+    await act(async () => {
+      toggle.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+
+    expect(input.type).toBe("text");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
   });
 });

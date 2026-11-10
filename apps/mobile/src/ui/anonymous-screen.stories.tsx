@@ -14,7 +14,8 @@ import { TextField } from "./text-field";
 const meta = {
   title: "App/AnonymousScreen",
   component: AnonymousScreen,
-  parameters: { layout: "fullscreen" },
+  // `screenFrame`: the frame is the page itself, so the catalog gives it the viewport.
+  parameters: { layout: "fullscreen", screenFrame: true },
   args: { title: "Вход" },
 } satisfies Meta<typeof AnonymousScreen>;
 

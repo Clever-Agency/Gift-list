@@ -10,7 +10,7 @@ import { SessionErrorScreen } from "./session-error-screen";
 const meta = {
   title: "App/SessionErrorScreen",
   component: SessionErrorScreen,
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen", screenFrame: true },
   args: { onRetry: noop },
 } satisfies Meta<typeof SessionErrorScreen>;
 

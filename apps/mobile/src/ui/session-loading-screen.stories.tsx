@@ -10,7 +10,7 @@ import { SessionLoadingScreen } from "./session-loading-screen";
 const meta = {
   title: "App/SessionLoadingScreen",
   component: SessionLoadingScreen,
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen", screenFrame: true },
 } satisfies Meta<typeof SessionLoadingScreen>;
 
 export default meta;

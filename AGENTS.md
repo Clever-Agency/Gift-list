@@ -43,6 +43,7 @@
 - Каталог компонентов — Storybook для web (react-native-web + Vite) в корневом `.storybook/`: `npm run storybook` → http://localhost:6007 (порт 6006 не используем), сборка — `npm run build-storybook`.
 - Stories обязательны для новых и изменённых компонентов `packages/ui` (раздел `UI/…`) и `apps/mobile/src/ui` (раздел `App/…`): файл `<component>.stories.tsx` рядом с компонентом, все состояния из `DESIGN.md` и `EXPERIENCE.md` (normal, disabled, busy, error, empty, длинная кириллица) и проверка на 360 px через `globals.viewport`.
 - Перед PR смотрите панель a11y (`@storybook/addon-a11y`, `parameters.a11y.test: "todo"`): нарушения видны в панели, но сборку пока не валят.
+- Экранные истории (`App/*Screen`, у которых кадр — сам экран) ставят `parameters: { layout: "fullscreen", screenFrame: true }`: `.storybook/preview.tsx` даёт им кадр высотой во вьюпорт без отступов каталога, иначе `Screen`/`SafeArea`/`PageScroll` схлопываются в 0 и экран выглядит пустым.
 - Hover, focus и pressed не подделывайте стилями: показывайте настоящие состояния — сфокусируйте элемент в `play` или напишите «наведите / Tab» в описании story.
 - Stories — dev-only: ни `src/index.ts`, ни приложения их не импортируют, в прод-бандлы они не попадают, `storybook-static/` в `.gitignore`. Провайдеры приложения в каталоге заменяются моками из `.storybook/mocks` (роутер, env, safe area, иконки), код компонентов из-за этого не меняется.
 - `/ui-check` — не каталог, а dev-проверка серверного рендера Tamagui в Next (Story 1.10): его примеры не дублируют stories.

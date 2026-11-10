@@ -10,7 +10,7 @@ import { NotFoundScreen } from "./not-found-screen";
 const meta = {
   title: "App/NotFoundScreen",
   component: NotFoundScreen,
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen", screenFrame: true },
 } satisfies Meta<typeof NotFoundScreen>;
 
 export default meta;

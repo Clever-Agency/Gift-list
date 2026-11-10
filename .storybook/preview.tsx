@@ -36,21 +36,73 @@ function CatalogSurface({ children }: { children: ReactNode }) {
 
 CatalogSurface.displayName = "CatalogSurface";
 
-/** The provider, the catalogue and the surface every story gets, like the root of each app. */
+/**
+ * The full-height frame of the screen stories (`parameters.screenFrame: true`).
+ *
+ * A screen draws the app page itself, and its chain `Screen` → `SafeArea` →
+ * `PageScroll` is a column of `flex: 1` children: it fills a parent that has a
+ * height and resolves to 0 in one that does not. `CatalogSurface` is a block box
+ * with `min-height`, so in it the whole chain collapsed to 0 and the scroll area
+ * clipped the page — the story looked empty even though the DOM had the content.
+ *
+ * This frame is the viewport column instead, full bleed (the app page paints its
+ * own background, so the catalog's padding and surface would only fake a border).
+ * `height: 100vh` is a definite height for the flex chain, and the page scroll then
+ * gets the window height and scrolls when the content is taller than it.
+ */
+function ScreenFrame({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        minWidth: 0,
+        backgroundColor: colors.background,
+        color: colors.foreground,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+ScreenFrame.displayName = "ScreenFrame";
+
+/**
+ * The surface every story gets: the padded canvas of the catalog, or the full-height
+ * frame the screen stories ask for with `parameters.screenFrame`. A component story
+ * never sets the flag, so its canvas does not change.
+ */
+const withStorySurface: Decorator = function withStorySurface(Story, context) {
+  if (context.parameters.screenFrame === true) {
+    return (
+      <ScreenFrame>
+        <Story />
+      </ScreenFrame>
+    );
+  }
+  return (
+    <CatalogSurface>
+      <Story />
+    </CatalogSurface>
+  );
+};
+
+/** The provider and the catalogue every story gets, like the root of each app. */
 const withGiftListProvider: Decorator = function withGiftListProvider(Story) {
   return (
     <GiftListProvider config={config}>
       <IntlProvider locale="ru" messages={messages}>
-        <CatalogSurface>
-          <Story />
-        </CatalogSurface>
+        <Story />
       </IntlProvider>
     </GiftListProvider>
   );
 };
 
 const preview: Preview = {
-  decorators: [withGiftListProvider],
+  // The surface is the outermost decorator, so the screen frame is the page itself.
+  decorators: [withStorySurface, withGiftListProvider],
   parameters: {
     layout: "centered",
     // The catalog is the light theme only (UX-A8); a dark variant would show colors

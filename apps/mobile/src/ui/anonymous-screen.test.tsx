@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pageGutter } from "@/ui/card-grid";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
+import { declarationsFor, paintedSpace } from "@/test/tamagui-css";
 
 /**
  * W12.12 (`DESIGN.md` → App → Точки перехода, «Реализация раскладки»): the frame
@@ -13,11 +14,8 @@ import { AnonymousScreen } from "@/ui/anonymous-screen";
  * same key; `pageGutter` stays the source of the numbers for the screens not yet
  * migrated.
  *
- * happy-dom does not apply `@media` rules to computed styles, so the widths are
- * checked against the CSS Tamagui actually generated: the base rule and the
- * `@media (min-width: …)` rule for the column's class, with the window width
- * deciding which one wins. Nothing here is a browser layout: real rendering on
- * a phone and in a browser is a manual check.
+ * The widths are checked against the CSS Tamagui actually generated (see
+ * `@/test/tamagui-css`), not against a browser layout.
  */
 
 /** The counter proves the screen never asks React Native for the window width. */
@@ -76,67 +74,6 @@ vi.mock("use-intl", async () => {
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/**
- * One `property: value` declaration of the generated CSS: `minWidth` is the
- * `@media (min-width: …)` of the rule it sits in, `null` outside a media rule and
- * `NaN` for a media rule of another kind (never matches below).
- */
-type Declaration = {
-  minWidth: number | null;
-  selector: string;
-  property: string;
-  value: string;
-};
-
-function declarationsOf(cssText: string, minWidth: number | null): Declaration[] {
-  const out: Declaration[] = [];
-  for (const [, selector, body] of cssText.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    for (const [, property, value] of body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)) {
-      out.push({ minWidth, selector: selector.trim(), property, value: value.trim() });
-    }
-  }
-  return out;
-}
-
-/** Every rule Tamagui put into the document, media rules kept with their condition. */
-function generatedCss(): Declaration[] {
-  const out: Declaration[] = [];
-  for (const sheet of Array.from(document.styleSheets)) {
-    for (const rule of Array.from(sheet.cssRules)) {
-      const media = rule as CSSRule & { media?: { mediaText: string }; cssRules?: CSSRuleList };
-      if (media.media && media.cssRules) {
-        const found = media.media.mediaText.match(/min-width:\s*(\d+)px/)?.[1];
-        const minWidth = found === undefined ? Number.NaN : Number(found);
-        for (const inner of Array.from(media.cssRules)) {
-          out.push(...declarationsOf(inner.cssText, minWidth));
-        }
-        continue;
-      }
-      out.push(...declarationsOf(rule.cssText, null));
-    }
-  }
-  return out;
-}
-
-/**
- * The gutter the column's CSS paints at `width`: the last matching rule wins, and
- * a rule inside `@media (min-width: N)` applies from N. The values are token
- * references (`var(--t-space-page-gutter)`), so they resolve through `spacing`.
- */
-function paintedGutter(column: Element, width: number): number | undefined {
-  const classes = Array.from(column.classList);
-  let gutter: number | undefined;
-  for (const declaration of generatedCss()) {
-    if (declaration.property !== "padding-inline") continue;
-    if (!classes.some((name) => declaration.selector.includes(`.${name}`))) continue;
-    if (declaration.minWidth !== null && !(width >= declaration.minWidth)) continue;
-    const token = declaration.value.match(/var\(--t-space-([\w-]+)\)/)?.[1];
-    if (token === undefined) continue;
-    gutter = spacing[token as keyof typeof spacing];
-  }
-  return gutter;
-}
-
 let root: Root;
 let container: HTMLDivElement;
 
@@ -188,17 +125,21 @@ describe("W12.12: отступ анонимного экрана из медиа
     await mount();
     const element = column();
 
-    expect(paintedGutter(element, width)).toBe(pageGutter(width));
+    expect(paintedSpace(element, "padding-inline", width)).toBe(pageGutter(width));
   });
 
   it("граница одна и та же: 16 до bp-medium, 24 от bp-medium", async () => {
     await mount();
     const element = column();
 
-    expect(paintedGutter(element, 360)).toBe(spacing["page-gutter"]);
-    expect(paintedGutter(element, breakpoints.medium - 1)).toBe(spacing["page-gutter"]);
-    expect(paintedGutter(element, breakpoints.medium)).toBe(spacing["page-gutter-lg"]);
-    expect(paintedGutter(element, 1280)).toBe(spacing["page-gutter-lg"]);
+    expect(paintedSpace(element, "padding-inline", 360)).toBe(spacing["page-gutter"]);
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium - 1)).toBe(
+      spacing["page-gutter"],
+    );
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium)).toBe(
+      spacing["page-gutter-lg"],
+    );
+    expect(paintedSpace(element, "padding-inline", 1280)).toBe(spacing["page-gutter-lg"]);
     // `pageGutter` is the old source and must agree on the same boundary.
     expect(pageGutter(breakpoints.medium - 1)).toBe(spacing["page-gutter"]);
     expect(pageGutter(breakpoints.medium)).toBe(spacing["page-gutter-lg"]);
@@ -206,12 +147,7 @@ describe("W12.12: отступ анонимного экрана из медиа
 
   it("меняется только на одной медиа-точке, без лишних правил", async () => {
     await mount();
-    const classes = Array.from(column().classList);
-    const gutterRules = generatedCss().filter(
-      (declaration) =>
-        declaration.property === "padding-inline" &&
-        classes.some((name) => declaration.selector.includes(`.${name}`)),
-    );
+    const gutterRules = declarationsFor(column(), "padding-inline");
 
     expect(gutterRules).toHaveLength(2);
     const conditions = gutterRules.map((rule) => rule.minWidth);

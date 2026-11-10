@@ -62,17 +62,12 @@ export const CustomTagEditable: Story = {
   },
 };
 
-/** The «Свой тег» trigger: `role="button"`, `aria-expanded`, linked to the field it opens. */
-export const CustomTagTrigger: Story = {
-  args: {
-    label: "Свой тег",
-    role: "button",
-    expanded: false,
-    controls: "custom-tag-field",
-  },
-};
-
-/** A tag-specific error: the frame is the visible error, the message is rendered once by the screen. */
+/**
+ * A tag-specific error (DESIGN.md → Tag picker): the accent frame of the owner's
+ * tag gives way to the `destructive` one, and the message is rendered once by
+ * the screen next to the row — not by the chip. Same 1 px stroke, so the chip
+ * does not jump.
+ */
 export const TagError: Story = {
   render: function TagErrorStory() {
     return (
@@ -92,6 +87,68 @@ export const TagError: Story = {
         </Text>
       </YStack>
     );
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
+/**
+ * A selected catalogue chip keeps its `muted` fill, the check and
+ * `aria-checked`, and only the frame turns `destructive`; the chip next to it
+ * shows the normal `border-strong` frame of a selected tag.
+ */
+export const SelectedTagError: Story = {
+  render: function SelectedTagErrorStory() {
+    return (
+      <YStack gap="$2" width={360}>
+        <XStack gap="$2" flexWrap="wrap">
+          <TagChip label="мечта" selected />
+          <TagChip
+            label="нужно сейчас"
+            selected
+            error={{ id: "selected-tag-error-story", message: "Этого тега больше нет в каталоге" }}
+          />
+        </XStack>
+        <Text id="selected-tag-error-story" kind="caption" tone="destructive" role="alert">
+          Этого тега больше нет в каталоге
+        </Text>
+      </YStack>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
+/** A saved custom tag with a duplicate-name error: the label still opens editing, the cross still removes. */
+export const CustomTagEditError: Story = {
+  render: function CustomTagEditErrorStory() {
+    return (
+      <YStack gap="$2" width={360}>
+        <XStack gap="$2" flexWrap="wrap">
+          <TagChip
+            variant="custom"
+            label="для дома"
+            editLabel="Редактировать тег для дома"
+            removeLabel="Убрать тег для дома"
+            error={{ id: "custom-tag-edit-error-story", message: "Такой тег уже есть" }}
+            onPress={noop}
+            onRemove={noop}
+          />
+        </XStack>
+        <Text id="custom-tag-edit-error-story" kind="caption" tone="destructive" role="alert">
+          Такой тег уже есть
+        </Text>
+      </YStack>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
+/** The «Свой тег» trigger: `role="button"`, `aria-expanded`, linked to the field it opens. */
+export const CustomTagTrigger: Story = {
+  args: {
+    label: "Свой тег",
+    role: "button",
+    expanded: false,
+    controls: "custom-tag-field",
   },
 };
 

@@ -203,6 +203,120 @@ describe("TagChip: свой тег с акцентом (UI4)", () => {
 
 });
 
+/**
+ * `DESIGN.md` → Tag picker: «Ошибка тега … видна на самом чипе: рамка
+ * `{colors.destructive}` 1 px; текст ошибки рендерит экран рядом с рядом
+ * чипов, `aria-invalid` и `accessibilityHint` — в дополнение к видимой рамке,
+ * не вместо неё». The frame is checked through the computed style of the root,
+ * which is what a browser paints; happy-dom has no layout, so neither the
+ * 1 px stroke nor the colours are rasterised.
+ */
+describe("TagChip: видимая ошибка", () => {
+  const error = { id: "tags-error", message: "Проверьте теги" };
+  const DESTRUCTIVE = "#B42318";
+  const BORDER = "#D9D3C6";
+  const ACCENT = "#D4A017";
+
+  it("фиксированный чип с ошибкой: рамка destructive, ширина прежняя — 1 px", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip label="мечта" onPress={vi.fn()} error={error} testID="chip" />);
+    const chip = container.querySelector('[data-testid="chip"]') as HTMLElement;
+    const style = getComputedStyle(chip);
+
+    expect(style.borderTopColor).toBe(DESTRUCTIVE);
+    expect(style.borderRightColor).toBe(DESTRUCTIVE);
+    expect(style.borderBottomColor).toBe(DESTRUCTIVE);
+    expect(style.borderLeftColor).toBe(DESTRUCTIVE);
+    expect(style.borderTopWidth).toBe("1px");
+  });
+
+  it("без ошибки — обычная рамка $border", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip label="мечта" onPress={vi.fn()} testID="chip" />);
+    const chip = container.querySelector('[data-testid="chip"]') as HTMLElement;
+
+    expect(getComputedStyle(chip).borderTopColor).toBe(BORDER);
+    expect(getComputedStyle(chip).borderTopWidth).toBe("1px");
+  });
+
+  it("выбранный чип с ошибкой: destructive поверх заливки muted, а не border-strong", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip label="мечта" selected onPress={vi.fn()} error={error} testID="chip" />);
+    const chip = container.querySelector('[data-testid="chip"]') as HTMLElement;
+    const style = getComputedStyle(chip);
+
+    expect(style.borderTopColor).toBe(DESTRUCTIVE);
+    expect(style.backgroundColor).toBe("#E8E4DA");
+    expect(chip.getAttribute("aria-checked")).toBe("true");
+    expect(chip.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("свой тег с ошибкой: accent уступает destructive, ширина и заливка surface те же", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChip
+        variant="custom"
+        label="своё"
+        removeLabel="Убрать тег своё"
+        onRemove={vi.fn()}
+        error={error}
+        testID="custom"
+      />,
+    );
+    const chip = container.querySelector('[data-testid="custom"]') as HTMLElement;
+    const style = getComputedStyle(chip);
+
+    expect(style.borderTopColor).toBe(DESTRUCTIVE);
+    expect(style.borderTopWidth).toBe("1px");
+    expect(style.backgroundColor).toBe("#FFFFFF");
+  });
+
+  it("свой тег без ошибки по-прежнему с акцентной рамкой", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChip
+        variant="custom"
+        label="своё"
+        removeLabel="Убрать тег своё"
+        onRemove={vi.fn()}
+        testID="custom"
+      />,
+    );
+    const chip = container.querySelector('[data-testid="custom"]') as HTMLElement;
+
+    expect(getComputedStyle(chip).borderTopColor).toBe(ACCENT);
+  });
+
+  it("триггер «Свой тег» с ошибкой тоже получает рамку", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TagChip
+        variant="custom"
+        role="button"
+        label="Свой тег"
+        expanded={false}
+        controls="custom-editor"
+        onPress={vi.fn()}
+        error={error}
+        testID="trigger"
+      />,
+    );
+    const trigger = container.querySelector('[data-testid="trigger"]') as HTMLElement;
+
+    expect(getComputedStyle(trigger).borderTopColor).toBe(DESTRUCTIVE);
+    expect(getComputedStyle(trigger).borderTopWidth).toBe("1px");
+    expect(trigger.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("карточка статична: error не меняет её рамку", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip variant="card" label="мечта" error={error} testID="tag" />);
+    const chip = container.querySelector('[data-testid="tag"]') as HTMLElement;
+
+    expect(getComputedStyle(chip).borderTopColor).toBe(BORDER);
+  });
+});
+
 describe("TagChip: карточка", () => {
   it("статичный чип: текст без checkbox и кнопки", async () => {
     const { container, render } = mounted();

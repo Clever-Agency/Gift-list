@@ -135,12 +135,14 @@ export function toGiftTag(row: GiftTagRow, locale: SupportedLocale): GiftTagCard
 /**
  * Card tags in display order, with unusable rows left out.
  *
- * Story 2.5.7: the order is deterministic and independent of row insertion:
- * fixed tags first, ascending by the immutable catalog `slug` in Unicode code
- * units — the same order as `GET /api/v1/tags` (`compareTagCatalogSlugs`). An
- * approved custom tag is a fixed tag and sorts there too. Custom tags follow,
- * ascending by their stored text in code units. No locale collation and no
- * translated label is used for sorting. Catalog and custom uniques
+ * Story 2.5 / CLE-77: the order is deterministic and independent of row insertion.
+ * Unapproved custom tags come first, so fixed tags cannot push a custom tag
+ * behind the card's «+N» (`EXPERIENCE.md` → Tags). They ascend by stored text
+ * in Unicode code units. Fixed tags follow, ascending by the immutable catalog
+ * `slug` in code units — the same order as `GET /api/v1/tags`
+ * (`compareTagCatalogSlugs`). An approved custom tag is a fixed tag and sorts
+ * there too. No locale collation and no translated label is used for sorting.
+ * Catalog and custom uniques
  * (`@@unique([giftId, tagId])`, `@@unique([giftId, customText])`) make equal keys
  * unreachable; the final input-index tie-break only keeps the sort stable.
  */
@@ -181,7 +183,7 @@ function compareCardTags(
   left: { tag: GiftTagCard; fixed: boolean; key: string; index: number },
   right: { tag: GiftTagCard; fixed: boolean; key: string; index: number },
 ): number {
-  if (left.fixed !== right.fixed) return left.fixed ? -1 : 1;
+  if (left.fixed !== right.fixed) return left.fixed ? 1 : -1;
 
   const byKey = compareCodeUnits(left.key, right.key);
   if (byKey !== 0) return byKey;

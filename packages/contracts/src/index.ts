@@ -96,9 +96,10 @@ export const giftCardSchema = z.strictObject({
   expiresOn: z.string().nullable(),
   archivedAt: z.string().nullable(),
   /**
-   * Card tag display order is part of the contract: fixed tags first by their
-   * immutable catalog slug, then custom tags by their stored text. The server
-   * sorts, and the client shows the first three and collapses the rest.
+   * Card tag display order is part of the contract: unapproved custom tags
+   * first by their stored text, then fixed tags by their immutable catalog
+   * slug. The server sorts, and the client shows the first three and
+   * collapses the rest.
    */
   tags: z.array(
     z.strictObject({

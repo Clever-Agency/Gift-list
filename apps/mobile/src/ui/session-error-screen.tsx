@@ -9,9 +9,7 @@ import {
   Text,
   YStack,
 } from "@gift-list/ui";
-import { useWindowDimensions } from "react-native";
 import { useTranslations } from "use-intl";
-import { pageGutter } from "@/ui/card-grid";
 import { PrimaryButton } from "@/ui/primary-button";
 import { SiteFooter } from "@/ui/site-footer";
 
@@ -40,18 +38,19 @@ export function SessionErrorScreen({
   onRetry,
 }: SessionErrorScreenProps) {
   const t = useTranslations("common");
-  const { width } = useWindowDimensions();
-  const gutter = pageGutter(width);
 
   return (
     <Screen>
       <SafeArea>
         <PageScroll testID={`${testID}-page`}>
           <PageContainer>
+            {/* The gutter follows the window, not JS: the same `pageGutter` values
+                (16 compact, 24 from `bp-medium`) as Tamagui media clauses, for both
+                the form and the wide column. */}
             <Column
               size={size}
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >

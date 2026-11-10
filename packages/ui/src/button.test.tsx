@@ -6,6 +6,8 @@ import {
   allDeclarations,
   createMount,
   declarationsFor,
+  errorMessages,
+  nativeOnlyAttributes,
   stateValues,
 } from "./test-utils";
 
@@ -288,6 +290,90 @@ describe("Button", () => {
         (container.querySelector("button") as HTMLButtonElement).click();
       });
       expect(busyPress, `${variant}: busy`).not.toHaveBeenCalled();
+    }
+  });
+
+  /**
+   * W12.8, `DESIGN.md` → busy: «рядом с текстом — индикатор ожидания». The
+   * spinner is a separate component (`spinner.tsx`); `Button` only places it.
+   */
+  it("busy: спиннер слева от подписи, у обычной и disabled его нет", async () => {
+    const { container, render } = mounted();
+
+    await render(<Button label="Сохранить" onPress={vi.fn()} />);
+    expect(container.querySelector('[data-testid="spinner"]')).toBeNull();
+    expect((container.querySelector("button") as HTMLElement).childElementCount).toBe(1);
+
+    await render(<Button label="Сохранить" onPress={vi.fn()} disabled />);
+    expect(container.querySelector('[data-testid="spinner"]')).toBeNull();
+
+    await render(<Button label="Сохранить" onPress={vi.fn()} busy />);
+    const button = container.querySelector("button") as HTMLElement;
+    const slot = container.querySelector('[data-testid="spinner"]')?.parentElement as HTMLElement;
+    expect(button.firstElementChild).toBe(slot);
+    expect(slot.nextElementSibling?.textContent).toBe("Сохранить");
+    expect(button.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("busy: у каждого варианта есть спиннер, у disabled-варианта нет", async () => {
+    const { container, render } = mounted();
+    for (const { variant } of POINTER_VARIANTS) {
+      await render(<Button label="Кнопка" variant={variant} onPress={vi.fn()} disabled />);
+      expect(container.querySelector('[data-testid="spinner"]'), `${variant}: disabled`).toBeNull();
+
+      await render(<Button label="Кнопка" variant={variant} onPress={vi.fn()} busy />);
+      expect(container.querySelector('[data-testid="spinner"]'), `${variant}: busy`).not.toBeNull();
+    }
+  });
+
+  /**
+   * The width must not jump between the resting and the busy button, including a
+   * short and a long Cyrillic label. happy-dom paints no layout at all, so what is
+   * checked is the structure: the resting frame has the label alone (nothing is
+   * reserved for the spinner) and the busy frame adds one absolutely positioned
+   * slot, which takes no room in the flex row. The real widths are a browser
+   * check (`W12.8-report.md` → «Не проверено глазами»).
+   */
+  for (const label of ["ОК", "Сохранить изменения в вишлисте"]) {
+    it(`busy: ширина не зависит от спиннера — подпись «${label}»`, async function spinnerWidth() {
+      const { container, render } = mounted();
+
+      await render(<Button label={label} onPress={vi.fn()} />);
+      const restPadding = stateValues(
+        container.querySelector("button") as HTMLElement,
+        "base",
+        "padding-inline",
+      );
+      // Nothing is reserved for the spinner: the resting frame is the label alone.
+      expect((container.querySelector("button") as HTMLElement).childElementCount).toBe(1);
+      expect(restPadding).toEqual(["var(--t-space-card-padding)"]);
+
+      await render(<Button label={label} onPress={vi.fn()} busy />);
+      const busy = container.querySelector("button") as HTMLElement;
+      const slot = container.querySelector('[data-testid="spinner"]')?.parentElement as HTMLElement;
+
+      // The button's own padding is the same class: the spinner adds no padding.
+      expect(stateValues(busy, "base", "padding-inline")).toEqual(restPadding);
+      expect(stateValues(slot, "base", "position")).toEqual(["absolute"]);
+      // The slot starts where the text does — inside the left padding.
+      expect(stateValues(slot, "base", "left")).toEqual(restPadding);
+      // The label keeps its place: the slot is drawn over the left padding only.
+      expect(slot.nextElementSibling?.textContent).toBe(label);
+    });
+  }
+
+  it("busy: экранный диктор не видит спиннер и не получает native-пропсов", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(function noop() {});
+    try {
+      const { container, render } = mounted();
+      await render(<Button label="Сохранить" onPress={vi.fn()} busy />);
+
+      const spinner = container.querySelector('[data-testid="spinner"]') as SVGSVGElement;
+      expect(spinner.getAttribute("aria-hidden")).toBe("true");
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+    } finally {
+      errors.mockRestore();
     }
   });
 

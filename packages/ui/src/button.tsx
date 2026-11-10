@@ -1,8 +1,10 @@
 import { ButtonFrame as BehaviorFrame, ButtonText as BehaviorText } from "@tamagui/button";
-import { styled } from "@tamagui/core";
+import { View, styled } from "@tamagui/core";
 import { forwardRef, type ComponentRef } from "react";
 import { fontFor } from "./font-style";
 import { focusRing } from "./pressable";
+import { Spinner } from "./spinner";
+import { colors, type ColorToken } from "./tokens";
 
 /**
  * A blocked button (`disabled` or `busy`) keeps its resting look: no hover, no press.
@@ -22,6 +24,22 @@ const BLOCKED_VARIANT = {
   destructive: "destructiveBlocked",
 } as const;
 
+export type ButtonVariant = keyof typeof BLOCKED_VARIANT;
+
+/**
+ * The label colour of each variant (`DESIGN.md` → components `button-*`), as a
+ * theme key. One map for the label and for the busy spinner: `Label` takes the
+ * token (`$primary-foreground`), the spinner needs the same colour as a value,
+ * because React Native has no `currentColor` inheritance (`spinner.native.tsx`).
+ */
+const LABEL_COLOR = {
+  primary: "primary-foreground",
+  reserve: "accent-foreground",
+  secondary: "foreground",
+  ghost: "primary",
+  destructive: "destructive-foreground",
+} as const satisfies Record<ButtonVariant, ColorToken>;
+
 const Frame = styled(BehaviorFrame, {
   name: "GLButton",
   borderWidth: 1,
@@ -29,6 +47,8 @@ const Frame = styled(BehaviorFrame, {
   paddingHorizontal: "$card-padding",
   borderRadius: "$md",
   cursor: "pointer",
+  // The busy spinner is positioned against the button (see `SpinnerSlot`).
+  position: "relative",
   ...focusRing,
   variants: {
     variant: {
@@ -104,17 +124,34 @@ const Label = styled(BehaviorText, {
   textAlign: "center",
   variants: {
     variant: {
-      primary: { color: "$primary-foreground" },
-      reserve: { color: "$accent-foreground" },
-      secondary: { color: "$foreground" },
-      ghost: { color: "$primary" },
-      destructive: { color: "$destructive-foreground" },
+      primary: { color: `$${LABEL_COLOR.primary}` },
+      reserve: { color: `$${LABEL_COLOR.reserve}` },
+      secondary: { color: `$${LABEL_COLOR.secondary}` },
+      ghost: { color: `$${LABEL_COLOR.ghost}` },
+      destructive: { color: `$${LABEL_COLOR.destructive}` },
     },
   } as const,
   defaultVariants: { variant: "primary" },
 });
 
-export type ButtonVariant = keyof typeof BLOCKED_VARIANT;
+/**
+ * The slot of the busy spinner: out of the flex flow at the left padding edge,
+ * so the button keeps its width and the label keeps its place when `busy` turns
+ * on and off. Nothing else is reserved — a resting button has no invisible gap.
+ *
+ * The slot lies over the button's own padding only; a label that wide would be
+ * one of 37+ characters on a full-width 360 px button (see the W12.8 report).
+ * `pointerEvents: "none"` keeps the press on the button.
+ */
+const SpinnerSlot = styled(View, {
+  name: "GLButtonSpinner",
+  position: "absolute",
+  left: "$card-padding",
+  top: 0,
+  bottom: 0,
+  justifyContent: "center",
+  pointerEvents: "none",
+});
 
 export type ButtonProps = {
   /** The visible text and the accessible name. Copy comes from the caller. */
@@ -191,6 +228,11 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
       testID={testID}
       onPress={blocked ? undefined : onPress}
     >
+      {busy ? (
+        <SpinnerSlot>
+          <Spinner color={colors[LABEL_COLOR[variant]]} />
+        </SpinnerSlot>
+      ) : null}
       <Label variant={variant}>{label}</Label>
     </Frame>
   );

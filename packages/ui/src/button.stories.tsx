@@ -12,7 +12,9 @@ function noop() {}
  * `destructive-hover` in `DESIGN.md` → Colors); `secondary` darkens its frame and
  * `ghost` takes the `muted` fill. A disabled or busy button keeps its 40% / 60% dim
  * and does not react to hover or press at all (`DESIGN.md` → Состояния кнопок,
- * DECISION 2026-11-10): it is painted by a variant value without those states.
+ * DECISION 2026-11-10): it is painted by a variant value without those states. A
+ * busy button also shows the 16 px spinner to the left of its label (`UI/Spinner`,
+ * W12.8) without changing its width.
  */
 const meta = {
   title: "UI/Button",
@@ -98,6 +100,34 @@ export const DestructiveBusy: Story = {
  */
 export const PrimaryFullWidth: Story = {
   args: { variant: "primary", fullWidth: true },
+};
+
+/**
+ * Every variant in the `busy` state at 360 px (`DESIGN.md` → busy): the 16 px
+ * spinner sits to the left of the label, in the label colour of the variant, and
+ * the button keeps the width it has at rest — the indicator is an absolutely
+ * positioned slot over the left padding, so nothing is reserved and the label does
+ * not move (W12.8). The last button has the longest Cyrillic label of the app.
+ *
+ * «Уменьшить движение» has no emulation addon here: turn the OS setting on or pick
+ * `prefers-reduced-motion: reduce` in DevTools → Rendering → Emulate CSS media
+ * feature. The arc then stops turning and stays a static ring, the wait is still
+ * announced by `aria-busy` (`DESIGN.md` → Движение).
+ */
+export const BusyMatrixNarrow: Story = {
+  render: function BusyMatrixNarrowStory() {
+    return (
+      <YStack width={360} gap="$3">
+        <Button label="Сохраняем…" variant="primary" onPress={noop} busy />
+        <Button label="Бронируем…" variant="reserve" onPress={noop} busy />
+        <Button label="Сохраняем…" variant="secondary" onPress={noop} busy />
+        <Button label="Поделиться" variant="ghost" onPress={noop} busy />
+        <Button label="Удаляем…" variant="destructive" onPress={noop} busy />
+        <Button label="Сохранить изменения в вишлисте" variant="primary" onPress={noop} busy />
+      </YStack>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
 };
 
 /**

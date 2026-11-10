@@ -119,7 +119,7 @@ decisions_locked:
 
 Из Architecture Spine:
 
-- ARCH-R1: AD-2 — общий UI `packages/ui` на Tamagui для приложения и Next-страниц (Story 1.9); веб — Next.js 16 (Story 1.1), приложение — Expo SDK 58 (AD-17); версии и копии зависимостей — AD-28; версии из Stack spine
+- ARCH-R1: AD-2 — общий UI `packages/ui` на Tamagui для приложения и Next-страниц (Story 1.9); веб — Next.js 16 (Story 1.1), приложение — Expo SDK 58 (AD-17); версии и копии зависимостей — AD-28; visual-каталог компонентов — Storybook для web как dev-зависимость (Story 1.10); версии из Stack spine
 - ARCH-R2: Слои AD-1 — UI → use-case (`actions`) → `domain` → `db`; адаптеры: `app/api/v1` (приложение на всех платформах), Server Actions (Next-страницы и админка), `app/api/cron` (расписание)
 - ARCH-R3: Auth AD-3 — один Better Auth; в браузере cookie того же домена, на Android/iOS `@better-auth/expo` + `bearer()` + SecureStore; OAuth и SMS вне MVP
 - ARCH-R4: Hosting AD-5 — Vercel (Hobby) до публикации; переезд в Docker на свой сервер до выхода в стор; платформенные сервисы Vercel запрещены (AD-16)
@@ -227,7 +227,7 @@ Epic 9 «Предложить идею» вынесен из первого пи
 
 ## Epic 1: Фундамент двух клиентов и аккаунт
 
-Сначала готовится то, на чём стоят оба клиента: монорепозиторий, каркас Expo, `app/api/v1` и сессия. Затем — аккаунт. Порядок историй обязателен: 1.5–1.8 требуют 1.2–1.4; Story 1.9 (D-47) добавлена, когда Epic 2 и 3 уже начаты: она идёт до Story 3.3 и оставшихся историй Epic 2 (2.4–2.7).
+Сначала готовится то, на чём стоят оба клиента: монорепозиторий, каркас Expo, `app/api/v1` и сессия. Затем — аккаунт. Порядок историй обязателен: 1.5–1.8 требуют 1.2–1.4; Story 1.9 (D-47) добавлена, когда Epic 2 и 3 уже начаты: она идёт до Story 3.3 и оставшихся историй Epic 2 (2.4–2.7). Story 1.10 (visual-каталог Storybook) добавлена 2026-11-10 и идёт сразу после Story 1.9, до микрозадач полировки UI; продукт она не меняет.
 
 ### Story 1.1: Scaffold проекта из starter (Next.js + shadcn + Forest Paper)
 
@@ -409,6 +409,28 @@ So that каждый экран и общий компонент пишется 
 **And** проверено на Android-эмуляторе и в браузере; iOS — когда будет macOS или EAS (в `deferred-work.md`, если не проверено)
 **And** `typecheck`, `lint`, `test`, `build` и запуск standalone проходят; `AGENTS.md` описывает `packages/ui`, AD-28 и ссылку на `tamagui.dev/llms.txt`
 **And** код спайка (`apps/mobile/app/spike.tsx`, тестовая страница `apps/web/src/app/l/[token]`) удалён или заменён рабочим кодом историй
+
+### Story 1.10: Каталог компонентов `packages/ui` в Storybook (web)
+
+Клиент: разработка (web). Зависимость — dev-only; приложение и Next-страницы не меняются. Идёт сразу после Story 1.9 и до микрозадач полировки UI (`sprint-change-proposal-2026-11-10-ui-polish.md`, W11).
+
+As a разработчик и дизайнер,
+I want видеть каждый компонент `packages/ui` со всеми состояниями в изолированном каталоге,
+So that hover, движение, фокус и ошибки проверяются и принимаются до того, как попадут на экраны (AD-2, AD-28).
+
+**Acceptance Criteria:**
+
+**Given** `packages/ui` на Tamagui 3.1.10 и React 19.3.0
+**When** в репозиторий добавляется Storybook для web (`storybook` + `@storybook/react-native-web-vite` + `vite`, точные версии) как dev-зависимость
+**Then** `npm run storybook` из корня открывает каталог; stories лежат в `packages/ui/src/**/*.stories.tsx`, конфиг — в корневом `.storybook/`; ни `packages/ui/src/index.ts`, ни экраны приложения stories не импортируют
+**And** провайдер тот же, что в приложении (`createGiftListConfig` + `GiftListProvider`), шрифты Lora и Manrope подключаются в каталоге, а не в `packages/ui` (AD-2)
+**And** сторис покрывают все экспортируемые компоненты пакета и их состояния: Button (все варианты, hover, press, disabled, busy), Pressable, TextField и PasswordField (обычное, фокус, ошибка, пароль открыт и закрыт), Choice и ChoiceList (выбран, не выбран, disabled, ошибка), TagChip (picker, card, custom, выбран, ошибка), VisibilityChip, StatusPill, RelationshipChip, WishCard (открыт, забронирован, получен, с фото и без), Dialog, BottomSheet, Toast (info, error, с действием), EmptyState, Skeleton и LoadingCards, PageFooter, ScrollView
+**And** строки интерфейса в сторис берутся как литералы каталога: `packages/ui` по-прежнему без переводов и без env
+**And** каталог не влияет на прод-бандлы: `next build`, Expo-web экспорт и бюджет gzip в CI не меняются; `storybook-static/` в `.gitignore`
+**And** после установки в `package-lock.json` нет вторых копий `react`, `react-dom`, `tamagui` и `@tamagui/*`; `node scripts/check-boundaries.mjs`, `typecheck`, `lint`, `test`, `build` зелёные; сторис проходят eslint пакета (именованные компоненты, `displayName`)
+**And** `/ui-check` в `apps/web` остаётся проверкой серверного рендера Next и каталогом не считается; его примеры не дублируют сторис
+**And** в `AGENTS.md` записано, где живут stories, как запустить каталог и что он dev-only
+**And** сборка каталога в CI — по желанию и не блокирует; в `deferred-work.md` — если в CI её нет
 
 ---
 

@@ -1,5 +1,12 @@
 // @vitest-environment happy-dom
-import { CURRENCIES, QUANTITIES, VISIBILITIES } from "@gift-list/contracts";
+import {
+  CURRENCIES,
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_TITLE_MAX,
+  QUANTITIES,
+  VISIBILITIES,
+} from "@gift-list/contracts";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,6 +59,7 @@ type AppCatalog = {
       descriptionTooLong: string;
       priceInvalid: string;
       linkInvalid: string;
+      linkTooLong: string;
       quantityLocked: string;
       tags: string;
       tagEmpty: string;
@@ -626,6 +634,139 @@ describe("GiftForm: отправка", () => {
     await press(form.action.create);
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GiftForm: лимиты полей", () => {
+  /** The catalogue sentence with its `{max}` filled in, as the form shows it. */
+  function copy(key: string, max: number): string {
+    return key.replace("{max}", String(max));
+  }
+
+  /**
+   * No `maxLength`: it counts UTF-16 units and silently cuts both an emoji the
+   * schema accepts and a legacy stored value the owner opens. The cap is checked
+   * on submit, in code points, and shows under the field.
+   */
+  it("у названия, описания и ссылки нет maxLength", async () => {
+    await mount();
+
+    for (const label of [form.field.title, form.field.description, form.field.link]) {
+      expect(field(label).hasAttribute("maxlength"), label).toBe(false);
+    }
+  });
+
+  it("название длиннее предела не обрезается, а показывается ошибкой при отправке", async () => {
+    const onSubmit = await mount();
+    const tooLong = "я".repeat(GIFT_TITLE_MAX + 1);
+
+    await type(form.field.title, tooLong);
+
+    expect(field(form.field.title).value).toBe(tooLong);
+    expect(field(form.field.title).value.length).toBe(GIFT_TITLE_MAX + 1);
+
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.title)).toContain(
+      copy(form.error.titleTooLong, GIFT_TITLE_MAX),
+    );
+
+    await type(form.field.title, "я".repeat(GIFT_TITLE_MAX));
+    expect(fieldText(form.field.title)).not.toContain(
+      copy(form.error.titleTooLong, GIFT_TITLE_MAX),
+    );
+    await submit();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("120 эмодзи (240 UTF-16 units) в названии отправляются целиком", async () => {
+    const onSubmit = await mount();
+    const title = "🎁".repeat(GIFT_TITLE_MAX);
+
+    await type(form.field.title, title);
+    expect(field(form.field.title).value).toBe(title);
+    expect(field(form.field.title).value.length).toBe(GIFT_TITLE_MAX * 2);
+
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const submitted = onSubmit.mock.calls[0]?.[0];
+    expect(submitted?.title).toBe(title);
+    expect(Array.from(submitted?.title ?? "")).toHaveLength(GIFT_TITLE_MAX);
+  });
+
+  it("описание длиннее предела показывается своей ошибкой и не отправляется", async () => {
+    const onSubmit = await mount();
+    const tooLong = "я".repeat(GIFT_DESCRIPTION_MAX + 1);
+
+    await type(form.field.title, "Свитер");
+    await type(form.field.description, tooLong);
+
+    expect(field(form.field.description).value).toBe(tooLong);
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.description)).toContain(
+      copy(form.error.descriptionTooLong, GIFT_DESCRIPTION_MAX),
+    );
+
+    // The error goes as soon as the field is edited (EXPERIENCE → Ошибки форм).
+    await type(form.field.description, "Короткая заметка");
+    expect(fieldText(form.field.description)).not.toContain(
+      copy(form.error.descriptionTooLong, GIFT_DESCRIPTION_MAX),
+    );
+    await submit();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("ссылка длиннее предела называется «слишком длинной», а не «неверной»", async () => {
+    const onSubmit = await mount();
+    const tooLong = `https://example.com/${"a".repeat(GIFT_LINK_URL_MAX)}`;
+
+    await type(form.field.title, "Свитер");
+    await type(form.field.link, tooLong);
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.link)).toContain(copy(form.error.linkTooLong, GIFT_LINK_URL_MAX));
+    expect(fieldText(form.field.link)).not.toContain(form.error.linkInvalid);
+  });
+
+  /**
+   * Legacy: a stored value longer than the current cap (only possible outside the
+   * API, whose schema always capped it). It must open intact and must not block
+   * saving another field; a change to it is validated like any other value.
+   */
+  it("сохранённое название длиннее предела открывается целиком и не блокирует сохранение", async () => {
+    const legacy = "я".repeat(GIFT_TITLE_MAX + 40);
+    const onSubmit = await mount({
+      initialValues: { title: legacy, description: "Заметка" },
+    });
+
+    expect(field(form.field.title).value).toBe(legacy);
+
+    await type(form.field.description, "Другая заметка");
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({
+      title: legacy,
+      description: "Другая заметка",
+    });
+  });
+
+  it("изменённое сохранённое название длиннее предела показывается ошибкой", async () => {
+    const legacy = "я".repeat(GIFT_TITLE_MAX + 40);
+    const onSubmit = await mount({ initialValues: { title: legacy } });
+
+    await type(form.field.title, `${legacy}я`);
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.title)).toContain(
+      copy(form.error.titleTooLong, GIFT_TITLE_MAX),
+    );
   });
 });
 

@@ -615,6 +615,41 @@ describe("изменение желания: сохранение", () => {
     });
   });
 
+  /**
+   * Legacy: a stored value longer than the cap can only come from a direct
+   * database write, but it must not trap the owner. An untouched over-limit value
+   * is not sent back — the server's own schema would reject it — while a changed
+   * field goes as usual.
+   */
+  it("сохранённое название длиннее предела не отправляется, если его не трогали", async () => {
+    const legacyTitle = "я".repeat(160);
+    const legacy: GiftCard = { ...stored, title: legacyTitle };
+    loaded(legacy);
+    gifts.updateGift.mockResolvedValue({
+      ok: true,
+      gift: { ...legacy, description: "Заметка" },
+    });
+    await mount();
+
+    // The field opens the stored value intact: nothing cuts it on the way in.
+    expect(field("Название").value).toBe(legacyTitle);
+
+    await type("Описание (необязательно)", "Заметка");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    // An absent key keeps the stored title, so the save does not fail on it.
+    expect(body).not.toHaveProperty("title");
+    expect(body.description).toBe("Заметка");
+    // A field under the cap is still sent as before.
+    expect(body.linkUrl).toBe("https://example.com/x");
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_updated" },
+    });
+  });
+
   /** D-25: an empty link clears the stored one instead of silently keeping it. */
   it("очистка ссылки шлёт linkUrl: null", async () => {
     loaded();

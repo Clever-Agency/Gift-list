@@ -4,6 +4,7 @@ import {
   GIFT_TAG_TEXT_MAX,
   QUANTITIES,
   VISIBILITIES,
+  textLength,
 } from "@gift-list/contracts";
 import {
   Button,
@@ -42,15 +43,11 @@ import {
   giftTagsKey,
   isCustomTag,
   isFixedTag,
-  tagTextLength,
   type CustomTagIssue,
   type GiftFormTag,
 } from "@/ui/gift-form-tags";
 import type { TagCatalogState } from "@/ui/use-tag-catalog";
 import {
-  DESCRIPTION_MAX,
-  LINK_MAX,
-  TITLE_MAX,
   fieldErrorCopy,
   firstErrorField,
   serverErrorField,
@@ -204,6 +201,11 @@ export type GiftFormHandle = {
  * Validation runs on submit, not while typing: a field error disappears as soon
  * as that field is edited, and the first error is announced for the screen
  * reader (`EXPERIENCE.md` → Ошибки форм, → Accessibility Floor).
+ *
+ * The text fields carry no `maxLength`: it counts UTF-16 units and would cut an
+ * emoji the schema accepts, or a legacy stored value the owner is editing. The
+ * caps live in `@gift-list/contracts` and are checked on submit in the same unit
+ * as the schema (code points).
  */
 export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftForm(
   {
@@ -461,8 +463,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   }
 
   function inlineError(field: GiftFormField): string | undefined {
-    if (errors[field]) return copyText(fieldErrorCopy(field, { title }));
-    return serverField === field ? copyText(fieldErrorCopy(field, { title })) : undefined;
+    if (errors[field]) return copyText(fieldErrorCopy(field, { title, link }));
+    return serverField === field ? copyText(fieldErrorCopy(field, { title, link })) : undefined;
   }
 
   const tagServerError =
@@ -615,14 +617,16 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     setCustomTagError(tagIssue);
 
     const priceAmount = parsePriceToMinor(price);
-    const found = validateGiftForm({ title, link, price });
+    // An untouched stored value longer than the cap is legacy data and must not
+    // block the submit; the edit screen also leaves such a value out of the body.
+    const found = validateGiftForm({ title, description, link, price }, initial);
     if (tagIssue !== null) found.tags = true;
     setErrors(found);
     const first = firstErrorField(found);
     if (first !== null) {
       // `EXPERIENCE.md` → Accessibility Floor: announce the first error on submit.
       AccessibilityInfo.announceForAccessibility(
-        copyText(fieldErrorCopy(first, { title, tagIssue })),
+        copyText(fieldErrorCopy(first, { title, link, tagIssue })),
       );
       // UI5: the same field takes focus and is scrolled to the middle of the screen.
       // A problem in the typed custom tag opens its field; when it is already
@@ -660,6 +664,11 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     clearError("title");
   }
 
+  function handleDescriptionChange(value: string) {
+    setDescription(value);
+    clearError("description");
+  }
+
   function handleLinkChange(value: string) {
     setLink(value);
     clearError("link");
@@ -680,7 +689,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         error={inlineError("title")}
         input={{
           placeholder: t("field.titlePlaceholder"),
-          maxLength: TITLE_MAX,
+          // No `maxLength`: it counts UTF-16 units and would cut an emoji the
+          // schema accepts. The cap is reported under the field on submit.
           autoCapitalize: "sentences",
         }}
       />
@@ -688,13 +698,12 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         ref={descriptionRef}
         label={t("field.description")}
         value={description}
-        onChangeText={setDescription}
+        onChangeText={handleDescriptionChange}
         error={inlineError("description")}
         multiline
         rows={4}
         input={{
           placeholder: t("field.descriptionPlaceholder"),
-          maxLength: DESCRIPTION_MAX,
           autoCapitalize: "sentences",
         }}
       />
@@ -709,7 +718,6 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           keyboardType: "url",
           autoCapitalize: "none",
           autoCorrect: false,
-          maxLength: LINK_MAX,
         }}
       />
       <TextField
@@ -882,7 +890,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
               onChangeText={handleCustomTagChange}
               error={customTagErrorCopy}
               hint={t("field.tagCounter", {
-                count: tagTextLength(customTag),
+                count: textLength(customTag),
                 max: GIFT_TAG_TEXT_MAX,
               })}
               input={{

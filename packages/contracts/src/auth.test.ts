@@ -181,7 +181,7 @@ describe("passwordResetBodySchema", () => {
  * The caps registration applies to a new account. Boundaries are pinned here so
  * a change of a number is a change of this test too. Each test names its unit:
  * Zod 4 counts code points for the text fields, while a password is measured in
- * UTF-16 units — the unit Better Auth and the form's `maxLength` use.
+ * UTF-16 units — the unit Better Auth uses.
  */
 describe("registration caps", () => {
   function body(overrides: Partial<Record<string, string>> = {}) {
@@ -220,7 +220,7 @@ describe("registration caps", () => {
     if (!overCap.success) expect(overCap.error.issues[0]?.path).toEqual(["displayName"]);
   });
 
-  it("counts an emoji display name as one code point, while maxLength counts two units", () => {
+  it("counts an emoji display name as one code point, as the clients' textLength does", () => {
     const emoji = "😀";
     expect(
       registerBodySchema.safeParse(body({ displayName: emoji.repeat(DISPLAY_NAME_MAX) })).success,

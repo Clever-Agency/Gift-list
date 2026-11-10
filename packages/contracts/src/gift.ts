@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
+import { textLength } from "./text";
 
 /**
  * Create/edit body of a gift (Story 2.2, FR-10). The spec fixes no lengths, so
@@ -9,9 +10,10 @@ import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
  * Units: Zod 4 measures `max()` in Unicode code points, while the `maxLength`
  * attribute of both clients measures UTF-16 units. Text outside the BMP (an
  * emoji) is therefore one code point for the schema and two units for the field,
- * so the form cuts first and the schema accepts what the form already limited.
+ * so a `maxLength` would cut a value this schema accepts — the form does not use
+ * one and reports the length itself, in this same unit, via {@link textLength}.
  *
- * Exported because the gift form repeats the same numbers in its `maxLength` and
+ * Exported because the gift form repeats the same numbers in its own checks and
  * counters; it must import them from here instead of declaring its own copies.
  * The custom tag text has its own rule and unit — see {@link GIFT_TAG_TEXT_MAX}.
  */
@@ -24,10 +26,10 @@ export const GIFT_LINK_URL_MAX = 2048;
 
 /**
  * Story 2.5 / AD-22: custom tag text is at most 30 characters, counted in
- * Unicode code points — the unit of PostgreSQL `VARCHAR(30)` and of `[...text]`,
- * where an emoji outside the BMP is one character but two JS units. The cap is
- * checked by an explicit `refine` below, so the unit stays written down here and
- * does not depend on how the library measures a string.
+ * Unicode code points — the unit of PostgreSQL `VARCHAR(30)` and of
+ * {@link textLength}, where an emoji outside the BMP is one character but two JS
+ * units. The cap is checked by an explicit `refine` below, so the unit stays
+ * written down here and does not depend on how the library measures a string.
  */
 export const GIFT_TAG_TEXT_MAX = 30;
 
@@ -80,7 +82,7 @@ const tagTextFieldSchema = z
     message: "A custom tag cannot contain NUL",
   })
   .refine(function fitsTagText(value) {
-    return [...value].length <= GIFT_TAG_TEXT_MAX;
+    return textLength(value) <= GIFT_TAG_TEXT_MAX;
   }, {
     message: `A custom tag is at most ${GIFT_TAG_TEXT_MAX} characters`,
   });

@@ -354,9 +354,9 @@ describe("giftUpdateSchema", () => {
 
 /**
  * The caps are the contract's single source. Zod 4 counts them in Unicode code
- * points, while the `maxLength` attribute of both clients counts UTF-16 units;
- * these tests pin both measures down so the form, the schema and Better Auth
- * cannot drift silently.
+ * points (the unit of `textLength`, which both clients use), while a `maxLength`
+ * attribute would count UTF-16 units; these tests pin both measures down so the
+ * form, the schema and Better Auth cannot drift silently.
  */
 describe("gift text caps", () => {
   function linkOfLength(length: number): string {
@@ -389,12 +389,13 @@ describe("gift text caps", () => {
     if (!longLink.success) expect(longLink.error.issues[0]?.path).toEqual(["linkUrl"]);
   });
 
-  it("counts an emoji as one code point, while the form's maxLength counts two units", () => {
+  it("counts an emoji as one code point, as the clients' textLength does", () => {
     const emoji = "😀";
     expect(emoji).toHaveLength(2);
     expect([...emoji]).toHaveLength(1);
     // The schema cap is in code points: 120 emoji fit, 121 do not. The same text
-    // is 240 UTF-16 units, so a `maxLength` of 120 cuts it at 60 emoji first.
+    // is 240 UTF-16 units, so a `maxLength` of 120 would have cut it at 60 — the
+    // form sets none and checks the schema unit instead.
     expect(giftInputSchema.safeParse({ title: emoji.repeat(GIFT_TITLE_MAX) }).success).toBe(true);
     expect(giftInputSchema.safeParse({ title: emoji.repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
     expect(emoji.repeat(GIFT_TITLE_MAX).length).toBe(GIFT_TITLE_MAX * 2);

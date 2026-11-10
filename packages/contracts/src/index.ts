@@ -192,6 +192,8 @@ export {
 
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
 
+export { textLength } from "./text";
+
 export {
   FRIEND_ACCEPT_OUTCOMES,
   FRIEND_INVITE_OUTCOMES,

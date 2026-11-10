@@ -1,4 +1,11 @@
-import type { GiftCard, GiftUpdate } from "@gift-list/contracts";
+import {
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_TITLE_MAX,
+  textLength,
+  type GiftCard,
+  type GiftUpdate,
+} from "@gift-list/contracts";
 import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
@@ -574,6 +581,13 @@ function toFormValues(gift: GiftCard): GiftFormValues {
  * value. An unchanged `OPEN` edit sends the stored values, which the server
  * treats as a no-op.
  *
+ * A stored text value longer than the current cap is legacy data (the contract
+ * has always capped these fields, so only a direct database write can produce
+ * one). Such an untouched value is left out of the body: the server would reject
+ * it as VALIDATION, while an absent key keeps it, so the owner can still change
+ * another field and save. The form does not report an untouched legacy value
+ * either — see `GiftFormBaseline`.
+ *
  * Story 2.5: `tags` is a full replacement, so the key is sent only when the set
  * actually changed. An unchanged edit omits it (the server keeps the stored
  * rows); removing the last tag sends `[]` and clears them.
@@ -581,14 +595,35 @@ function toFormValues(gift: GiftCard): GiftFormValues {
 function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
   const tagsChanged = !giftTagsEqual(values.tags, gift.tags.map(giftTagFromCard));
   const body: GiftUpdate = {
-    title: values.title,
-    description: values.description,
+    ...(keepsStoredText(values.title, gift.title, GIFT_TITLE_MAX)
+      ? {}
+      : { title: values.title }),
+    ...(keepsStoredText(values.description ?? "", gift.description, GIFT_DESCRIPTION_MAX)
+      ? {}
+      : { description: values.description }),
     priceAmount: values.priceAmount,
     priceCurrency: values.priceCurrency,
-    linkUrl: values.link,
+    ...(keepsStoredText(values.link ?? "", gift.linkUrl, GIFT_LINK_URL_MAX)
+      ? {}
+      : { linkUrl: values.link }),
     ...(tagsChanged ? { tags: giftTagInputs(values.tags) } : {}),
   };
   return gift.status === "OPEN"
     ? { ...body, visibility: values.visibility, quantity: values.quantity }
     : body;
+}
+
+/**
+ * The value is exactly the stored one and already over the cap: re-sending it
+ * would fail the server's schema, so the key is omitted and the row keeps it.
+ * The form shows no error for an untouched value either (`GiftFormBaseline`);
+ * both compare the trimmed text, so surrounding spaces are not an edit.
+ */
+function keepsStoredText(
+  value: string,
+  stored: string | null,
+  max: number,
+): boolean {
+  const text = value.trim();
+  return text === (stored ?? "").trim() && textLength(text) > max;
 }

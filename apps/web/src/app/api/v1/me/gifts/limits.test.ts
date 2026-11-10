@@ -116,7 +116,8 @@ beforeEach(() => {
 
 /**
  * The server applies the gift caps itself (through `giftInputSchema` and
- * `giftUpdateSchema`), so a client that skips `maxLength` cannot store more.
+ * `giftUpdateSchema`), so a client that skips its own length check cannot store
+ * more.
  */
 describe("POST /api/v1/me/gifts caps", () => {
   it("stores a title of exactly 120 characters", async () => {
@@ -139,7 +140,7 @@ describe("POST /api/v1/me/gifts caps", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("counts an emoji title as one code point, while the form's maxLength counts two units", async () => {
+  it("counts an emoji title as one code point, as the clients' textLength does", async () => {
     const { POST } = await import("./route");
     const emoji = "😀";
     expect(emoji.repeat(120).length).toBe(240);

@@ -49,7 +49,7 @@ beforeEach(() => {
 
 /**
  * The route is the only door that creates an account, so the caps must hold here
- * (the contract schemas do it), not only in the form's `maxLength`.
+ * (the contract schemas do it), not only in the client's own check.
  */
 describe("POST /api/v1/register caps", () => {
   it("passes a body exactly at every cap to the use-case", async () => {
@@ -129,9 +129,10 @@ describe("POST /api/v1/register caps", () => {
     expect(registerUser).not.toHaveBeenCalled();
   });
 
-  it("counts a display name emoji as one code point (the client maxLength cuts first)", async () => {
+  it("counts a display name emoji as one code point, as the clients' textLength does", async () => {
     const emoji = "😀";
-    // 50 emoji are 50 code points here and 100 UTF-16 units for `maxLength`.
+    // 50 emoji are 50 code points here and 100 UTF-16 units (the unit a
+    // `maxLength` would count, which the client does not use).
     expect(emoji.repeat(50).length).toBe(100);
     const atCap = await POST(post({ ...validBody, displayName: emoji.repeat(50) }));
     expect(atCap.status).toBe(200);

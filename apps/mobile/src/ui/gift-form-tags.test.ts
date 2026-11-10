@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { textLength } from "@gift-list/contracts";
 import {
   customTagIssue,
   giftTagFromCard,
@@ -10,7 +11,6 @@ import {
   giftTagsKey,
   isCustomTag,
   isFixedTag,
-  tagTextLength,
 } from "@/ui/gift-form-tags";
 
 const dream = { catalogId: "tag_dream", label: "мечта" };
@@ -80,7 +80,7 @@ describe("customTagIssue: правило своего тега", () => {
 
   it("30 кодовых точек принимаются, 31 — нет", () => {
     const thirtyEmoji = "😀".repeat(30);
-    expect(tagTextLength(thirtyEmoji)).toBe(30);
+    expect(textLength(thirtyEmoji)).toBe(30);
     expect(thirtyEmoji.length).toBe(60);
     expect(customTagIssue(thirtyEmoji, [])).toBeNull();
     expect(customTagIssue("😀".repeat(31), [])).toBe("tooLong");

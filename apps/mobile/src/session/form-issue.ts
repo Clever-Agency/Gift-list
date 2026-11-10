@@ -1,4 +1,10 @@
-import type { ActionError, ErrorCode, ErrorReason } from "@gift-list/contracts";
+import {
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  type ActionError,
+  type ErrorCode,
+  type ErrorReason,
+} from "@gift-list/contracts";
 import type { ClientResult } from "@/api/client";
 
 export type FormIssue = {
@@ -65,13 +71,33 @@ function rateLimitValues(
 }
 
 /**
- * Short passwords on register and reset use the catalog rule.
- * A value that already has 8 characters keeps the generic validation text:
- * the minimum sentence would be false for a too-long password.
+ * Short and over-long passwords on register and reset: the catalog sentence of
+ * the rule, never the generic "check your input". Both bounds come from the
+ * contract and are counted the way the server counts a password — UTF-16 code
+ * units (`PASSWORD_MIN`/`PASSWORD_MAX`), so an emoji is two. The value is only
+ * measured: it is never trimmed or normalised here.
  */
 export function passwordFieldIssue(password: string, t: Translate, common: Translate): FormIssue {
-  if (password.length < 8) return { field: "password", text: t("form.passwordRules") };
+  if (password.length < PASSWORD_MIN) return { field: "password", text: t("form.passwordRules") };
+  if (password.length > PASSWORD_MAX) {
+    return { field: "password", text: t("form.passwordTooLong", { max: PASSWORD_MAX }) };
+  }
   return { field: "password", text: common("errors.code.VALIDATION") };
+}
+
+/**
+ * Sign-in keeps the stored lower bound at 1 (a legacy short password must pass
+ * the length check), so only the upper bound has its own sentence. Everything
+ * else stays the generic text of the screen.
+ */
+export function loginPasswordFieldIssue(
+  password: string,
+  t: Translate,
+  common: Translate,
+): FormIssue {
+  return password.length > PASSWORD_MAX
+    ? { field: "password", text: t("form.passwordTooLong", { max: PASSWORD_MAX }) }
+    : { field: "password", text: common("errors.code.VALIDATION") };
 }
 
 export function firstZodField(path: readonly PropertyKey[] | undefined): string | undefined {

@@ -2,7 +2,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ToastHost, toastDurationMs } from "@/ui/toast";
+import {
+  TOAST_MIN_MS,
+  TOAST_MS_PER_CHAR,
+  ToastHost,
+  toastDurationMs,
+} from "@/ui/toast";
 
 const ACTION = "Отменить";
 
@@ -127,22 +132,30 @@ afterEach(async () => {
 });
 
 describe("ToastHost: сам скрывается по таймеру", () => {
-  it("информационный тост скрывается через 4 секунды, а на 3999 мс ещё виден", async () => {
+  it("короткий тост скрывается через 3 секунды, а на 2999 мс ещё виден", async () => {
     await render({ message: "Сохранено", tone: "info" });
-    expect(toastDurationMs("Сохранено")).toBe(4000);
+    // Floor безопасного минимума: прежние 4 с минус ровно 1000 мс.
+    expect(TOAST_MIN_MS).toBe(3000);
+    expect(toastDurationMs("Сохранено")).toBe(3000);
+    // Граница floor: 50 символов — ещё 3000, 51-й символ уже добавляет время.
+    expect(toastDurationMs("x".repeat(50))).toBe(3000);
+    expect(toastDurationMs("x".repeat(51))).toBe(3060);
 
-    advance(3999);
+    advance(2999);
     expect(onDismiss).not.toHaveBeenCalled();
 
     advance(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it("длинное сообщение живёт 1 с + 60 мс на символ", async () => {
+  it("длинное сообщение живёт ровно на 1000 мс меньше прежнего: 60 мс на символ", async () => {
     const message = "Не получилось сохранить желание: сервер не отвечает, попробуйте позже";
-    const expected = 1000 + 60 * message.length;
-    expect(expected).toBeGreaterThan(4000);
-    expect(toastDurationMs(message)).toBe(expected);
+    const previous = 1000 + 60 * message.length;
+    const expected = toastDurationMs(message);
+    // Прежняя формула max(4000, 1000 + 60 × символ) давала 5140 мс ⇒ стало 4140 мс.
+    expect(previous).toBeGreaterThan(4000);
+    expect(expected).toBe(previous - 1000);
+    expect(expected).toBe(TOAST_MS_PER_CHAR * message.length);
 
     await render({ message, tone: "info" });
     advance(expected - 1);
@@ -160,10 +173,31 @@ describe("ToastHost: сам скрывается по таймеру", () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  it("persistent-тост не скрывается сам, даже если это не ошибка", async () => {
+    await render({ message: "Сохранено", tone: "info", persistent: true });
+
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it("ошибка с persistent=false скрывается по таймеру", async () => {
     await render({ message: "Нет сети", tone: "error", persistent: false });
 
-    advance(3999);
+    advance(2999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("тост с действием без диктора скрывается по таймеру", async () => {
+    await render({
+      message: "Добавлено в вишлист",
+      tone: "info",
+      action: { label: ACTION, onPress: vi.fn() },
+    });
+
+    advance(2999);
     expect(onDismiss).not.toHaveBeenCalled();
 
     advance(1);
@@ -172,23 +206,25 @@ describe("ToastHost: сам скрывается по таймеру", () => {
 
   it("новый текст перезапускает таймер со своей длительностью", async () => {
     await render({ message: "Сохранено", tone: "info" });
-    advance(3000);
+    // Короткий тост почти дожил до своего дедлайна, но его заменили.
+    advance(TOAST_MIN_MS - 1);
 
     const longer = "Не получилось сохранить желание: сервер не отвечает, попробуйте позже";
-    const expected = 1000 + 60 * longer.length;
+    const expected = toastDurationMs(longer);
+    expect(expected).toBeGreaterThan(TOAST_MIN_MS);
     await render({ message: longer, tone: "info" });
 
-    // Старый дедлайн (4 с) уже прошёл бы, но новый тост живёт дольше.
-    advance(3999);
+    // Отсчёт начался заново и идёт от длительности нового текста.
+    advance(expected - 1);
     expect(onDismiss).not.toHaveBeenCalled();
 
-    advance(expected - 3999);
+    advance(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it("размонтирование гасит таймер", async () => {
     await render({ message: "Сохранено", tone: "info" });
-    advance(3000);
+    advance(1000);
 
     await act(async () => host.unmount());
     mounted = false;
@@ -247,8 +283,8 @@ describe("ToastHost: действие и диктор", () => {
     expect(onDismiss).not.toHaveBeenCalled();
 
     blur(close);
-    // Осталось 2 с из 4 с: сначала дедлайн не наступает, потом наступает.
-    advance(1999);
+    // Осталось 1 с из 3 с: сначала дедлайн не наступает, потом наступает.
+    advance(999);
     expect(onDismiss).not.toHaveBeenCalled();
 
     advance(1);
@@ -269,7 +305,7 @@ describe("ToastHost: действие и диктор", () => {
     act(() => {
       toast.dispatchEvent(new Event("pointerout", { bubbles: true }));
     });
-    advance(2999);
+    advance(1999);
     expect(onDismiss).not.toHaveBeenCalled();
 
     advance(1);

@@ -4,12 +4,17 @@ import { AccessibilityInfo } from "react-native";
 import { useTranslations } from "use-intl";
 
 /**
- * Сколько тост живёт сам (`DESIGN.md` → Toast: «обычный — `max(4 с, 1 с + 60 мс ×
- * символ)`»): короткое сообщение читается за четыре секунды, длинное получает
- * время на каждый символ.
+ * Сколько тост живёт сам. `DESIGN.md` → Toast задаёт `max(4 с, 1 с + 60 мс ×
+ * символ)`; по решению владельца обычный тост исчезает ровно на 1 с раньше
+ * (`max(3000, 60 × символ)`), поэтому прежние 4 с и «1 с» из формулы списаны на
+ * ту же секунду. Floor остаётся: короткое подтверждение не должно мигать.
  */
+export const TOAST_MIN_MS = 3000;
+/** Время на символ: длинное сообщение успевают прочитать. */
+export const TOAST_MS_PER_CHAR = 60;
+
 export function toastDurationMs(message: string): number {
-  return Math.max(4000, 1000 + 60 * message.length);
+  return Math.max(TOAST_MIN_MS, TOAST_MS_PER_CHAR * message.length);
 }
 
 type ScreenReaderApi = {

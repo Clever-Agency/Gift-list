@@ -239,8 +239,8 @@ describe("getGift", () => {
     const card = okData(await getGift(headers, "g7"));
 
     expect(card.tags).toEqual([
-      { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "своё" },
+      { catalogId: "tag_dream", label: "мечта" },
     ]);
   });
 });
@@ -839,8 +839,8 @@ describe("gift tags", () => {
     );
     // AD-27: the fixed label is resolved on the server; custom text stays as typed.
     expect(card.tags).toEqual([
-      { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "своё" },
+      { catalogId: "tag_dream", label: "мечта" },
     ]);
   });
 
@@ -853,7 +853,7 @@ describe("gift tags", () => {
     );
   });
 
-  it("returns card tags in catalog order regardless of the stored row order", async () => {
+  it("returns card tags with the custom tag first, then catalog slug order", async () => {
     tagFindMany.mockResolvedValue([
       { id: "tag_someday" },
       { id: "tag_dream" },
@@ -883,10 +883,10 @@ describe("gift tags", () => {
     );
 
     expect(card.tags).toEqual([
+      { catalogId: null, label: "своё" },
       { catalogId: "tag_dream", label: "мечта" },
       { catalogId: "tag_need_now", label: "нужно сейчас" },
       { catalogId: "tag_someday", label: "когда-нибудь" },
-      { catalogId: null, label: "своё" },
     ]);
   });
 
@@ -1078,8 +1078,8 @@ describe("gift tags", () => {
       tagDeleteMany.mock.invocationCallOrder[0]!,
     );
     expect(card.tags).toEqual([
-      { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "своё" },
+      { catalogId: "tag_dream", label: "мечта" },
     ]);
   });
 

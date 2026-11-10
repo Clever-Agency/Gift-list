@@ -62,7 +62,7 @@ describe("toGiftTag", () => {
     expect(tag).not.toHaveProperty("tagId");
   });
 
-  it("orders fixed tags by catalog slug and custom tags by text", () => {
+  it("orders custom tags before fixed tags, each group by its own key", () => {
     expect(
       toGiftTags(
         [
@@ -75,11 +75,11 @@ describe("toGiftTag", () => {
         "ru",
       ),
     ).toEqual([
+      { catalogId: null, label: "автомобиль" },
+      { catalogId: null, label: "яблоко" },
       { catalogId: "tag_dream", label: "мечта" },
       { catalogId: "tag_need_now", label: "нужно сейчас" },
       { catalogId: "tag_someday", label: "когда-нибудь" },
-      { catalogId: null, label: "автомобиль" },
-      { catalogId: null, label: "яблоко" },
     ]);
   });
 
@@ -113,7 +113,7 @@ describe("toGiftTag", () => {
     ]);
   });
 
-  it("sorts an approved custom tag as a fixed catalog tag", () => {
+  it("sorts an approved custom tag with the fixed catalog tags, after unapproved ones", () => {
     expect(
       toGiftTags(
         [
@@ -123,8 +123,8 @@ describe("toGiftTag", () => {
         "ru",
       ),
     ).toEqual([
-      { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "яблоко" },
+      { catalogId: "tag_dream", label: "мечта" },
     ]);
   });
 

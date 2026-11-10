@@ -720,7 +720,7 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
     await client.query(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId]);
   });
 
-  it("orders card tags by slug then custom text with stored labels", async () => {
+  it("orders card tags custom text first, then slug, with stored labels", async () => {
     const { giftId } = await createGiftFixture("card order");
     const tags = await client.query<{ id: string; slug: string }>(
       `SELECT "id", "slug" FROM "Tag" ORDER BY "slug"`,
@@ -751,7 +751,7 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
       return tag.label;
     });
 
-    expect(ordered).toEqual(["мечта", "когда-нибудь", "apple", "яблоко"]);
+    expect(ordered).toEqual(["apple", "яблоко", "мечта", "когда-нибудь"]);
     record(`card order: ${ordered.join(" | ")}`);
   });
 

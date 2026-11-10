@@ -341,8 +341,8 @@ describe("readWishlist tags", () => {
     const cards = giftsOf(result);
     expect(cards.map((card) => card.id)).toEqual(["g-public"]);
     expect(cards[0]?.tags).toEqual([
-      { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "своё" },
+      { catalogId: "tag_dream", label: "мечта" },
     ]);
     expect(JSON.stringify(result)).not.toContain("секретный тег");
   });

@@ -2,76 +2,21 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Button } from "./button";
-import { createMount } from "./test-utils";
+import {
+  allDeclarations,
+  createMount,
+  declarationsFor,
+  stateValues,
+} from "./test-utils";
 
 const mounted = createMount();
 
-type Declaration = {
-  selector: string;
-  property: string;
-  value: string;
-  /** The declaration sits inside `@media (hover: hover)`. */
-  hover: boolean;
-};
-
-/** `selector { property: value; }` pairs of one rule text, media query or not. */
-function declarationsOfRule(text: string, hover: boolean): Declaration[] {
-  const out: Declaration[] = [];
-  for (const [, selector, body] of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    for (const [, property, value] of body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)) {
-      out.push({ selector: selector.replace(/\s+/g, " ").trim(), property, value: value.trim(), hover });
-    }
-  }
-  return out;
-}
-
-/** Every rule Tamagui put into the document, flattened to single declarations. */
-function allDeclarations(): Declaration[] {
-  const out: Declaration[] = [];
-  for (const sheet of Array.from(document.styleSheets)) {
-    for (const rule of Array.from(sheet.cssRules)) {
-      const hover = rule.cssText.startsWith("@media (hover: hover)");
-      if (rule.cssText.startsWith("@media") && !hover) continue;
-      out.push(...declarationsOfRule(rule.cssText, hover));
-    }
-  }
-  return out;
-}
-
-/** The declarations that apply to `element` (one of its atomic classes is in the selector). */
-function declarationsFor(element: Element, property?: string, hover?: boolean): Declaration[] {
-  const classes = Array.from(element.classList);
-  return allDeclarations().filter(
-    (declaration) =>
-      classes.some((name) => declaration.selector.includes(`.${name}`)) &&
-      (property === undefined || declaration.property === property) &&
-      (hover === undefined || declaration.hover === hover),
-  );
-}
-
-/** The value `property` takes on `element` and the value it takes on hover. */
+/** The value `background-color` takes on `element` and the value it takes on hover. */
 function background(element: Element): { base?: string; hover?: string } {
   return {
     base: declarationsFor(element, "background-color", false)[0]?.value,
     hover: declarationsFor(element, "background-color", true)[0]?.value,
   };
-}
-
-/**
- * The state a rule paints, in the names of `DESIGN.md`: `hover`, `press` (the CSS
- * `:active` Tamagui emits), `focus-visible`… Tamagui wraps every state selector in
- * `:where(…)`; a rule without one is the resting state.
- */
-function stateOf(declaration: Declaration): string {
-  const state = declaration.selector.match(/:where\(:([a-z-]+)\)/)?.[1];
-  return state === "active" ? "press" : (state ?? "base");
-}
-
-/** The values `property` takes on `element` in one state, e.g. the `hover` fill. */
-function stateValues(element: Element, state: string, property: string): string[] {
-  return declarationsFor(element, property)
-    .filter((declaration) => stateOf(declaration) === state)
-    .map((declaration) => declaration.value);
 }
 
 /** The colour a `--c-…` custom property of the token block resolves to, e.g. `#2B5635`. */

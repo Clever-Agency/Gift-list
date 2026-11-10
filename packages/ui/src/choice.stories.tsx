@@ -31,7 +31,7 @@ export const RowWithoutHint: Story = {
   args: { label: "Скрыть из поиска", hint: undefined },
 };
 
-/** The stored value is shown but cannot change (other states lock the field). */
+/** The stored value is shown but cannot change (other states lock the field); it does not dim on press either. */
 export const RowDisabled: Story = {
   args: { selected: true, disabled: true },
 };

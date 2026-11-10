@@ -77,3 +77,71 @@ export function nativeOnlyAttributes(root: ParentNode): string[] {
 export function errorMessages(spy: { mock: { calls: unknown[][] } }): string {
   return spy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
 }
+
+/**
+ * One declaration Tamagui generated into `document.styleSheets`. happy-dom paints
+ * nothing, so a state of a component is checked as the CSS rule it produced.
+ */
+export type CssDeclaration = {
+  selector: string;
+  property: string;
+  value: string;
+  /** The declaration sits inside `@media (hover: hover)`. */
+  hover: boolean;
+};
+
+/** `selector { property: value; }` pairs of one rule text, media query or not. */
+function declarationsOfRule(text: string, hover: boolean): CssDeclaration[] {
+  const out: CssDeclaration[] = [];
+  for (const [, selector, body] of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    for (const [, property, value] of body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)) {
+      out.push({ selector: selector.replace(/\s+/g, " ").trim(), property, value: value.trim(), hover });
+    }
+  }
+  return out;
+}
+
+/** Every rule Tamagui put into the document, flattened to single declarations. */
+export function allDeclarations(): CssDeclaration[] {
+  const out: CssDeclaration[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    for (const rule of Array.from(sheet.cssRules)) {
+      const hover = rule.cssText.startsWith("@media (hover: hover)");
+      if (rule.cssText.startsWith("@media") && !hover) continue;
+      out.push(...declarationsOfRule(rule.cssText, hover));
+    }
+  }
+  return out;
+}
+
+/** The declarations that apply to `element` (one of its atomic classes is in the selector). */
+export function declarationsFor(
+  element: Element,
+  property?: string,
+  hover?: boolean,
+): CssDeclaration[] {
+  const classes = Array.from(element.classList);
+  return allDeclarations().filter(
+    (declaration) =>
+      classes.some((name) => declaration.selector.includes(`.${name}`)) &&
+      (property === undefined || declaration.property === property) &&
+      (hover === undefined || declaration.hover === hover),
+  );
+}
+
+/**
+ * The state a rule paints, in the names of `DESIGN.md`: `hover`, `press` (the CSS
+ * `:active` Tamagui emits), `focus-visible`… Tamagui wraps every state selector in
+ * `:where(…)`; a rule without one is the resting state.
+ */
+export function stateOf(declaration: CssDeclaration): string {
+  const state = declaration.selector.match(/:where\(:([a-z-]+)\)/)?.[1];
+  return state === "active" ? "press" : (state ?? "base");
+}
+
+/** The values `property` takes on `element` in one state, e.g. the `press` opacity. */
+export function stateValues(element: Element, state: string, property: string): string[] {
+  return declarationsFor(element, property)
+    .filter((declaration) => stateOf(declaration) === state)
+    .map((declaration) => declaration.value);
+}

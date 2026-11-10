@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import { Choice, ChoiceList } from "./choice";
-import { createMount, errorMessages, nativeOnlyAttributes } from "./test-utils";
+import { createMount, errorMessages, nativeOnlyAttributes, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -245,5 +245,47 @@ describe("Choice: прозрачность disabled", () => {
 
     const radios = Array.from(container.querySelectorAll('[role="radio"]'));
     expect(radios.map(opacityOf)).toEqual([0.4, 0.4, 1]);
+  });
+});
+
+/**
+ * `DESIGN.md` → Состояния кнопок и нажимаемых поверхностей: a disabled choice does
+ * not react to a press either (DECISION 2026-11-10). happy-dom paints nothing, so
+ * the check reads the `opacity` rules Tamagui generated for the radio's classes.
+ */
+describe("Choice: press disabled", () => {
+  it("disabled-строка не тускнеет на press, живая — до 0.9", async () => {
+    const { container, render } = mounted();
+    await render(
+      <ChoiceList label="Кто видит" variant="row">
+        <Choice variant="row" label="Всем" selected={false} onPress={noop} />
+        <Choice variant="row" label="Друзьям" selected onPress={noop} disabled />
+      </ChoiceList>,
+    );
+
+    const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+    const [live, off] = radios;
+
+    expect(stateValues(live, "press", "opacity")).toEqual(["0.9"]);
+    expect(stateValues(off, "base", "opacity")).toEqual(["0.4"]);
+    expect(stateValues(off, "press", "opacity")).toEqual([]);
+  });
+
+  it("нажатие на disabled-строку не меняет выбор и не зовёт onPress", async () => {
+    const onPress = vi.fn();
+    const { container, render } = mounted();
+    await render(
+      <ChoiceList label="Кто видит" variant="row">
+        <Choice variant="row" label="Друзьям" selected={false} onPress={onPress} disabled />
+      </ChoiceList>,
+    );
+
+    const radio = container.querySelector('[role="radio"]') as HTMLElement;
+    radio.click();
+    radio.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+    expect(onPress).not.toHaveBeenCalled();
+    expect(radio.getAttribute("aria-checked")).toBe("false");
+    expect(radio.getAttribute("aria-disabled")).toBe("true");
   });
 });

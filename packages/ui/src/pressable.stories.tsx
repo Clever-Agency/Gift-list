@@ -7,7 +7,9 @@ import { Text } from "./text";
 /**
  * `Pressable` is the pressable surface of custom controls (cards, chips, radio
  * rows). Enter and Space run the press in the browser; hover, press and the
- * `:focus-visible` ring are CSS states — hover it, hold it, press Tab.
+ * `:focus-visible` ring are CSS states — hover it, hold it, press Tab. A disabled
+ * surface keeps its 40% dim and does not react to a press at all (`DESIGN.md` →
+ * Состояния кнопок и нажимаемых поверхностей, DECISION 2026-11-10).
  */
 const meta = {
   title: "UI/Pressable",
@@ -92,7 +94,7 @@ export const PressRunsAction: Story = {
   render: CountingPressableStory,
 };
 
-/** Disabled keeps its place in the focus order and is announced with `aria-disabled`. */
+/** Disabled keeps its place in the focus order, is announced with `aria-disabled` and does not dim on press: hold it. */
 export const Disabled: Story = {
   render: function DisabledStory() {
     return <PressableSample label="Недоступно" disabled />;

@@ -1749,6 +1749,8 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     });
 
     await chooseInDialog("Друзьям");
+    // Фокус возвращается после exit-fade диалога (160 мс).
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);

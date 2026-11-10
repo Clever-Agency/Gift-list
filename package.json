@@ -21,7 +21,9 @@
     "mobile:build:lan": "npm run build:lan -w @gift-list/mobile",
     "mobile:build:emulator": "npm run build:emulator -w @gift-list/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "migrate": "npm run migrate -w @gift-list/web"
+    "migrate": "npm run migrate -w @gift-list/web",
+    "storybook": "storybook dev -p 6007 --no-open",
+    "build-storybook": "storybook build -o storybook-static"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2",
@@ -36,5 +38,9 @@
   },
   "dependencies": {
     "@tamagui/native": "3.1.10"
+  },
+  "devDependencies": {
+    "@storybook/react-native-web-vite": "10.6.7",
+    "storybook": "10.6.7"
   }
 }

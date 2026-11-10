@@ -456,52 +456,73 @@ describe("мой вишлист: каркас страницы", () => {
 });
 
 /**
- * W2: the page title and the owner's buttons share one `wishlist-actions` row
+ * W2: the page title and the owner's buttons share one `wishlist-header` row
  * (`DESIGN.md` → «Широкий экран»: «кнопки владельца — в строке над сеткой справа»).
- * On a narrow screen the button group takes the full width and drops under the
- * title instead of squeezing or clipping, so every control stays reachable.
+ * `wishlist-actions` stays on the actions group itself; the h1 is its sibling in the
+ * row, not part of it. Nothing forces the width: the row wraps only when the title
+ * and the buttons do not fit, so no control is clipped, hidden or shrunk.
  */
 describe("мой вишлист: заголовок и действия в одной строке", () => {
-  it("h1 и кнопки владельца — в общей обёртке wishlist-actions, заголовок первым", async () => {
+  it("h1 и группа действий — соседи в строке wishlist-header, h1 вне wishlist-actions", async () => {
     respond(giftsAnswer([gift()], "tok"));
     await mount();
 
-    const row = container.querySelector('[data-testid="wishlist-actions"]');
-    expect(row).not.toBeNull();
-    const heading = row?.querySelector('[role="heading"][aria-level="1"]');
+    const header = container.querySelector('[data-testid="wishlist-header"]');
+    expect(header).not.toBeNull();
+    const heading = header?.querySelector('[role="heading"][aria-level="1"]');
     expect(heading?.textContent).toBe("Мой вишлист");
-    expect(row?.firstElementChild).toBe(heading);
-    // The existing controls keep their testIDs and roles inside that row.
-    expect(row?.querySelector('[data-testid="wishlist-copy-link"]')).not.toBeNull();
-    expect(row?.querySelector('[data-testid="wishlist-copy-link-info"]')).not.toBeNull();
-    expect(button("Добавить желание")).toBeDefined();
+
+    const actions = header?.querySelector('[data-testid="wishlist-actions"]');
+    expect(actions).not.toBeNull();
+    expect(actions?.contains(heading ?? null)).toBe(false);
+    expect(heading?.parentElement).toBe(header);
+    expect(actions?.parentElement).toBe(header);
+
+    // The existing controls keep their testIDs and roles inside the actions group.
+    expect(actions?.querySelector('[data-testid="wishlist-copy-link"]')).not.toBeNull();
+    expect(actions?.querySelector('[data-testid="wishlist-copy-link-info"]')).not.toBeNull();
+    expect(actions?.textContent).toContain("Добавить желание");
   });
 
-  it("пока список грузится, h1 остаётся в обёртке, а действий нет", async () => {
+  it("пока список грузится, h1 остаётся в строке, а действий нет", async () => {
     respond(new Promise(() => {}));
     await mount();
 
-    const row = container.querySelector('[data-testid="wishlist-actions"]');
-    expect(row?.querySelector('[role="heading"][aria-level="1"]')?.textContent).toBe("Мой вишлист");
-    expect(row?.querySelector('[data-testid="wishlist-copy-link"]')).toBeNull();
+    const header = container.querySelector('[data-testid="wishlist-header"]');
+    expect(header?.querySelector('[role="heading"][aria-level="1"]')?.textContent).toBe("Мой вишлист");
+    expect(header?.querySelector('[data-testid="wishlist-actions"]')).toBeNull();
   });
 
-  it("на узкой ширине группа кнопок занимает всю строку, на широкой — только свою", async () => {
+  it("на 360 и на широкой ширине группа не растягивается на всю строку принудительно", async () => {
     respond(giftsAnswer([gift()], "tok"));
     await setViewportWidth(360);
     await mount();
 
-    const row = container.querySelector('[data-testid="wishlist-actions"]');
-    const actions = row?.lastElementChild as HTMLElement;
-    expect(getComputedStyle(actions).width).toBe("100%");
-    expect(button("Скопировать ссылку")).toBeDefined();
+    const actions = container.querySelector<HTMLElement>('[data-testid="wishlist-actions"]');
+    expect(actions).not.toBeNull();
+    expect(getComputedStyle(actions as HTMLElement).width).not.toBe("100%");
+    // Wrapping, not hiding: every control is still there and usable on a phone.
+    expect(button("Добавить желание")).toBeDefined();
+    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("false");
+    expect(infoTrigger()).not.toBeNull();
 
     await setViewportWidth(1200);
 
-    const wideActions = container.querySelector('[data-testid="wishlist-actions"]')
-      ?.lastElementChild as HTMLElement;
-    expect(getComputedStyle(wideActions).width).not.toBe("100%");
+    const wide = container.querySelector<HTMLElement>('[data-testid="wishlist-actions"]');
+    expect(getComputedStyle(wide as HTMLElement).width).not.toBe("100%");
     expect(button("Скопировать ссылку")).toBeDefined();
+  });
+
+  it("причина недоступности копирования остаётся в группе и связана с кнопкой", async () => {
+    respond(giftsAnswer([], "tok"));
+    await mount();
+
+    const actions = container.querySelector('[data-testid="wishlist-actions"]');
+    const reason = actions?.querySelector('[data-testid="wishlist-copy-link-reason"]');
+    expect(reason?.textContent).toContain("Нет желаний, открытых для всех");
+    expect(button("Скопировать ссылку")?.getAttribute("aria-describedby")).toBe(
+      "wishlist-copy-link-reason",
+    );
   });
 });
 

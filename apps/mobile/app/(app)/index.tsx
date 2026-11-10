@@ -428,15 +428,19 @@ export default function MyWishlistScreen() {
                 {common("brandName", { brand })}
               </Text>
               {/*
-                The page title and the owner's actions share one row: the title on the
-                left, the buttons above the grid on the right (`DESIGN.md` → «Широкий
-                экран»). `flexWrap` is the safe narrow-screen fallback: below
-                `bp-medium` the button group takes the full width and drops under the
-                title, its own buttons still wrapping, so nothing is clipped and no
-                control becomes unreachable.
+                The page title and the owner's actions share one row (`DESIGN.md` →
+                «Широкий экран»: the owner's buttons in the row above the grid, on the
+                right). No breakpoint forces a layout here: `flexWrap` breaks the row only
+                when the title and the action group actually do not fit. Measured with the
+                shipped Manrope 600 metrics (see the W2 addendum): the title is ~116 px,
+                «Добавить желание» ~173 px, «Скопировать ссылку» ~187 px, the icon button
+                44 px, gaps 8 px — the row is one line from ~577 px of window (552 px of
+                content) with both buttons, and from ~395 px when the list is empty and
+                only «Скопировать ссылку» + its icon are shown. On phones the buttons wrap
+                under the title; they are never clipped, hidden or shrunk.
               */}
               <XStack
-                testID="wishlist-actions"
+                testID="wishlist-header"
                 alignItems="center"
                 justifyContent="space-between"
                 flexWrap="wrap"
@@ -446,31 +450,29 @@ export default function MyWishlistScreen() {
                   {wishlist("title")}
                 </Heading>
                 {state.status === "ready" ? (
-                  <YStack
-                    gap="$1"
-                    flexShrink={0}
-                    {...(width < spacing["bp-medium"]
-                      ? { width: "100%" }
-                      : { alignItems: "flex-end" })}
-                  >
+                  <YStack testID="wishlist-actions" gap="$1" alignItems="flex-start">
                     <XStack flexWrap="wrap" alignItems="center" gap="$2">
                       {state.gifts.length > 0 ? (
                         <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
                       ) : null}
-                      <Button
-                        testID="wishlist-copy-link"
-                        label={wishlist("copyLink")}
-                        ariaDescribedBy={canShare ? undefined : COPY_LINK_REASON_ID}
-                        onPress={copyLink}
-                        disabled={!canShare}
-                        focusableWhenDisabled
-                      />
-                      <InfoButton
-                        testID="wishlist-copy-link-info"
-                        label={wishlist("copyLinkHelpLabel")}
-                        explanation={wishlist("copyLinkHelp")}
-                        closeLabel={wishlist("copyLinkHelpClose")}
-                      />
+                      {/* The icon explains the copy button: the two wrap as one pair, so
+                          the icon is never left alone on a line of its own. */}
+                      <XStack alignItems="center" gap="$2">
+                        <Button
+                          testID="wishlist-copy-link"
+                          label={wishlist("copyLink")}
+                          ariaDescribedBy={canShare ? undefined : COPY_LINK_REASON_ID}
+                          onPress={copyLink}
+                          disabled={!canShare}
+                          focusableWhenDisabled
+                        />
+                        <InfoButton
+                          testID="wishlist-copy-link-info"
+                          label={wishlist("copyLinkHelpLabel")}
+                          explanation={wishlist("copyLinkHelp")}
+                          closeLabel={wishlist("copyLinkHelpClose")}
+                        />
+                      </XStack>
                     </XStack>
                     {!canShare ? (
                       <Text
@@ -478,7 +480,6 @@ export default function MyWishlistScreen() {
                         testID="wishlist-copy-link-reason"
                         kind="caption"
                         tone="muted"
-                        textAlign={width < spacing["bp-medium"] ? "left" : "right"}
                       >
                         {wishlist("copyLinkDisabledReason")}
                       </Text>

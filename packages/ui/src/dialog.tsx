@@ -4,8 +4,10 @@ import { Dialog as TamaguiDialog } from "tamagui/dialog";
 import { fontFor } from "./font-style";
 import { focusInLayer, type FocusTarget } from "./focus";
 import { useBackClose, useNativeFocusOnOpen, useNativeLayerClosed } from "./layer";
+import { layerExitMs, layerFade } from "./motion";
 import { Pressable } from "./pressable";
 import { SCRIM_OPACITY } from "./tokens";
+import { useReduceMotion } from "./use-reduce";
 
 export type DialogProps = {
   open: boolean;
@@ -45,6 +47,10 @@ export type DialogProps = {
  * `rounded.lg`, over a `scrim` at 40%. Closes with Esc and a scrim press in the
  * browser and with the system «назад» on Android (only while it is open, so with no
  * layer the button works as before). Focus is trapped inside on the web.
+ *
+ * `DESIGN.md` → Движение: the scrim and the panel fade with `quick` (160 ms) on
+ * appearing and leaving, with no shift or scale. With «уменьшить движение» the fade
+ * is 100 ms.
  */
 export function Dialog({
   open,
@@ -62,6 +68,8 @@ export function Dialog({
   const titleRef = useRef<FocusTarget>(null);
   const openRef = useRef(open);
   const closedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const reduce = useReduceMotion();
+  const motion = layerFade(reduce);
   openRef.current = open;
   useEffect(function clearClosedTimer() {
     return function stop() {
@@ -87,7 +95,8 @@ export function Dialog({
 
   function handleCloseAutoFocus(details: { cancel: () => void }) {
     // The screen puts focus back itself, once the layer has left the tree: the
-    // callback runs inside the unmount, so the move waits for the next task.
+    // callback runs inside the unmount, so the move waits for the exit fade
+    // (`quick` 160 ms, 100 ms with reduce) to finish and only then reports.
     if (!onClosed) return;
     details.cancel();
     clearTimeout(closedTimer.current);
@@ -95,7 +104,7 @@ export function Dialog({
       // Opened again within the same task: focus belongs to the new layer.
       if (openRef.current) return;
       onClosed();
-    }, 0);
+    }, layerExitMs(reduce));
   }
 
   return (
@@ -105,7 +114,8 @@ export function Dialog({
           key="overlay"
           testID={testID ? `${testID}-scrim` : undefined}
           backgroundColor="$scrim"
-          opacity={SCRIM_OPACITY}
+          opacity={{ default: SCRIM_OPACITY, enter: 0, exit: 0 }}
+          transition={motion}
         />
         <TamaguiDialog.Content
           key="content"
@@ -118,6 +128,8 @@ export function Dialog({
           borderWidth={0}
           padding="$card-padding"
           gap="$grid-gap"
+          opacity={{ default: 1, enter: 0, exit: 0 }}
+          transition={motion}
           onOpenAutoFocus={handleOpenAutoFocus}
           onCloseAutoFocus={handleCloseAutoFocus}
         >

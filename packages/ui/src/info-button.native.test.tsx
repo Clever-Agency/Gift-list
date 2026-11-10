@@ -57,7 +57,8 @@ describe("InfoButton: нативная замена Tooltip", () => {
     await act(async () => {
       close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    await settle();
+    // Фокус возвращается после exit-fade (160 мс), а не в начале анимации.
+    await settle(300);
 
     expect(document.querySelector("[role='dialog']")).toBeNull();
     expect(document.activeElement).toBe(trigger);

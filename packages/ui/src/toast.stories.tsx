@@ -6,8 +6,10 @@ import { View } from "./layout";
 /**
  * `Toast` is the look of a toast; the host decides when to show and hide it. An
  * error is announced assertively, an info toast politely, and the overlay lets
- * touches through. The stories put the absolutely positioned toast in a phone
- * frame so it sits where the app draws it.
+ * touches through. It fades in and out with `quick` (160 ms, `DESIGN.md` →
+ * Движение); with «уменьшить движение» the fade is 100 ms and there is no shift.
+ * The stories put the absolutely positioned toast in a phone frame so it sits
+ * where the app draws it.
  */
 const meta = {
   title: "UI/Toast",

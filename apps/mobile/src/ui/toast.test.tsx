@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  TOAST_FADE_MS,
   TOAST_MIN_MS,
   TOAST_MS_PER_CHAR,
   ToastHost,
@@ -95,6 +96,14 @@ function button(label: string): HTMLElement {
 /** A toast button by the name a screen reader announces. */
 function buttonByName(name: string): HTMLElement | null {
   return container.querySelector<HTMLElement>(`[role="button"][aria-label="${name}"]`);
+}
+
+/** Атомарный класс непрозрачности Tamagui: `_o-…` у корня тоста. */
+function opacityClass(node: HTMLElement): string {
+  return node.className
+    .split(/\s+/)
+    .filter((name) => name.startsWith("_o-"))
+    .join(" ");
 }
 
 /** React слушает фокус через focusin/focusout — они всплывают. */
@@ -231,6 +240,41 @@ describe("ToastHost: сам скрывается по таймеру", () => {
 
     advance(60_000);
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it("fade начинается до дедлайна, а onDismiss приходит ровно в срок", async () => {
+    await render({ message: "Сохранено", tone: "info" });
+    const toast = element('[data-testid="toast-host"]');
+    const shown = opacityClass(toast);
+    expect(shown).not.toBe("");
+
+    // Дефолт не сдвинут: дедлайн по-прежнему 3000 мс.
+    advance(TOAST_MIN_MS - TOAST_FADE_MS - 1);
+    expect(opacityClass(toast)).toBe(shown);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    // Fade уже идёт, но экран ещё не просили убрать тост.
+    expect(opacityClass(toast)).not.toBe(shown);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(TOAST_FADE_MS);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("крестик даёт fade доиграть и только потом убирает тост", async () => {
+    await render({ message: "Нет сети", tone: "error" });
+
+    act(() => {
+      button("Закрыть").click();
+    });
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(TOAST_FADE_MS - 1);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });
 

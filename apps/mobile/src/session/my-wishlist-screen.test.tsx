@@ -740,6 +740,8 @@ describe("мой вишлист: список", () => {
     expect(button("Повторить")).toBeDefined();
 
     await press("Закрыть");
+    // Тост уходит с fade (160 мс), экран убирает его после анимации.
+    await settle(300);
     expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
     expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
     expect(button("Повторить")).toBeDefined();
@@ -1314,6 +1316,8 @@ describe("мой вишлист: весточка от формы создани
     // screen re-renders on «Закрыть»: the notice and its value are both gone.
     search.params = {};
     await press("Закрыть");
+    // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
+    await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
 
     // A second trip to the composer hands the same notice over again.
@@ -1331,6 +1335,8 @@ describe("мой вишлист: весточка от формы создани
     await mount();
 
     await press("Закрыть");
+    // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
+    await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
 
     await blur();
@@ -1373,6 +1379,8 @@ describe("мой вишлист: весточка от формы редакти
     await mount();
 
     await press("Закрыть");
+    // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
+    await settle(300);
     expect(text()).not.toContain("Изменения сохранены.");
 
     await blur();
@@ -1701,6 +1709,8 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     const trigger = await openPicker();
 
     await press("Отмена");
+    // Фокус возвращается после exit-fade диалога (160 мс).
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1712,6 +1722,7 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1721,6 +1732,7 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     const trigger = await openPicker();
 
     await pressScrim("visibility-picker-scrim");
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);

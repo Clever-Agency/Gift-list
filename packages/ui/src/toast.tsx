@@ -1,8 +1,10 @@
 import { View } from "@tamagui/core";
 import { XStack } from "@tamagui/stacks";
+import { layerFade } from "./motion";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { spacing } from "./tokens";
+import { useReduceMotion } from "./use-reduce";
 
 export type ToastTone = "info" | "error";
 
@@ -23,6 +25,11 @@ export type ToastProps = {
   onHoverChange?: (hovered: boolean) => void;
   /** Focus entered or left one of the toast's buttons; for pausing the countdown. */
   onFocusChange?: (focused: boolean) => void;
+  /**
+   * The host is taking the toast away: the toast fades out and stops taking
+   * touches. The host unmounts it when the fade is over.
+   */
+  visible?: boolean;
   testID?: string;
 };
 
@@ -31,6 +38,9 @@ export type ToastProps = {
  * decides when to show and hide it. An error is announced assertively
  * (`role="alert"`), an info toast politely (`role="status"`). The overlay lets
  * touches through; only the toast itself takes them.
+ *
+ * `DESIGN.md` → Движение: it fades in with `quick` (160 ms) and fades out the same
+ * way; with «уменьшить движение» both fades last 100 ms, with no shift.
  */
 export function Toast({
   message,
@@ -41,9 +51,11 @@ export function Toast({
   offsetBottom = 0,
   onHoverChange,
   onFocusChange,
+  visible = true,
   testID,
 }: ToastProps) {
   const error = tone === "error";
+  const reduce = useReduceMotion();
 
   function handlePointerEnter() {
     onHoverChange?.(true);
@@ -64,13 +76,15 @@ export function Toast({
   return (
     <View
       testID={testID}
-      pointerEvents="box-none"
+      pointerEvents={visible ? "box-none" : "none"}
       position="absolute"
       left="$page-gutter"
       right="$page-gutter"
       bottom={spacing["page-gutter"] + offsetBottom}
       alignItems="center"
       zIndex="$toast"
+      opacity={{ default: visible ? 1 : 0, enter: 0 }}
+      transition={layerFade(reduce)}
     >
       <XStack
         role={error ? "alert" : "status"}

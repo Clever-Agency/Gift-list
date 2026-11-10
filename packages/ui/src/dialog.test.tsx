@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act, createRef, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Button } from "./button";
 import { Dialog } from "./dialog";
 import { restoreFocus } from "./focus";
@@ -8,11 +8,23 @@ import { settle, createMount } from "./test-utils";
 
 const mounted = createMount();
 
+/** «Уменьшить движение»: настоящий `prefers-reduced-motion` happy-dom не считает. */
+const media = vi.hoisted(() => ({ reduce: false }));
+vi.mock("./use-reduce", () => ({ useReduceMotion: () => media.reduce }));
+
 function noop() {}
 
 function pressEscape() {
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 }
+
+function scrim(): HTMLElement | null {
+  return document.querySelector("[data-testid='dialog-scrim']");
+}
+
+beforeEach(() => {
+  media.reduce = false;
+});
 
 describe("Dialog", () => {
   it("закрытый диалог ничего не рисует", async () => {
@@ -52,6 +64,33 @@ describe("Dialog", () => {
     await settle();
 
     expect(document.querySelector("[role='alertdialog']")).not.toBeNull();
+  });
+
+  it("появление и уход — fade quick 160 мс, сдвига и scale нет", async () => {
+    const { render } = mounted();
+    await render(<Dialog open title="Удалить?" onClose={noop} testID="dialog" />);
+
+    const content = document.querySelector("[data-testid='dialog']") as HTMLElement;
+    // Первый кадр — enter-класс Tamagui: диалог проявляется, а не появляется сразу.
+    expect(content.className).toContain("t_unmounted");
+
+    await settle();
+    expect(content.style.transition).toContain("160ms");
+    expect(scrim()?.style.transition).toContain("160ms");
+    expect(content.style.transform).toBe("");
+    expect(content.style.transition).not.toContain("translate");
+  });
+
+  it("при reduce — только fade 100 мс, без сдвига", async () => {
+    media.reduce = true;
+    const { render } = mounted();
+    await render(<Dialog open title="Удалить?" onClose={noop} testID="dialog" />);
+    await settle();
+
+    const content = document.querySelector("[data-testid='dialog']") as HTMLElement;
+    expect(content.style.transition).toContain("100ms");
+    expect(scrim()?.style.transition).toContain("100ms");
+    expect(content.style.transform).toBe("");
   });
 
   it("Esc просит закрыть слой", async () => {
@@ -124,6 +163,21 @@ describe("Dialog", () => {
     await settle(300);
     expect(onClosed).toHaveBeenCalledTimes(1);
     expect(document.querySelector("[role='dialog']")).toBeNull();
+  });
+
+  it("onClosed ждёт fade, а не срабатывает в начале ухода", async () => {
+    const onClosed = vi.fn();
+    const { render } = mounted();
+    await render(<Dialog open title="Удалить?" onClose={noop} onClosed={onClosed} />);
+    await settle();
+
+    await render(<Dialog open={false} title="Удалить?" onClose={noop} onClosed={onClosed} />);
+    // 60 мс — fade ещё идёт (160 мс): фокус возвращать рано, слой ещё виден.
+    await settle(60);
+    expect(onClosed).not.toHaveBeenCalled();
+
+    await settle(300);
+    expect(onClosed).toHaveBeenCalledTimes(1);
   });
 
   it("закрыть и сразу открыть: onClosed не уводит фокус из нового слоя", async () => {

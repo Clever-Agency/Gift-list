@@ -1124,6 +1124,8 @@ describe("новое желание: фокус в вопросе о черно�
     expect(dialog?.contains(document.activeElement)).toBe(true);
 
     await pressInDialogLabeled("Закрыть");
+    // Фокус возвращается после exit-fade диалога (160 мс).
+    await settle(300);
 
     expect(document.activeElement).toBe(cancel);
     expect(field("Название").value).toBe("Наушники");

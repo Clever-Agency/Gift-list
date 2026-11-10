@@ -313,6 +313,21 @@ async function mount(extra?: ReactNode) {
 }
 
 /**
+ * The width `useWindowDimensions` reads on web: happy-dom has no layout, so
+ * `documentElement.clientWidth` stays 0 unless a test sets it. `resize` makes the
+ * mounted screen re-render with the new value, as a browser window resize would.
+ */
+async function setViewportWidth(width: number) {
+  Object.defineProperty(document.documentElement, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+  await act(async () => {
+    window.dispatchEvent(new Event("resize"));
+  });
+}
+
+/**
  * Story 3.1 changes the session nick without leaving the screen. The share link is
  * built only from `List.publicToken`, so the next copy must be byte-for-byte the
  * same URL (A-26).
@@ -350,6 +365,9 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.unstubAllEnvs();
+  // Back to the browser mock's own (unmeasured) width for the next test.
+  Reflect.deleteProperty(document.documentElement, "clientWidth");
+  window.dispatchEvent(new Event("resize"));
 });
 
 describe("мой вишлист: гейт сессии", () => {
@@ -434,6 +452,56 @@ describe("мой вишлист: каркас страницы", () => {
       ["auto", "scroll"].includes(getComputedStyle(node).overflowY),
     );
     expect(scrollers).toEqual([page]);
+  });
+});
+
+/**
+ * W2: the page title and the owner's buttons share one `wishlist-actions` row
+ * (`DESIGN.md` → «Широкий экран»: «кнопки владельца — в строке над сеткой справа»).
+ * On a narrow screen the button group takes the full width and drops under the
+ * title instead of squeezing or clipping, so every control stays reachable.
+ */
+describe("мой вишлист: заголовок и действия в одной строке", () => {
+  it("h1 и кнопки владельца — в общей обёртке wishlist-actions, заголовок первым", async () => {
+    respond(giftsAnswer([gift()], "tok"));
+    await mount();
+
+    const row = container.querySelector('[data-testid="wishlist-actions"]');
+    expect(row).not.toBeNull();
+    const heading = row?.querySelector('[role="heading"][aria-level="1"]');
+    expect(heading?.textContent).toBe("Мой вишлист");
+    expect(row?.firstElementChild).toBe(heading);
+    // The existing controls keep their testIDs and roles inside that row.
+    expect(row?.querySelector('[data-testid="wishlist-copy-link"]')).not.toBeNull();
+    expect(row?.querySelector('[data-testid="wishlist-copy-link-info"]')).not.toBeNull();
+    expect(button("Добавить желание")).toBeDefined();
+  });
+
+  it("пока список грузится, h1 остаётся в обёртке, а действий нет", async () => {
+    respond(new Promise(() => {}));
+    await mount();
+
+    const row = container.querySelector('[data-testid="wishlist-actions"]');
+    expect(row?.querySelector('[role="heading"][aria-level="1"]')?.textContent).toBe("Мой вишлист");
+    expect(row?.querySelector('[data-testid="wishlist-copy-link"]')).toBeNull();
+  });
+
+  it("на узкой ширине группа кнопок занимает всю строку, на широкой — только свою", async () => {
+    respond(giftsAnswer([gift()], "tok"));
+    await setViewportWidth(360);
+    await mount();
+
+    const row = container.querySelector('[data-testid="wishlist-actions"]');
+    const actions = row?.lastElementChild as HTMLElement;
+    expect(getComputedStyle(actions).width).toBe("100%");
+    expect(button("Скопировать ссылку")).toBeDefined();
+
+    await setViewportWidth(1200);
+
+    const wideActions = container.querySelector('[data-testid="wishlist-actions"]')
+      ?.lastElementChild as HTMLElement;
+    expect(getComputedStyle(wideActions).width).not.toBe("100%");
+    expect(button("Скопировать ссылку")).toBeDefined();
   });
 });
 

@@ -1498,4 +1498,32 @@ describe("GiftForm: отмена", () => {
     await press(form.action.cancel);
     expect(onCancel).not.toHaveBeenCalled();
   });
+
+  it("без onCancel нет и строки действий: форма как раньше", async () => {
+    await mount();
+
+    expect(container.querySelector('[data-testid="gift-form-actions"]')).toBeNull();
+    expect(submitButton()).toBeDefined();
+  });
+
+  it("secondaryAction в одной строке с «Отмена» и «Сохранить», первым по порядку", async () => {
+    await mount({
+      onCancel: vi.fn(),
+      secondaryAction: (
+        <span role="button" aria-label="Удалить желание">
+          Удалить желание
+        </span>
+      ),
+    });
+
+    const row = container.querySelector('[data-testid="gift-form-actions"]');
+    expect(row).not.toBeNull();
+    const names = Array.from(
+      row?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).map((node) => node.getAttribute("aria-label") ?? node.textContent?.trim());
+    // Reading order of the row: the screen's own action, then cancel, then save.
+    expect(names).toEqual(["Удалить желание", form.action.cancel, form.action.save]);
+    // The cancel/save pair is one group inside the same row, not a sibling of it.
+    expect(row?.lastElementChild?.querySelectorAll("button")).toHaveLength(2);
+  });
 });

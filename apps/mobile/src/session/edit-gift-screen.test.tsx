@@ -1164,6 +1164,29 @@ describe("изменение желания: видимость и удален�
     expect(button("Сохранить")).toBeDefined();
   });
 
+  /**
+   * W2: one wrapper for the destructive action and the form's pair — «Удалить желание»
+   * first, then «Отмена» and «Сохранить» — instead of a separate button under the form.
+   */
+  it("OPEN: «Удалить желание» в одной строке с «Отмена» и «Сохранить», первым", async () => {
+    loaded();
+    await mount();
+
+    const row = container.querySelector('[data-testid="gift-form-actions"]');
+    expect(row).not.toBeNull();
+    const names = Array.from(
+      row?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).map((node) => node.getAttribute("aria-label") ?? node.textContent?.trim());
+    expect(names).toEqual(["Удалить желание", "Отмена", "Сохранить"]);
+
+    // The button keeps its role, accessible name and 44×44 touch target.
+    const remove = buttonByLabel("Удалить желание");
+    expect(remove).toBeDefined();
+    expect(row?.contains(remove ?? null)).toBe(true);
+    expect(remove?.getAttribute("role")).toBe("button");
+    expect(remove?.getAttribute("aria-label")).toBe("Удалить желание");
+  });
+
   it("OPEN: «Удалить» зовёт deleteGift и уводит к списку с toast=gift_deleted", async () => {
     loaded();
     gifts.deleteGift.mockResolvedValue({ ok: true });

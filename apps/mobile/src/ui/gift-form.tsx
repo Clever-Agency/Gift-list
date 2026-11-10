@@ -29,6 +29,7 @@ import {
   useRef,
   useState,
   type ComponentRef,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { AccessibilityInfo } from "react-native";
@@ -151,6 +152,13 @@ type GiftFormProps = {
   /** Overrides the cancel label; `action.cancel` («Отмена») by default. */
   cancelLabel?: string;
   /**
+   * A secondary action of the screen (Story 2.3: «Удалить желание») shown in the same
+   * row as «Отмена»/«Сохранить», first in reading order. The screen owns the element,
+   * its destructive look and its confirm step; the form only places it, so the row
+   * wraps as one block on a narrow screen instead of squeezing the buttons.
+   */
+  secondaryAction?: ReactNode;
+  /**
    * The wish is no longer open: visibility is frozen by the server, so the rows
    * show the stored value but cannot change it (`EXPERIENCE.md` → Правка
    * забронированного желания).
@@ -208,6 +216,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     onDirtyChange,
     onCancel,
     cancelLabel,
+    secondaryAction,
     visibilityLocked = false,
     quantityLocked = false,
     tagCatalog = EMPTY_TAG_CATALOG,
@@ -916,23 +925,45 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           {formError}
         </Text>
       ) : null}
-      {onCancel ? (
-        // Cancel on the left of the save button, the pair flush right (`DESIGN.md` → Форма).
-        <XStack alignItems="center" justifyContent="flex-end" gap="$2">
-          <Button
-            ref={cancelRef as never}
-            variant="ghost"
-            label={cancelLabel ?? t("action.cancel")}
-            onPress={onCancel}
-            disabled={submitting}
-            // A disabled «Отмена» keeps its place in the focus order.
-            focusableWhenDisabled
-          />
-          <Button
-            label={submitLabel ?? t("action.save")}
-            onPress={submit}
-            busy={submitting}
-          />
+      {onCancel || secondaryAction ? (
+        // One row for the screen's secondary action and the cancel/save pair: cancel
+        // sits left of save, the pair stays flush right (`DESIGN.md` → Форма), and on a
+        // narrow screen the pair wraps under the secondary action instead of shrinking.
+        <XStack
+          testID="gift-form-actions"
+          alignItems="center"
+          justifyContent="space-between"
+          flexWrap="wrap"
+          gap="$2"
+        >
+          {secondaryAction ?? null}
+          {onCancel ? (
+            // `marginLeft="auto"` keeps the pair right-aligned on its own wrapped line.
+            <XStack
+              alignItems="center"
+              justifyContent="flex-end"
+              gap="$2"
+              flexShrink={0}
+              marginLeft="auto"
+            >
+              <Button
+                ref={cancelRef as never}
+                variant="ghost"
+                label={cancelLabel ?? t("action.cancel")}
+                onPress={onCancel}
+                disabled={submitting}
+                // A disabled «Отмена» keeps its place in the focus order.
+                focusableWhenDisabled
+              />
+              <Button
+                label={submitLabel ?? t("action.save")}
+                onPress={submit}
+                busy={submitting}
+              />
+            </XStack>
+          ) : (
+            <Button label={submitLabel ?? t("action.save")} onPress={submit} busy={submitting} />
+          )}
         </XStack>
       ) : (
         <Button label={submitLabel ?? t("action.save")} onPress={submit} busy={submitting} />

@@ -482,31 +482,32 @@ export default function EditGiftScreen() {
                       submitRequest={submitRequest}
                       onDirtyChange={setDirty}
                       onCancel={cancel}
+                      // Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED.
+                      // The destructive action rides in the form's own button row (first, left),
+                      // text only, 44×44 (`DESIGN.md` → buttons); the ref keeps the focus return.
+                      secondaryAction={
+                        state.gift.status === "OPEN" ? (
+                          <Pressable
+                            ref={deleteButtonRef}
+                            role="button"
+                            aria-label={giftForm("delete.action")}
+                            onPress={startDelete}
+                            justifyContent="center"
+                            minHeight="$touch-target"
+                            minWidth="$touch-target"
+                            paddingHorizontal="$3"
+                          >
+                            <Text kind="button" tone="destructive">
+                              {giftForm("delete.action")}
+                            </Text>
+                          </Pressable>
+                        ) : undefined
+                      }
                       visibilityLocked={state.gift.status !== "OPEN"}
                       quantityLocked={state.gift.status !== "OPEN"}
                       tagCatalog={tagCatalog.state}
                       onRetryTagCatalog={tagCatalog.retry}
                     />
-                    {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
-                    {state.gift.status === "OPEN" ? (
-                      // Secondary destructive action under the form: text only, 44×44
-                      // (`DESIGN.md` → buttons).
-                      <Pressable
-                        ref={deleteButtonRef}
-                        role="button"
-                        aria-label={giftForm("delete.action")}
-                        onPress={startDelete}
-                        alignSelf="flex-start"
-                        justifyContent="center"
-                        minHeight="$touch-target"
-                        minWidth="$touch-target"
-                        paddingHorizontal="$3"
-                      >
-                        <Text kind="button" tone="destructive">
-                          {giftForm("delete.action")}
-                        </Text>
-                      </Pressable>
-                    ) : null}
                   </>
                 )}
               </YStack>

@@ -427,32 +427,33 @@ export default function MyWishlistScreen() {
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>
-              <Heading level={1}>{wishlist("title")}</Heading>
-
-              <YStack
-                flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
-                gap={spacing["grid-gap"]}
+              {/*
+                The page title and the owner's actions share one row: the title on the
+                left, the buttons above the grid on the right (`DESIGN.md` → «Широкий
+                экран»). `flexWrap` is the safe narrow-screen fallback: below
+                `bp-medium` the button group takes the full width and drops under the
+                title, its own buttons still wrapping, so nothing is clipped and no
+                control becomes unreachable.
+              */}
+              <XStack
+                testID="wishlist-actions"
+                alignItems="center"
+                justifyContent="space-between"
+                flexWrap="wrap"
+                gap="$2"
               >
-                {/* DESIGN.md → App → «Широкий экран»: the owner's buttons sit in a row
-                    above the grid, to the right. Story 2.4 adds «Скопировать ссылку». */}
+                <Heading level={1} flexShrink={1}>
+                  {wishlist("title")}
+                </Heading>
                 {state.status === "ready" ? (
                   <YStack
-                    testID="wishlist-actions"
                     gap="$1"
+                    flexShrink={0}
                     {...(width < spacing["bp-medium"]
                       ? { width: "100%" }
-                      : { alignSelf: "flex-end" })}
+                      : { alignItems: "flex-end" })}
                   >
-                    <XStack
-                      flexWrap="wrap"
-                      alignItems="center"
-                      gap="$2"
-                      {...(width < spacing["bp-medium"]
-                        ? { width: "100%" }
-                        : { alignSelf: "flex-end" })}
-                    >
+                    <XStack flexWrap="wrap" alignItems="center" gap="$2">
                       {state.gifts.length > 0 ? (
                         <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
                       ) : null}
@@ -484,6 +485,14 @@ export default function MyWishlistScreen() {
                     ) : null}
                   </YStack>
                 ) : null}
+              </XStack>
+
+              <YStack
+                flexGrow={1}
+                paddingTop={spacing["grid-gap"] / 2}
+                paddingBottom={spacing["section-gap"]}
+                gap={spacing["grid-gap"]}
+              >
                 {state.status === "loading" ? (
                   <LoadingCards
                     testID="my-wishlist-loading"

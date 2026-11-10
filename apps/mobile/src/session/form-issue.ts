@@ -39,7 +39,7 @@ export function issueFromError(
   if (screen === "login" && error.code === "UNAUTHENTICATED") {
     return { text: t("login.invalid") };
   }
-  if (error.reason === "RESET_LINK_STALE") {
+  if (error.reason === "RESET_LINK_STALE" || error.reason === "PAYLOAD_TOO_LARGE") {
     return { reason: error.reason, text: common(`errors.reason.${error.reason}`) };
   }
   if (error.reason === "EMAIL_TAKEN" || error.reason === "NICK_TAKEN") {

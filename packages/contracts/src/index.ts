@@ -29,6 +29,13 @@ export const ERROR_REASONS = [
    * the generic `RATE_LIMITED` text: the client shows "Можно снова через {hours} ч".
    */
   "INVITE_COOLDOWN",
+  /**
+   * A request body exceeded the transport byte budget and was refused before
+   * parsing, hashing or the database (W6). Always rides with
+   * `code: "VALIDATION"` and HTTP 413; the client shows
+   * `errors.reason.PAYLOAD_TOO_LARGE`.
+   */
+  "PAYLOAD_TOO_LARGE",
 ] as const;
 
 /** Closed set of machine-readable causes; the client maps them to `errors.reason.<REASON>`. */

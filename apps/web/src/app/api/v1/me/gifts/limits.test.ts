@@ -177,8 +177,53 @@ describe("POST /api/v1/me/gifts caps", () => {
   });
 });
 
-describe("PATCH /api/v1/me/gifts/[id] with a stored value above a cap", () => {
-  it("edits another field of a gift whose stored title is longer than the cap", async () => {
+/**
+ * W6 ceiling with the current caps: 121 tags of 30 astral code points alongside
+ * maxed title, description and link fit in 32 KiB (32 745 B). The 122nd tag is
+ * still schema-valid and answers an honest 413, before the session or the DB.
+ */
+describe("POST /api/v1/me/gifts body ceiling", () => {
+  const encoder = new TextEncoder();
+  const emoji = "😀";
+
+  function maxedGift(tagCount: number) {
+    return {
+      title: emoji.repeat(120),
+      description: emoji.repeat(2000),
+      priceAmount: 2_147_483_647,
+      priceCurrency: "USD",
+      linkUrl: `https://e.co/${emoji.repeat(2035)}`,
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+      tags: Array.from({ length: tagCount }, function tag(_unused, index) {
+        return { text: emoji.repeat(29) + String.fromCodePoint(0x1f600 + index) };
+      }),
+    };
+  }
+
+  it("accepts 121 max-length tags (32 745 B) and answers 413 for 122 (32 877 B)", async () => {
+    expect(encoder.encode(JSON.stringify(maxedGift(121))).length).toBe(32_745);
+    expect(encoder.encode(JSON.stringify(maxedGift(122))).length).toBe(32_877);
+
+    const { POST } = await import("./route");
+
+    const atCeiling = await POST(post(maxedGift(121)));
+    expect(atCeiling.status).toBe(201);
+
+    const overCeiling = await POST(post(maxedGift(122)));
+    expect(overCeiling.status).toBe(413);
+    expect(await overCeiling.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PATCH /api/v1/me/gifts/[id] with a stored value above a cap", () => {  it("edits another field of a gift whose stored title is longer than the cap", async () => {
     findFirst.mockResolvedValue({
       priceAmount: null,
       status: "OPEN",

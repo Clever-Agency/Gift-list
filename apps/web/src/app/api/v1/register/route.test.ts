@@ -81,6 +81,21 @@ describe("POST /api/v1/register caps", () => {
     expect(registerUser).not.toHaveBeenCalled();
   });
 
+  it("answers 413 before the hash or the database for an oversized body", async () => {
+    const res = await POST(post({ ...validBody, pad: "a".repeat(40_000) }));
+
+    expect(res.status).toBe(413);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    // `registerUser` is where the scrypt hash, the rate-limit row and the inserts live.
+    expect(registerUser).not.toHaveBeenCalled();
+  });
+
   it("rejects a display name of 51 characters", async () => {
     const res = await POST(post({ ...validBody, displayName: "я".repeat(51) }));
 

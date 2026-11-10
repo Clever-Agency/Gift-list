@@ -28,6 +28,25 @@ describe("issueFromError", () => {
     });
   });
 
+  it("keeps PAYLOAD_TOO_LARGE so the form says the request was too large", () => {
+    expect(
+      issueFromError(
+        {
+          ok: false,
+          code: "VALIDATION",
+          message: "Payload too large",
+          reason: "PAYLOAD_TOO_LARGE",
+        },
+        t,
+        common,
+        "register",
+      ),
+    ).toEqual({
+      reason: "PAYLOAD_TOO_LARGE",
+      text: "common:errors.reason.PAYLOAD_TOO_LARGE",
+    });
+  });
+
   it("passes the remaining window to the rate-limit copy", () => {
     expect(
       issueFromError(

@@ -108,6 +108,21 @@ describe("PUT /api/v1/me/nick", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("answers 413 with the size reason before the session or the database", async () => {
+    const res = await PUT(put(JSON.stringify({ nick: "a".repeat(40_000) })));
+
+    expect(res.status).toBe(413);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    expect(getSession).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("answers a taken nick with 400 and NICK_TAKEN", async () => {
     findFirst.mockResolvedValue({ id: "u2" });
     const res = await PUT(put(JSON.stringify({ nick: "newnick" })));

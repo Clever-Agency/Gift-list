@@ -92,6 +92,34 @@ describe("POST /api/v1/session", () => {
     });
   });
 
+  it("rejects a 65-emoji password (130 UTF-16 units) before any hash work", async () => {
+    const password = "😀".repeat(65);
+    expect(password.length).toBe(130);
+
+    const res = await POST(post({ email: "a@example.com", password }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "password",
+    });
+    expect(consumeRateLimit).not.toHaveBeenCalled();
+    expect(signInEmail).not.toHaveBeenCalled();
+  });
+
+  it("passes a 64-emoji password (exactly 128 UTF-16 units) to Better Auth", async () => {
+    signInEmail.mockResolvedValue(new Response(null, { status: 200 }));
+    const password = "😀".repeat(64);
+
+    const res = await POST(post({ email: "a@example.com", password }));
+
+    expect(res.status).toBe(200);
+    expect(signInEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { email: "a@example.com", password } }),
+    );
+  });
+
   it("answers 429 after 5 attempts from one IP, for a known or unknown email", async () => {
     const calls: string[] = [];
     consumeRateLimit.mockImplementation(async (key: string, limit: { max: number; windowSeconds: number }) => {

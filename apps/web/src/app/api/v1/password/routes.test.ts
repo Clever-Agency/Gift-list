@@ -194,4 +194,29 @@ describe("POST /api/v1/password/reset", () => {
     });
     expect(resetPassword).not.toHaveBeenCalled();
   });
+
+  it("reset-emoji rejects 65 emoji (130 UTF-16 units) before Better Auth spends the token", async () => {
+    const password = "😀".repeat(65);
+    expect(password.length).toBe(130);
+
+    const res = await reset(post("/api/v1/password/reset", { token: "live-token", password }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+    });
+    expect(resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("reset-emoji accepts 64 emoji (exactly 128 UTF-16 units)", async () => {
+    const res = await reset(
+      post("/api/v1/password/reset", { token: "live-token", password: "😀".repeat(64) }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(resetPassword).toHaveBeenCalledTimes(1);
+  });
 });

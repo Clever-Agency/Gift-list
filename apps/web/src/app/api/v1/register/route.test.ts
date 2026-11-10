@@ -97,6 +97,30 @@ describe("POST /api/v1/register caps", () => {
     expect(registerUser).not.toHaveBeenCalled();
   });
 
+  it("rejects a 65-emoji password (130 UTF-16 units) before the account is created", async () => {
+    // The use-case creates the user, the hash and the session; never calling it
+    // means nothing was inserted, hashed or signed in, and email/nick stay free.
+    const password = "😀".repeat(65);
+    expect(password.length).toBe(130);
+
+    const res = await POST(post({ ...validBody, password }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(validationBody("password"));
+    expect(registerUser).not.toHaveBeenCalled();
+  });
+
+  it("accepts a 64-emoji password (exactly 128 UTF-16 units)", async () => {
+    const password = "😀".repeat(64);
+    expect(password.length).toBe(128);
+
+    const res = await POST(post({ ...validBody, password }));
+
+    expect(res.status).toBe(200);
+    expect(registerUser).toHaveBeenCalledTimes(1);
+    expect(registerUser.mock.calls[0]?.[0]).toMatchObject({ password });
+  });
+
   it("rejects a nick of 25 characters", async () => {
     const res = await POST(post({ ...validBody, nick: "a".repeat(25) }));
 

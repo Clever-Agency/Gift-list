@@ -106,6 +106,15 @@ describe("loginBodySchema", () => {
     ).toBe(false);
   });
 
+  it("measures the password cap in UTF-16 units, like Better Auth at sign-in", () => {
+    expect(
+      loginBodySchema.safeParse({ email: "a@example.com", password: "😀".repeat(PASSWORD_MAX / 2) }).success,
+    ).toBe(true);
+    expect(
+      loginBodySchema.safeParse({ email: "a@example.com", password: "😀".repeat(PASSWORD_MAX / 2 + 1) }).success,
+    ).toBe(false);
+  });
+
   it("does not cap the length of a stored address, so an older account is never locked out", () => {
     // Registration caps a new address at EMAIL_MAX; sign-in only looks one up.
     const legacy = emailOfLength(EMAIL_MAX + 40);
@@ -146,6 +155,19 @@ describe("passwordResetBodySchema", () => {
     }
   });
 
+  it("measures the reset password cap in UTF-16 units, like Better Auth", () => {
+    expect(
+      passwordResetBodySchema.safeParse({ token: "tok", password: "😀".repeat(PASSWORD_MAX / 2) }).success,
+    ).toBe(true);
+
+    const overCap = passwordResetBodySchema.safeParse({
+      token: "tok",
+      password: "😀".repeat(PASSWORD_MAX / 2 + 1),
+    });
+    expect(overCap.success).toBe(false);
+    if (!overCap.success) expect(overCap.error.issues[0]?.path).toEqual(["password"]);
+  });
+
   it("rejects a missing or blank token before the password", () => {
     for (const body of [{ password: "password1" }, { token: "  ", password: "short" }, {}]) {
       const parsed = passwordResetBodySchema.safeParse(body);
@@ -156,9 +178,10 @@ describe("passwordResetBodySchema", () => {
 });
 
 /**
- * The caps registration applies to a new account. The units are UTF-16 units,
- * the same as the form's `maxLength`, and the boundaries are pinned here so a
- * change of a number is a change of this test too.
+ * The caps registration applies to a new account. Boundaries are pinned here so
+ * a change of a number is a change of this test too. Each test names its unit:
+ * Zod 4 counts code points for the text fields, while a password is measured in
+ * UTF-16 units — the unit Better Auth and the form's `maxLength` use.
  */
 describe("registration caps", () => {
   function body(overrides: Partial<Record<string, string>> = {}) {
@@ -208,13 +231,10 @@ describe("registration caps", () => {
     expect(emoji.repeat(DISPLAY_NAME_MAX).length).toBe(DISPLAY_NAME_MAX * 2);
   });
 
-  it("accepts a password of 8 to 128 code points and rejects 7 or 129", () => {
-    expect(
-      registerBodySchema.safeParse(body({ password: "x".repeat(PASSWORD_MIN) })).success,
-    ).toBe(true);
-    expect(
-      registerBodySchema.safeParse(body({ password: "x".repeat(PASSWORD_MAX) })).success,
-    ).toBe(true);
+  it("accepts a password of 8 to 128 UTF-16 units and rejects 7 or 129", () => {
+    for (const length of [PASSWORD_MIN, 127, PASSWORD_MAX]) {
+      expect(registerBodySchema.safeParse(body({ password: "x".repeat(length) })).success).toBe(true);
+    }
 
     for (const password of ["x".repeat(PASSWORD_MIN - 1), "x".repeat(PASSWORD_MAX + 1)]) {
       const parsed = registerBodySchema.safeParse(body({ password }));
@@ -223,15 +243,27 @@ describe("registration caps", () => {
     }
   });
 
-  it("measures the password cap in code points, a unit Better Auth's own limit does not share", () => {
-    // Pinned on purpose: 128 emoji are 128 code points here and 256 UTF-16 units
-    // for Better Auth, which is why this discrepancy is reported as a risk and
-    // neither number was changed.
-    const emojiPassword = "😀".repeat(PASSWORD_MAX);
-    expect(emojiPassword.length).toBe(PASSWORD_MAX * 2);
-    expect(registerBodySchema.safeParse(body({ password: emojiPassword })).success).toBe(true);
+  it("measures the password cap in UTF-16 units, the unit Better Auth checks", () => {
+    const emoji = "😀";
+    // 64 emoji are 64 code points and 128 units: at the cap. 65 are 130 units.
+    expect(emoji.repeat(PASSWORD_MAX / 2)).toHaveLength(PASSWORD_MAX);
     expect(
-      registerBodySchema.safeParse(body({ password: "😀".repeat(PASSWORD_MAX + 1) })).success,
+      registerBodySchema.safeParse(body({ password: emoji.repeat(PASSWORD_MAX / 2) })).success,
+    ).toBe(true);
+    const overEmoji = registerBodySchema.safeParse(
+      body({ password: emoji.repeat(PASSWORD_MAX / 2 + 1) }),
+    );
+    expect(overEmoji.success).toBe(false);
+    if (!overEmoji.success) expect(overEmoji.error.issues[0]?.path).toEqual(["password"]);
+
+    // "и" + U+0306 is a combining mark: two code points, two units.
+    const combining = "и\u0306";
+    expect(combining).toHaveLength(2);
+    expect(
+      registerBodySchema.safeParse({ ...body(), password: combining.repeat(PASSWORD_MAX / 2) }).success,
+    ).toBe(true);
+    expect(
+      registerBodySchema.safeParse({ ...body(), password: combining.repeat(PASSWORD_MAX / 2 + 1) }).success,
     ).toBe(false);
   });
 

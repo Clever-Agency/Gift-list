@@ -3,12 +3,12 @@ import {
   LoadingCards,
   PageContainer,
   PageScroll,
+  SafeArea,
   Screen,
   spacing,
   YStack,
 } from "@gift-list/ui";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { SiteFooter } from "@/ui/site-footer";
@@ -40,7 +40,7 @@ export function SessionLoadingScreen({ size = "wide", testID = "session-loading"
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <PageScroll testID={`${testID}-page`}>
           <PageContainer>
             <Column
@@ -67,7 +67,7 @@ export function SessionLoadingScreen({ size = "wide", testID = "session-loading"
             </Column>
           </PageContainer>
         </PageScroll>
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

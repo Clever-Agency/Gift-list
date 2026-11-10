@@ -8,6 +8,7 @@ import {
   PageContainer,
   PageScroll,
   Pressable,
+  SafeArea,
   Screen,
   spacing,
   Text,
@@ -17,7 +18,7 @@ import {
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { fetchMyGifts, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
@@ -422,7 +423,7 @@ export default function MyWishlistScreen() {
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
         <PageScroll testID="wishlist-page">
           <PageContainer>
@@ -605,7 +606,7 @@ export default function MyWishlistScreen() {
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

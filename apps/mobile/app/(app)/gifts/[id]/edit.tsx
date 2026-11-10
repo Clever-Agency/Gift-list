@@ -6,11 +6,10 @@ import {
   type GiftCard,
   type GiftUpdate,
 } from "@gift-list/contracts";
-import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, SafeArea, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
@@ -437,7 +436,7 @@ export default function EditGiftScreen() {
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: giftForm("pageTitle.edit", { brand }) }} />
         {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
         <PageScroll testID="gift-edit-page" keyboardShouldPersistTaps="handled">
@@ -559,7 +558,7 @@ export default function EditGiftScreen() {
           onClose={closeDiscard}
           onClosed={restoreFormFocus}
         />
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

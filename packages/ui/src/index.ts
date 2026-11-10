@@ -16,6 +16,8 @@ export { createGiftListConfig, type FontFamilies, type GiftListConfig } from "./
 export { GiftListProvider, type GiftListProviderProps } from "./provider";
 
 export { Column, PageContainer, Screen, View, XStack, YStack, ZStack } from "./layout";
+export { SafeArea } from "./safe-area";
+export type { SafeAreaProps } from "./safe-area.types";
 export { PageScroll, type PageScrollProps } from "./page-scroll";
 export { PageFooter, type PageFooterProps } from "./page-footer";
 export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./text";

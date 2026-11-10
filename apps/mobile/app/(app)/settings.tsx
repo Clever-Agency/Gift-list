@@ -1,9 +1,8 @@
 import { NICK_PATTERN, type Me } from "@gift-list/contracts";
-import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, SafeArea, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions, type TextInputInstance } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { updateNick } from "@/api/me";
 import { getBrandName } from "@/config/env";
@@ -197,7 +196,7 @@ function SettingsForm({
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: t("settings.pageTitle", { brand }) }} />
         {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
         <PageScroll testID="settings-page" keyboardShouldPersistTaps="handled">
@@ -258,7 +257,7 @@ function SettingsForm({
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

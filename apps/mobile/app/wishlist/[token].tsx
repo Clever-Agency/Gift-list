@@ -5,6 +5,7 @@ import {
   LoadingCards,
   PageContainer,
   PageScroll,
+  SafeArea,
   Screen,
   spacing,
   Text,
@@ -14,7 +15,7 @@ import {
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { fetchPublicWishlist, type PublicWishlistOwner } from "@/api/public-wishlist";
 import { getBrandName } from "@/config/env";
@@ -175,7 +176,7 @@ export default function PublicWishlistScreen() {
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
         <PageScroll testID="public-wishlist-page">
           <PageContainer>
@@ -246,7 +247,7 @@ export default function PublicWishlistScreen() {
             offsetBottom={spacing["page-gutter"]}
           />
         ) : null}
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

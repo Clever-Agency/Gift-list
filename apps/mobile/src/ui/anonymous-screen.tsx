@@ -1,7 +1,6 @@
-import { Column, Heading, PageContainer, PageScroll, Screen, Text, YStack } from "@gift-list/ui";
+import { Column, Heading, PageContainer, PageScroll, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
 import type { ReactNode } from "react";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
 import { pageGutter } from "@/ui/card-grid";
@@ -14,7 +13,7 @@ export function AnonymousScreen({ title, children }: { title: string; children?:
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <PageScroll testID="anonymous-page" keyboardShouldPersistTaps="handled">
           <PageContainer>
             <Column
@@ -35,7 +34,7 @@ export function AnonymousScreen({ title, children }: { title: string; children?:
             </Column>
           </PageContainer>
         </PageScroll>
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

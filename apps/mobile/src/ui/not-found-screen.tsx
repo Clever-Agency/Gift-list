@@ -3,13 +3,13 @@ import {
   Heading,
   PageContainer,
   PageScroll,
+  SafeArea,
   Screen,
   Text,
   YStack,
 } from "@gift-list/ui";
 import { Stack } from "expo-router";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
 import { pageGutter } from "@/ui/card-grid";
@@ -29,7 +29,7 @@ export function NotFoundScreen({ testID = "not-found-page" }: { testID?: string 
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: t("notFound.title") }} />
         <PageScroll testID={testID}>
           <PageContainer>
@@ -59,7 +59,7 @@ export function NotFoundScreen({ testID = "not-found-page" }: { testID?: string 
             </Column>
           </PageContainer>
         </PageScroll>
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

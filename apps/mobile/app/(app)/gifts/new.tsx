@@ -1,9 +1,8 @@
 import type { GiftInputDraft } from "@gift-list/contracts";
-import { Column, Heading, PageContainer, PageScroll, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, Heading, PageContainer, PageScroll, SafeArea, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { createGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
@@ -216,7 +215,7 @@ export default function NewGiftScreen() {
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: giftForm("pageTitle.create", { brand }) }} />
         {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
         <PageScroll testID="gift-new-page" keyboardShouldPersistTaps="handled">
@@ -268,7 +267,7 @@ export default function NewGiftScreen() {
           onClose={closeDiscard}
           onClosed={restoreFormFocus}
         />
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

@@ -3,13 +3,13 @@ import {
   Heading,
   PageContainer,
   PageScroll,
+  SafeArea,
   Screen,
   spacing,
   Text,
   YStack,
 } from "@gift-list/ui";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { pageGutter } from "@/ui/card-grid";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -45,7 +45,7 @@ export function SessionErrorScreen({
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <PageScroll testID={`${testID}-page`}>
           <PageContainer>
             <Column
@@ -79,7 +79,7 @@ export function SessionErrorScreen({
             </Column>
           </PageContainer>
         </PageScroll>
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

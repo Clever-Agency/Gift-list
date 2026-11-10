@@ -11,6 +11,7 @@ import {
   PageContainer,
   PageScroll,
   RelationshipChip,
+  SafeArea,
   Screen,
   spacing,
   Text,
@@ -20,7 +21,7 @@ import {
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import {
   acceptFriendInvite,
@@ -409,7 +410,7 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: profile("pageTitle", { brand }) }} />
         <PageScroll testID="profile-page">
           <PageContainer>
@@ -566,7 +567,7 @@ export default function ProfileScreen() {
             offsetBottom={spacing["page-gutter"]}
           />
         ) : null}
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

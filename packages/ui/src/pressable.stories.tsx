@@ -7,7 +7,9 @@ import { Text } from "./text";
 /**
  * `Pressable` is the pressable surface of custom controls (cards, chips, radio
  * rows). Enter and Space run the press in the browser; hover, press and the
- * `:focus-visible` ring are CSS states — hover it, hold it, press Tab. A disabled
+ * `:focus-visible` ring are CSS states — hover it, hold it, press Tab; a mouse
+ * click leaves no ring, while a phone paints the same `$ring` on `focus`, the
+ * state an external keyboard gives (W12.9). A disabled
  * surface keeps its 40% dim and does not react to a press at all (`DESIGN.md` →
  * Состояния кнопок и нажимаемых поверхностей, DECISION 2026-11-10).
  */

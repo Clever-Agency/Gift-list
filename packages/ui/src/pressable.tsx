@@ -1,14 +1,7 @@
 import { View, styled, type GetProps } from "@tamagui/core";
 import { forwardRef, type ComponentRef, type KeyboardEvent } from "react";
+import { focusRing } from "./focus-ring";
 import { pressOnKeyDown } from "./press";
-
-/** The focus ring (`DESIGN.md` → `ring`), drawn on keyboard focus only. */
-export const focusRing = {
-  outlineColor: "focus-visible:$ring",
-  outlineStyle: "focus-visible:solid",
-  outlineWidth: "focus-visible:2px",
-  outlineOffset: 2,
-} as const;
 
 const PressableFrame = styled(View, {
   name: "GLPressable",

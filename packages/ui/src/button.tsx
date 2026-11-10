@@ -2,7 +2,7 @@ import { ButtonFrame as BehaviorFrame, ButtonText as BehaviorText } from "@tamag
 import { styled } from "@tamagui/core";
 import { forwardRef, type ComponentRef } from "react";
 import { fontFor } from "./font-style";
-import { focusRing } from "./pressable";
+import { focusRing } from "./focus-ring";
 import { Spinner } from "./spinner";
 import { colors, type ColorToken } from "./tokens";
 

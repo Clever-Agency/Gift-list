@@ -8,7 +8,8 @@ import type { TypographyRole } from "./tokens";
  * from the palette; `Heading` adds the screen-reader level, `LinkText` is the
  * «Назад» / navigation link. Hover (the menu-item `$background`) and focus (the
  * `$ring` ring on `:focus-visible`) are real CSS states: hover the link and
- * press Tab.
+ * press Tab. A mouse click leaves no ring; a phone paints the same ring on
+ * `focus` (W12.9).
  */
 const meta = {
   title: "UI/Text",

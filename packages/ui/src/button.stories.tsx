@@ -7,7 +7,8 @@ function noop() {}
 
 /**
  * Hover, press and focus are CSS states Tamagui paints from media queries: hover the
- * button, hold it, press Tab. On hover the fill of `primary`, `reserve` and
+ * button, hold it, press Tab. A mouse click leaves no ring (`:focus-visible` only);
+ * a phone paints the same `$ring` on `focus` (W12.9). On hover the fill of `primary`, `reserve` and
  * `destructive` darkens by 8% (`primary-hover`, `accent-hover`,
  * `destructive-hover` in `DESIGN.md` → Colors); `secondary` darkens its frame and
  * `ghost` takes the `muted` fill. A disabled or busy button keeps its 40% / 60% dim

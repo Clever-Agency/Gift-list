@@ -1,5 +1,7 @@
 import type { Decorator, Preview } from "@storybook/react-native-web-vite";
 import type { ReactNode } from "react";
+import { IntlProvider } from "use-intl";
+import { getMessages } from "@gift-list/contracts";
 import { colors, createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 
 // One config per bundle, at module scope, exactly as in `apps/mobile/app/_layout.tsx`
@@ -8,6 +10,12 @@ import { colors, createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 // expo-font face names; the catalog hands the `@font-face` names of the same woff2
 // files (`.storybook/preview-head.html` + `staticDirs` in `main.ts`).
 const config = createGiftListConfig({ body: "Manrope", heading: "Lora" });
+
+// The app's own copy, not literals: the `App/*` section shows `apps/mobile/src/ui`
+// composites that translate their labels with `use-intl`, so every story needs the
+// catalogue the app ships (AD-24, D-46). `packages/ui` components take their text
+// as props, so the provider changes nothing for the `UI/*` section.
+const messages = getMessages("ru");
 
 /** The page the catalog draws on: the app background, outside the theme. */
 function CatalogSurface({ children }: { children: ReactNode }) {
@@ -28,13 +36,15 @@ function CatalogSurface({ children }: { children: ReactNode }) {
 
 CatalogSurface.displayName = "CatalogSurface";
 
-/** The provider and the surface every story gets, like the root of each app. */
+/** The provider, the catalogue and the surface every story gets, like the root of each app. */
 const withGiftListProvider: Decorator = function withGiftListProvider(Story) {
   return (
     <GiftListProvider config={config}>
-      <CatalogSurface>
-        <Story />
-      </CatalogSurface>
+      <IntlProvider locale="ru" messages={messages}>
+        <CatalogSurface>
+          <Story />
+        </CatalogSurface>
+      </IntlProvider>
     </GiftListProvider>
   );
 };

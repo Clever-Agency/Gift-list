@@ -1,5 +1,5 @@
 import { ButtonFrame as BehaviorFrame, ButtonText as BehaviorText } from "@tamagui/button";
-import { View, styled } from "@tamagui/core";
+import { styled } from "@tamagui/core";
 import { forwardRef, type ComponentRef } from "react";
 import { fontFor } from "./font-style";
 import { focusRing } from "./pressable";
@@ -47,8 +47,6 @@ const Frame = styled(BehaviorFrame, {
   paddingHorizontal: "$card-padding",
   borderRadius: "$md",
   cursor: "pointer",
-  // The busy spinner is positioned against the button (see `SpinnerSlot`).
-  position: "relative",
   ...focusRing,
   variants: {
     variant: {
@@ -109,7 +107,17 @@ const Frame = styled(BehaviorFrame, {
       true: { opacity: 0.4, cursor: "default" },
     },
     busy: {
-      true: { opacity: 0.6, cursor: "default" },
+      true: {
+        opacity: 0.6,
+        cursor: "default",
+        // The spinner joins the row as a flex item before the label (see `Button`):
+        // it takes `16 + 8` px of the label's room, so both horizontal paddings give
+        // 12 px back — `card-padding` 16 → 4 (`$1` of the 4-point scale, `spaceTokens`
+        // in `config.ts`). A content-sized button keeps its resting width; a stretched
+        // one takes the parent's width. The gap is `$2` = 8 px of the same scale.
+        paddingHorizontal: "$1",
+        gap: "$2",
+      },
     },
   } as const,
   defaultVariants: { variant: "primary" },
@@ -132,25 +140,6 @@ const Label = styled(BehaviorText, {
     },
   } as const,
   defaultVariants: { variant: "primary" },
-});
-
-/**
- * The slot of the busy spinner: out of the flex flow at the left padding edge,
- * so the button keeps its width and the label keeps its place when `busy` turns
- * on and off. Nothing else is reserved — a resting button has no invisible gap.
- *
- * The slot lies over the button's own padding only; a label that wide would be
- * one of 37+ characters on a full-width 360 px button (see the W12.8 report).
- * `pointerEvents: "none"` keeps the press on the button.
- */
-const SpinnerSlot = styled(View, {
-  name: "GLButtonSpinner",
-  position: "absolute",
-  left: "$card-padding",
-  top: 0,
-  bottom: 0,
-  justifyContent: "center",
-  pointerEvents: "none",
 });
 
 export type ButtonProps = {
@@ -185,6 +174,12 @@ export type ButtonProps = {
  * `button-primary`, `button-reserve`, `button-secondary`, `button-ghost`).
  * On the web it is a real `<button>` with the label as its name; a disabled one
  * never fires `onPress`.
+ *
+ * `busy` puts the 16 px spinner into the button's own row, right before the label
+ * (`DESIGN.md`: «рядом с текстом»), and the frame gives back exactly the room it
+ * takes: padding 16 → 4 on each side for the spinner's 16 px and the 8 px gap, so
+ * the width of a content-sized button does not change and a stretched one keeps
+ * the parent's width.
  */
 export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(function Button(
   {
@@ -228,11 +223,7 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
       testID={testID}
       onPress={blocked ? undefined : onPress}
     >
-      {busy ? (
-        <SpinnerSlot>
-          <Spinner color={colors[LABEL_COLOR[variant]]} />
-        </SpinnerSlot>
-      ) : null}
+      {busy ? <Spinner color={colors[LABEL_COLOR[variant]]} /> : null}
       <Label variant={variant}>{label}</Label>
     </Frame>
   );

@@ -295,9 +295,11 @@ describe("Button", () => {
 
   /**
    * W12.8, `DESIGN.md` → busy: «рядом с текстом — индикатор ожидания». The
-   * spinner is a separate component (`spinner.tsx`); `Button` only places it.
+   * spinner is a separate component (`spinner.tsx`); `Button` puts it into the
+   * button's own row, right before the label (W12.8-fix). happy-dom paints no
+   * layout, so what is checked is the structure and the CSS the button carries.
    */
-  it("busy: спиннер слева от подписи, у обычной и disabled его нет", async () => {
+  it("busy: спиннер — сосед подписи в ряду кнопки, перед ней; в обычной и disabled его нет", async () => {
     const { container, render } = mounted();
 
     await render(<Button label="Сохранить" onPress={vi.fn()} />);
@@ -309,9 +311,19 @@ describe("Button", () => {
 
     await render(<Button label="Сохранить" onPress={vi.fn()} busy />);
     const button = container.querySelector("button") as HTMLElement;
-    const slot = container.querySelector('[data-testid="spinner"]')?.parentElement as HTMLElement;
-    expect(button.firstElementChild).toBe(slot);
-    expect(slot.nextElementSibling?.textContent).toBe("Сохранить");
+    const spinner = container.querySelector('[data-testid="spinner"]') as SVGSVGElement;
+
+    // The spinner is a flex item of the button itself, directly before the label.
+    expect(spinner.parentElement).toBe(button);
+    expect(button.firstElementChild).toBe(spinner);
+    expect(spinner.nextElementSibling?.textContent).toBe("Сохранить");
+    // The row and its centring are the frame's own: the group sits in the middle.
+    expect(stateValues(button, "base", "flex-direction")).toContain("row");
+    expect(stateValues(button, "base", "align-items")).toContain("center");
+    expect(stateValues(button, "base", "justify-content")).toContain("center");
+    // Nothing is taken out of the flow: no absolute slot on the frame or the spinner.
+    expect(stateValues(button, "base", "position")).not.toContain("absolute");
+    expect(stateValues(spinner, "base", "position")).not.toContain("absolute");
     expect(button.getAttribute("aria-busy")).toBe("true");
   });
 
@@ -326,41 +338,79 @@ describe("Button", () => {
     }
   });
 
+  /** A CSS length from a token custom property of the emitted `:root`, in px. */
+  function tokenPx(property: string): number {
+    return Number.parseFloat(tokenValue(property) ?? "");
+  }
+
   /**
-   * The width must not jump between the resting and the busy button, including a
-   * short and a long Cyrillic label. happy-dom paints no layout at all, so what is
-   * checked is the structure: the resting frame has the label alone (nothing is
-   * reserved for the spinner) and the busy frame adds one absolutely positioned
-   * slot, which takes no room in the flex row. The real widths are a browser
-   * check (`W12.8-report.md` → «Не проверено глазами»).
+   * The width must not jump between the resting and the busy button. The spinner
+   * and its gap take `16 + 8` px of the label's room, so both horizontal paddings
+   * give 12 px back (`card-padding` 16 → 4, W12.8-fix): a content-sized button
+   * keeps its resting width, a stretched one takes the parent's width. happy-dom
+   * paints no layout; the numbers are read from the tokens the browser gets.
    */
   for (const label of ["ОК", "Сохранить изменения в вишлисте"]) {
     it(`busy: ширина не зависит от спиннера — подпись «${label}»`, async function spinnerWidth() {
       const { container, render } = mounted();
 
       await render(<Button label={label} onPress={vi.fn()} />);
-      const restPadding = stateValues(
-        container.querySelector("button") as HTMLElement,
-        "base",
-        "padding-inline",
-      );
+      const rest = container.querySelector("button") as HTMLElement;
+      const restPadding = stateValues(rest, "base", "padding-inline");
       // Nothing is reserved for the spinner: the resting frame is the label alone.
-      expect((container.querySelector("button") as HTMLElement).childElementCount).toBe(1);
+      expect(rest.childElementCount).toBe(1);
       expect(restPadding).toEqual(["var(--t-space-card-padding)"]);
 
       await render(<Button label={label} onPress={vi.fn()} busy />);
       const busy = container.querySelector("button") as HTMLElement;
-      const slot = container.querySelector('[data-testid="spinner"]')?.parentElement as HTMLElement;
+      const spinner = container.querySelector('[data-testid="spinner"]') as SVGSVGElement;
 
-      // The button's own padding is the same class: the spinner adds no padding.
-      expect(stateValues(busy, "base", "padding-inline")).toEqual(restPadding);
-      expect(stateValues(slot, "base", "position")).toEqual(["absolute"]);
-      // The slot starts where the text does — inside the left padding.
-      expect(stateValues(slot, "base", "left")).toEqual(restPadding);
-      // The label keeps its place: the slot is drawn over the left padding only.
-      expect(slot.nextElementSibling?.textContent).toBe(label);
+      // The paddings shrink by the room the spinner and the gap take.
+      expect(stateValues(busy, "base", "padding-inline")).toEqual(["var(--t-space-1)"]);
+      expect(stateValues(busy, "base", "gap")).toEqual(["var(--t-space-2)"]);
+      // The label keeps its DOM place: it is the next node after the spinner.
+      expect(spinner.nextElementSibling?.textContent).toBe(label);
+
+      const resting = tokenPx("--t-space-card-padding");
+      const shrunk = tokenPx("--t-space-1");
+      const gap = tokenPx("--t-space-2");
+      const size = Number(spinner.getAttribute("width"));
+      // The real token values, not copies of them.
+      expect([resting, shrunk, gap, size]).toEqual([16, 4, 8, 16]);
+      // The invariant: what the spinner takes, the two paddings give back.
+      expect(size + gap).toBe(2 * (resting - shrunk));
     });
   }
+
+  it("busy + fullWidth: ширину задаёт родитель, выравнивание и паддинги меняются как у всех", async () => {
+    const { container, render } = mounted();
+
+    await render(<Button label="Сохранить" onPress={vi.fn()} fullWidth />);
+    const rest = container.querySelector("button") as HTMLElement;
+    expect(stateValues(rest, "base", "align-self")).toEqual(["stretch"]);
+
+    await render(<Button label="Сохранить" onPress={vi.fn()} fullWidth busy />);
+    const busy = container.querySelector("button") as HTMLElement;
+    expect(stateValues(busy, "base", "align-self")).toEqual(["stretch"]);
+    expect(stateValues(busy, "base", "padding-inline")).toEqual(["var(--t-space-1)"]);
+    expect(stateValues(busy, "base", "min-height")).toEqual(
+      stateValues(rest, "base", "min-height"),
+    );
+  });
+
+  it("busy: ghost держит minWidth 44 px, ряд не ломается", async () => {
+    const { container, render } = mounted();
+    await render(<Button label="Поделиться" variant="ghost" onPress={vi.fn()} busy />);
+
+    const button = container.querySelector("button") as HTMLElement;
+    // `minWidth` / `minHeight` are size tokens (`--t-size-…`), not space tokens.
+    expect(stateValues(button, "base", "min-width")).toContain("var(--t-size-touch-target)");
+    expect(stateValues(button, "base", "min-height")).toContain("var(--t-size-touch-target)");
+    expect(stateValues(button, "base", "padding-inline")).toEqual(["var(--t-space-1)"]);
+    expect(container.querySelector('[data-testid="spinner"]')?.nextElementSibling?.textContent).toBe(
+      "Поделиться",
+    );
+  });
 
   it("busy: экранный диктор не видит спиннер и не получает native-пропсов", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(function noop() {});

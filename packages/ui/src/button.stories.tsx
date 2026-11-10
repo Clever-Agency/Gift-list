@@ -13,8 +13,9 @@ function noop() {}
  * `ghost` takes the `muted` fill. A disabled or busy button keeps its 40% / 60% dim
  * and does not react to hover or press at all (`DESIGN.md` → Состояния кнопок,
  * DECISION 2026-11-10): it is painted by a variant value without those states. A
- * busy button also shows the 16 px spinner to the left of its label (`UI/Spinner`,
- * W12.8) without changing its width.
+ * busy button also shows the 16 px spinner right before its label, inside the same
+ * row (`UI/Spinner`, W12.8): the paddings shrink by the room the spinner and its
+ * 8 px gap take, so the width does not change.
  */
 const meta = {
   title: "UI/Button",
@@ -104,10 +105,12 @@ export const PrimaryFullWidth: Story = {
 
 /**
  * Every variant in the `busy` state at 360 px (`DESIGN.md` → busy): the 16 px
- * spinner sits to the left of the label, in the label colour of the variant, and
- * the button keeps the width it has at rest — the indicator is an absolutely
- * positioned slot over the left padding, so nothing is reserved and the label does
- * not move (W12.8). The last button has the longest Cyrillic label of the app.
+ * spinner sits right before the label, in the label colour of the variant, and the
+ * button keeps the width it has at rest — the spinner joins the button's own row
+ * and the horizontal paddings shrink from 16 to 4 px, exactly the 16 + 8 px the
+ * spinner and its gap take (W12.8, W12.8-fix). On a stretched button the group
+ * stays centred, so the indicator is next to the text rather than at the edge.
+ * The last button has the longest Cyrillic label of the app.
  *
  * «Уменьшить движение» has no emulation addon here: turn the OS setting on or pick
  * `prefers-reduced-motion: reduce` in DevTools → Rendering → Emulate CSS media
@@ -125,6 +128,24 @@ export const BusyMatrixNarrow: Story = {
         <Button label="Удаляем…" variant="destructive" onPress={noop} busy />
         <Button label="Сохранить изменения в вишлисте" variant="primary" onPress={noop} busy />
       </YStack>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
+/**
+ * The same content-sized button at rest and busy, side by side: the two widths are
+ * equal. The spinner joins the row before the label and the paddings go 16 → 4 px
+ * on each side, which is exactly the 16 px spinner plus the 8 px gap (W12.8-fix).
+ * The label shifts 12 px to the right; the button's own box does not change.
+ */
+export const BusyKeepsWidth: Story = {
+  render: function BusyKeepsWidthStory() {
+    return (
+      <XStack gap="$3" alignItems="center">
+        <Button label="Добавить желание" variant="primary" onPress={noop} />
+        <Button label="Добавить желание" variant="primary" onPress={noop} busy />
+      </XStack>
     );
   },
   globals: { viewport: { value: "w360" } },

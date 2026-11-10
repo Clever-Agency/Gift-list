@@ -9,8 +9,10 @@
 
 export const colors = {
   primary: "#2F5D3A",
+  "primary-hover": "#2B5635",
   "primary-foreground": "#F7FAF7",
   accent: "#D4A017",
+  "accent-hover": "#C39315",
   "accent-foreground": "#1E241F",
   background: "#F4F1EA",
   foreground: "#1E241F",
@@ -26,6 +28,7 @@ export const colors = {
   "status-reserved-bg": "#F5E6B8",
   "status-closed": "#5C6358",
   destructive: "#B42318",
+  "destructive-hover": "#A62016",
   "destructive-foreground": "#FFFFFF",
   scrim: "#1E241F",
 } as const;

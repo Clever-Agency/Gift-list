@@ -6,6 +6,64 @@ import { createMount } from "./test-utils";
 
 const mounted = createMount();
 
+type Declaration = {
+  selector: string;
+  property: string;
+  value: string;
+  /** The declaration sits inside `@media (hover: hover)`. */
+  hover: boolean;
+};
+
+/** `selector { property: value; }` pairs of one rule text, media query or not. */
+function declarationsOfRule(text: string, hover: boolean): Declaration[] {
+  const out: Declaration[] = [];
+  for (const [, selector, body] of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    for (const [, property, value] of body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)) {
+      out.push({ selector: selector.replace(/\s+/g, " ").trim(), property, value: value.trim(), hover });
+    }
+  }
+  return out;
+}
+
+/** Every rule Tamagui put into the document, flattened to single declarations. */
+function allDeclarations(): Declaration[] {
+  const out: Declaration[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    for (const rule of Array.from(sheet.cssRules)) {
+      const hover = rule.cssText.startsWith("@media (hover: hover)");
+      if (rule.cssText.startsWith("@media") && !hover) continue;
+      out.push(...declarationsOfRule(rule.cssText, hover));
+    }
+  }
+  return out;
+}
+
+/** The declarations that apply to `element` (one of its atomic classes is in the selector). */
+function declarationsFor(element: Element, property?: string, hover?: boolean): Declaration[] {
+  const classes = Array.from(element.classList);
+  return allDeclarations().filter(
+    (declaration) =>
+      classes.some((name) => declaration.selector.includes(`.${name}`)) &&
+      (property === undefined || declaration.property === property) &&
+      (hover === undefined || declaration.hover === hover),
+  );
+}
+
+/** The value `property` takes on `element` and the value it takes on hover. */
+function background(element: Element): { base?: string; hover?: string } {
+  return {
+    base: declarationsFor(element, "background-color", false)[0]?.value,
+    hover: declarationsFor(element, "background-color", true)[0]?.value,
+  };
+}
+
+/** The colour a `--c-…` custom property of the token block resolves to, e.g. `#2B5635`. */
+function tokenValue(property: string): string | undefined {
+  return allDeclarations().find(
+    (declaration) => declaration.selector.startsWith(":root") && declaration.property === property,
+  )?.value;
+}
+
 describe("Button", () => {
   it("на вебе это настоящий <button> с подписью как именем", async () => {
     const { container, render } = mounted();
@@ -111,5 +169,78 @@ describe("Button", () => {
     });
     expect(onPress).not.toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `DESIGN.md` → Colors, «Hover-затемнение кнопок» (DECISION 2026-11-10): the hover
+   * background is the token of the variant darkened by 8%, and the contrast pairs
+   * (text on hover) are the approved ones — 8.04 / 5.65 / 7.40:1.
+   */
+  const HOVER_VARIANTS = [
+    { variant: "primary", token: "primary", hex: "#2B5635" },
+    { variant: "reserve", token: "accent", hex: "#C39315" },
+    { variant: "destructive", token: "destructive", hex: "#A62016" },
+  ] as const;
+
+  for (const { variant, token, hex } of HOVER_VARIANTS) {
+    it(`${variant}: фон на hover — ${token}-hover, базовый фон прежний`, async function hoverTest() {
+      const { container, render } = mounted();
+      await render(<Button label="Кнопка" variant={variant} onPress={vi.fn()} />);
+      const button = container.querySelector("button") as HTMLElement;
+
+      // Only the hover state changes: the resting background keeps its token.
+      expect(background(button)).toEqual({
+        base: `var(--c-${token})`,
+        hover: `var(--c-${token}-hover)`,
+      });
+      // The hover rule is a media-query state, so a touch screen never paints it.
+      expect(declarationsFor(button).filter((one) => one.selector.includes(":hover") && !one.hover)).toEqual(
+        [],
+      );
+      // The token itself resolves to the approved value of DESIGN.md.
+      expect(tokenValue(`--c-${token}-hover`)).toBe(hex);
+      expect(tokenValue(`--c-${token}`)).toBe(
+        { primary: "#2F5D3A", accent: "#D4A017", destructive: "#B42318" }[token],
+      );
+    });
+  }
+
+  it("secondary темнит границу, ghost — фон; фон secondary на hover не меняется", async () => {
+    const { container, render } = mounted();
+
+    await render(<Button label="Отмена" variant="secondary" onPress={vi.fn()} />);
+    const secondary = container.querySelector("button") as HTMLElement;
+    expect(background(secondary).base).toBe("var(--c-surface)");
+    expect(background(secondary).hover).toBeUndefined();
+    expect(declarationsFor(secondary, "border-color", true).map((one) => one.value)).toEqual([
+      "var(--c-foreground)",
+    ]);
+
+    await render(<Button label="Поделиться" variant="ghost" onPress={vi.fn()} />);
+    const ghost = container.querySelector("button") as HTMLElement;
+    expect(background(ghost)).toEqual({ base: "transparent", hover: "var(--c-muted)" });
+  });
+
+  it("подпись не меняет цвет: текст остаётся foreground-токеном своего варианта", async () => {
+    const { container, render } = mounted();
+    const expected = {
+      primary: "var(--c-primary-foreground)",
+      reserve: "var(--c-accent-foreground)",
+      destructive: "var(--c-destructive-foreground)",
+    } as const;
+
+    for (const [variant, color] of Object.entries(expected)) {
+      await render(
+        <Button label="Кнопка" variant={variant as keyof typeof expected} onPress={vi.fn()} />,
+      );
+      const label = Array.from((container.querySelector("button") as HTMLElement).querySelectorAll("*"))
+        .flatMap(function declarations(element) {
+          return declarationsFor(element, "color", false);
+        })
+        .map(function value(one) {
+          return one.value;
+        });
+      expect(label, variant).toContain(color);
+    }
   });
 });

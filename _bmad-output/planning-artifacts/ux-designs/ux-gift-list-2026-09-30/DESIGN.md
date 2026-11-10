@@ -16,9 +16,13 @@ sources:
 colors:
   # Locked: вариант C «Forest Paper» (подтверждено Sergey 2026-09-30).
   # Значения переносятся в тему Tamagui в packages/ui и больше нигде в коде не повторяются (AD-2).
+  # [DECISION 2026-11-10, sprint-change-proposal-2026-11-10-ui-polish.md §4.1.1] Hover кнопок — фон на 8% темнее:
+  # primary-hover, accent-hover, destructive-hover стоят рядом с базовыми цветами, текст на них 8.04 / 5.65 / 7.40:1 (AA).
   primary: '#2F5D3A'
+  primary-hover: '#2B5635'
   primary-foreground: '#F7FAF7'
   accent: '#D4A017'
+  accent-hover: '#C39315'
   accent-foreground: '#1E241F'
   background: '#F4F1EA'
   foreground: '#1E241F'
@@ -38,12 +42,9 @@ colors:
   status-reserved-bg: '#F5E6B8'
   status-closed: '#5C6358'
   destructive: '#B42318'
+  destructive-hover: '#A62016'
   destructive-foreground: '#FFFFFF'
   scrim: '#1E241F'
-  # [DECISION 2026-11-10, sprint-change-proposal-2026-11-10-ui-polish.md] Hover-токены кнопок:
-  # primary-hover '#2B5635', accent-hover '#C39315', destructive-hover '#A62016' (текущий цвет −8%).
-  # Сюда и в packages/ui/src/tokens.ts они вносятся одной правкой вместе с кодом кнопок (W12.5):
-  # tokens.test.ts сверяет этот блок с кодом один в один, поэтому до W12 в теме их нет.
 typography:
   # D-46 (Sergey 2026-10-28): Lora 600 + Manrope 400, 500, 600 — оба с кириллицей и латиницей (Google Fonts, OFL;
   # подмножества latin, latin-ext, cyrillic, cyrillic-ext). Fraunces и DM Sans заменены: в них нет кириллицы.

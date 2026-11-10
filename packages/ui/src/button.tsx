@@ -16,13 +16,13 @@ const Frame = styled(BehaviorFrame, {
     variant: {
       primary: {
         minHeight: "$control-height",
-        backgroundColor: "$primary",
+        backgroundColor: "$primary hover:$primary-hover",
         opacity: "press:0.9",
       },
       // `button-reserve`: only «Куплю сам» and «Подтвердить» in the reservation confirm.
       reserve: {
         minHeight: "$control-height",
-        backgroundColor: "$accent",
+        backgroundColor: "$accent hover:$accent-hover",
         opacity: "press:0.9",
       },
       secondary: {
@@ -38,7 +38,7 @@ const Frame = styled(BehaviorFrame, {
       },
       destructive: {
         minHeight: "$control-height",
-        backgroundColor: "$destructive",
+        backgroundColor: "$destructive hover:$destructive-hover",
         opacity: "press:0.9",
       },
     },

@@ -41,6 +41,7 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
   const accessibleHint = joinSentences([hint, groupHint]);
   const hintId = useId();
   const row = variant === "row";
+  // Disabled dimming comes from `Pressable`'s `inactive` variant: 0.4, not 0.6 (`DESIGN.md`).
   return (
     <Pressable
       ref={ref}
@@ -75,7 +76,6 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
             backgroundColor: selected ? "$primary" : "$surface",
             borderColor: selected ? "$primary" : "$border-strong",
           })}
-      {...(disabled ? { opacity: 0.6 } : null)}
     >
       {row ? (
         <>

@@ -199,3 +199,51 @@ describe("ChoiceList: на вебе нет нативных a11y-пропсов"
     }
   });
 });
+
+/**
+ * The computed opacity as a number. happy-dom reports an element with no opacity
+ * of its own as an empty string, so that reads as the default `1`.
+ */
+function opacityOf(node: Element): number {
+  const value = getComputedStyle(node).opacity;
+  return value === "" ? 1 : Number(value);
+}
+
+describe("Choice: прозрачность disabled", () => {
+  it("недоступная строка бледнеет ровно один раз и ровно на 0.4", async () => {
+    const { container, render } = mounted();
+    await render(
+      <ChoiceList label="Кто видит" variant="row" description="Меняется только у открытого желания">
+        <Choice variant="row" label="Всем" selected={false} onPress={noop} />
+        <Choice variant="row" label="Друзьям" selected onPress={noop} disabled />
+      </ChoiceList>,
+    );
+
+    const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+    const enabled = radios[0];
+    const disabled = radios[1];
+
+    expect(opacityOf(enabled)).toBe(1);
+    // `DESIGN.md` → disabled: 0.4, not the old 0.6 — and not 0.4 × 0.4 = 0.16.
+    expect(opacityOf(disabled)).toBe(0.4);
+    // The group and the label keep their own opacity: only the radio row is dimmed once.
+    expect(opacityOf(group(container))).toBe(1);
+    const descendants = Array.from(disabled.querySelectorAll("*"), opacityOf);
+    expect(descendants.length).toBeGreaterThan(0);
+    expect(descendants.every((value) => value === 1)).toBe(true);
+  });
+
+  it("чип disabled тоже 0.4: и выбранный, и невыбранный", async () => {
+    const { container, render } = mounted();
+    await render(
+      <ChoiceList label="Валюта" variant="chip" description="Пять кодов">
+        <Choice variant="chip" label="BYN" selected onPress={noop} disabled />
+        <Choice variant="chip" label="RUB" selected={false} onPress={noop} disabled />
+        <Choice variant="chip" label="USD" selected={false} onPress={noop} />
+      </ChoiceList>,
+    );
+
+    const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+    expect(radios.map(opacityOf)).toEqual([0.4, 0.4, 1]);
+  });
+});

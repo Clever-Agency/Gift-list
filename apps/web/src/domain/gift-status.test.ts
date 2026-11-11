@@ -115,8 +115,9 @@ describe("visibilityChangeDropsReservation", () => {
 });
 
 describe("the RESERVED → OPEN release", () => {
-  it("clears every reservation column and leaves closure columns alone", () => {
+  it("sets status to OPEN, clears every reservation column and leaves closure columns alone", () => {
     expect(RESERVATION_RELEASE_DATA).toEqual({
+      status: "OPEN",
       reservedById: null,
       reservedAt: null,
       reservationDueAt: null,

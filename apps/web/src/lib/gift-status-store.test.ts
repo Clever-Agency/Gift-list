@@ -17,12 +17,13 @@ beforeEach(() => {
 });
 
 describe("giftStatusTransaction.releaseReservation", () => {
-  it("clears the reservation columns of a RESERVED row through one CAS write", async () => {
+  it("writes status OPEN and clears the reservation columns of a RESERVED row through one CAS write", async () => {
     updateMany.mockResolvedValue({ count: 1 });
 
     const released = await giftStatusTransaction(transactionClient()).releaseReservation("g1");
 
     expect(released).toBe(true);
+    expect(RESERVATION_RELEASE_DATA.status).toBe("OPEN");
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "g1", status: "RESERVED" },
       data: RESERVATION_RELEASE_DATA,

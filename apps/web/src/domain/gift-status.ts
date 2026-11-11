@@ -14,11 +14,13 @@ import {
 } from "./visibility";
 
 /**
- * The columns a `RESERVED → OPEN` transition clears (AD-9). `closedAt` and
+ * The columns a `RESERVED → OPEN` transition writes (AD-9): `status` becomes
+ * `OPEN`, and every reservation column is cleared. `closedAt` and
  * `closedFromStatus` are not touched: closing keeps `reserved*` for audit and is
  * a different transition, so this release never rewrites closure data.
  */
 export const RESERVATION_RELEASE_DATA = {
+  status: "OPEN",
   reservedById: null,
   reservedAt: null,
   reservationDueAt: null,

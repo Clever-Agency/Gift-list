@@ -35,10 +35,11 @@ function joinCardName(parts: readonly (string | null)[]): string {
  * first, the chip second.
  *
  * Story 2.3: the visibility chip is a button of its own only when
- * `onVisibilityPress` is passed and the wish is `OPEN` (`DESIGN.md` → VisibilityChip;
- * `EXPERIENCE.md` → Visibility chip). A non-pressable chip (RESERVED / CLOSED or no
- * handler) lets the press through to the card underneath, so it also opens the edit
- * route.
+ * `onVisibilityPress` is passed and the wish can still change its visibility —
+ * `OPEN` or `RESERVED` (`DESIGN.md` → VisibilityChip; `EXPERIENCE.md` → Visibility
+ * chip). A closed or archived wish is read-only (product clarification t351u), so
+ * its chip only shows the value. A non-pressable chip lets the press through to
+ * the card underneath, so it also opens the edit route.
  *
  * NOTE FOR UX: photo, tags and ⋯ arrive with Stories 2.5–2.7, together with the
  * `Link` main zone that `DESIGN.md` reserves for the detail route; for now the
@@ -54,7 +55,7 @@ export function WishCard({
   gift: GiftCardData;
   width: number;
   onPress?: () => void;
-  /** Opens the visibility picker; only `OPEN` wishes get a pressable chip. */
+  /** Opens the visibility picker; only `OPEN` and `RESERVED` wishes get a pressable chip. */
   onVisibilityPress?: () => void;
   /** Where focus returns when the visibility layer closes (Story 2.3). */
   visibilityChipRef?: VisibilityChipRef;
@@ -78,9 +79,12 @@ export function WishCard({
     : gift.reservedBy
       ? t("reservedBy", { name: gift.reservedBy.displayName })
       : null;
-  // `DESIGN.md` → VisibilityChip: the chip is a button only on an open wish.
+  // `DESIGN.md` → VisibilityChip: the chip is a button on a wish that can still
+  // change it. `CLOSED` and an archived wish are read-only (CLE-82/S23.3).
   const visibilityPress =
-    onVisibilityPress !== undefined && gift.status === "OPEN" ? onVisibilityPress : undefined;
+    onVisibilityPress !== undefined && gift.status !== "CLOSED" && gift.archivedAt === null
+      ? onVisibilityPress
+      : undefined;
   // Story 2.5.7: labels are the server's, already ordered by the mapper. The
   // visual row shows up to three chips; the accessible name keeps every tag so
   // a screen reader hears tags that «+N» hides.

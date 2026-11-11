@@ -39,9 +39,10 @@ export const ERROR_REASONS = [
   "GIFT_ARCHIVED",
   /**
    * The wish is `CLOSED`, which is read-only for the owner (AD-8, FR-10 ред.
-   * 2026-11-11). Always rides with `code: "VALIDATION"`. The catalog text is a
-   * minimal statement on purpose: the exact closed-wish hint and its key are
-   * client work (CLE-82/S23.3).
+   * 2026-11-11). Always rides with `code: "VALIDATION"`. The catalog sentence is
+   * the same as `GIFT_ARCHIVED` on purpose (product clarification t351u,
+   * CLE-82/S23.3): a closed wish and an archived one are one read-only form with
+   * one caption «Архивное желание можно только просматривать».
    */
   "GIFT_CLOSED",
   /**

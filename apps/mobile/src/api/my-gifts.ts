@@ -1,9 +1,12 @@
 import {
   giftCardSchema,
+  giftVisibilityPreviewSchema,
   listDataSchema,
   type GiftCard,
   type GiftInputDraft,
   type GiftUpdate,
+  type GiftVisibilityPreview,
+  type GiftVisibilityPreviewQuery,
 } from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
 
@@ -26,6 +29,15 @@ export type CreateGiftResult = GiftResult;
 
 export type DeleteGiftResult =
   | { ok: true }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
+/**
+ * The preflight of a visibility change (CLE-82/S23.2) answers `{ wouldCancelReservation }`
+ * in the AD-12 envelope, so a body that does not match is its own outcome.
+ */
+export type GiftVisibilityPreviewResult =
+  | { ok: true; preview: GiftVisibilityPreview }
   | { ok: false; invalid: true }
   | Exclude<ClientResult<unknown>, { ok: true }>;
 
@@ -151,4 +163,29 @@ export async function updateGift(
   if (!parsed.success) return { ok: false, invalid: true };
 
   return { ok: true, gift: parsed.data };
+}
+
+/**
+ * CLE-82 (FR-10 ред. 2026-11-11, AD-7): preflight of a visibility change on the
+ * owner's wish — `GET /api/v1/me/gifts/{id}/visibility?visibility=FRIENDS`.
+ * It writes nothing and answers whether the new value would take the holder's
+ * access away, so the screens show the confirm «Бронирующий потеряет доступ,
+ * бронь снимется» only on `true`. The write repeats the same rule inside its own
+ * transaction, so this answer may be stale without becoming unsafe. The id is a
+ * path segment (encoded); the value is one enum word, so it needs no list query.
+ * The answer is re-checked with the shared contract: another body is `invalid`.
+ */
+export async function previewGiftVisibility(
+  id: string,
+  visibility: GiftVisibilityPreviewQuery["visibility"],
+): Promise<GiftVisibilityPreviewResult> {
+  const result = await apiRequest<unknown>(
+    `/api/v1/me/gifts/${encodeURIComponent(id)}/visibility?visibility=${encodeURIComponent(visibility)}`,
+  );
+  if (!result.ok) return result;
+
+  const parsed = giftVisibilityPreviewSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, preview: parsed.data };
 }

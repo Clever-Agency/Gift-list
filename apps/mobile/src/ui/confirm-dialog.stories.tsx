@@ -48,6 +48,50 @@ export const DeleteBusy: Story = {
   },
 };
 
+/**
+ * Narrowing the visibility of a reserved wish (CLE-82/S23.3): the same destructive
+ * step says what the holder loses. «Отмена» keeps the visibility as it was.
+ */
+export const ReservationLossConfirm: Story = {
+  args: {
+    visible: true,
+    title: "Бронирующий потеряет доступ, бронь снимется",
+    confirmLabel: "Подтвердить",
+    cancelLabel: "Отмена",
+    onConfirm: noop,
+    onCancel: noop,
+    onClosed: noop,
+  },
+};
+
+/** The same step while the single PATCH runs: the confirmation is busy. */
+export const ReservationLossBusy: Story = {
+  args: {
+    visible: true,
+    title: "Бронирующий потеряет доступ, бронь снимется",
+    confirmLabel: "Подтвердить",
+    cancelLabel: "Отмена",
+    busy: true,
+    onConfirm: noop,
+    onCancel: noop,
+    onClosed: noop,
+  },
+};
+
+/** The same step at 360 px: the sentence wraps inside the layer, nothing is clipped. */
+export const ReservationLossNarrow: Story = {
+  args: {
+    visible: true,
+    title: "Бронирующий потеряет доступ, бронь снимется",
+    confirmLabel: "Подтвердить",
+    cancelLabel: "Отмена",
+    onConfirm: noop,
+    onCancel: noop,
+    onClosed: noop,
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
 /** The discard step of the form: save, give the draft up, or go back with the cross. */
 export const DiscardChanges: Story = {
   args: {

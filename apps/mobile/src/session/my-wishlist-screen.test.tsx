@@ -275,8 +275,9 @@ function listReads(): number {
 }
 
 /**
- * The visibility chip is a button only on an open wish; its accessible name starts
- * with `app.gift.visibilityChipLabel` and the visible word is the chip value.
+ * The visibility chip is a button on an open or a reserved wish (CLE-82/S23.3); its
+ * accessible name starts with `app.gift.visibilityChipLabel` and the visible word is
+ * the chip value. A closed or archived wish has no such control at all.
  */
 function chip(value: string): HTMLElement | undefined {
   return controls(document).find(
@@ -294,6 +295,15 @@ function patchCalls(): unknown[][] {
       typeof init === "object" &&
       init !== null &&
       (init as { method?: string }).method === "PATCH",
+  );
+}
+
+/** The preflight reads of the first wish: a confirm may only follow one of these. */
+function previewCalls(): unknown[][] {
+  return api.apiRequest.mock.calls.filter(
+    ([path]) =>
+      typeof path === "string" &&
+      path.startsWith("/api/v1/me/gifts/g1/visibility?"),
   );
 }
 
@@ -1593,7 +1603,7 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(dialogElement()).not.toBeNull();
   });
 
-  it("VALIDATION: откат, текст ошибки и тихая перезагрузка списка", async () => {
+  it("VALIDATION без причины: откат, общий текст проверки и тихая перезагрузка списка", async () => {
     respond(giftsAnswer([gift()]));
     await mount();
     await press("Всем");
@@ -1610,11 +1620,63 @@ describe("мой вишлист: смена видимости с чипа", () 
     await chooseInDialog("Друзьям");
 
     expect(chip("Всем")).toBeDefined();
-    expect(text()).toContain("Желание уже забронировано — видимость не изменить.");
-    expect(text()).not.toContain("Проверьте введённые данные.");
+    expect(text()).toContain("Проверьте введённые данные.");
     // The status under the optimistic chip may have changed: the list reloads silently.
     expect(listReads()).toBe(reads + 1);
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
+  });
+
+  /**
+   * CLE-82/S23.3: the wish moved on while its chip was being changed — it was
+   * archived or closed on another device. A known reason has its own sentence, the
+   * chip rolls back and the list re-reads the real card.
+   */
+  it.each(["GIFT_ARCHIVED", "GIFT_CLOSED"] as const)(
+    "VALIDATION %s: архивная подсказка, откат и перезагрузка списка",
+    async (reason) => {
+      respond(giftsAnswer([gift()]));
+      await mount();
+      await press("Всем");
+      const reads = listReads();
+
+      api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+        if (init?.method === "PATCH") {
+          return Promise.resolve({ ok: false, code: "VALIDATION", message: "", reason });
+        }
+        return Promise.resolve(giftsAnswer([gift()]));
+      });
+
+      await chooseInDialog("Друзьям");
+
+      expect(chip("Всем")).toBeDefined();
+      expect(text()).toContain("Архивное желание можно только просматривать.");
+      expect(text()).not.toContain("Проверьте введённые данные.");
+      expect(listReads()).toBe(reads + 1);
+    },
+  );
+
+  /** S23.2b: the reservation raced the write, so the chip must not keep its guess. */
+  it("CONFLICT: откат, toast и перезагрузка списка", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: false, code: "CONFLICT", message: "" });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(chip("Друзьям")).toBeUndefined();
+    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
+    expect(listReads()).toBe(reads + 1);
   });
 
   it("413: откат, причина «слишком большой запрос» и тихая перезагрузка", async () => {
@@ -1641,7 +1703,7 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(chip("Всем")).toBeDefined();
     expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
     expect(text()).not.toContain("Payload too large");
-    expect(text()).not.toContain("Желание уже забронировано — видимость не изменить.");
+    expect(text()).not.toContain("Проверьте введённые данные.");
     expect(listReads()).toBe(reads + 1);
   });
 
@@ -1664,17 +1726,203 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(chip("Всем")).toBeDefined();
     expect(chip("Друзьям")).toBeUndefined();
     expect(text()).toContain("Не найдено.");
-    expect(text()).not.toContain("Желание уже забронировано — видимость не изменить.");
     expect(listReads()).toBe(reads + 1);
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
   });
 
-  it("у RESERVED-карточки чип только показывает значение", async () => {
-    respond(giftsAnswer([gift({ status: "RESERVED", visibility: "FRIENDS" })]));
+  /**
+   * CLE-82/S23.3: a reserved wish changes its visibility too. The preflight answers
+   * first; a keeping answer needs no question, so the save is the usual optimistic one.
+   */
+  it("RESERVED, держатель сохраняет доступ: preflight, затем обычный optimistic PATCH", async () => {
+    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
+    respond(giftsAnswer([card]));
+    await mount();
+    await press("Друзьям");
+    expect(dialogElement()).not.toBeNull();
+
+    let answer: (value: unknown) => void = function pendingAnswer() {};
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
+        return Promise.resolve({ ok: true, data: { wouldCancelReservation: false } });
+      }
+      if (init?.method === "PATCH") {
+        return new Promise((resolve) => {
+          answer = resolve;
+        });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+
+    await chooseInDialog("Секрет");
+    await settle(10);
+
+    expect(previewCalls()).toHaveLength(1);
+    expect(previewCalls()[0]?.[0]).toBe(
+      "/api/v1/me/gifts/g1/visibility?visibility=SECRET",
+    );
+    expect(patchCalls()).toHaveLength(1);
+    expect(patchCalls()[0]?.[1]).toEqual({
+      method: "PATCH",
+      body: { visibility: "SECRET" },
+    });
+    // No confirm: the answer kept the reservation.
+    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
+    expect(chip("Секрет")).toBeDefined();
+
+    await act(async () => {
+      answer({ ok: true, data: gift({ status: "RESERVED", visibility: "SECRET" }) });
+    });
+
+    expect(text()).toContain("Видимость: секрет");
+    expect(text()).not.toContain("Бронь снята");
+  });
+
+  /**
+   * The product rule (t353u): narrowing a reserved wish may release the booking, so
+   * the chip waits for «Подтвердить». Until then nothing is written.
+   */
+  it("RESERVED, бронь снимается: confirm до PATCH и toast «Бронь снята»", async () => {
+    const holder = { id: "u2", nick: "oleg", displayName: "Олег" };
+    const card = gift({ status: "RESERVED", visibility: "FRIENDS", reservedBy: holder });
+    respond(giftsAnswer([card]));
+    await mount();
+    await press("Друзьям");
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
+        return Promise.resolve({ ok: true, data: { wouldCancelReservation: true } });
+      }
+      if (init?.method === "PATCH") {
+        return Promise.resolve({
+          ok: true,
+          data: gift({ status: "OPEN", visibility: "SECRET", reservedBy: null }),
+        });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+
+    await chooseInDialog("Секрет");
+    // The picker fades out before the confirm is the only layer left.
+    await settle(300);
+
+    expect(dialogElement()).not.toBeNull();
+    expect(document.body.textContent).toContain("Бронирующий потеряет доступ, бронь снимется");
+    // No optimistic write before the answer: the chip still shows the stored value.
+    expect(chip("Друзьям")).toBeDefined();
+    expect(chip("Секрет")).toBeUndefined();
+    expect(patchCalls()).toHaveLength(0);
+    expect(previewCalls()).toHaveLength(1);
+    expect(text()).toContain("Берёт Олег");
+
+    await press("Подтвердить");
+    await settle(10);
+
+    expect(patchCalls()).toHaveLength(1);
+    expect(patchCalls()[0]?.[1]).toEqual({
+      method: "PATCH",
+      body: { visibility: "SECRET" },
+    });
+    expect(text()).toContain("Видимость: секрет. Бронь снята");
+    expect(chip("Секрет")).toBeDefined();
+    expect(chip("Друзьям")).toBeUndefined();
+    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
+  });
+
+  it("RESERVED: «Отмена» в confirm не меняет видимость и не зовёт PATCH", async () => {
+    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
+    respond(giftsAnswer([card]));
+    await mount();
+    await press("Друзьям");
+
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
+        return Promise.resolve({ ok: true, data: { wouldCancelReservation: true } });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+
+    await chooseInDialog("Секрет");
+    await settle(300);
+    expect(dialogElement()).not.toBeNull();
+
+    await press("Отмена");
+    await settle(10);
+
+    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
+    expect(chip("Друзьям")).toBeDefined();
+    expect(chip("Секрет")).toBeUndefined();
+    expect(patchCalls()).toHaveLength(0);
+    expect(text()).not.toContain("Видимость: секрет");
+  });
+
+  it("RESERVED: сеть на preflight — toast, без PATCH и без confirm «наугад»", async () => {
+    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
+    respond(giftsAnswer([card]));
+    await mount();
+    await press("Друзьям");
+
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
+        return Promise.resolve({ ok: false, network: true });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+
+    await chooseInDialog("Секрет");
+    await settle(300);
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(previewCalls()).toHaveLength(1);
+    expect(patchCalls()).toHaveLength(0);
+    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
+    expect(chip("Друзьям")).toBeDefined();
+  });
+
+  it("RESERVED: 404 на preflight — toast «Не найдено.» и перезагрузка списка", async () => {
+    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
+    respond(giftsAnswer([card]));
+    await mount();
+    const reads = listReads();
+    await press("Друзьям");
+
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+
+    await chooseInDialog("Секрет");
+    await settle(300);
+
+    expect(text()).toContain("Не найдено.");
+    expect(patchCalls()).toHaveLength(0);
+    expect(listReads()).toBe(reads + 1);
+  });
+
+  it("у CLOSED и архивного чип не кнопка: выбор не открывается", async () => {
+    respond(
+      giftsAnswer([
+        gift({ id: "g2", status: "CLOSED", visibility: "FRIENDS" }),
+        gift({
+          id: "g3",
+          archivedAt: "2026-10-01T00:00:00.000Z",
+          visibility: "SECRET",
+        }),
+      ]),
+    );
     await mount();
 
     expect(text()).toContain("Друзьям");
+    expect(text()).toContain("Секрет");
     expect(chip("Друзьям")).toBeUndefined();
+    expect(chip("Секрет")).toBeUndefined();
     expect(patchCalls()).toHaveLength(0);
   });
 

@@ -2,14 +2,12 @@ import type { GiftInputDraft } from "@gift-list/contracts";
 import { Column, Heading, PageContainer, PageScroll, SafeArea, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { useWindowDimensions } from "react-native";
 import { useTranslations } from "use-intl";
 import { createGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { useDiscardGuard } from "@/session/use-discard-guard";
-import { pageGutter } from "@/ui/card-grid";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import {
   GiftForm,
@@ -53,8 +51,6 @@ export default function NewGiftScreen() {
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
-  const { width } = useWindowDimensions();
-  const gutter = pageGutter(width);
 
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<GiftFormServerError | null>(null);
@@ -217,13 +213,15 @@ export default function NewGiftScreen() {
     <Screen>
       <SafeArea>
         <Stack.Screen options={{ title: giftForm("pageTitle.create", { brand }) }} />
-        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
+        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. The gutter is
+            the Tamagui media clause, so the browser turns it into a CSS media
+            query: no card grid here, the window width is never read in JS. */}
         <PageScroll testID="gift-new-page" keyboardShouldPersistTaps="handled">
           <PageContainer>
             <Column
               size="form"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >

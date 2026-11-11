@@ -1,11 +1,25 @@
 // @vitest-environment happy-dom
 import type { GiftCard } from "@gift-list/contracts";
+import { breakpoints, spacing } from "@gift-list/ui";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "@/session/auth-context";
+import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, escape, settle, typeInto } from "@/test/dom";
+import { declarationsFor, paintedSpace } from "@/test/tamagui-css";
+import { pageGutter } from "@/ui/card-grid";
 import NewGiftScreen from "../../app/(app)/gifts/new";
+
+/**
+ * W12.17: the create screen lays itself out with the Tamagui media clause
+ * `$page-gutter medium:$page-gutter-lg` instead of `useWindowDimensions` +
+ * `pageGutter(width)`. There is no card grid here, so the window width is never
+ * read in JS. Widths are checked against the CSS Tamagui actually generated (see
+ * `@/test/tamagui-css`), not against a browser layout.
+ */
+
+/** The counter proves the screen never asks React Native for the window width. */
+const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const gifts = vi.hoisted(() => ({ createGift: vi.fn() }));
@@ -78,6 +92,14 @@ vi.mock("@/api/my-gifts", () => gifts);
 vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  function useWindowDimensions() {
+    dimensions.calls += 1;
+    return actual.useWindowDimensions();
+  }
+  return { ...actual, useWindowDimensions };
+});
 // The discard dialog draws its close cross with `expo-symbols`; decorative.
 vi.mock("expo-symbols", async () => {
   const React = await import("react");
@@ -341,6 +363,7 @@ function listThenForm() {
 beforeEach(() => {
   vi.resetAllMocks();
   guard.reset();
+  dimensions.calls = 0;
   platform.os = "android";
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   // Story 2.5: the form asks for the fixed catalogue on mount; an empty one is
@@ -1148,5 +1171,101 @@ describe("новое желание: фокус в вопросе о черно�
     });
 
     expect(gifts.createGift).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** The one `GLColumn` of the page: the column whose padding is the page gutter. */
+function column(): HTMLElement {
+  const node = container.querySelector<HTMLElement>('[name="GLColumn"]');
+  expect(node, "колонка страницы").not.toBeNull();
+  return node as HTMLElement;
+}
+
+/**
+ * Mounts the create screen only once the session is ready. The shared loading
+ * skeleton is a screen of its own (W12.15) and still reads the window width, so it
+ * must be out of the tree when the width counter is read.
+ */
+async function mountReady() {
+  function SignedIn() {
+    const auth = useAuth();
+    return auth.state.status === "ready" ? <NewGiftScreen /> : null;
+  }
+  await act(async () => {
+    root.render(
+      <AuthProvider>
+        <SignedIn />
+      </AuthProvider>,
+    );
+  });
+}
+
+describe("W12.17: новое желание на медиа-пропсах", () => {
+  it("ширина окна из JS не читается", async () => {
+    signedIn();
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="session-loading"]')).toBeNull();
+    expect(dimensions.calls).toBe(0);
+  });
+
+  it("счётчик видит экран, который ширину читает (контроль)", async () => {
+    // A probe through the same import the screen used to call: a zero above means
+    // the mock is in place, not that the spy is broken.
+    const { useWindowDimensions } = await import("react-native");
+    function Probe() {
+      useWindowDimensions();
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+
+    expect(dimensions.calls).toBeGreaterThan(0);
+  });
+
+  it.each([360, 600, 1024, 1280])("ширина %ipx: отступ как у pageGutter", async (width) => {
+    signedIn();
+    await mountReady();
+
+    expect(paintedSpace(column(), "padding-inline", width)).toBe(pageGutter(width));
+  });
+
+  it("граница одна и та же: 16 до bp-medium, 24 от bp-medium", async () => {
+    signedIn();
+    await mountReady();
+    const element = column();
+
+    expect(paintedSpace(element, "padding-inline", 360)).toBe(spacing["page-gutter"]);
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium - 1)).toBe(
+      spacing["page-gutter"],
+    );
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium)).toBe(
+      spacing["page-gutter-lg"],
+    );
+    expect(paintedSpace(element, "padding-inline", 1280)).toBe(spacing["page-gutter-lg"]);
+  });
+
+  it("меняется только на одной медиа-точке, без лишних правил", async () => {
+    signedIn();
+    await mountReady();
+    const gutterRules = declarationsFor(column(), "padding-inline");
+
+    expect(gutterRules).toHaveLength(2);
+    const conditions = gutterRules.map((rule) => rule.minWidth);
+    expect(conditions).toContain(null);
+    expect(conditions).toContain(breakpoints.medium);
+  });
+
+  it("экран создания отрисован: заголовок, поля формы и кнопка на месте", async () => {
+    signedIn();
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="gift-new-page"]')).not.toBeNull();
+    const heading = container.querySelector("[role='heading']");
+    expect(heading?.getAttribute("aria-level")).toBe("1");
+    expect(heading?.textContent).toBe("Новое желание");
+    expect(field("Название")).toBeDefined();
+    expect(button("Добавить желание")).toBeDefined();
+    expect(button("Отмена")).toBeDefined();
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
   });
 });

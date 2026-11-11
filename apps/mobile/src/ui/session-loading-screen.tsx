@@ -10,7 +10,7 @@ import {
 } from "@gift-list/ui";
 import { useWindowDimensions } from "react-native";
 import { useTranslations } from "use-intl";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
+import { cardGrid } from "@/ui/card-grid";
 import { SiteFooter } from "@/ui/site-footer";
 
 export type SessionLoadingScreenProps = {
@@ -28,15 +28,19 @@ export type SessionLoadingScreenProps = {
  *
  * It is deliberately theme-only: the text and the region name come from the
  * catalogue (`common.loading`), so no screen adds its own loading copy.
+ *
+ * The gutter is the Tamagui media clause `$page-gutter medium:$page-gutter-lg`,
+ * so it follows the window without JS. Only the wide grid still reads the window
+ * width: its column count and card width come from `cardGrid` by design. A form
+ * skeleton just fills the column content box (`max-form` minus the CSS gutter),
+ * so its width does not depend on the window at all.
  */
 export function SessionLoadingScreen({ size = "wide", testID = "session-loading" }: SessionLoadingScreenProps) {
   const t = useTranslations("common");
+  // The hook is unconditional (rules of hooks) and is only consumed by the wide
+  // grid below; the form passes a percentage, so the width never reaches it.
   const { width } = useWindowDimensions();
-  const gutter = pageGutter(width);
-  const cardWidth =
-    size === "form"
-      ? Math.max(0, Math.min(width, spacing["max-form"]) - gutter * 2)
-      : cardGrid(width).cardWidth;
+  const cardWidth = size === "form" ? "100%" : cardGrid(width).cardWidth;
 
   return (
     <Screen>
@@ -46,7 +50,7 @@ export function SessionLoadingScreen({ size = "wide", testID = "session-loading"
             <Column
               size={size}
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >

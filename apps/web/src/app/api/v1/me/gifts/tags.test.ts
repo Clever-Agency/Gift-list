@@ -170,8 +170,8 @@ describe("POST /api/v1/me/gifts tags", () => {
       }),
     );
     expect(body.data.tags).toEqual([
-      { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "своё" },
+      { catalogId: "tag_dream", label: "мечта" },
     ]);
   });
 
@@ -345,8 +345,8 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
       ],
     });
     expect((await res.json()).data.tags).toEqual([
-      { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "своё" },
+      { catalogId: "tag_dream", label: "мечта" },
     ]);
   });
 

@@ -180,8 +180,8 @@ describe("toViewerGiftCard", () => {
     );
 
     expect(card.tags).toEqual([
-      { catalogId: "tag_dream", label: "мечта" },
       { catalogId: null, label: "своё" },
+      { catalogId: "tag_dream", label: "мечта" },
     ]);
     expect(giftCardSchema.safeParse(card).success).toBe(true);
   });

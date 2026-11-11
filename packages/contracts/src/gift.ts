@@ -238,6 +238,30 @@ export type GiftUpdate = {
  * writes a changed value only while the gift is `OPEN`, exactly like
  * `visibility`.
  */
+/**
+ * Preflight of a visibility change on the owner's wish (CLE-82/S23.2, FR-10 ред.
+ * 2026-11-11). The query names the value the owner wants to pick:
+ * `GET /api/v1/me/gifts/:id/visibility?visibility=FRIENDS`.
+ */
+export const giftVisibilityPreviewQuerySchema = z.strictObject({
+  visibility: z.enum(VISIBILITIES),
+});
+
+export type GiftVisibilityPreviewQuery = z.infer<typeof giftVisibilityPreviewQuerySchema>;
+
+/**
+ * The preflight answer: `true` exactly when the wish is `RESERVED` and the new
+ * value would take the holder's access away by AD-7, so the write would release
+ * the reservation. The client shows the confirm «Бронирующий потеряет доступ,
+ * бронь снимется» only on `true`; the preflight writes nothing and the write
+ * repeats the same rule on its own, so a stale `true` or `false` is harmless.
+ */
+export const giftVisibilityPreviewSchema = z.strictObject({
+  wouldCancelReservation: z.boolean(),
+});
+
+export type GiftVisibilityPreview = z.infer<typeof giftVisibilityPreviewSchema>;
+
 export const giftUpdateSchema = z
   .strictObject({
     title: titleFieldSchema.optional(),

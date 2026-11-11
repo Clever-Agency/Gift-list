@@ -2,33 +2,45 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUnique, findMany, create, findFirst, update, PrismaClientKnownRequestError } =
-  vi.hoisted(() => {
-    class PrismaClientKnownRequestError extends Error {
-      code: string;
+const {
+  getSession,
+  findUnique,
+  findMany,
+  create,
+  findFirst,
+  txFindFirst,
+  update,
+  transaction,
+  PrismaClientKnownRequestError,
+} = vi.hoisted(() => {
+  class PrismaClientKnownRequestError extends Error {
+    code: string;
 
-      constructor(message: string, { code }: { code: string }) {
-        super(message);
-        this.code = code;
-      }
+    constructor(message: string, { code }: { code: string }) {
+      super(message);
+      this.code = code;
     }
+  }
 
-    return {
-      getSession: vi.fn(),
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      findFirst: vi.fn(),
-      update: vi.fn(),
-      PrismaClientKnownRequestError,
-    };
-  });
+  return {
+    getSession: vi.fn(),
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    txFindFirst: vi.fn(),
+    update: vi.fn(),
+    transaction: vi.fn(),
+    PrismaClientKnownRequestError,
+  };
+});
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({
   prisma: {
     list: { findUnique, findMany },
     gift: { create, findFirst, update, findMany },
+    $transaction: transaction,
   },
 }));
 vi.mock("@/db/generated/client", () => ({ Prisma: { PrismaClientKnownRequestError } }));
@@ -105,13 +117,20 @@ beforeEach(() => {
   findMany.mockReset();
   create.mockReset();
   findFirst.mockReset();
+  txFindFirst.mockReset();
   update.mockReset();
+  transaction.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1" });
   findMany.mockResolvedValue([]);
   findFirst.mockResolvedValue(null);
+  txFindFirst.mockResolvedValue(giftRow());
   create.mockResolvedValue(giftRow());
-  update.mockResolvedValue(giftRow());
+  update.mockResolvedValue({ id: "g1" });
+  transaction.mockImplementation(
+    async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({ gift: { findFirst: txFindFirst, update } }),
+  );
 });
 
 /**
@@ -224,24 +243,28 @@ describe("POST /api/v1/me/gifts body ceiling", () => {
 });
 
 describe("PATCH /api/v1/me/gifts/[id] with a stored value above a cap", () => {  it("edits another field of a gift whose stored title is longer than the cap", async () => {
-    findFirst.mockResolvedValue({
-      priceAmount: null,
-      status: "OPEN",
-      visibility: "PUBLIC",
-      quantity: "SINGLE",
-    });
     // A row written before the cap (or outside the API) may hold any length;
     // the schema only sees the fields the body carries.
-    update.mockResolvedValue(giftRow({ title: "я".repeat(5000), visibility: "SECRET" }));
+    txFindFirst
+      .mockResolvedValueOnce({
+        priceAmount: null,
+        priceCurrency: null,
+        status: "OPEN",
+        visibility: "PUBLIC",
+        quantity: "SINGLE",
+        archivedAt: null,
+        reservedById: null,
+      })
+      .mockResolvedValueOnce(giftRow({ title: "я".repeat(5000), visibility: "SECRET" }));
 
     const { PATCH } = await import("./[id]/route");
     const res = await PATCH(patch({ visibility: "SECRET" }), context);
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" }, status: "OPEN" },
+      where: { id: "g1", archivedAt: null, status: { not: "CLOSED" } },
       data: { visibility: "SECRET" },
-      select: expect.any(Object),
+      select: { id: true },
     });
     expect((await res.json()).data.title).toHaveLength(5000);
   });

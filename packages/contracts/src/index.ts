@@ -30,6 +30,21 @@ export const ERROR_REASONS = [
    */
   "INVITE_COOLDOWN",
   /**
+   * The owner's own wish is archived (`archivedAt != null`), so it is read-only
+   * (AD-8, FR-10 ред. 2026-11-11; CLE-82/S23.2). Always rides with
+   * `code: "VALIDATION"`; the client shows the archived hint
+   * «Архивное желание можно только просматривать». A foreign archived wish stays
+   * `NOT_FOUND`, so this reason never reveals that somebody else's wish exists.
+   */
+  "GIFT_ARCHIVED",
+  /**
+   * The wish is `CLOSED`, which is read-only for the owner (AD-8, FR-10 ред.
+   * 2026-11-11). Always rides with `code: "VALIDATION"`. The catalog text is a
+   * minimal statement on purpose: the exact closed-wish hint and its key are
+   * client work (CLE-82/S23.3).
+   */
+  "GIFT_CLOSED",
+  /**
    * A request body exceeded the transport byte budget and was refused before
    * parsing, hashing or the database (W6). Always rides with
    * `code: "VALIDATION"` and HTTP 413; the client shows
@@ -237,10 +252,14 @@ export {
   giftInputSchema,
   giftTagInputSchema,
   giftUpdateSchema,
+  giftVisibilityPreviewQuerySchema,
+  giftVisibilityPreviewSchema,
   type GiftInput,
   type GiftInputDraft,
   type GiftTagInput,
   type GiftUpdate,
+  type GiftVisibilityPreview,
+  type GiftVisibilityPreviewQuery,
 } from "./gift";
 
 export {

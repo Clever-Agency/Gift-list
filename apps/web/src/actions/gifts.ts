@@ -9,14 +9,19 @@ import {
   type ActionResult,
   type GiftCard,
   type GiftTagInput,
+  type GiftVisibilityPreview,
+  type GiftVisibilityValue,
   type SupportedLocale,
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
+import { hasActiveReservation, visibilityChangeDropsReservation } from "@/domain/gift-status";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
 import { firstIssueField } from "@/lib/api-v1";
 import { auth } from "@/lib/auth";
+import { giftStatusTransaction } from "@/lib/gift-status-store";
+import { relationshipReader } from "@/lib/relationships";
 
 const unauthenticated = {
   ok: false as const,
@@ -28,6 +33,30 @@ const notFound = {
   ok: false as const,
   code: "NOT_FOUND" as const,
   message: "Gift not found",
+};
+
+/**
+ * AD-8 (ред. 2026-11-11, CLE-82): the owner's archived wish is read-only, and
+ * the reason lets the client show «Архивное желание можно только просматривать».
+ * A foreign archived wish still answers NOT_FOUND, so this never confirms that
+ * somebody else's wish exists (AD-7).
+ */
+const archivedValidation = {
+  ok: false as const,
+  code: "VALIDATION" as const,
+  message: "Invalid input",
+  reason: "GIFT_ARCHIVED" as const,
+};
+
+/**
+ * AD-8 (ред. 2026-11-11): a `CLOSED` wish is read-only for every edit. The
+ * reason is machine-readable; the exact closed-wish hint is client work (S23.3).
+ */
+const closedValidation = {
+  ok: false as const,
+  code: "VALIDATION" as const,
+  message: "Invalid input",
+  reason: "GIFT_CLOSED" as const,
 };
 
 /** Columns the owner card reads; the same shape the list read selects (AD-12). */
@@ -59,6 +88,28 @@ const formGiftSelect = {
   ...ownerGiftSelect,
   list: { select: { ownerId: true } },
 } as const;
+
+/**
+ * Stored values the edit rules read: AD-25 (price pair), Story 2.5 (`quantity`),
+ * AD-8 (status and archive) and CLE-82 (`visibility`, holder).
+ */
+const storedGiftSelect = {
+  priceAmount: true,
+  priceCurrency: true,
+  status: true,
+  visibility: true,
+  quantity: true,
+  archivedAt: true,
+  reservedById: true,
+} satisfies Prisma.GiftSelect;
+
+/** What the visibility preflight reads; nothing else is needed to answer it. */
+const previewGiftSelect = {
+  status: true,
+  visibility: true,
+  archivedAt: true,
+  reservedById: true,
+} satisfies Prisma.GiftSelect;
 
 function validation(field?: string): ActionResult<GiftCard> {
   return {
@@ -314,9 +365,13 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
  * Story 2.2 (FR-10, AD-1): the owner edits a wish of their own list. The body is
  * a partial (`giftUpdateSchema`), so only the keys that came in reach the row: an
  * absent field keeps the stored value, `status` and list are not editable here
- * (AD-8). The ownership check rides in the write's
- * `where`, so a gift of another list — or an archived one (AD-8) — matches
- * nothing and answers NOT_FOUND without revealing that the id exists.
+ * (AD-8). Ownership is checked before any rule below: a wish of another list, or
+ * a missing id, answers NOT_FOUND without revealing that the id exists (AD-7).
+ *
+ * AD-8 (ред. 2026-11-11, CLE-82): the owner's own archived wish and every
+ * `CLOSED` wish are read-only. Both answer VALIDATION with a machine-readable
+ * `reason` (`GIFT_ARCHIVED` / `GIFT_CLOSED`) so the client can show the archived
+ * hint; a foreign archived wish still answers NOT_FOUND.
  *
  * AD-25/D2/Н1: the amount and the currency are one price. `priceAmount: null`
  * clears both; an explicit `priceCurrency: null` over a stored amount is
@@ -326,20 +381,23 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
  * `null` amount. This is the canonical rule: no amount without a currency, no
  * currency without an amount.
  *
- * Story 2.3 (FR-10, AD-8): visibility moves only while the wish is `OPEN`. A
- * reserved or closed wish answers VALIDATION and writes nothing, but sending the
- * stored value back — the edit form of a reserved wish does that — is not a
- * change and passes through. The write itself repeats `status: "OPEN"` in the
- * `where`, so a reservation between this read and the write cannot slip through.
+ * FR-10 ред. 2026-11-11 (CLE-82, AD-7, AD-8): visibility changes while the wish
+ * is `OPEN` **or** `RESERVED`; sending the stored value back is not a change. If
+ * a narrowing takes the holder's AD-7 access away, the reservation is released
+ * through `GiftStatusService` (`RESERVED → OPEN`, columns cleared) in the same
+ * transaction as the visibility write; widening it later does not bring the
+ * reservation back. The release is silent: notification infrastructure does not
+ * exist yet (`deferred-work.md`). The AD-7 evaluation deliberately does not use
+ * the A-14 reservation-card exception, and it counts the list link as available.
  *
- * Story 2.5 (FR-41, D-25): `quantity` follows the same rule — a changed value is
- * written only while the wish is `OPEN`, and an unchanged one is not a change.
+ * Story 2.5 (FR-41, D-25): `quantity` stays `OPEN`-only — a changed value on a
+ * `RESERVED` or `CLOSED` wish is VALIDATION, and a PATCH that carries both a
+ * changed `quantity` and a visibility change on a reserved wish is rejected on
+ * `quantity` without writing anything.
  *
  * Story 2.5 (AD-22): `tags` is a full replacement. An omitted key preserves the
  * stored tags; an explicit empty array clears them (the form removes a chip);
- * otherwise the old rows are replaced in one transaction with the field write.
- * Tags have no status restriction of their own: AD-8 allows editing the fields
- * of a `RESERVED` wish, and only `visibility` and `quantity` are `OPEN`-only.
+ * otherwise the old rows are replaced in the same transaction as the field write.
  */
 export async function updateGift(
   headers: Headers,
@@ -352,125 +410,135 @@ export async function updateGift(
   const parsed = giftUpdateSchema.safeParse(body);
   if (!parsed.success) return validation(firstIssueField(parsed.error));
 
-  const { tags, ...fields } = parsed.data;
+  const { tags, ...input } = parsed.data;
+  const ownerId = session.user.id;
 
-  // The owner is the list owner (AD-6); the caller cannot pick the list or gift.
-  const ownedGift = {
-    id: giftId,
-    archivedAt: null,
-    list: { ownerId: session.user.id },
-  };
-
-  const changesVisibility = fields.visibility !== undefined;
-  const changesQuantity = fields.quantity !== undefined;
   // AD-25/D2/Н1: a price is a pair. A currency alone needs the stored amount
   // (to keep it or to drop the currency when there is none); an amount alone
   // needs the stored currency (to keep it, or `USD` when the wish had no price).
   const setsAmountAlone =
-    fields.priceAmount !== undefined &&
-    fields.priceAmount !== null &&
-    fields.priceCurrency === undefined;
-  const setsCurrencyAlone = fields.priceCurrency !== undefined && fields.priceAmount === undefined;
-  const needsStoredPrice = setsAmountAlone || setsCurrencyAlone;
+    input.priceAmount !== undefined &&
+    input.priceAmount !== null &&
+    input.priceCurrency === undefined;
+  const setsCurrencyAlone = input.priceCurrency !== undefined && input.priceAmount === undefined;
 
-  // One read serves both gates: AD-25 needs the stored price, Story 2.3 needs
-  // the stored status and visibility, Story 2.5 needs the stored quantity. The
-  // update below still carries the ownership gate, so this read is only for the
-  // mix-in and the editability rules.
-  if (changesVisibility || changesQuantity || needsStoredPrice) {
-    const stored = await prisma.gift.findFirst({
-      where: ownedGift,
-      select: { priceAmount: true, priceCurrency: true, status: true, visibility: true, quantity: true },
-    });
-    if (!stored) return notFound;
-
-    if (setsCurrencyAlone) {
-      // AD-25/D2: an explicit `null` currency would leave a stored amount
-      // without a currency, and no card can show such a price — VALIDATION, not
-      // a silent `USD` nor a silent wipe of the amount. With no stored amount
-      // there is nothing to price, so the currency stays `null` and a lone
-      // currency is never stored.
-      if (fields.priceCurrency === null && stored.priceAmount !== null) {
-        return validation("priceCurrency");
-      }
-      fields.priceCurrency = stored.priceAmount === null ? null : fields.priceCurrency;
-    } else if (setsAmountAlone) {
-      // AD-25/Н1: an absent currency keeps the stored one (a RUB wish stays
-      // RUB). Only a wish that had no price yet falls back to `USD`; a legacy
-      // row with an amount but no currency is repaired the same way.
-      fields.priceCurrency = stored.priceCurrency ?? "USD";
-    }
-
-    if (changesVisibility) {
-      if (stored.visibility === fields.visibility) {
-        // The form of a reserved wish resends the stored value: nothing to change.
-        delete fields.visibility;
-      } else if (stored.status !== "OPEN") {
-        return validation("visibility");
-      }
-    }
-
-    if (changesQuantity) {
-      if (stored.quantity === fields.quantity) {
-        // Same rule for a resent quantity: an unchanged value is not a change.
-        delete fields.quantity;
-      } else if (stored.status !== "OPEN") {
-        return validation("quantity");
-      }
-    }
-  }
-
-  // Story 2.3/2.5/AD-8: a real visibility or quantity change writes only while
-  // the gift is OPEN, so a reservation between the read above and this write
-  // answers VALIDATION.
-  const guarded = fields.visibility !== undefined || fields.quantity !== undefined;
-  const where = guarded ? { ...ownedGift, status: "OPEN" as const } : ownedGift;
+  /**
+   * Set inside the transaction when a changed `quantity` puts the `OPEN` CAS in
+   * the write's `where`. The race answer below reads it to name `quantity`
+   * instead of NOT_FOUND when that guard lost to a reservation.
+   */
+  let quantityRequiresOpen = false;
 
   try {
-    if (tags === undefined) {
-      // AD-8: editing any other field at RESERVED is allowed; tags follow the
-      // same rule, so the tag path is not limited to OPEN wishes either.
-      const row = await prisma.gift.update({
-        where,
-        data: fields,
-        select: ownerGiftSelect,
+    return await prisma.$transaction(async function updateOwnGift(tx) {
+      // AD-7: ownership first, so a foreign id matches nothing and the archive
+      // branch below never confirms that somebody else's wish exists.
+      const stored = await tx.gift.findFirst({
+        where: { id: giftId, list: { ownerId } },
+        select: storedGiftSelect,
       });
-      return {
-        ok: true,
-        data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))),
-      };
-    }
+      if (!stored) return notFound;
 
-    // Story 2.5: the tag set is replaced atomically with the field write. The
-    // gift update goes first, so a foreign or archived gift fails before a
-    // single tag row is touched; any later failure rolls everything back.
-    const row = await prisma.$transaction(async function replaceTags(tx) {
-      if (!(await fixedTagsExist(tx, tags))) throw new MissingCatalogTagError();
+      // AD-8 (ред. 2026-11-11): the owner sees a reason, not a masked NOT_FOUND.
+      if (stored.archivedAt !== null) return archivedValidation;
+      if (stored.status === "CLOSED") return closedValidation;
 
+      const fields = { ...input };
+
+      if (setsCurrencyAlone) {
+        // AD-25/D2: an explicit `null` currency would leave a stored amount
+        // without a currency, and no card can show such a price — VALIDATION,
+        // not a silent `USD` nor a silent wipe of the amount. With no stored
+        // amount there is nothing to price, so the currency stays `null` and a
+        // lone currency is never stored.
+        if (fields.priceCurrency === null && stored.priceAmount !== null) {
+          return validation("priceCurrency");
+        }
+        fields.priceCurrency = stored.priceAmount === null ? null : fields.priceCurrency;
+      } else if (setsAmountAlone) {
+        // AD-25/Н1: an absent currency keeps the stored one (a RUB wish stays
+        // RUB). Only a wish that had no price yet falls back to `USD`; a legacy
+        // row with an amount but no currency is repaired the same way.
+        fields.priceCurrency = stored.priceCurrency ?? "USD";
+      }
+
+      // Story 2.5/AD-8: `quantity` is checked before the visibility rule, so a
+      // combined PATCH on a reserved wish names `quantity` and writes nothing.
+      if (fields.quantity !== undefined) {
+        if (stored.quantity === fields.quantity) {
+          // The form of a reserved wish resends the stored value: not a change.
+          delete fields.quantity;
+        } else if (stored.status !== "OPEN") {
+          return validation("quantity");
+        } else {
+          quantityRequiresOpen = true;
+        }
+      }
+
+      // FR-10 ред. 2026-11-11: visibility is writable at OPEN and RESERVED. A
+      // narrowing that drops the holder's AD-7 access releases the reservation
+      // in this same transaction; the preflight of S23.3 repeats this rule.
+      let dropsReservation = false;
+      if (fields.visibility !== undefined) {
+        if (stored.visibility === fields.visibility) {
+          delete fields.visibility;
+        } else if (hasActiveReservation(stored) && stored.reservedById !== null) {
+          dropsReservation = visibilityChangeDropsReservation({
+            status: stored.status,
+            ownerId,
+            holderId: stored.reservedById,
+            previousVisibility: stored.visibility,
+            nextVisibility: fields.visibility,
+            relations: await relationshipReader.relationsBetween(stored.reservedById, ownerId),
+          });
+        }
+      }
+
+      // Fail fast on an unknown catalog tag: nothing is written for a bad body.
+      if (tags !== undefined && !(await fixedTagsExist(tx, tags))) {
+        throw new MissingCatalogTagError();
+      }
+
+      // AD-8/AD-9: a concurrent archive or close after the read must not be
+      // overwritten. A changed quantity also requires the wish to stay `OPEN`,
+      // so the same race answers VALIDATION on `quantity`.
+      const statusGuard = quantityRequiresOpen
+        ? { status: "OPEN" as const }
+        : { status: { not: "CLOSED" as const } };
       const updated = await tx.gift.update({
-        where,
+        where: { id: giftId, archivedAt: null, ...statusGuard },
         data: fields,
         select: { id: true },
       });
 
-      await tx.giftTag.deleteMany({ where: { giftId: updated.id } });
-      const tagRows = toTagRows(tags);
-      if (tagRows.length > 0) {
-        await tx.giftTag.createMany({
-          data: tagRows.map(function withGiftId(tag) {
-            return { ...tag, giftId: updated.id };
-          }),
-        });
+      // AD-8: status and the reservation columns are written only by the service.
+      if (dropsReservation) await giftStatusTransaction(tx).releaseReservation(updated.id);
+
+      // Story 2.5: the tag set is replaced atomically with the field write.
+      if (tags !== undefined) {
+        await tx.giftTag.deleteMany({ where: { giftId: updated.id } });
+        const tagRows = toTagRows(tags);
+        if (tagRows.length > 0) {
+          await tx.giftTag.createMany({
+            data: tagRows.map(function withGiftId(tag) {
+              return { ...tag, giftId: updated.id };
+            }),
+          });
+        }
       }
 
-      return tx.gift.findFirst({ where: { id: updated.id }, select: ownerGiftSelect });
-    });
-    if (row === null) return notFound;
+      // Re-read after the release: the card must carry the status the row has now.
+      const row = await tx.gift.findFirst({
+        where: { id: updated.id },
+        select: ownerGiftSelect,
+      });
+      if (row === null) return notFound;
 
-    return {
-      ok: true,
-      data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))),
-    };
+      return {
+        ok: true as const,
+        data: giftCardSchema.parse(toOwnerGiftCard(row, requestLocale(headers))),
+      };
+    });
   } catch (error) {
     if (error instanceof MissingCatalogTagError) return validation("tags");
 
@@ -480,22 +548,76 @@ export async function updateGift(
     }
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      // A guarded write can lose the race with a reservation: re-read to tell
-      // "no longer OPEN" (VALIDATION) from "foreign or archived" (NOT_FOUND).
-      if (guarded) {
-        const current = await prisma.gift.findFirst({
-          where: ownedGift,
-          select: { status: true },
-        });
-        if (current && current.status !== "OPEN") {
-          return validation(fields.visibility !== undefined ? "visibility" : "quantity");
-        }
-      }
-      // P2025: the where matched nothing, i.e. a foreign or archived gift.
+      // A CAS guard lost the race. Re-read to answer with the rule that now
+      // holds: an archive or close is VALIDATION, a quantity change that met a
+      // reservation is VALIDATION on `quantity`, and everything else is
+      // NOT_FOUND (foreign or deleted).
+      const current = await prisma.gift.findFirst({
+        where: { id: giftId, list: { ownerId } },
+        select: { status: true, archivedAt: true },
+      });
+      if (current === null) return notFound;
+      if (current.archivedAt !== null) return archivedValidation;
+      if (current.status === "CLOSED") return closedValidation;
+      if (quantityRequiresOpen) return validation("quantity");
       return notFound;
     }
     throw error;
   }
+}
+
+/**
+ * CLE-82/S23.2 (FR-10 ред. 2026-11-11, AD-7): preflight of a visibility change on
+ * the owner's wish. It answers whether the change would release the reservation,
+ * so the client can show the confirm «Бронирующий потеряет доступ, бронь
+ * снимется». It writes nothing and runs the same `VisibilityPolicy` rule as
+ * `updateGift`; the write repeats the check inside its transaction, so this
+ * answer may be stale without becoming unsafe.
+ *
+ * Ownership masks a foreign or missing wish as NOT_FOUND; the owner's own
+ * archived or closed wish answers VALIDATION with its reason, like the write.
+ */
+export async function previewGiftVisibility(
+  headers: Headers,
+  giftId: string,
+  visibility: GiftVisibilityValue,
+): Promise<ActionResult<GiftVisibilityPreview>> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return unauthenticated;
+
+  const ownerId = session.user.id;
+  const stored = await prisma.gift.findFirst({
+    where: { id: giftId, list: { ownerId } },
+    select: previewGiftSelect,
+  });
+  if (!stored) return notFound;
+  if (stored.archivedAt !== null) return archivedValidation;
+  if (stored.status === "CLOSED") return closedValidation;
+
+  const holderId = stored.reservedById;
+  if (
+    !hasActiveReservation(stored) ||
+    holderId === null ||
+    stored.visibility === visibility
+  ) {
+    return { ok: true, data: { wouldCancelReservation: false } };
+  }
+
+  return {
+    ok: true,
+    data: {
+      wouldCancelReservation: visibilityChangeDropsReservation({
+        status: stored.status,
+        ownerId,
+        holderId,
+        previousVisibility: stored.visibility,
+        nextVisibility: visibility,
+        // The same relation facts the write uses; friendship may change between
+        // the preflight and the write, which is why the write checks again.
+        relations: await relationshipReader.relationsBetween(holderId, ownerId),
+      }),
+    },
+  };
 }
 
 /**

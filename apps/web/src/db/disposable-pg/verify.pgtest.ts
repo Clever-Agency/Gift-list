@@ -236,18 +236,24 @@ async function dropGiftTrigger(trigger: string, fn: string): Promise<void> {
   await client.query(`DROP FUNCTION IF EXISTS "${fn}"()`);
 }
 
+/**
+ * Accepts one SQLSTATE or a set of them: PostgreSQL reports the same constraint
+ * with different codes across major versions (RESTRICT delete: 23503 on 17,
+ * 23001 on 18), while every other call keeps its single exact code.
+ */
 async function expectPostgresError(
   sql: string,
   values: readonly unknown[],
-  code: string,
+  code: string | readonly string[],
 ): Promise<void> {
+  const expected = typeof code === "string" ? [code] : [...code];
   try {
     await client.query(sql, [...values]);
   } catch (error) {
-    expect((error as { code?: string }).code, sql).toBe(code);
+    expect(expected, sql).toContain((error as { code?: string }).code);
     return;
   }
-  throw new Error(`expected PostgreSQL error ${code} for: ${sql}`);
+  throw new Error(`expected PostgreSQL error ${expected.join(" or ")} for: ${sql}`);
 }
 
 async function expectPrismaError(operation: Promise<unknown>, code: string): Promise<void> {
@@ -524,6 +530,8 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
     await client.query(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId]);
   });
 
+  // PG 17 reports foreign_key_violation (23503) for this RESTRICT delete,
+  // PG 18 reports restrict_violation (23001); both prove the tag is protected.
   it("keeps ON DELETE RESTRICT for a referenced catalog tag", async () => {
     const tagId = `tag_${randomUUID()}`;
     const slug = `restrict_${randomUUID()}`;
@@ -532,19 +540,29 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
        VALUES ($1, $2, '{"ru":"не удалять"}'::jsonb, NOW())`,
       [tagId, slug],
     );
-    const { giftId } = await createGiftFixture("restrict tag delete");
-    const giftTagId = `gt_${randomUUID()}`;
-    await client.query(
-      `INSERT INTO "GiftTag" ("id", "giftId", "tagId", "aggregateEligible")
-       VALUES ($1, $2, $3, true)`,
-      [giftTagId, giftId, tagId],
-    );
+    try {
+      const { giftId } = await createGiftFixture("restrict tag delete");
+      await client.query(
+        `INSERT INTO "GiftTag" ("id", "giftId", "tagId", "aggregateEligible")
+         VALUES ($1, $2, $3, true)`,
+        [`gt_${randomUUID()}`, giftId, tagId],
+      );
 
-    await expectPostgresError(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId], "23503");
-
-    await client.query(`DELETE FROM "GiftTag" WHERE "id" = $1`, [giftTagId]);
-    await client.query(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId]);
-    record("GiftTag_tagId_fkey: deleting a referenced tag rejected (23503), then cleaned up");
+      await expectPostgresError(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId], ["23001", "23503"]);
+      record(
+        "GiftTag_tagId_fkey: deleting a referenced tag rejected " +
+          "(23503 on PostgreSQL 17, 23001 on PostgreSQL 18), then cleaned up",
+      );
+    } finally {
+      // Owned rows go away on success and on failure; a cleanup error is
+      // recorded instead of replacing the assertion error that caused it.
+      try {
+        await client.query(`DELETE FROM "GiftTag" WHERE "tagId" = $1`, [tagId]);
+        await client.query(`DELETE FROM "Tag" WHERE "id" = $1`, [tagId]);
+      } catch (cleanupError) {
+        record(`cleanup after the RESTRICT probe failed: ${String(cleanupError)}`);
+      }
+    }
   });
 
   it("writes a gift with nested tag rows atomically", async () => {

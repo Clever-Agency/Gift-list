@@ -5,6 +5,10 @@
  * exits non-zero, instead of a bare "no tests". This script only reads
  * `DISPOSABLE_*`; it never loads `apps/web/.env` and never falls back to
  * `DATABASE_URL`/`DIRECT_URL`.
+ *
+ * The target must be a new, empty database on PostgreSQL 17 or 18 created with
+ * UTF-8. The major and `server_encoding` are checked after connecting
+ * (`cluster-preflight.ts`); a WIN1251 cluster fails tags with emoji (22P05).
  */
 
 import {
@@ -20,10 +24,12 @@ try {
   if (error instanceof DisposablePgRefusal) {
     console.error(`\n${error.message}\n`);
     console.error(
-      "F5 refuses to run. Start a disposable PostgreSQL on a unique loopback port " +
-        "(no shared volume), create a new empty database named gift_f5_<random>, then export " +
-        "DISPOSABLE_DATABASE_URL, DISPOSABLE_DIRECT_URL and DISPOSABLE_PG_CONFIRM " +
-        "for this process only. Never point these at a live or shared database.",
+      "F5 refuses to run. Start a disposable PostgreSQL 17 or 18 on a unique loopback port " +
+        "and create its cluster with UTF-8 (POSTGRES_INITDB_ARGS=--encoding=UTF8, or " +
+        "initdb --encoding=UTF8 --locale=C natively), create a new empty database named " +
+        "gift_f5_<random>, then export DISPOSABLE_DATABASE_URL, DISPOSABLE_DIRECT_URL and " +
+        "DISPOSABLE_PG_CONFIRM for this process only. Never point these at a live or shared " +
+        "database.",
     );
     process.exitCode = 2;
   } else {

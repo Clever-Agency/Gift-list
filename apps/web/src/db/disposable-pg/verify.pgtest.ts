@@ -8,11 +8,26 @@
  * connection; it never falls back to `DATABASE_URL`/`DIRECT_URL` or
  * `apps/web/.env`.
  *
+ * Cluster: PostgreSQL 17 or 18 in UTF-8 (QA checkpoints: 17.11 and 18.6). The
+ * harness does not create the cluster and installs nothing; a native Windows
+ * `initdb` otherwise takes the system code page and a WIN1251 cluster rejects
+ * tags with emoji (22P05). Examples:
+ *
+ *   docker run --rm -d --name gift-f5-<random> \
+ *     -e POSTGRES_PASSWORD=<secret> -e POSTGRES_INITDB_ARGS=--encoding=UTF8 \
+ *     -p 127.0.0.1:<49152-65535>:5432 postgres:17-alpine   # or postgres:18-alpine
+ *
+ *   initdb -D <dir> -U f5 --encoding=UTF8 --locale=C        # native cluster
+ *
+ * `beforeAll` refuses a server that is not 17/18 or not UTF8 before migrating.
+ * The same requirements apply to `friendship.pgtest.ts`.
+ *
  * Required process-local environment (PowerShell example, no `.env` edit):
  *
  *   $env:DISPOSABLE_DATABASE_URL = "postgresql://f5:secret@127.0.0.1:55432/gift_f5_abc12345"
  *   $env:DISPOSABLE_DIRECT_URL   = $env:DISPOSABLE_DATABASE_URL
  *   $env:DISPOSABLE_PG_CONFIRM   = "gift_f5_abc12345"
+ *   $env:DISPOSABLE_PG_MAJOR     = "17"   # optional pin: 17 or 18; empty = either
  *   npm run verify:disposable-pg -w @gift-list/web
  *
  * The database must be new and empty; the run proves that before migrating.
@@ -31,6 +46,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { toGiftTags } from "../../domain/tag";
 import { createGift } from "../../actions/gifts";
 import { Prisma, PrismaClient } from "../generated/client";
+import {
+  checkDisposableCluster,
+  DisposablePgClusterRefusal,
+  SUPPORTED_PG_MAJORS,
+  type ClusterFacts,
+} from "./cluster-preflight";
 import {
   describeDisposableTarget,
   DisposablePgRefusal,
@@ -79,11 +100,36 @@ let pool!: Pool;
 let prisma!: PrismaClient;
 let tempDir = "";
 let serverVersion = "";
+let serverEncoding = "";
 let systemIdentifier = "";
 const evidence: string[] = [];
 
 function record(line: string): void {
   evidence.push(`- ${line}`);
+}
+
+/**
+ * Cluster checks run after connecting, so a refusal is printed before the
+ * suite fails instead of surfacing as a bare "no tests".
+ */
+function checkClusterOrReport(input: {
+  serverVersion: string;
+  serverEncoding: string;
+  pinnedMajor: string | undefined;
+}): ClusterFacts {
+  try {
+    return checkDisposableCluster(input);
+  } catch (error) {
+    if (error instanceof DisposablePgClusterRefusal) {
+      console.error(`\n${error.message}\n`);
+      console.error(
+        "The F5 run needs PostgreSQL 17 or 18 created with UTF-8 " +
+          "(POSTGRES_INITDB_ARGS=--encoding=UTF8 for the official image, or " +
+          "initdb --encoding=UTF8 --locale=C natively). See the header of verify.pgtest.ts.",
+      );
+    }
+    throw error;
+  }
 }
 
 function scrub(text: string): string {
@@ -287,18 +333,34 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
       address: string | null;
       user: string;
       version: string;
+      encoding: string;
     }>(
       `SELECT current_database() AS database,
               inet_server_addr()::text AS address,
               current_user AS "user",
-              current_setting('server_version') AS version`,
+              current_setting('server_version') AS version,
+              current_setting('server_encoding') AS encoding`,
     );
     const row = identity.rows[0];
     expect(row?.database).toBe(target.database);
     expectLoopbackClient("preflight");
 
-    serverVersion = row?.version ?? "";
-    record(`server: PostgreSQL ${serverVersion}, connected as ${row?.user ?? "?"}`);
+    const cluster = checkClusterOrReport({
+      serverVersion: row?.version ?? "",
+      serverEncoding: row?.encoding ?? "",
+      pinnedMajor: process.env.DISPOSABLE_PG_MAJOR,
+    });
+    serverVersion = cluster.serverVersion;
+    serverEncoding = cluster.serverEncoding;
+    const pinnedMajor = process.env.DISPOSABLE_PG_MAJOR?.trim() ?? "";
+    record(
+      `server: PostgreSQL ${serverVersion}, server_encoding ${cluster.serverEncoding}, ` +
+        `connected as ${row?.user ?? "?"}`,
+    );
+    record(
+      `cluster matrix: PostgreSQL ${SUPPORTED_PG_MAJORS.join("/")} in UTF8 ` +
+        `(${pinnedMajor === "" ? "major not pinned" : `DISPOSABLE_PG_MAJOR=${pinnedMajor}`})`,
+    );
     record(`server-side socket address (informational): ${row?.address ?? "unix socket"}`);
 
     const serverIdentity = await readServerIdentity();
@@ -357,7 +419,7 @@ describe.sequential("disposable PostgreSQL verification (F5 / Q-04)", () => {
       "",
       `Run: ${new Date().toISOString()}`,
       `Target: ${describeDisposableTarget(target)}`,
-      `PostgreSQL: ${serverVersion}`,
+      `PostgreSQL: ${serverVersion}, server_encoding: ${serverEncoding}`,
       "",
       "This evidence is valid only for the disposable target above. It is not a",
       "check of any live, shared or production database.",

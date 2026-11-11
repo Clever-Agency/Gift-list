@@ -83,6 +83,8 @@ type Row = {
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
   holderVisibleToOwner: boolean;
   reservedBy: { id: string; nick: string; name: string } | null;
+  /** A stored read carries it; the card read does not, and the mapper ignores it. */
+  reservedById: string | null;
   list: { ownerId: string };
   tags: { tagId: string | null; customText: string | null; tag: { slug: string; labels: unknown } | null }[];
 };
@@ -104,6 +106,7 @@ function giftRow(overrides: Partial<Row> = {}): Row {
     reservationPhase: null,
     holderVisibleToOwner: false,
     reservedBy: null,
+    reservedById: null,
     list: { ownerId: "u1" },
     tags: [],
     ...overrides,
@@ -150,8 +153,13 @@ function holderRelations(overrides: Record<string, boolean> = {}) {
   };
 }
 
-const statusNotClosed = { status: { not: "CLOSED" } };
-const statusOpen = { status: "OPEN" };
+/**
+ * CLE-82/S23.2b: the write is a CAS on the snapshot the transaction read, so the
+ * `where` carries the `status` and the holder of that read, not «not CLOSED».
+ */
+function snapshot(status: "OPEN" | "RESERVED" = "OPEN", reservedById: string | null = null) {
+  return { status, reservedById };
+}
 
 function okData(result: Awaited<ReturnType<typeof createGift>>) {
   if (!result.ok) throw new Error(`unexpected error: ${result.code}`);
@@ -558,7 +566,7 @@ describe("updateGift", () => {
       },
     });
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g7", archivedAt: null, ...statusNotClosed },
+      where: { id: "g7", archivedAt: null, ...snapshot() },
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -603,7 +611,7 @@ describe("updateGift", () => {
     await updateGift(headers, "g1", { description: null, linkUrl: null, priceAmount: null });
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot() },
       data: { description: null, linkUrl: null, priceAmount: null, priceCurrency: null },
       select: { id: true },
     });
@@ -789,7 +797,7 @@ describe("updateGift", () => {
     const card = okData(await updateGift(headers, "g1", { visibility: "SECRET" }));
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot() },
       data: { visibility: "SECRET" },
       select: { id: true },
     });
@@ -813,7 +821,7 @@ describe("updateGift", () => {
 
     expect(relationsBetween).toHaveBeenCalledWith("u2", "u1");
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED", "u2") },
       data: { visibility: "FRIENDS" },
       select: { id: true },
     });
@@ -840,7 +848,7 @@ describe("updateGift", () => {
     const card = okData(await updateGift(headers, "g1", { visibility: "FRIENDS" }));
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED", "u2") },
       data: { visibility: "FRIENDS" },
       select: { id: true },
     });
@@ -924,7 +932,7 @@ describe("updateGift", () => {
     );
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED") },
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -948,6 +956,98 @@ describe("updateGift", () => {
 
     expect(card).toMatchObject({ status: "OPEN", visibility: "SECRET" });
     expect(releaseMany).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * CLE-82/S23.2b: the booking race. The snapshot read saw `OPEN` with no holder;
+   * by the time the visibility write lands the wish is `RESERVED`, so the CAS on
+   * `status`/`reservedById` fails and the transaction repeats. The fresh read
+   * knows the holder, the same rule takes SECRET away from their access, and the
+   * release rides in the new transaction: the wish never ends up RESERVED with a
+   * visibility its holder cannot see.
+   */
+  it("re-reads and releases the reservation that landed between the read and the write", async () => {
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "OPEN", visibility: "PUBLIC" }))
+      .mockResolvedValueOnce(
+        stored({ status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" }),
+      )
+      .mockResolvedValueOnce(giftRow({ status: "OPEN", visibility: "SECRET" }));
+    update.mockRejectedValueOnce(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+    findFirst.mockResolvedValue({ status: "RESERVED", archivedAt: null });
+
+    const card = okData(await updateGift(headers, "g1", { visibility: "SECRET" }));
+
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenNthCalledWith(1, {
+      where: { id: "g1", archivedAt: null, ...snapshot() },
+      data: { visibility: "SECRET" },
+      select: { id: true },
+    });
+    expect(update).toHaveBeenLastCalledWith({
+      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED", "u2") },
+      data: { visibility: "SECRET" },
+      select: { id: true },
+    });
+    expect(relationsBetween).toHaveBeenCalledWith("u2", "u1");
+    expect(releaseMany).toHaveBeenCalledWith({
+      where: { id: "g1", status: "RESERVED" },
+      data: expect.objectContaining({
+        status: "OPEN",
+        reservedById: null,
+        reservedAt: null,
+        holderVisibleToOwner: false,
+      }),
+    });
+    expect(card).toMatchObject({ status: "OPEN", visibility: "SECRET", reservedBy: null });
+  });
+
+  /**
+   * The same race with a friend as the holder: FRIENDS still lets them see the
+   * wish, so the re-read keeps the reservation and only the field is written.
+   */
+  it("keeps the reservation when the raced holder is a friend and keeps access", async () => {
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "OPEN", visibility: "PUBLIC" }))
+      .mockResolvedValueOnce(
+        stored({ status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" }),
+      )
+      .mockResolvedValueOnce(giftRow({ status: "RESERVED", visibility: "FRIENDS" }));
+    update.mockRejectedValueOnce(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+    findFirst.mockResolvedValue({ status: "RESERVED", archivedAt: null });
+    relationsBetween.mockResolvedValue(holderRelations({ friend: true }));
+
+    const card = okData(await updateGift(headers, "g1", { visibility: "FRIENDS" }));
+
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenLastCalledWith({
+      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED", "u2") },
+      data: { visibility: "FRIENDS" },
+      select: { id: true },
+    });
+    expect(releaseMany).not.toHaveBeenCalled();
+    expect(card).toMatchObject({ status: "RESERVED", visibility: "FRIENDS" });
+  });
+
+  /**
+   * The retry is bounded: a row that keeps moving under the edit surfaces as a
+   * conflict the client reloads, never as NOT_FOUND — the wish still exists.
+   */
+  it("answers CONFLICT, not NOT_FOUND, when the wish keeps moving under the edit", async () => {
+    update.mockRejectedValue(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+    findFirst.mockResolvedValue({ status: "RESERVED", archivedAt: null });
+
+    const result = await updateGift(headers, "g1", { visibility: "SECRET" });
+
+    expect(result).toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(transaction).toHaveBeenCalledTimes(3);
+    expect(releaseMany).not.toHaveBeenCalled();
   });
 
   /** The CAS can also lose to an archive or a close after the stored read. */
@@ -1018,7 +1118,7 @@ describe("updateGift", () => {
     const card = okData(await updateGift(headers, "g1", { quantity: "UNLIMITED" }));
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusOpen },
+      where: { id: "g1", archivedAt: null, ...snapshot() },
       data: { quantity: "UNLIMITED" },
       select: { id: true },
     });
@@ -1034,7 +1134,7 @@ describe("updateGift", () => {
     await updateGift(headers, "g1", { quantity: "UNLIMITED", visibility: "SECRET" });
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusOpen },
+      where: { id: "g1", archivedAt: null, ...snapshot() },
       data: { quantity: "UNLIMITED", visibility: "SECRET" },
       select: { id: true },
     });
@@ -1065,7 +1165,7 @@ describe("updateGift", () => {
     );
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED") },
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -1528,7 +1628,7 @@ describe("gift tags", () => {
     expect(tagDeleteMany).not.toHaveBeenCalled();
     expect(tagCreateMany).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot() },
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -1548,7 +1648,7 @@ describe("gift tags", () => {
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot() },
       data: {},
       select: { id: true },
     });
@@ -1666,7 +1766,7 @@ describe("gift tags", () => {
     const card = okData(await updateGift(headers, "g1", { tags: [{ text: "своё" }] }));
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED") },
       data: {},
       select: { id: true },
     });
@@ -1688,7 +1788,7 @@ describe("gift tags", () => {
     );
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...statusNotClosed },
+      where: { id: "g1", archivedAt: null, ...snapshot() },
       data: { visibility: "SECRET" },
       select: { id: true },
     });

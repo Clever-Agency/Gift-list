@@ -262,7 +262,7 @@ describe("PATCH /api/v1/me/gifts/[id] with a stored value above a cap", () => { 
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: { not: "CLOSED" } },
+      where: { id: "g1", archivedAt: null, status: "OPEN", reservedById: null },
       data: { visibility: "SECRET" },
       select: { id: true },
     });

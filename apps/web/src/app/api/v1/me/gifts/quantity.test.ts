@@ -199,7 +199,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: "OPEN" },
+      where: { id: "g1", archivedAt: null, status: "OPEN", reservedById: null },
       data: { quantity: "UNLIMITED" },
       select: { id: true },
     });
@@ -274,7 +274,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: { not: "CLOSED" } },
+      where: { id: "g1", archivedAt: null, status: "RESERVED", reservedById: "u2" },
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -301,7 +301,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: "OPEN" },
+      where: { id: "g1", archivedAt: null, status: "OPEN", reservedById: null },
       data: { quantity: "UNLIMITED", visibility: "SECRET" },
       select: { id: true },
     });

@@ -194,7 +194,7 @@ describe("POST /api/v1/me/gifts tags", () => {
       ok: false,
       code: "VALIDATION",
       message: "Invalid input",
-      field: "tags",
+      field: "tags.0.catalogId",
     });
     expect(create).not.toHaveBeenCalled();
   });
@@ -395,7 +395,7 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
       ok: false,
       code: "VALIDATION",
       message: "Invalid input",
-      field: "tags",
+      field: "tags.0.catalogId",
     });
     expect(update).not.toHaveBeenCalled();
     expect(tagDeleteMany).not.toHaveBeenCalled();

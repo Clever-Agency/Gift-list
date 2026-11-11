@@ -162,8 +162,27 @@ function toTagRows(tags: readonly GiftTagInput[]): GiftTagCreate[] {
   });
 }
 
-/** Raised inside a transaction when a fixed tag id matches no catalog row. */
-class MissingCatalogTagError extends Error {}
+/**
+ * Raised inside a transaction when a fixed tag id matches no catalog row. The
+ * index is the position in the request's `tags` array (CLE-79/D3).
+ */
+class MissingCatalogTagError extends Error {
+  readonly index: number;
+
+  constructor(index: number) {
+    super("A fixed tag id is not in the catalog");
+    this.index = index;
+  }
+}
+
+/**
+ * CLE-79/D3: the client shows «Такого тега больше нет в списке» only for a
+ * `tags.N.catalogId` field, so a stale fixed tag names its index in the request
+ * array instead of the whole `tags` key (custom text keeps its position).
+ */
+function catalogTagField(index: number): string {
+  return `tags.${index}.catalogId`;
+}
 
 /** PostgreSQL constraint that ties a `GiftTag` row to the tag catalog. */
 const TAG_ID_FOREIGN_KEY = "GiftTag_tagId_fkey";
@@ -269,21 +288,33 @@ function tagWriteFailure(error: unknown): ActionResult<GiftCard> | null {
  * atomic statement, and a catalog row deleted between check and insert surfaces
  * as a P2003 that `tagWriteFailure` maps to the same VALIDATION (ADMIN deletion
  * is Story 10.2).
+ *
+ * CLE-79/D3: answers the index of the first missing fixed tag in the request's
+ * `tags` array (the same order `toTagRows` writes), so the caller can point the
+ * error at `tags.N.catalogId`; `null` means every fixed id is in the catalog.
  */
-async function fixedTagsExist(
+async function firstMissingFixedTagIndex(
   db: Prisma.TransactionClient,
   tags: readonly GiftTagInput[],
-): Promise<boolean> {
+): Promise<number | null> {
   const catalogIds = tags.flatMap(function catalogIdOf(tag) {
     return "catalogId" in tag ? [tag.catalogId] : [];
   });
-  if (catalogIds.length === 0) return true;
+  if (catalogIds.length === 0) return null;
 
   const found = await db.tag.findMany({
     where: { id: { in: catalogIds } },
     select: { id: true },
   });
-  return found.length === catalogIds.length;
+  const known = new Set(
+    found.map(function idOf(row) {
+      return row.id;
+    }),
+  );
+  const missingIndex = tags.findIndex(function isMissing(tag) {
+    return "catalogId" in tag && !known.has(tag.catalogId);
+  });
+  return missingIndex === -1 ? null : missingIndex;
 }
 
 /**
@@ -347,7 +378,8 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   if (!list) return { ok: false, code: "NOT_FOUND", message: "Wishlist not found" };
 
   const tags = parsed.data.tags;
-  if (!(await fixedTagsExist(prisma, tags))) return validation("tags");
+  const missingTagIndex = await firstMissingFixedTagIndex(prisma, tags);
+  if (missingTagIndex !== null) return validation(catalogTagField(missingTagIndex));
 
   const tagRows = toTagRows(tags);
   try {
@@ -527,8 +559,9 @@ export async function updateGift(
         }
 
         // Fail fast on an unknown catalog tag: nothing is written for a bad body.
-        if (tags !== undefined && !(await fixedTagsExist(tx, tags))) {
-          throw new MissingCatalogTagError();
+        if (tags !== undefined) {
+          const missingTagIndex = await firstMissingFixedTagIndex(tx, tags);
+          if (missingTagIndex !== null) throw new MissingCatalogTagError(missingTagIndex);
         }
 
         // AD-8/AD-9 + CLE-82/S23.2b: the write lands only on the snapshot the
@@ -579,7 +612,9 @@ export async function updateGift(
         };
       });
     } catch (error) {
-      if (error instanceof MissingCatalogTagError) return validation("tags");
+      if (error instanceof MissingCatalogTagError) {
+        return validation(catalogTagField(error.index));
+      }
 
       if (tags !== undefined) {
         const tagFailure = tagWriteFailure(error);

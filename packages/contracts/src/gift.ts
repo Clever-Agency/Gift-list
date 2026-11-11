@@ -40,18 +40,49 @@ function blankToNull(value: unknown): unknown {
   return typeof value === "string" && value.trim() === "" ? null : value;
 }
 
+/**
+ * PostgreSQL cannot store `U+0000` in `text`/`varchar`, so a body carrying it
+ * would pass the length rules and fail only on insert — as a database error and
+ * a 500 instead of a VALIDATION answer (epic-2 QA report, D1). Every text of the
+ * gift body goes through this one predicate, so a field cannot be forgotten:
+ * the title, the description, the link and a fixed tag id.
+ */
+function hasNoNul(value: string): boolean {
+  return !value.includes("\u0000");
+}
+
+const NUL_MESSAGE = "Text cannot contain NUL";
+
 // Per-field rules shared by the create and the edit bodies, so an edit cannot
 // drift from what creation accepts. The optionality is applied per body.
-const titleFieldSchema = z.string().trim().min(1).max(GIFT_TITLE_MAX);
+const titleFieldSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(GIFT_TITLE_MAX)
+  .refine(hasNoNul, { message: NUL_MESSAGE });
 const descriptionFieldSchema = z.preprocess(
   blankToNull,
-  z.string().trim().max(GIFT_DESCRIPTION_MAX).nullable().optional(),
+  z
+    .string()
+    .trim()
+    .max(GIFT_DESCRIPTION_MAX)
+    .refine(hasNoNul, { message: NUL_MESSAGE })
+    .nullable()
+    .optional(),
 );
 const priceAmountFieldSchema = z.number().int().min(0).max(GIFT_PRICE_AMOUNT_MAX).nullable().optional();
 const priceCurrencyFieldSchema = z.enum(CURRENCIES).nullable().optional();
 const linkUrlFieldSchema = z.preprocess(
   blankToNull,
-  z.string().trim().max(GIFT_LINK_URL_MAX).pipe(httpUrlSchema).nullable().optional(),
+  z
+    .string()
+    .trim()
+    .max(GIFT_LINK_URL_MAX)
+    .refine(hasNoNul, { message: NUL_MESSAGE })
+    .pipe(httpUrlSchema)
+    .nullable()
+    .optional(),
 );
 const visibilityFieldSchema = z.enum(VISIBILITIES);
 const quantityFieldSchema = z.enum(QUANTITIES);
@@ -76,9 +107,7 @@ const tagTextFieldSchema = z
   .string()
   .trim()
   .min(1)
-  .refine(function hasNoNul(value) {
-    return !value.includes("\u0000");
-  }, {
+  .refine(hasNoNul, {
     message: "A custom tag cannot contain NUL",
   })
   .refine(function fitsTagText(value) {
@@ -97,7 +126,13 @@ const tagTextFieldSchema = z
  * ones stay out until ADMIN approval (Story 10.2).
  */
 export const giftTagInputSchema = z.union([
-  z.strictObject({ catalogId: z.string().trim().min(1) }),
+  z.strictObject({
+    catalogId: z
+      .string()
+      .trim()
+      .min(1)
+      .refine(hasNoNul, { message: NUL_MESSAGE }),
+  }),
   z.strictObject({ text: tagTextFieldSchema }),
 ]);
 

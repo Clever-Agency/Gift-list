@@ -384,6 +384,32 @@ describe("createGift", () => {
       ownerAction: null,
     });
   });
+
+  /**
+   * D1 of the epic-2 QA report: PostgreSQL cannot store `U+0000`, so the body
+   * must answer VALIDATION with the field named instead of a 500 without an
+   * envelope. The contract rejects it before any read or write.
+   */
+  it.each<[string, Record<string, unknown>, string]>([
+    ["title", { title: "a\u0000b" }, "title"],
+    ["description", { title: "Книга", description: "a\u0000b" }, "description"],
+    ["linkUrl", { title: "Книга", linkUrl: "https://example.com/a\u0000b" }, "linkUrl"],
+    [
+      "a fixed tag id",
+      { title: "Книга", tags: [{ catalogId: "tag\u00001" }] },
+      "tags.0.catalogId",
+    ],
+  ])("rejects NUL in %s before the database", async (_label, body, field) => {
+    expect(await createGift(headers, body)).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field,
+    });
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(tagFindMany).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
 });
 
 describe("updateGift", () => {
@@ -417,6 +443,25 @@ describe("updateGift", () => {
       field: "title",
     });
     expect(update).not.toHaveBeenCalled();
+  });
+
+  /** D1 of the epic-2 QA report: NUL reaches no read and no write. */
+  it.each<[string, Record<string, unknown>, string]>([
+    ["title", { title: "a\u0000b" }, "title"],
+    ["description", { description: "a\u0000b" }, "description"],
+    ["linkUrl", { linkUrl: "https://example.com/a\u0000b" }, "linkUrl"],
+    ["a fixed tag id", { tags: [{ catalogId: "tag\u00001" }] }, "tags.0.catalogId"],
+  ])("rejects NUL in %s before the database", async (_label, body, field) => {
+    expect(await updateGift(headers, "g1", body)).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field,
+    });
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(tagDeleteMany).not.toHaveBeenCalled();
   });
 
   /**

@@ -353,6 +353,64 @@ describe("giftUpdateSchema", () => {
 });
 
 /**
+ * PostgreSQL cannot store `U+0000` in `text`/`varchar`, so a body carrying it
+ * must fail validation with the field named — not as a database error and a 500
+ * (epic-2 QA report, D1). The custom tag text keeps its own rule above.
+ */
+describe("NUL in the gift text fields", () => {
+  type Path = (string | number)[];
+
+  const createBodies: [string, Record<string, unknown>, Path][] = [
+    ["title", { title: "a\u0000b" }, ["title"]],
+    ["description", { title: "Книга", description: "a\u0000b" }, ["description"]],
+    ["linkUrl", { title: "Книга", linkUrl: "https://example.com/a\u0000b" }, ["linkUrl"]],
+    [
+      "tags[].catalogId",
+      { title: "Книга", tags: [{ catalogId: "tag\u00001" }] },
+      ["tags", 0, "catalogId"],
+    ],
+  ];
+
+  const updateBodies: [string, Record<string, unknown>, Path][] = [
+    ["title", { title: "a\u0000b" }, ["title"]],
+    ["description", { description: "a\u0000b" }, ["description"]],
+    ["linkUrl", { linkUrl: "https://example.com/a\u0000b" }, ["linkUrl"]],
+    ["tags[].catalogId", { tags: [{ catalogId: "tag\u00001" }] }, ["tags", 0, "catalogId"]],
+  ];
+
+  it.each(createBodies)("rejects NUL in %s of a create body", (_label, body, path) => {
+    const parsed = giftInputSchema.safeParse(body);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(path);
+  });
+
+  it.each(updateBodies)("rejects NUL in %s of an edit body", (_label, body, path) => {
+    const parsed = giftUpdateSchema.safeParse(body);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(path);
+  });
+
+  it("keeps the same bodies without NUL valid", () => {
+    expect(
+      giftInputSchema.parse({
+        title: "Книга",
+        description: "Заметка",
+        linkUrl: "https://example.com/item",
+        tags: [{ catalogId: "tag_1" }],
+      }),
+    ).toMatchObject({ title: "Книга", description: "Заметка" });
+    expect(
+      giftUpdateSchema.parse({
+        title: "Книга",
+        description: "Заметка",
+        linkUrl: "https://example.com/item",
+        tags: [{ catalogId: "tag_1" }],
+      }),
+    ).toMatchObject({ title: "Книга" });
+  });
+});
+
+/**
  * The caps are the contract's single source. Zod 4 counts them in Unicode code
  * points (the unit of `textLength`, which both clients use), while a `maxLength`
  * attribute would count UTF-16 units; these tests pin both measures down so the

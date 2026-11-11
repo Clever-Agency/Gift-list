@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { XStack, YStack } from "@tamagui/stacks";
 import { formatUnionType, propDoc } from "../../../.storybook/argTypes";
-import { BUTTON_TYPES, BUTTON_VARIANTS, Button } from "./button";
+import { BUTTON_TYPES, BUTTON_VARIANTS, Button, type ButtonVariant } from "./button";
 import { Text } from "./text";
 
 /** The catalog copy is a fixture, not a product string (`packages/ui` has no translations). */
@@ -156,86 +156,60 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** `primary`: the one action of a screen. Hover it: the fill goes to `primary-hover`, 8.04:1 for the label. */
-export const Primary: Story = {
-  args: { variant: "primary" },
+/**
+ * The canvas of the Docs page and the place to turn the props: every public prop
+ * has a control (`argTypes`), and the code is the one the apps run. Start here,
+ * then look at the matrix below for every variant and state at once.
+ */
+export const Playground: Story = {};
+
+/** The catalogue label of each variant, the same fixtures the app screens show. */
+const VARIANT_LABELS: Record<ButtonVariant, string> = {
+  primary: "Добавить желание",
+  reserve: "Куплю сам",
+  secondary: "Отмена",
+  ghost: "Поделиться",
+  destructive: "Удалить желание",
 };
 
-export const PrimaryDisabled: Story = {
-  args: { variant: "primary", disabled: true },
-};
-
-export const PrimaryBusy: Story = {
-  args: { variant: "primary", busy: true },
-};
-
-/** `secondary`: a side action next to the primary one. */
-export const Secondary: Story = {
-  args: { variant: "secondary", label: "Отмена" },
-};
-
-export const SecondaryDisabled: Story = {
-  args: { variant: "secondary", label: "Отмена", disabled: true },
-};
-
-export const SecondaryBusy: Story = {
-  args: { variant: "secondary", label: "Отмена", busy: true },
-};
-
-/** `ghost`: a quiet action, e.g. a secondary control inside a card. */
-export const Ghost: Story = {
-  args: { variant: "ghost", label: "Поделиться" },
-};
-
-export const GhostDisabled: Story = {
-  args: { variant: "ghost", label: "Поделиться", disabled: true },
-};
-
-export const GhostBusy: Story = {
-  args: { variant: "ghost", label: "Поделиться", busy: true },
-};
-
-/** `reserve`: only «Куплю сам» and «Подтвердить» in the reservation confirm. Hover: `accent-hover`, 5.65:1. */
-export const Reserve: Story = {
-  args: { variant: "reserve", label: "Куплю сам" },
-};
-
-export const ReserveDisabled: Story = {
-  args: { variant: "reserve", label: "Куплю сам", disabled: true },
-};
-
-export const ReserveBusy: Story = {
-  args: { variant: "reserve", label: "Куплю сам", busy: true },
-};
-
-/** `destructive`: an action that cannot be undone. Hover: `destructive-hover`, 7.40:1. */
-export const Destructive: Story = {
-  args: { variant: "destructive", label: "Удалить желание" },
-};
-
-export const DestructiveDisabled: Story = {
-  args: { variant: "destructive", label: "Удалить желание", disabled: true },
-};
-
-export const DestructiveBusy: Story = {
-  args: { variant: "destructive", label: "Удалить желание", busy: true },
-};
+/** The states the matrix shows for every public variant (`DESIGN.md` → Состояния кнопок). */
+const MATRIX_STATES = [
+  { caption: "Rest", disabled: false, busy: false },
+  { caption: "Disabled", disabled: true, busy: false },
+  { caption: "Busy", disabled: false, busy: true },
+] as const;
 
 /**
- * Every public variant side by side at 360 px. Height comes from the variant:
- * `ghost` is the 44 px touch target, the filled variants are 48 px tall. The
- * internal `*Blocked` values are not part of the public API and are not offered
- * as options.
+ * Every public variant × state at 360 px: the five variants in a row per state, the
+ * same label repeated so the rows can be compared. Height comes from the variant:
+ * `ghost` is the 44 px touch target, the filled variants are 48 px tall. `disabled`
+ * dims to 40% and leaves the Tab order, `busy` dims to 60%, adds the 16 px spinner
+ * before the label and keeps the width of the resting button. The internal
+ * `*Blocked` values are not part of the public API and are not offered as options.
+ * Hover and press are CSS states: hover a live button to see the fill change.
  */
 export const AllVariants: Story = {
+  name: "All variants",
   render: function AllVariantsStory() {
     return (
-      <YStack width={360} gap="$3" alignItems="flex-start">
-        <Button label="Добавить желание" variant="primary" onPress={noop} />
-        <Button label="Куплю сам" variant="reserve" onPress={noop} />
-        <Button label="Отмена" variant="secondary" onPress={noop} />
-        <Button label="Поделиться" variant="ghost" onPress={noop} />
-        <Button label="Удалить желание" variant="destructive" onPress={noop} />
+      <YStack width={360} gap="$4" alignItems="flex-start">
+        {MATRIX_STATES.map((state) => (
+          <YStack key={state.caption} gap="$2" alignItems="flex-start">
+            <Text kind="caption" tone="muted">
+              {state.caption}
+            </Text>
+            {BUTTON_VARIANTS.map((variant) => (
+              <Button
+                key={variant}
+                label={VARIANT_LABELS[variant]}
+                variant={variant}
+                disabled={state.disabled}
+                busy={state.busy}
+                onPress={noop}
+              />
+            ))}
+          </YStack>
+        ))}
       </YStack>
     );
   },
@@ -248,6 +222,7 @@ export const AllVariants: Story = {
  * button: the focus ring appears, the press still does nothing.
  */
 export const FocusableWhenDisabled: Story = {
+  name: "Focusable when disabled",
   render: function FocusableWhenDisabledStory() {
     return (
       <YStack gap="$2" alignItems="flex-start">
@@ -267,41 +242,13 @@ export const FocusableWhenDisabled: Story = {
 };
 
 /**
- * Hover and press are CSS states Tamagui paints from media queries; hover the button
- * or hold it to see them. There is no prop that forces them.
+ * `fullWidth` stretches the button to its parent; the spinner and the label stay
+ * centred. Hover and press are CSS states Tamagui paints from media queries; hover
+ * the button or hold it to see them. There is no prop that forces them.
  */
 export const PrimaryFullWidth: Story = {
+  name: "Full width",
   args: { variant: "primary", fullWidth: true },
-};
-
-/**
- * Every variant in the `busy` state at 360 px (`DESIGN.md` → busy): the 16 px
- * spinner sits right before the label, in the label colour of the variant, and the
- * button keeps the width it has at rest — the spinner joins the button's own row
- * and the horizontal paddings shrink from 16 to 4 px, exactly the 16 + 8 px the
- * spinner and its gap take (W12.8, W12.8-fix). On a stretched button the group
- * stays centred, so the indicator is next to the text rather than at the edge.
- * The last button has the longest Cyrillic label of the app.
- *
- * «Уменьшить движение» has no emulation addon here: turn the OS setting on or pick
- * `prefers-reduced-motion: reduce` in DevTools → Rendering → Emulate CSS media
- * feature. The arc then stops turning and stays a static ring, the wait is still
- * announced by `aria-busy` (`DESIGN.md` → Движение).
- */
-export const BusyMatrixNarrow: Story = {
-  render: function BusyMatrixNarrowStory() {
-    return (
-      <YStack width={360} gap="$3">
-        <Button label="Сохраняем…" variant="primary" onPress={noop} busy />
-        <Button label="Бронируем…" variant="reserve" onPress={noop} busy />
-        <Button label="Сохраняем…" variant="secondary" onPress={noop} busy />
-        <Button label="Поделиться" variant="ghost" onPress={noop} busy />
-        <Button label="Удаляем…" variant="destructive" onPress={noop} busy />
-        <Button label="Сохранить изменения в вишлисте" variant="primary" onPress={noop} busy />
-      </YStack>
-    );
-  },
-  globals: { viewport: { value: "w360" } },
 };
 
 /**
@@ -309,46 +256,20 @@ export const BusyMatrixNarrow: Story = {
  * equal. The spinner joins the row before the label and the paddings go 16 → 4 px
  * on each side, which is exactly the 16 px spinner plus the 8 px gap (W12.8-fix).
  * The label shifts 12 px to the right; the button's own box does not change.
+ *
+ * «Уменьшить движение» has no emulation addon here: turn the OS setting on or pick
+ * `prefers-reduced-motion: reduce` in DevTools → Rendering → Emulate CSS media
+ * feature. The arc then stops turning and stays a static ring, the wait is still
+ * announced by `aria-busy` (`DESIGN.md` → Движение).
  */
 export const BusyKeepsWidth: Story = {
+  name: "Busy keeps width",
   render: function BusyKeepsWidthStory() {
     return (
       <XStack gap="$3" alignItems="center">
         <Button label="Добавить желание" variant="primary" onPress={noop} />
         <Button label="Добавить желание" variant="primary" onPress={noop} busy />
       </XStack>
-    );
-  },
-  globals: { viewport: { value: "w360" } },
-};
-
-/**
- * The three hover fills side by side at 360 px: hover each button in turn —
- * `primary` `#2F5D3A` → `primary-hover` `#2B5635`, `reserve` `#D4A017` →
- * `accent-hover` `#C39315`, `destructive` `#B42318` → `destructive-hover` `#A62016`.
- * The rows under them show the same fills dimmed by `disabled` and `busy`: hover and
- * hold those — the fill stays as it is (DECISION 2026-11-10, t312u).
- */
-export const HoverMatrixNarrow: Story = {
-  render: function HoverMatrixNarrowStory() {
-    return (
-      <YStack width={360} gap="$3">
-        <XStack gap="$2" flexWrap="wrap">
-          <Button label="Сохранить" variant="primary" onPress={noop} />
-          <Button label="Куплю сам" variant="reserve" onPress={noop} />
-          <Button label="Удалить" variant="destructive" onPress={noop} />
-        </XStack>
-        <XStack gap="$2" flexWrap="wrap">
-          <Button label="Сохранить" variant="primary" onPress={noop} disabled />
-          <Button label="Куплю сам" variant="reserve" onPress={noop} disabled />
-          <Button label="Удалить" variant="destructive" onPress={noop} disabled />
-        </XStack>
-        <XStack gap="$2" flexWrap="wrap">
-          <Button label="Сохраняем…" variant="primary" onPress={noop} busy />
-          <Button label="Бронируем…" variant="reserve" onPress={noop} busy />
-          <Button label="Удаляем…" variant="destructive" onPress={noop} busy />
-        </XStack>
-      </YStack>
     );
   },
   globals: { viewport: { value: "w360" } },

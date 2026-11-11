@@ -188,6 +188,8 @@ flowchart TB
   Исключение для Владельца: preflight снятия брони / удаления подарка возвращает `warning: "BOUGHT" | "GIVEN" | null` — только в ответ на это действие.
   Reservation card держателя (A-14) дополняется полями `dueAt`, `phase`, `bought`, `holderVisibleToOwner`, `holderVisibleToOthers`.
 
+  **Сужение видимости Владельцем (FR-10, ред. 2026-11-11).** Для снятия брони при смене `Gift.visibility` «есть ли доступ» считается как у обычного зрителя желания — фильтром этой AD-7 (`SECRET` / `FRIENDS` / `PUBLIC`), **без** исключения reservation card. Иначе `SECRET` никогда не снимал бы бронь. Исключение A-14 / FR-25 (`reservedById` видит reservation card после разрыва дружбы или блока) остаётся только для потери отношения и к смене видимости Владельцем не применяется. Сужает и расширяет видимость Владелец в любой момент, кроме `CLOSED` и архива; снятие — через `GiftStatusService` (AD-8), в одной транзакции с записью поля; повторное расширение бронь не восстанавливает. Перед снятием клиент показывает confirm «Бронирующий потеряет доступ, бронь снимется»; признак для confirm считает сервер тем же `VisibilityPolicy` (preflight, как `warning: BOUGHT | GIVEN` выше).
+
   Любой list/gift read API (включая профиль) вызывает тот же `resolve`; сырой `findMany` по `listId` без policy запрещён. FR-25 — исключение только через reservation-card матрицу выше.
 
 ### AD-8 — Статусы подарка; единственный writer
@@ -203,14 +205,16 @@ flowchart TB
   Переходы MVP:
   - `OPEN → RESERVED` — только `SINGLE`; даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны. Отдельного права «забронировать первым» нет (D-28)
   - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, toggles); владелец (T6 «оставить», T10 «не получал»); cron (таймеры)
-  - `RESERVED → OPEN` — держатель | владелец | cron (только `phase=AWAITING_OWNER AND bought=false`)
+  - `RESERVED → OPEN` — держатель | владелец (в том числе при сужении `visibility`, из-за которого держатель теряет доступ по AD-7) | cron (только `phase=AWAITING_OWNER AND bought=false`)
   - `OPEN | RESERVED → CLOSED` — владелец; reserved* **сохраняются** для аудита; пишутся `closedAt`, `closedFromStatus`; FR-25 активные = `status=RESERVED`
   - `CLOSED → closedFromStatus` — только владелец, только при `closedAt > now()-UNDO_WINDOW` (отмена; `UNDO_WINDOW` = 10 min, D-43) `[ARCH-A5]`
   - Остальные `CLOSED → *` запрещены
   - Владелец **не** может `OPEN → RESERVED` на своём подарке → `FORBIDDEN`
   - `COLLECTION` не используется в R1
 
-  Gift CRUD: поля `title`, `description?`, `priceAmount?` (целые минимальные единицы, два знака), `priceCurrency?` (`USD|EUR|CNY|BYN|RUB`, при непустой цене по умолчанию `USD`), `linkUrl?`, `visibility`, `quantity`, `expiresOn?`, теги (AD-22, AD-25). Переноса между списками нет. Правка полей при `RESERVED` разрешена и порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в том же списке. Нематериальное желание — то же желание без обязательного `linkUrl`. Денежный сбор не создаётся (AD-11). Цена может отсутствовать (D-36).
+  Gift CRUD: поля `title`, `description?`, `priceAmount?` (целые минимальные единицы, два знака), `priceCurrency?` (`USD|EUR|CNY|BYN|RUB`, при непустой цене по умолчанию `USD`), `linkUrl?`, `visibility`, `quantity`, `expiresOn?`, теги (AD-22, AD-25). Переноса между списками нет. Правка полей при `RESERVED` разрешена — включая `visibility` при `RESERVED` (ред. 2026-11-11); если новое значение отнимает у держателя доступ по AD-7, бронь снимается (`RESERVED → OPEN`) через `GiftStatusService` в одной транзакции с записью поля, а повторное расширение её не восстанавливает. Уведомление держателю о снятии по этой причине — Epic 5–6 (`deferred-work.md`), до него снятие тихое. Правка прочих полей при `RESERVED` порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в том же списке. Нематериальное желание — то же желание без обязательного `linkUrl`. Денежный сбор не создаётся (AD-11). Цена может отсутствовать (D-36).
+
+  `Gift.archivedAt != null` — архивное желание для Владельца только для просмотра: правка полей или видимости → `VALIDATION` с подсказкой «Архивное желание можно только просматривать» (не `NOT_FOUND`); чужое архивное желание по-прежнему `NOT_FOUND`. «Вернуть в вишлист» (archive → `OPEN`) и «Скопировать» — отдельные операции Story 2.6, они не являются правкой архивного желания.
 
 ### AD-9 — Сериализация всех переходов статуса
 
@@ -237,7 +241,7 @@ flowchart TB
   | cron: AWAITING_GIVER→AWAITING_OWNER | `phase=AWAITING_GIVER AND phaseAt<=now()-72h` |
   | cron: AWAITING_OWNER→OPEN | `phase=AWAITING_OWNER AND phaseAt<=now()-168h AND bought=false`; clear reserved* |
   | RESERVED→OPEN (holder) | `status=RESERVED AND reservedById=actor`; clear reserved* |
-  | RESERVED→OPEN (owner) | `status=RESERVED`; clear reserved* |
+  | RESERVED→OPEN (owner) | `status=RESERVED`; clear reserved*; тот же переход выполняет снятие при сужении `visibility`, отнявшем доступ у держателя (AD-7, AD-8) — в одной транзакции с записью `visibility` |
   | OPEN/RESERVED→CLOSED | `status = expected`; set CLOSED, `closedAt`, `closedFromStatus`; keep reserved* |
   | CLOSED→undo | `status=CLOSED AND closedAt>now()-UNDO_WINDOW AND owner=actor`; restore `closedFromStatus` |
   | OPEN→archive | `status=OPEN AND archivedAt IS NULL`; set `archivedAt` |

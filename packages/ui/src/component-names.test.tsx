@@ -7,11 +7,24 @@ import { describe, expect, it } from "vitest";
  * hand-written component of `packages/ui` is a named function with a `displayName`
  * equal to its export name. Components made with Tamagui's `styled()` carry their own
  * `name` and are skipped.
+ *
+ * `*.native.tsx` twins cannot be imported here: they pull `react-native` in, whose Flow
+ * sources happy-dom does not parse (`spinner.native.tsx`). Their source is read as text
+ * instead — the `export function Name(` + `Name.displayName = "Name"` pair — and a
+ * native module with no RN import (like `spinner-a11y.native.ts`) is covered by its own
+ * `*.native.test` file.
  */
 
-const modules = import.meta.glob(["./*.tsx", "!./*.test.tsx", "!./test-utils.tsx"], {
+const modules = import.meta.glob(["./*.tsx", "!./*.native.tsx", "!./*.test.tsx", "!./test-utils.tsx"], {
   eager: true,
 }) as Record<string, Record<string, unknown>>;
+
+/** The sources of the native twins, read as text because they cannot be imported. */
+const nativeModules = import.meta.glob("./*.native.tsx", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}) as Record<string, string>;
 
 const FORWARD_REF = Symbol.for("react.forward_ref");
 const MEMO = Symbol.for("react.memo");
@@ -83,5 +96,22 @@ describe("имена компонентов packages/ui", () => {
       .map((component) => `${component.module} → ${component.exportName}`);
 
     expect(anonymous).toEqual([]);
+  });
+});
+
+describe("имена компонентов packages/ui в *.native.tsx", () => {
+  it("нативные двойники находятся, а не пустой список", () => {
+    expect(Object.keys(nativeModules)).toContain("./spinner.native.tsx");
+  });
+
+  it("у каждого именованного компонента есть displayName, равный имени функции", () => {
+    const missing: string[] = [];
+    for (const [module, source] of Object.entries(nativeModules)) {
+      for (const [, name] of source.matchAll(/export function ([A-Z][A-Za-z0-9_]*)\s*\(/g)) {
+        if (!source.includes(`${name}.displayName = "${name}"`)) missing.push(`${module} → ${name}`);
+      }
+    }
+
+    expect(missing).toEqual([]);
   });
 });

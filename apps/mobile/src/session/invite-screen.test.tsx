@@ -28,6 +28,8 @@ vi.mock("react-native-safe-area-context", async () => {
   return {
     SafeAreaView: ({ children }: { children?: React.ReactNode }) =>
       React.createElement("div", null, children),
+    // W12.23: the wide loading state reads the safe area for its window fallback.
+    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
   };
 });
 vi.mock("use-intl", async () => {

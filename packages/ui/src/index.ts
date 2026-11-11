@@ -16,11 +16,14 @@ export { createGiftListConfig, type FontFamilies, type GiftListConfig } from "./
 export { GiftListProvider, type GiftListProviderProps } from "./provider";
 
 export { Column, PageContainer, Screen, View, XStack, YStack, ZStack } from "./layout";
+export { SafeArea } from "./safe-area";
+export type { SafeAreaProps } from "./safe-area.types";
 export { PageScroll, type PageScrollProps } from "./page-scroll";
 export { PageFooter, type PageFooterProps } from "./page-footer";
 export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./text";
 export { ScrollView, type ScrollViewProps } from "./scroll";
-export { Pressable, focusRing, type PressableProps } from "./pressable";
+export { focusRing } from "./focus-ring";
+export { Pressable, type PressableProps } from "./pressable";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
 export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";
@@ -57,5 +60,6 @@ export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
+export { useReduceMotion } from "./use-reduce";
 export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";

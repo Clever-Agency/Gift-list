@@ -2,12 +2,13 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { click, controlByText, typeInto } from "@/test/dom";
+import { click, controlByLabel, controlByText, typeInto } from "@/test/dom";
 import LoginScreen from "../../app/(auth)/login";
 import RegisterScreen from "../../app/(auth)/register";
 import ResetScreen from "../../app/(auth)/reset";
 
 const RULE = "Минимум 8 символов";
+const TOO_LONG = "Пароль — до 128 символов.";
 const GENERIC = "Проверьте введённые данные.";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -153,7 +154,7 @@ describe("требование к паролю", () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(RULE);
   });
 
-  it("на регистрации пароль длиннее 128 символов не называет минимум", async () => {
+  it("на регистрации пароль длиннее 128 units показывает свой предел, а не общий текст", async () => {
     await mount("register");
     await fill("Email", "a@b.test");
     await fill("Пароль", "x".repeat(129));
@@ -163,8 +164,62 @@ describe("требование к паролю", () => {
 
     await press("Зарегистрироваться");
     expect(api.apiRequest).not.toHaveBeenCalled();
-    expect(toneText("error")).toContain(GENERIC);
+    // The field says what is wrong instead of the generic "check your input".
+    expect(toneText("error")).toContain(TOO_LONG);
+    expect(toneText("error")).not.toContain(GENERIC);
     expect(toneText("error")).not.toContain(RULE);
+    expect(describedBy("Пароль")).toBe(TOO_LONG);
+  });
+
+  it("на регистрации 65 эмодзи (130 units) называют предел, 64 (128 units) уходят как есть", async () => {
+    await mount("register");
+    await fill("Email", "a@b.test");
+    await fill("Пароль", "🎁".repeat(65));
+    await fill("Имя", "Анна");
+    await fill("Ник", "anna");
+
+    await press("Зарегистрироваться");
+    expect(api.apiRequest).not.toHaveBeenCalled();
+    expect(toneText("error")).toContain(TOO_LONG);
+
+    // 64 emoji are exactly 128 UTF-16 units: the password reaches the request
+    // untouched — no trimming and no normalisation of the value.
+    api.apiRequest.mockResolvedValue({
+      ok: true,
+      data: { user: { id: "u1", email: "a@b.test", name: "Анна", nick: "anna", timeZone: null }, next: "/" },
+    });
+    const emojiPassword = "🎁".repeat(64);
+    await fill("Пароль", emojiPassword);
+    await press("Зарегистрироваться");
+
+    expect(api.apiRequest).toHaveBeenCalledWith(
+      "/api/v1/register",
+      expect.objectContaining({
+        body: expect.objectContaining({ password: emojiPassword }),
+      }),
+    );
+  });
+
+  it("пароль уходит без trim: пробелы по краям — часть значения", async () => {
+    const typed = "  secret123  ";
+    api.apiRequest.mockResolvedValue({
+      ok: true,
+      data: { user: { id: "u1", email: "a@b.test", name: "Анна", nick: "anna", timeZone: null }, next: "/" },
+    });
+    await mount("register");
+    await fill("Email", "a@b.test");
+    await fill("Пароль", typed);
+    await fill("Имя", "Анна");
+    await fill("Ник", "anna");
+
+    await press("Зарегистрироваться");
+
+    expect(api.apiRequest).toHaveBeenCalledWith(
+      "/api/v1/register",
+      expect.objectContaining({
+        body: expect.objectContaining({ password: typed }),
+      }),
+    );
   });
 
   it("на регистрации пароль из 8 символов прячет подсказку, а VALIDATION сервера не называет минимум", async () => {
@@ -212,12 +267,73 @@ describe("требование к паролю", () => {
     expect(toneText("error")).not.toContain(RULE);
   });
 
+  it("на новом пароле пароль длиннее 128 units называет предел", async () => {
+    await mount("reset");
+    await fill("Пароль", "x".repeat(129));
+
+    await press("Сохранить пароль");
+
+    expect(api.apiRequest).not.toHaveBeenCalled();
+    expect(toneText("error")).toContain(TOO_LONG);
+    expect(toneText("error")).not.toContain(GENERIC);
+    expect(toneText("error")).not.toContain(RULE);
+  });
+
+  it("на входе пароль длиннее 128 units называет предел, короткий — нет", async () => {
+    api.apiRequest.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Invalid credentials",
+    });
+    await mount("login");
+    await fill("Email", "a@b.test");
+    await fill("Пароль", "x".repeat(129));
+
+    await press("Войти");
+
+    // Sign-in keeps the stored lower bound at 1: only the cap has a sentence.
+    expect(api.apiRequest).not.toHaveBeenCalled();
+    expect(toneText("error")).toContain(TOO_LONG);
+    expect(container.textContent ?? "").not.toContain(RULE);
+
+    await fill("Пароль", "1234567");
+    expect(toneText("error")).toBe("");
+    await press("Войти");
+    expect(api.apiRequest).toHaveBeenCalledTimes(1);
+  });
+
   it("на входе требование к новому паролю не показывается", async () => {
     await mount("login");
     expect(container.textContent ?? "").not.toContain(RULE);
     await fill("Пароль", "1234567");
     expect(container.textContent ?? "").not.toContain(RULE);
   });
+});
+
+describe("показ пароля иконкой", () => {
+  it.each(["login", "register", "reset"] as const)(
+    "на экране «%s» переключатель без видимого текста показывает и скрывает введённое",
+    async (screen) => {
+      await mount(screen);
+      const input = container.querySelector<HTMLInputElement>('input[aria-label="Пароль"]');
+      expect(input?.type).toBe("password");
+      await fill("Пароль", "12345678");
+
+      const toggle = controlByLabel("Показать пароль", container);
+      expect(toggle, "переключатель пароля").toBeDefined();
+      expect(toggle?.textContent?.trim()).toBe("");
+      expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+
+      await click(toggle);
+      expect(input?.type).toBe("text");
+      expect(input?.value).toBe("12345678");
+      expect(toggle?.getAttribute("aria-pressed")).toBe("true");
+
+      await click(toggle);
+      expect(input?.type).toBe("password");
+      expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+    },
+  );
 });
 
 describe("первый невалидный (UI5)", () => {

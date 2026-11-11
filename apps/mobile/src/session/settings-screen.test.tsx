@@ -1,11 +1,25 @@
 // @vitest-environment happy-dom
 import type { Me } from "@gift-list/contracts";
+import { breakpoints, spacing } from "@gift-list/ui";
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls } from "@/test/dom";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
+import { pageGutter } from "@/ui/card-grid";
 import SettingsScreen from "../../app/(app)/settings";
+
+/**
+ * W12.16: the settings screen lays itself out with the Tamagui media clause
+ * `$page-gutter medium:$page-gutter-lg` instead of `useWindowDimensions` +
+ * `pageGutter(width)`. There is no card grid here, so the window width is never
+ * read in JS. Widths are checked against the CSS Tamagui actually generated (see
+ * `@/test/tamagui-css`), not against a browser layout.
+ */
+
+/** The counter proves the screen never asks React Native for the window width. */
+const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const me = vi.hoisted(() => ({ updateNick: vi.fn() }));
@@ -23,6 +37,14 @@ vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => me);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  function useWindowDimensions() {
+    dimensions.calls += 1;
+    return actual.useWindowDimensions();
+  }
+  return { ...actual, useWindowDimensions };
+});
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
   const { dirname, join } = await import("node:path");
@@ -73,6 +95,8 @@ vi.mock("react-native-safe-area-context", async () => {
   return {
     SafeAreaView: ({ children }: { children?: React.ReactNode }) =>
       React.createElement("div", null, children),
+    // W12.23: the wide loading state reads the safe area for its window fallback.
+    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
   };
 });
 
@@ -165,6 +189,7 @@ async function mount() {
 beforeEach(() => {
   vi.resetAllMocks();
   scrollIntoView.mockClear();
+  dimensions.calls = 0;
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
     configurable: true,
     value: scrollIntoView,
@@ -277,6 +302,24 @@ describe("настройки: ник", () => {
     expect(fieldText("Ник")).toContain("Этот ник уже занят.");
   });
 
+  it("413: причина показывается тостом, сырой текст сервера не виден", async () => {
+    signedIn();
+    me.updateNick.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    await mount();
+
+    await type("Ник", "newnick");
+    await press("Сохранить");
+
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(field("Ник").value).toBe("newnick");
+  });
+
   it("невалидный ник: фокус на поле и прокрутка к нему (UI5)", async () => {
     signedIn();
     me.updateNick.mockResolvedValue({
@@ -370,5 +413,111 @@ describe("настройки: назад", () => {
 
     expect(navigation.back).not.toHaveBeenCalled();
     expect(navigation.replace).toHaveBeenCalledWith("/");
+  });
+});
+
+/** The one `GLColumn` of the page: the column whose padding is the page gutter. */
+function column(): HTMLElement {
+  const node = container.querySelector<HTMLElement>('[name="GLColumn"]');
+  expect(node, "колонка страницы").not.toBeNull();
+  return node as HTMLElement;
+}
+
+/**
+ * Mounts the settings screen only once the session is ready. The shared loading
+ * skeleton is a screen of its own (W12.15) and still reads the window width, so it
+ * must be out of the tree when the width counter is read.
+ */
+async function mountReady() {
+  function SignedIn() {
+    const auth = useAuth();
+    return auth.state.status === "ready" ? <SettingsScreen /> : null;
+  }
+  await act(async () => {
+    root.render(
+      <AuthProvider>
+        <SignedIn />
+      </AuthProvider>,
+    );
+  });
+}
+
+describe("W12.16: настройки на медиа-пропсах", () => {
+  it("ширина окна из JS не читается", async () => {
+    signedIn();
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="session-loading"]')).toBeNull();
+    expect(dimensions.calls).toBe(0);
+  });
+
+  it("счётчик видит экран, который ширину читает (контроль)", async () => {
+    // A probe through the same import the screen used to call: a zero above means
+    // the mock is in place, not that the spy is broken.
+    const { useWindowDimensions } = await import("react-native");
+    function Probe() {
+      useWindowDimensions();
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+
+    expect(dimensions.calls).toBeGreaterThan(0);
+  });
+
+  it.each([360, 600, 1024, 1280])("ширина %ipx: отступ как у pageGutter", async (width) => {
+    signedIn();
+    await mountReady();
+
+    expect(paintedSpace(column(), "padding-inline", width)).toBe(pageGutter(width));
+  });
+
+  it("граница одна и та же: 16 до bp-medium, 24 от bp-medium", async () => {
+    signedIn();
+    await mountReady();
+    const element = column();
+
+    expect(paintedSpace(element, "padding-inline", 360)).toBe(spacing["page-gutter"]);
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium - 1)).toBe(
+      spacing["page-gutter"],
+    );
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium)).toBe(
+      spacing["page-gutter-lg"],
+    );
+    expect(paintedSpace(element, "padding-inline", 1280)).toBe(spacing["page-gutter-lg"]);
+  });
+
+  it("меняется только на одной медиа-точке, без лишних правил", async () => {
+    signedIn();
+    await mountReady();
+    const gutterRules = declarationsFor(column(), "padding-inline");
+
+    expect(gutterRules).toHaveLength(2);
+    const conditions = gutterRules.map((rule) => rule.minWidth);
+    expect(conditions).toContain(null);
+    expect(conditions).toContain(breakpoints.medium);
+  });
+
+  it("экран настроек отрисован: заголовок, поле ника и сохранение на месте", async () => {
+    signedIn();
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="settings-page"]')).not.toBeNull();
+    const heading = container.querySelector("[role='heading']");
+    expect(heading?.getAttribute("aria-level")).toBe("1");
+    expect(heading?.textContent).toBe("Настройки");
+    expect(field("Ник").value).toBe("anya");
+    expect(button("Сохранить")).toBeDefined();
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  it("отступы контента — токены $2/$section-gap с прежними px", async () => {
+    signedIn();
+    await mountReady();
+    const body = findByPaint(container, "padding-top", "2");
+
+    expect(body, "контент настроек").toBeDefined();
+    expect(paintedValue(body as Element, "padding-top", 360)).toBe("var(--t-space-2)");
+    expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
   });
 });

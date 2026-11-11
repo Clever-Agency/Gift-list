@@ -1,5 +1,5 @@
 import { focusField, Text } from "@gift-list/ui";
-import { passwordResetBodySchema } from "@gift-list/contracts";
+import { PASSWORD_MIN, passwordResetBodySchema } from "@gift-list/contracts";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
 import type { TextInputInstance } from "react-native";
@@ -124,8 +124,8 @@ export default function ResetScreen() {
               value={password}
               onChangeText={change}
               error={issue?.field === "password" ? issue.text : undefined}
-              // NOTE FOR UX: «Ошибки форм» не задаёт длину пароля. Подсказка и ошибка — form.passwordRules.
-              hint={password.length < 8 ? t("form.passwordRules") : undefined}
+              // NOTE FOR UX: «Ошибки форм» не задаёт длину пароля. Подсказка и ошибка — form.passwordRules / form.passwordTooLong.
+              hint={password.length < PASSWORD_MIN ? t("form.passwordRules") : undefined}
               showLabel={t("form.showPassword")}
               input={{
                 autoCapitalize: "none",

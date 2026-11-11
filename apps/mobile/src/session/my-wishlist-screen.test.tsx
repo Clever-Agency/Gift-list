@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
-import { formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
-import { spacing } from "@gift-list/ui";
+import { PRODUCT_NAME, formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
+import { breakpoints, spacing } from "@gift-list/ui";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, pressScrim, settle } from "@/test/dom";
+import { observeContentWidth, type SimulatedContent } from "@/test/layout";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
+import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
 import MyWishlistScreen from "../../app/(app)/index";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -186,6 +189,8 @@ function giftsAnswer(cards: unknown[], publicToken?: string) {
 
 let root: Root;
 let container: HTMLElement;
+/** W12.23: the content width a browser would report for the column. */
+let measuredLayout: SimulatedContent;
 
 /** Everything on screen, layers included: a `Dialog` is portalled outside the container. */
 function text(): string {
@@ -313,6 +318,21 @@ async function mount(extra?: ReactNode) {
 }
 
 /**
+ * The width `useWindowDimensions` reads on web: happy-dom has no layout, so
+ * `documentElement.clientWidth` stays 0 unless a test sets it. `resize` makes the
+ * mounted screen re-render with the new value, as a browser window resize would.
+ */
+async function setViewportWidth(width: number) {
+  Object.defineProperty(document.documentElement, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+  await act(async () => {
+    window.dispatchEvent(new Event("resize"));
+  });
+}
+
+/**
  * Story 3.1 changes the session nick without leaving the screen. The share link is
  * built only from `List.publicToken`, so the next copy must be byte-for-byte the
  * same URL (A-26).
@@ -336,6 +356,7 @@ NickSwitcher.displayName = "NickSwitcher";
 
 beforeEach(() => {
   vi.resetAllMocks();
+  measuredLayout = observeContentWidth();
   // Story 2.4: the clipboard write succeeds unless a test says otherwise.
   clipboard.copyText.mockResolvedValue(true);
   focusStore.reset();
@@ -349,7 +370,11 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  measuredLayout.restore();
   vi.unstubAllEnvs();
+  // Back to the browser mock's own (unmeasured) width for the next test.
+  Reflect.deleteProperty(document.documentElement, "clientWidth");
+  window.dispatchEvent(new Event("resize"));
 });
 
 describe("мой вишлист: гейт сессии", () => {
@@ -437,12 +462,83 @@ describe("мой вишлист: каркас страницы", () => {
   });
 });
 
+/**
+ * W2: the page title and the owner's buttons share one `wishlist-header` row
+ * (`DESIGN.md` → «Широкий экран»: «кнопки владельца — в строке над сеткой справа»).
+ * `wishlist-actions` stays on the actions group itself; the h1 is its sibling in the
+ * row, not part of it. Nothing forces the width: the row wraps only when the title
+ * and the buttons do not fit, so no control is clipped, hidden or shrunk.
+ */
+describe("мой вишлист: заголовок и действия в одной строке", () => {
+  it("h1 и группа действий — соседи в строке wishlist-header, h1 вне wishlist-actions", async () => {
+    respond(giftsAnswer([gift()], "tok"));
+    await mount();
+
+    const header = container.querySelector('[data-testid="wishlist-header"]');
+    expect(header).not.toBeNull();
+    const heading = header?.querySelector('[role="heading"][aria-level="1"]');
+    expect(heading?.textContent).toBe("Мой вишлист");
+
+    const actions = header?.querySelector('[data-testid="wishlist-actions"]');
+    expect(actions).not.toBeNull();
+    expect(actions?.contains(heading ?? null)).toBe(false);
+    expect(heading?.parentElement).toBe(header);
+    expect(actions?.parentElement).toBe(header);
+
+    // The existing controls keep their testIDs and roles inside the actions group.
+    expect(actions?.querySelector('[data-testid="wishlist-copy-link"]')).not.toBeNull();
+    expect(actions?.querySelector('[data-testid="wishlist-copy-link-info"]')).not.toBeNull();
+    expect(actions?.textContent).toContain("Добавить желание");
+  });
+
+  it("пока список грузится, h1 остаётся в строке, а действий нет", async () => {
+    respond(new Promise(() => {}));
+    await mount();
+
+    const header = container.querySelector('[data-testid="wishlist-header"]');
+    expect(header?.querySelector('[role="heading"][aria-level="1"]')?.textContent).toBe("Мой вишлист");
+    expect(header?.querySelector('[data-testid="wishlist-actions"]')).toBeNull();
+  });
+
+  it("на 360 и на широкой ширине группа не растягивается на всю строку принудительно", async () => {
+    respond(giftsAnswer([gift()], "tok"));
+    await setViewportWidth(360);
+    await mount();
+
+    const actions = container.querySelector<HTMLElement>('[data-testid="wishlist-actions"]');
+    expect(actions).not.toBeNull();
+    expect(getComputedStyle(actions as HTMLElement).width).not.toBe("100%");
+    // Wrapping, not hiding: every control is still there and usable on a phone.
+    expect(button("Добавить желание")).toBeDefined();
+    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("false");
+    expect(infoTrigger()).not.toBeNull();
+
+    await setViewportWidth(1200);
+
+    const wide = container.querySelector<HTMLElement>('[data-testid="wishlist-actions"]');
+    expect(getComputedStyle(wide as HTMLElement).width).not.toBe("100%");
+    expect(button("Скопировать ссылку")).toBeDefined();
+  });
+
+  it("причина недоступности копирования остаётся в группе и связана с кнопкой", async () => {
+    respond(giftsAnswer([], "tok"));
+    await mount();
+
+    const actions = container.querySelector('[data-testid="wishlist-actions"]');
+    const reason = actions?.querySelector('[data-testid="wishlist-copy-link-reason"]');
+    expect(reason?.textContent).toContain("Нет желаний, открытых для всех");
+    expect(button("Скопировать ссылку")?.getAttribute("aria-describedby")).toBe(
+      "wishlist-copy-link-reason",
+    );
+  });
+});
+
 describe("мой вишлист: список", () => {
   it("шапка, заголовок и «Написать автору» на месте, без smoke", async () => {
     respond(giftsAnswer([]));
     await mount();
 
-    expect(text()).toContain("Gift List");
+    expect(text()).toContain(PRODUCT_NAME);
     expect(text()).toContain("Мой вишлист");
     expect(text()).toContain("Написать автору");
     expectNoSmoke();
@@ -651,6 +747,8 @@ describe("мой вишлист: список", () => {
     expect(button("Повторить")).toBeDefined();
 
     await press("Закрыть");
+    // Тост уходит с fade (160 мс), экран убирает его после анимации.
+    await settle(300);
     expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
     expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
     expect(button("Повторить")).toBeDefined();
@@ -1225,6 +1323,8 @@ describe("мой вишлист: весточка от формы создани
     // screen re-renders on «Закрыть»: the notice and its value are both gone.
     search.params = {};
     await press("Закрыть");
+    // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
+    await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
 
     // A second trip to the composer hands the same notice over again.
@@ -1242,6 +1342,8 @@ describe("мой вишлист: весточка от формы создани
     await mount();
 
     await press("Закрыть");
+    // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
+    await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
 
     await blur();
@@ -1284,6 +1386,8 @@ describe("мой вишлист: весточка от формы редакти
     await mount();
 
     await press("Закрыть");
+    // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
+    await settle(300);
     expect(text()).not.toContain("Изменения сохранены.");
 
     await blur();
@@ -1513,6 +1617,34 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
   });
 
+  it("413: откат, причина «слишком большой запрос» и тихая перезагрузка", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+    const reads = listReads();
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({
+          ok: false,
+          code: "VALIDATION",
+          message: "Payload too large",
+          reason: "PAYLOAD_TOO_LARGE",
+        });
+      }
+      return Promise.resolve(giftsAnswer([gift()]));
+    });
+
+    await chooseInDialog("Друзьям");
+
+    expect(chip("Всем")).toBeDefined();
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(text()).not.toContain("Желание уже забронировано — видимость не изменить.");
+    expect(listReads()).toBe(reads + 1);
+  });
+
   it("NOT_FOUND: откат, прежний текст ошибки и тихая перезагрузка списка", async () => {
     respond(giftsAnswer([gift()]));
     await mount();
@@ -1584,6 +1716,8 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     const trigger = await openPicker();
 
     await press("Отмена");
+    // Фокус возвращается после exit-fade диалога (160 мс).
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1595,6 +1729,7 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1604,6 +1739,7 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     const trigger = await openPicker();
 
     await pressScrim("visibility-picker-scrim");
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1620,10 +1756,252 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     });
 
     await chooseInDialog("Друзьям");
+    // Фокус возвращается после exit-fade диалога (160 мс).
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
     // Never `<body>`: the layer hands focus back instead of dropping it.
     expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+/**
+ * W12.19: the main screen lays itself out with the Tamagui media clause
+ * `$page-gutter medium:$page-gutter-lg` instead of `useWindowDimensions` +
+ * `pageGutter(width)`. The window width is still read for the card grid alone: the
+ * column count and the card width of `cardGrid` are grid maths, not a CSS
+ * breakpoint (`sprint-change-proposal-2026-11-10-ui-polish.md:323`), and the
+ * skeleton of a loading list follows the same grid.
+ *
+ * The tests pin both halves: the gutter is a CSS media query with the same 600
+ * boundary `pageGutter` uses, and the rendered card width is `cardGrid(width)` with
+ * the whole row still fitting inside the column. Widths come from the CSS Tamagui
+ * actually generated (see `@/test/tamagui-css`), not from a browser layout: real
+ * rendering on a phone and in a browser is a manual check.
+ *
+ * W12.23 moved the numbers to the measured content area: this DOM never lays anything
+ * out, so these tests see the `cardGrid(width)` fallback, and the measured path has its
+ * own suite below.
+ */
+describe("W12.19: главный экран на медиа-пропсах", () => {
+  /** Four wishes, as the coordinator's mock: three statuses, two visibilities, one tag. */
+  const board: GiftCard[] = [
+    gift({ id: "g1", title: "Наушники", tags: [{ catalogId: "tag_dream", label: "мечта" }] }),
+    gift({
+      id: "g2",
+      title: "Свитер",
+      priceAmount: 1050,
+      priceCurrency: "BYN",
+      visibility: "FRIENDS",
+      status: "RESERVED",
+      reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+    }),
+    gift({
+      id: "g3",
+      title: "Книга",
+      priceAmount: null,
+      priceCurrency: null,
+      visibility: "SECRET",
+      status: "CLOSED",
+    }),
+    gift({ id: "g4", title: "Плед", quantity: "UNLIMITED" }),
+  ];
+
+  /** The one `GLColumn` of the page: the column whose padding is the page gutter. */
+  function pageColumn(): HTMLElement {
+    const node = container.querySelector<HTMLElement>('[name="GLColumn"]');
+    expect(node, "колонка страницы").not.toBeNull();
+    return node as HTMLElement;
+  }
+
+  /** The first wish card of the grid; it is painted with `cardGrid().cardWidth`. */
+  function gridCard(): HTMLElement {
+    const node = container.querySelector<HTMLElement>('[role="list"] [role="listitem"]');
+    expect(node, "карточка желания").not.toBeNull();
+    return node as HTMLElement;
+  }
+
+  /** The width an element is painted with, as a number of pixels. */
+  function paintedWidth(element: Element, width: number): number {
+    return Number.parseFloat(paintedValue(element, "width", width) ?? "");
+  }
+
+  /**
+   * Mounts the screen as a browser at `width` would: the `resize` event makes
+   * react-native-web's `useWindowDimensions` deliver the new value — the very hook
+   * the screen keeps for the grid.
+   */
+  async function mountAt(width: number, answer: unknown = giftsAnswer(board)) {
+    await setViewportWidth(width);
+    respond(answer);
+    await mount();
+  }
+
+  /** Replaces the mounted screen with a fresh one at another width. */
+  async function remountAt(width: number, answer: unknown = giftsAnswer(board)) {
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await mountAt(width, answer);
+  }
+
+  it.each([360, 600, 1024, 1280])(
+    "ширина %ipx: отступ колонки — как у pageGutter",
+    async (width) => {
+      await mountAt(width);
+
+      expect(paintedSpace(pageColumn(), "padding-inline", width)).toBe(pageGutter(width));
+    },
+  );
+
+  it("граница одна и та же: 16 до bp-medium, 24 от bp-medium", async () => {
+    await mountAt(360);
+    const element = pageColumn();
+
+    expect(paintedSpace(element, "padding-inline", 360)).toBe(spacing["page-gutter"]);
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium - 1)).toBe(
+      spacing["page-gutter"],
+    );
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium)).toBe(
+      spacing["page-gutter-lg"],
+    );
+    expect(paintedSpace(element, "padding-inline", 1280)).toBe(spacing["page-gutter-lg"]);
+  });
+
+  it("меняется только на одной медиа-точке, без лишних правил", async () => {
+    await mountAt(360);
+    const gutterRules = declarationsFor(pageColumn(), "padding-inline");
+
+    expect(gutterRules).toHaveLength(2);
+    const conditions = gutterRules.map((rule) => rule.minWidth);
+    expect(conditions).toContain(null);
+    expect(conditions).toContain(breakpoints.medium);
+  });
+
+  it.each([
+    { width: 360, columns: 1 },
+    { width: 599, columns: 1 },
+    { width: 600, columns: 1 },
+    { width: 1024, columns: 3 },
+    { width: 1280, columns: 3 },
+  ])(
+    "ширина $width px: $columns колонка(и), карточка с CSS-отступом не шире колонки",
+    async ({ width, columns }) => {
+      await mountAt(width);
+      const cssGutter = paintedSpace(pageColumn(), "padding-inline", width) ?? 0;
+      const cardWidth = paintedWidth(gridCard(), width);
+      const gap = spacing["grid-gap"];
+
+      // The window still reaches the grid — and only the grid: the count and the
+      // width of the cards are `cardGrid` maths, the gutter above is CSS.
+      expect(cardGrid(width).columns).toBe(columns);
+      expect(cardWidth).toBeCloseTo(cardGrid(width).cardWidth, 5);
+      expect(cssGutter).toBe(pageGutter(width));
+
+      // Grid and CSS gutter agree on the same 600 boundary: the whole row fits the
+      // column `min(window, max-wide)` (the W12.15 pattern).
+      const row = columns * cardWidth + (columns - 1) * gap + cssGutter * 2;
+      expect(row).toBeLessThanOrEqual(Math.min(width, spacing["max-wide"]) + 1e-6);
+    },
+  );
+
+  it("отступ не зависит от ширины окна, а до сетки ширина доходит (контроль)", async () => {
+    await mountAt(360);
+    const narrowRules = declarationsFor(pageColumn(), "padding-inline").map(
+      (rule) => `${rule.minWidth}:${rule.value}`,
+    );
+    const narrowCard = gridCard().className;
+
+    await remountAt(1280);
+
+    // The gutter is the same CSS at both widths: the window width never touches it.
+    expect(
+      declarationsFor(pageColumn(), "padding-inline").map(
+        (rule) => `${rule.minWidth}:${rule.value}`,
+      ),
+    ).toEqual(narrowRules);
+    // The control: the grid really reads the window, so the equality above is not
+    // «green by inertia».
+    expect(gridCard().className).not.toBe(narrowCard);
+    expect(paintedWidth(gridCard(), 1280)).toBeCloseTo(cardGrid(1280).cardWidth, 5);
+  });
+
+  it("skeleton загрузки получает ту же ширину карточки из cardGrid", async () => {
+    await mountAt(1024, new Promise(() => {}));
+
+    const skeleton = container.querySelector<HTMLElement>('[data-testid="wish-card-skeleton"]');
+    expect(skeleton).not.toBeNull();
+    expect(paintedWidth(skeleton as Element, 1024)).toBeCloseTo(cardGrid(1024).cardWidth, 5);
+  });
+
+  it("экран отрисован: заголовок, сетка из четырёх желаний и подвал", async () => {
+    await mountAt(1024);
+
+    expect(container.querySelector('[data-testid="wishlist-page"]')).not.toBeNull();
+    expect(container.querySelector('[role="heading"][aria-level="1"]')?.textContent).toBe(
+      "Мой вишлист",
+    );
+    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(4);
+    expect(text()).toContain("мечта");
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  it("отступы и gap контента — токены $2/$section-gap/$grid-gap с прежними px", async () => {
+    await mountAt(1024);
+    const body = findByPaint(container, "padding-top", "2");
+
+    expect(body, "контент списка").toBeDefined();
+    expect(paintedValue(body as Element, "padding-top", 360)).toBe("var(--t-space-2)");
+    expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
+    expect(paintedSpace(body as Element, "gap", 360)).toBe(spacing["grid-gap"]);
+  });
+
+  /**
+   * W12.23: the grid follows the measured content area, not the window. A 600 px window
+   * with a classic ~15 px scrollbar leaves a 585 px column, so the cards get
+   * 585 − 2·24 = 537 px instead of the 552 px `cardGrid(600)` drew — the right gutter is
+   * 24 px again. Without a scrollbar the content area is the window minus the gutter and
+   * the numbers are the ones W12.19–W12.21 pinned.
+   */
+  describe("W12.23: сетка по ширине контента", () => {
+    it("окно 600 px, колонка 537 px: карточка 537 px и ряд влезает в колонку", async () => {
+      await mountAt(600);
+      await measuredLayout.measure(537);
+
+      const cssGutter = paintedSpace(pageColumn(), "padding-inline", 600) ?? 0;
+      const cardWidth = paintedWidth(gridCard(), 600);
+
+      expect(cssGutter).toBe(spacing["page-gutter-lg"]);
+      expect(cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 5);
+      expect(cardWidth).toBe(537);
+      // 537 px of cards plus two 24 px gutters is exactly the 585 px column, so the
+      // right edge of the last card sits on the 24 px gutter and not 9 px from it.
+      expect(cardWidth + cssGutter * 2).toBe(585);
+    });
+
+    it.each([
+      { width: 360, columns: 1, card: 328 },
+      { width: 600, columns: 1, card: 552 },
+      { width: 1024, columns: 3, card: 314.67 },
+      { width: 1280, columns: 3, card: 346.67 },
+    ])(
+      "окно $width px без скроллбара: карточка $card px — прежние числа",
+      async ({ width, columns, card }) => {
+        await mountAt(width);
+        const gutter = pageGutter(width);
+        const content = Math.min(width, spacing["max-wide"]) - gutter * 2;
+        await measuredLayout.measure(content);
+
+        const cardWidth = paintedWidth(gridCard(), width);
+
+        expect(cardGrid(width).columns).toBe(columns);
+        expect(cardWidth).toBeCloseTo(card, 2);
+        expect(cardWidth).toBeCloseTo(cardGrid(width).cardWidth, 5);
+
+        const row = cardWidth * columns + spacing["grid-gap"] * (columns - 1) + gutter * 2;
+        expect(row).toBeLessThanOrEqual(Math.min(width, spacing["max-wide"]) + 1e-6);
+      },
+    );
   });
 });

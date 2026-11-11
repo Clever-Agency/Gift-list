@@ -3,16 +3,14 @@ import {
   Heading,
   PageContainer,
   PageScroll,
+  SafeArea,
   Screen,
   Text,
   YStack,
 } from "@gift-list/ui";
 import { Stack } from "expo-router";
-import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
-import { pageGutter } from "@/ui/card-grid";
 import { NavLink } from "@/ui/nav-link";
 import { SiteFooter } from "@/ui/site-footer";
 
@@ -24,26 +22,28 @@ import { SiteFooter } from "@/ui/site-footer";
  */
 export function NotFoundScreen({ testID = "not-found-page" }: { testID?: string }) {
   const t = useTranslations("common");
-  const { width } = useWindowDimensions();
-  const gutter = pageGutter(width);
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: t("notFound.title") }} />
         <PageScroll testID={testID}>
           <PageContainer>
+            {/* The gutter follows the window, not JS: the same `pageGutter` values
+                (16 compact, 24 from `bp-medium`) as Tamagui media clauses. */}
             <Column
               size="form"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {t("brandName", { brand: getBrandName() })}
               </Text>
-              <Heading level={1}>{t("notFound.title")}</Heading>
+              <Heading level={1} textAlign="center">
+                {t("notFound.title")}
+              </Heading>
               <YStack
                 flexGrow={1}
                 marginTop="$section-gap"
@@ -59,7 +59,7 @@ export function NotFoundScreen({ testID = "not-found-page" }: { testID?: string 
             </Column>
           </PageContainer>
         </PageScroll>
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

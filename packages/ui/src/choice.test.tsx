@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import { Choice, ChoiceList } from "./choice";
-import { createMount } from "./test-utils";
+import { createMount, errorMessages, nativeOnlyAttributes, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -142,5 +142,150 @@ describe("ChoiceList: ошибка и описание группы", () => {
     expect(radios[0].getAttribute("aria-checked")).toBe("false");
     expect(radios[1].getAttribute("aria-checked")).toBe("true");
     expect(radios[1].getAttribute("aria-disabled")).toBe("true");
+  });
+});
+
+describe("ChoiceList: на вебе нет нативных a11y-пропсов", () => {
+  it("подсказка строки связана с радио через свой aria-describedby, в DOM нет accessibility*", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+    try {
+      const { container, render } = mounted();
+      await render(
+        <ChoiceList label="Кто видит" variant="row" description="Меняется только у открытого желания">
+          <Choice variant="row" label="Всем" hint="Видно всем" selected onPress={noop} />
+          <Choice variant="row" label="Друзьям" hint="Видно друзьям" selected={false} onPress={noop} />
+        </ChoiceList>,
+      );
+
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+
+      const [first, second] = Array.from(
+        container.querySelectorAll('[role="radio"]'),
+        (radio) => radio.getAttribute("aria-describedby"),
+      );
+      expect(first).toBeTruthy();
+      expect(second).toBeTruthy();
+      expect(first).not.toBe(second);
+      expect(byId(first)?.textContent).toBe("Видно всем");
+      expect(byId(second)?.textContent).toBe("Видно друзьям");
+      // Описание группы по-прежнему одно и то же для всех радио — на группе.
+      expect(byId(group(container).getAttribute("aria-describedby"))?.textContent).toBe(
+        "Меняется только у открытого желания",
+      );
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("чип без видимой подсказки не ставит висячий aria-describedby", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+    try {
+      const { container, render } = mounted();
+      await render(
+        <ChoiceList label="Валюта" variant="chip" description="Пять кодов">
+          <Choice variant="chip" label="RUB" selected onPress={noop} />
+          <Choice variant="chip" label="USD" selected={false} onPress={noop} />
+        </ChoiceList>,
+      );
+
+      expect(nativeOnlyAttributes(container)).toEqual([]);
+      expect(errorMessages(errors)).not.toContain("does not recognize");
+      const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+      expect(radios.map((radio) => radio.getAttribute("aria-describedby"))).toEqual([null, null]);
+      expect(byId(group(container).getAttribute("aria-describedby"))?.textContent).toBe("Пять кодов");
+    } finally {
+      errors.mockRestore();
+    }
+  });
+});
+
+/**
+ * The computed opacity as a number. happy-dom reports an element with no opacity
+ * of its own as an empty string, so that reads as the default `1`.
+ */
+function opacityOf(node: Element): number {
+  const value = getComputedStyle(node).opacity;
+  return value === "" ? 1 : Number(value);
+}
+
+describe("Choice: прозрачность disabled", () => {
+  it("недоступная строка бледнеет ровно один раз и ровно на 0.4", async () => {
+    const { container, render } = mounted();
+    await render(
+      <ChoiceList label="Кто видит" variant="row" description="Меняется только у открытого желания">
+        <Choice variant="row" label="Всем" selected={false} onPress={noop} />
+        <Choice variant="row" label="Друзьям" selected onPress={noop} disabled />
+      </ChoiceList>,
+    );
+
+    const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+    const enabled = radios[0];
+    const disabled = radios[1];
+
+    expect(opacityOf(enabled)).toBe(1);
+    // `DESIGN.md` → disabled: 0.4, not the old 0.6 — and not 0.4 × 0.4 = 0.16.
+    expect(opacityOf(disabled)).toBe(0.4);
+    // The group and the label keep their own opacity: only the radio row is dimmed once.
+    expect(opacityOf(group(container))).toBe(1);
+    const descendants = Array.from(disabled.querySelectorAll("*"), opacityOf);
+    expect(descendants.length).toBeGreaterThan(0);
+    expect(descendants.every((value) => value === 1)).toBe(true);
+  });
+
+  it("чип disabled тоже 0.4: и выбранный, и невыбранный", async () => {
+    const { container, render } = mounted();
+    await render(
+      <ChoiceList label="Валюта" variant="chip" description="Пять кодов">
+        <Choice variant="chip" label="BYN" selected onPress={noop} disabled />
+        <Choice variant="chip" label="RUB" selected={false} onPress={noop} disabled />
+        <Choice variant="chip" label="USD" selected={false} onPress={noop} />
+      </ChoiceList>,
+    );
+
+    const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+    expect(radios.map(opacityOf)).toEqual([0.4, 0.4, 1]);
+  });
+});
+
+/**
+ * `DESIGN.md` → Состояния кнопок и нажимаемых поверхностей: a disabled choice does
+ * not react to a press either (DECISION 2026-11-10). happy-dom paints nothing, so
+ * the check reads the `opacity` rules Tamagui generated for the radio's classes.
+ */
+describe("Choice: press disabled", () => {
+  it("disabled-строка не тускнеет на press, живая — до 0.9", async () => {
+    const { container, render } = mounted();
+    await render(
+      <ChoiceList label="Кто видит" variant="row">
+        <Choice variant="row" label="Всем" selected={false} onPress={noop} />
+        <Choice variant="row" label="Друзьям" selected onPress={noop} disabled />
+      </ChoiceList>,
+    );
+
+    const radios = Array.from(container.querySelectorAll('[role="radio"]'));
+    const [live, off] = radios;
+
+    expect(stateValues(live, "press", "opacity")).toEqual(["0.9"]);
+    expect(stateValues(off, "base", "opacity")).toEqual(["0.4"]);
+    expect(stateValues(off, "press", "opacity")).toEqual([]);
+  });
+
+  it("нажатие на disabled-строку не меняет выбор и не зовёт onPress", async () => {
+    const onPress = vi.fn();
+    const { container, render } = mounted();
+    await render(
+      <ChoiceList label="Кто видит" variant="row">
+        <Choice variant="row" label="Друзьям" selected={false} onPress={onPress} disabled />
+      </ChoiceList>,
+    );
+
+    const radio = container.querySelector('[role="radio"]') as HTMLElement;
+    radio.click();
+    radio.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+    expect(onPress).not.toHaveBeenCalled();
+    expect(radio.getAttribute("aria-checked")).toBe("false");
+    expect(radio.getAttribute("aria-disabled")).toBe("true");
   });
 });

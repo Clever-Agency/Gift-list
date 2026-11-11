@@ -1,5 +1,11 @@
 import { focusField, Text } from "@gift-list/ui";
-import { registerBodySchema, safeNextPath, type Me } from "@gift-list/contracts";
+import {
+  NICK_PATTERN,
+  PASSWORD_MIN,
+  registerBodySchema,
+  safeNextPath,
+  type Me,
+} from "@gift-list/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import type { TextInputInstance } from "react-native";
@@ -70,7 +76,8 @@ export default function RegisterScreen() {
     if (auth.state.status === "ready") router.replace(next as "/");
   }, [auth.state.status, next]);
 
-  const nickPreview = /^[a-z0-9_]{3,24}$/.test(nick.trim().toLowerCase())
+  // AD-13: the same 3–24 `[a-z0-9_]` rule as the server, taken from the contract.
+  const nickPreview = NICK_PATTERN.test(nick.trim().toLowerCase())
     ? t("form.nickPreview", { nick: nick.trim().toLowerCase() })
     : undefined;
 
@@ -171,8 +178,8 @@ export default function RegisterScreen() {
           value={password}
           onChangeText={change("password", setPassword)}
           error={fieldError("password")}
-          // NOTE FOR UX: «Ошибки форм» не задаёт длину пароля. Подсказка и ошибка — form.passwordRules.
-          hint={password.length < 8 ? t("form.passwordRules") : undefined}
+          // NOTE FOR UX: «Ошибки форм» не задаёт длину пароля. Подсказка и ошибка — form.passwordRules / form.passwordTooLong.
+          hint={password.length < PASSWORD_MIN ? t("form.passwordRules") : undefined}
           showLabel={t("form.showPassword")}
           input={{
             autoCapitalize: "none",

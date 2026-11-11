@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@gift-list/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -195,10 +196,10 @@ describe("loadLinkPage: anonymous read through the one gate", () => {
 describe("buildLinkMetadata", () => {
   it("names only the owner and the product for a visible list", async () => {
     const page = await loadLinkPage("tok-1");
-    const metadata = buildLinkMetadata(page, "Gift List");
+    const metadata = buildLinkMetadata(page, PRODUCT_NAME);
     const serialized = JSON.stringify(metadata);
 
-    expect(metadata.title).toBe("Вишлист Анна — Gift List");
+    expect(metadata.title).toBe(`Вишлист Анна — ${PRODUCT_NAME}`);
     expect(serialized).not.toContain("Публичное");
     expect(serialized).not.toContain("Только друзьям");
     expect(serialized).not.toContain("Секретное");
@@ -209,15 +210,15 @@ describe("buildLinkMetadata", () => {
   it("gives unknown, blocked, malformed and missing lists one not-found metadata", async () => {
     const notFound = buildLinkMetadata(
       { locale: "ru", view: { kind: "not_found" } },
-      "Gift List",
+      PRODUCT_NAME,
     );
     const redirect = buildLinkMetadata(
       { locale: "ru", view: { kind: "redirect", to: "/wishlist/tok-1" } },
-      "Gift List",
+      PRODUCT_NAME,
     );
 
     expect(notFound).toEqual(redirect);
-    expect(notFound.title).toBe("Список не найден — Gift List");
+    expect(notFound.title).toBe(`Список не найден — ${PRODUCT_NAME}`);
     expect(JSON.stringify(notFound)).not.toContain("Анна");
   });
 });

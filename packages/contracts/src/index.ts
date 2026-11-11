@@ -29,6 +29,13 @@ export const ERROR_REASONS = [
    * the generic `RATE_LIMITED` text: the client shows "Можно снова через {hours} ч".
    */
   "INVITE_COOLDOWN",
+  /**
+   * A request body exceeded the transport byte budget and was refused before
+   * parsing, hashing or the database (W6). Always rides with
+   * `code: "VALIDATION"` and HTTP 413; the client shows
+   * `errors.reason.PAYLOAD_TOO_LARGE`.
+   */
+  "PAYLOAD_TOO_LARGE",
 ] as const;
 
 /** Closed set of machine-readable causes; the client maps them to `errors.reason.<REASON>`. */
@@ -169,7 +176,13 @@ export const listDataSchema = z.discriminatedUnion("access", [
 export type ListData = z.infer<typeof listDataSchema>;
 
 export {
+  DISPLAY_NAME_MAX,
+  EMAIL_MAX,
+  NICK_MAX,
+  NICK_MIN,
   NICK_PATTERN,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
   loginBodySchema,
   nickUpdateBodySchema,
   passwordForgotBodySchema,
@@ -186,6 +199,10 @@ export {
 } from "./auth";
 
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
+
+export { AUTHOR_EMAIL, AUTHOR_MAILTO, PRODUCT_NAME, authorMailto } from "./brand";
+
+export { textLength } from "./text";
 
 export {
   FRIEND_ACCEPT_OUTCOMES,
@@ -212,7 +229,11 @@ export {
 
 export {
   DEFAULT_QUANTITY,
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_PRICE_AMOUNT_MAX,
   GIFT_TAG_TEXT_MAX,
+  GIFT_TITLE_MAX,
   giftInputSchema,
   giftTagInputSchema,
   giftUpdateSchema,

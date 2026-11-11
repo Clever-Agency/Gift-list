@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@gift-list/contracts";
 import { z } from "zod";
 
 function normalizeBrandName(value: unknown): unknown {
@@ -6,9 +7,13 @@ function normalizeBrandName(value: unknown): unknown {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * Display name (AD-24): `BRAND_NAME` is a deliberate override, and a blank or
+ * missing value falls back to the one constant in `packages/contracts`.
+ */
 const brandNameSchema = z.preprocess(
   normalizeBrandName,
-  z.string().min(1).default("Gift List"),
+  z.string().min(1).default(PRODUCT_NAME),
 );
 
 function blankToUndefined(value: unknown): unknown {

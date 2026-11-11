@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formIssue, issueFromError, passwordFieldIssue } from "./form-issue";
+import {
+  formIssue,
+  issueFromError,
+  loginPasswordFieldIssue,
+  mutationErrorMessage,
+  passwordFieldIssue,
+} from "./form-issue";
 
 function t(key: string) {
   return key;
@@ -20,6 +26,25 @@ describe("issueFromError", () => {
     ).toEqual({
       reason: "RESET_LINK_STALE",
       text: "common:errors.reason.RESET_LINK_STALE",
+    });
+  });
+
+  it("keeps PAYLOAD_TOO_LARGE so the form says the request was too large", () => {
+    expect(
+      issueFromError(
+        {
+          ok: false,
+          code: "VALIDATION",
+          message: "Payload too large",
+          reason: "PAYLOAD_TOO_LARGE",
+        },
+        t,
+        common,
+        "register",
+      ),
+    ).toEqual({
+      reason: "PAYLOAD_TOO_LARGE",
+      text: "common:errors.reason.PAYLOAD_TOO_LARGE",
     });
   });
 
@@ -96,13 +121,53 @@ describe("formIssue", () => {
     });
   });
 
-  it("passwordFieldIssue states the minimum only while the password is shorter than 8", () => {
+  it("passwordFieldIssue states the rule on both bounds and the generic text between them", () => {
     expect(passwordFieldIssue("1234567", fake, fake)).toEqual({
       field: "password",
       text: "form.passwordRules",
     });
     expect(passwordFieldIssue("12345678", fake, fake).text).toBe("errors.code.VALIDATION");
-    expect(passwordFieldIssue("x".repeat(129), fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("x".repeat(127), fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("x".repeat(128), fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("x".repeat(129), fake, fake)).toEqual({
+      field: "password",
+      text: "form.passwordTooLong",
+    });
+  });
+
+  it("passwordFieldIssue counts UTF-16 units, as the contract and Better Auth do", () => {
+    // 64 emoji are 128 UTF-16 units: inside the cap.
+    expect(passwordFieldIssue("🎁".repeat(64), fake, fake).text).toBe("errors.code.VALIDATION");
+    // 65 emoji are 130 units: over it, while both are 65 code points.
+    expect(passwordFieldIssue("🎁".repeat(65), fake, fake)).toEqual({
+      field: "password",
+      text: "form.passwordTooLong",
+    });
+    expect("🎁".repeat(65).length).toBe(130);
+  });
+
+  it("passwordFieldIssue measures the value as typed: no trim, no normalisation", () => {
+    // 11 units with the spaces: long enough, so the minimum sentence stays away.
+    expect(passwordFieldIssue("  1234567  ", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("  1234   ", fake, fake).text).toBe("errors.code.VALIDATION");
+    // 8 spaces is a password of 8 units, not an empty one.
+    expect(passwordFieldIssue("        ", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue(`  ${"x".repeat(127)}  `, fake, fake).text).toBe(
+      "form.passwordTooLong",
+    );
+  });
+
+  it("loginPasswordFieldIssue keeps the minimum out of sign-in and names only the cap", () => {
+    expect(loginPasswordFieldIssue("", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(loginPasswordFieldIssue("1234567", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(loginPasswordFieldIssue("x".repeat(128), fake, fake).text).toBe(
+      "errors.code.VALIDATION",
+    );
+    expect(loginPasswordFieldIssue("x".repeat(129), fake, fake)).toEqual({
+      field: "password",
+      text: "form.passwordTooLong",
+    });
+    expect(loginPasswordFieldIssue("🎁".repeat(65), fake, fake).text).toBe("form.passwordTooLong");
   });
 
   it("falls back to errors.code", () => {
@@ -116,5 +181,19 @@ describe("formIssue", () => {
       field: "x",
       text: "errors.code.CONFLICT",
     });
+  });
+});
+
+describe("mutationErrorMessage", () => {
+  it("maps PAYLOAD_TOO_LARGE to the catalog reason instead of the code text", () => {
+    expect(
+      mutationErrorMessage({ code: "VALIDATION", reason: "PAYLOAD_TOO_LARGE" }, common),
+    ).toBe("common:errors.reason.PAYLOAD_TOO_LARGE");
+  });
+
+  it("falls back to the code text; the server message has no path here", () => {
+    expect(mutationErrorMessage({ code: "CONFLICT" }, common)).toBe(
+      "common:errors.code.CONFLICT",
+    );
   });
 });

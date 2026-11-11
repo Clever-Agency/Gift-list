@@ -8,22 +8,20 @@ import {
   PageContainer,
   PageScroll,
   Pressable,
+  SafeArea,
   Screen,
-  spacing,
   Text,
   XStack,
   YStack,
 } from "@gift-list/ui";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useWindowDimensions } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { fetchMyGifts, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
 import { restoreFocus, type ChipNode } from "@/ui/focus";
 import { WishCard } from "@/ui/gift-card";
@@ -32,6 +30,7 @@ import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
+import { useCardGrid } from "@/ui/use-card-grid";
 import { VisibilityPicker } from "@/ui/visibility-picker";
 import { copyWishlistShareLink } from "@/wishlist/copy-link";
 import { hasWishVisibleToEveryone } from "@/wishlist/share-availability";
@@ -81,12 +80,17 @@ export default function MyWishlistScreen() {
   const tLower = useTranslations("app.gift.visibilityLower");
   const brand = getBrandName();
   const auth = useAuth();
-  const { width } = useWindowDimensions();
-  // Review m7: the safe-area insets (a notch in landscape) are outside the column,
-  // so the grid is measured against the width that is actually left for cards.
-  const insets = useSafeAreaInsets();
-  const grid = cardGrid(width, insets);
-  const gutter = pageGutter(width);
+  // W12.19: the page gutter is the Tamagui media clause
+  // `$page-gutter medium:$page-gutter-lg`, so the browser lays it out with a CSS
+  // media query and the phone reads the same theme key.
+  // W12.23: the column count and the card width (`DESIGN.md` → Layout → columns) are
+  // grid math, so on the web they follow the measured content area, not the window:
+  // a classic scrollbar makes the window wider than this section by its own width.
+  // The container is measured before it is painted; until then the hook keeps
+  // `cardGrid(windowWidth, insets)` — the phone's numbers.
+  // Destructured: React's `refs` lint rule treats an object that holds a ref callback
+  // as a ref, and a member read of it during render is an error.
+  const { cardWidth, attachContainer } = useCardGrid();
   const params = useLocalSearchParams<{ toast?: string }>();
   const [state, setState] = useState<ScreenState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -378,7 +382,15 @@ export default function MyWishlistScreen() {
         return;
       }
       if ("code" in result && result.code === "VALIDATION") {
-        setToast({ message: t("gift.toast.visibilityLocked"), tone: "error" });
+        // An oversized body is not the "frozen wish" case: say the request was
+        // too large, and still reload so the card shows its real status.
+        setToast({
+          message:
+            result.reason === "PAYLOAD_TOO_LARGE"
+              ? mutationErrorMessage(result, common)
+              : t("gift.toast.visibilityLocked"),
+          tone: "error",
+        });
         setAttempt((value) => value + 1);
         return;
       }
@@ -413,63 +425,66 @@ export default function MyWishlistScreen() {
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
         <PageScroll testID="wishlist-page">
           <PageContainer>
             <Column
               size="wide"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>
-              <Heading level={1}>{wishlist("title")}</Heading>
-
-              <YStack
-                flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
-                gap={spacing["grid-gap"]}
+              {/*
+                The page title and the owner's actions share one row (`DESIGN.md` →
+                «Широкий экран»: the owner's buttons in the row above the grid, on the
+                right). No breakpoint forces a layout here: `flexWrap` breaks the row only
+                when the title and the action group actually do not fit. Measured with the
+                shipped Manrope 600 metrics (see the W2 addendum): the title is ~116 px,
+                «Добавить желание» ~173 px, «Скопировать ссылку» ~187 px, the icon button
+                44 px, gaps 8 px — the row is one line from ~577 px of window (552 px of
+                content) with both buttons, and from ~395 px when the list is empty and
+                only «Скопировать ссылку» + its icon are shown. On phones the buttons wrap
+                under the title; they are never clipped, hidden or shrunk.
+              */}
+              <XStack
+                testID="wishlist-header"
+                alignItems="center"
+                justifyContent="space-between"
+                flexWrap="wrap"
+                gap="$2"
               >
-                {/* DESIGN.md → App → «Широкий экран»: the owner's buttons sit in a row
-                    above the grid, to the right. Story 2.4 adds «Скопировать ссылку». */}
+                <Heading level={1} flexShrink={1}>
+                  {wishlist("title")}
+                </Heading>
                 {state.status === "ready" ? (
-                  <YStack
-                    testID="wishlist-actions"
-                    gap="$1"
-                    {...(width < spacing["bp-medium"]
-                      ? { width: "100%" }
-                      : { alignSelf: "flex-end" })}
-                  >
-                    <XStack
-                      flexWrap="wrap"
-                      alignItems="center"
-                      gap="$2"
-                      {...(width < spacing["bp-medium"]
-                        ? { width: "100%" }
-                        : { alignSelf: "flex-end" })}
-                    >
+                  <YStack testID="wishlist-actions" gap="$1" alignItems="flex-start">
+                    <XStack flexWrap="wrap" alignItems="center" gap="$2">
                       {state.gifts.length > 0 ? (
                         <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
                       ) : null}
-                      <Button
-                        testID="wishlist-copy-link"
-                        label={wishlist("copyLink")}
-                        ariaDescribedBy={canShare ? undefined : COPY_LINK_REASON_ID}
-                        onPress={copyLink}
-                        disabled={!canShare}
-                        focusableWhenDisabled
-                      />
-                      <InfoButton
-                        testID="wishlist-copy-link-info"
-                        label={wishlist("copyLinkHelpLabel")}
-                        explanation={wishlist("copyLinkHelp")}
-                        closeLabel={wishlist("copyLinkHelpClose")}
-                      />
+                      {/* The icon explains the copy button: the two wrap as one pair, so
+                          the icon is never left alone on a line of its own. */}
+                      <XStack alignItems="center" gap="$2">
+                        <Button
+                          testID="wishlist-copy-link"
+                          label={wishlist("copyLink")}
+                          ariaDescribedBy={canShare ? undefined : COPY_LINK_REASON_ID}
+                          onPress={copyLink}
+                          disabled={!canShare}
+                          focusableWhenDisabled
+                        />
+                        <InfoButton
+                          testID="wishlist-copy-link-info"
+                          label={wishlist("copyLinkHelpLabel")}
+                          explanation={wishlist("copyLinkHelp")}
+                          closeLabel={wishlist("copyLinkHelpClose")}
+                        />
+                      </XStack>
                     </XStack>
                     {!canShare ? (
                       <Text
@@ -477,18 +492,27 @@ export default function MyWishlistScreen() {
                         testID="wishlist-copy-link-reason"
                         kind="caption"
                         tone="muted"
-                        textAlign={width < spacing["bp-medium"] ? "left" : "right"}
                       >
                         {wishlist("copyLinkDisabledReason")}
                       </Text>
                     ) : null}
                   </YStack>
                 ) : null}
+              </XStack>
+
+              <YStack
+                testID="wishlist-content"
+                ref={attachContainer}
+                flexGrow={1}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
+                gap="$grid-gap"
+              >
                 {state.status === "loading" ? (
                   <LoadingCards
                     testID="my-wishlist-loading"
                     label={wishlist("loading")}
-                    width={grid.cardWidth}
+                    width={cardWidth}
                   />
                 ) : state.status === "error" ? (
                   <RetryView
@@ -530,7 +554,7 @@ export default function MyWishlistScreen() {
                         <WishCard
                           key={gift.id}
                           gift={gift}
-                          width={grid.cardWidth}
+                          width={cardWidth}
                           onPress={handlePress}
                           onVisibilityPress={handleVisibilityPress}
                           visibilityChipRef={setChipNode}
@@ -586,7 +610,7 @@ export default function MyWishlistScreen() {
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }
@@ -600,7 +624,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       width="100%"
       maxWidth="$max-form"
       alignSelf="center"
-      paddingVertical={spacing["section-gap"] / 2}
+      paddingVertical="$4"
       gap="$grid-gap"
     >
       <Text tone="muted" textAlign="center">

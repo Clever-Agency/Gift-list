@@ -1,15 +1,13 @@
 import { NICK_PATTERN, type Me } from "@gift-list/contracts";
-import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { useWindowDimensions, type TextInputInstance } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import type { TextInputInstance } from "react-native";
 import { useTranslations } from "use-intl";
 import { updateNick } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { formIssue } from "@/session/form-issue";
-import { pageGutter } from "@/ui/card-grid";
 import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
@@ -76,8 +74,6 @@ function SettingsForm({
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
-  const { width } = useWindowDimensions();
-  const gutter = pageGutter(width);
   const nickInput = useRef<TextInputInstance | null>(null);
 
   const [nick, setNick] = useState(user.nick);
@@ -197,15 +193,17 @@ function SettingsForm({
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: t("settings.pageTitle", { brand }) }} />
-        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
+        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. The gutter is
+            the Tamagui media clause, so the browser turns it into a CSS media
+            query: no card grid here, the window width is never read in JS. */}
         <PageScroll testID="settings-page" keyboardShouldPersistTaps="handled">
           <PageContainer>
             <Column
               size="form"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >
@@ -228,8 +226,8 @@ function SettingsForm({
               <Heading level={1}>{t("settings.title")}</Heading>
               <YStack
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
               >
                 <YStack gap="$grid-gap">
                   <TextField
@@ -258,7 +256,7 @@ function SettingsForm({
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

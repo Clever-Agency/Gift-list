@@ -1,4 +1,10 @@
-import type { ActionError, ErrorCode, ErrorReason } from "@gift-list/contracts";
+import {
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  type ActionError,
+  type ErrorCode,
+  type ErrorReason,
+} from "@gift-list/contracts";
 import type { ClientResult } from "@/api/client";
 
 export type FormIssue = {
@@ -33,7 +39,7 @@ export function issueFromError(
   if (screen === "login" && error.code === "UNAUTHENTICATED") {
     return { text: t("login.invalid") };
   }
-  if (error.reason === "RESET_LINK_STALE") {
+  if (error.reason === "RESET_LINK_STALE" || error.reason === "PAYLOAD_TOO_LARGE") {
     return { reason: error.reason, text: common(`errors.reason.${error.reason}`) };
   }
   if (error.reason === "EMAIL_TAKEN" || error.reason === "NICK_TAKEN") {
@@ -55,6 +61,22 @@ export function issueFromError(
   return { text: common(`errors.code.${error.code as ErrorCode}`) };
 }
 
+/**
+ * Catalog sentence for a failed mutation whose error is shown outside a form
+ * (gift save, visibility change, friend action). A known reason wins over the
+ * generic code text: an oversized body must say the request was too large
+ * instead of "check your input". Reasons that interpolate `params`
+ * (`INVITE_COOLDOWN`) are handled by their screens before this helper. The
+ * server `message` never reaches the user: it is English API prose, not copy.
+ */
+export function mutationErrorMessage(
+  error: Pick<ActionError, "code" | "reason">,
+  common: Translate,
+): string {
+  if (error.reason === "PAYLOAD_TOO_LARGE") return common("errors.reason.PAYLOAD_TOO_LARGE");
+  return common(`errors.code.${error.code as ErrorCode}`);
+}
+
 function rateLimitValues(
   params: ActionError["params"],
 ): Record<string, string | number> | undefined {
@@ -65,13 +87,33 @@ function rateLimitValues(
 }
 
 /**
- * Short passwords on register and reset use the catalog rule.
- * A value that already has 8 characters keeps the generic validation text:
- * the minimum sentence would be false for a too-long password.
+ * Short and over-long passwords on register and reset: the catalog sentence of
+ * the rule, never the generic "check your input". Both bounds come from the
+ * contract and are counted the way the server counts a password — UTF-16 code
+ * units (`PASSWORD_MIN`/`PASSWORD_MAX`), so an emoji is two. The value is only
+ * measured: it is never trimmed or normalised here.
  */
 export function passwordFieldIssue(password: string, t: Translate, common: Translate): FormIssue {
-  if (password.length < 8) return { field: "password", text: t("form.passwordRules") };
+  if (password.length < PASSWORD_MIN) return { field: "password", text: t("form.passwordRules") };
+  if (password.length > PASSWORD_MAX) {
+    return { field: "password", text: t("form.passwordTooLong", { max: PASSWORD_MAX }) };
+  }
   return { field: "password", text: common("errors.code.VALIDATION") };
+}
+
+/**
+ * Sign-in keeps the stored lower bound at 1 (a legacy short password must pass
+ * the length check), so only the upper bound has its own sentence. Everything
+ * else stays the generic text of the screen.
+ */
+export function loginPasswordFieldIssue(
+  password: string,
+  t: Translate,
+  common: Translate,
+): FormIssue {
+  return password.length > PASSWORD_MAX
+    ? { field: "password", text: t("form.passwordTooLong", { max: PASSWORD_MAX }) }
+    : { field: "password", text: common("errors.code.VALIDATION") };
 }
 
 export function firstZodField(path: readonly PropertyKey[] | undefined): string | undefined {

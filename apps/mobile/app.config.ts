@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@gift-list/contracts/brand";
 import type { ExpoConfig } from "expo/config";
 
 /** Host of the public API origin. Empty or non-http(s) values claim no paths. */
@@ -43,7 +44,7 @@ export function linkData(host: { hostname: string; port?: string }) {
 const linkHost = appLinkHost(process.env.EXPO_PUBLIC_API_BASE_URL ?? "");
 
 const config: ExpoConfig = {
-  name: "Gift List",
+  name: PRODUCT_NAME,
   slug: "gift-list",
   scheme: "giftlist",
   version: "0.1.0",

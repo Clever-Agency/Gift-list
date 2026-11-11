@@ -11,6 +11,7 @@ import {
   PageContainer,
   PageScroll,
   RelationshipChip,
+  SafeArea,
   Screen,
   spacing,
   Text,
@@ -19,8 +20,6 @@ import {
 } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { useWindowDimensions } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import {
   acceptFriendInvite,
@@ -31,8 +30,8 @@ import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
 import { profileRoute } from "@/profile/profile-route";
 import { useAuth } from "@/session/auth-context";
+import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -41,6 +40,7 @@ import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
+import { useCardGrid } from "@/ui/use-card-grid";
 
 /**
  * A failed profile read offers the retry view; `not_found` is its own state, the
@@ -99,10 +99,17 @@ export default function ProfileScreen() {
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
-  const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const grid = cardGrid(width, insets);
-  const gutter = pageGutter(width);
+  // W12.20: the page gutter is the Tamagui media clause
+  // `$page-gutter medium:$page-gutter-lg`, so the browser lays it out with a CSS
+  // media query and the phone reads the same theme key.
+  // W12.23: the column count and the card width (`DESIGN.md` → Layout → columns) are
+  // grid math, so on the web they follow the measured content area, not the window:
+  // a classic scrollbar makes the window wider than this section by its own width.
+  // The profile skeleton and the wish cards share the one measurement, and until it
+  // lands the hook keeps the phone's `cardGrid(windowWidth, insets)` numbers.
+  // Destructured: React's `refs` lint rule treats an object that holds a ref callback
+  // as a ref, and a member read of it during render is an error.
+  const { cardWidth, attachContainer } = useCardGrid();
   const params = useLocalSearchParams<{ nick?: string }>();
   const route = profileRoute(paramValue(params.nick));
   const nick = route?.nick ?? null;
@@ -400,7 +407,7 @@ export default function ProfileScreen() {
       return;
     }
     setToast({
-      message: common(`errors.code.${result.code}`),
+      message: mutationErrorMessage(result, common),
       tone: "error",
       nick: requestedNick,
     });
@@ -408,28 +415,30 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: profile("pageTitle", { brand }) }} />
         <PageScroll testID="profile-page">
           <PageContainer>
             <Column
               size="wide"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >
               <YStack
+                testID="profile-content"
+                ref={attachContainer}
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
-                gap={spacing["grid-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
+                gap="$grid-gap"
               >
                 {view.status === "loading" ? (
                   <LoadingCards
                     testID="profile-loading"
                     label={profile("loading")}
-                    width={grid.cardWidth}
+                    width={cardWidth}
                   />
                 ) : view.status === "error" ? (
                   <RetryView
@@ -445,7 +454,7 @@ export default function ProfileScreen() {
                   <YStack
                     testID="profile-not-found"
                     width="100%"
-                    paddingVertical={spacing["section-gap"]}
+                    paddingVertical="$section-gap"
                   >
                     <Heading level={1} kind="display-sm" textAlign="center">
                       {profile("notFound")}
@@ -545,7 +554,7 @@ export default function ProfileScreen() {
                       <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
                         {view.gifts.map(function renderGift(gift) {
                           return (
-                            <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                            <PublicGiftCard key={gift.id} gift={gift} width={cardWidth} />
                           );
                         })}
                       </XStack>
@@ -565,7 +574,7 @@ export default function ProfileScreen() {
             offsetBottom={spacing["page-gutter"]}
           />
         ) : null}
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }
@@ -579,7 +588,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       width="100%"
       maxWidth="$max-form"
       alignSelf="center"
-      paddingVertical={spacing["section-gap"] / 2}
+      paddingVertical="$4"
       gap="$grid-gap"
     >
       <Text tone="muted" textAlign="center">

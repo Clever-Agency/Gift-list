@@ -58,6 +58,11 @@ for await (const file of walk(path.join(root, "apps/mobile"))) {
   ) {
     failures.push(`${relative}: reads process.env outside src/config/env.ts`);
   }
+  if (/import\s*\{[^}]*\bSafeAreaView\b[^}]*\}\s*from\s*["']react-native-safe-area-context["']/.test(text)) {
+    failures.push(
+      `${relative}: imports SafeAreaView from react-native-safe-area-context; use SafeArea from @gift-list/ui (AD-2, 2026-11-10)`,
+    );
+  }
 }
 
 const bannedSpecifier =

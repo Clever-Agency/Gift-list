@@ -8,7 +8,13 @@ import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { rememberAuthEmail } from "@/session/auth-navigation";
-import { firstZodField, formIssue, issueFromError, type FormIssue } from "@/session/form-issue";
+import {
+  firstZodField,
+  formIssue,
+  issueFromError,
+  loginPasswordFieldIssue,
+  type FormIssue,
+} from "@/session/form-issue";
 import { paramValue, returnPath } from "@/session/return-path";
 import { useCarriedAuthEmail } from "@/session/use-carried-auth-email";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
@@ -60,14 +66,23 @@ export default function LoginScreen() {
     const parsed = loginBodySchema.safeParse({ email, password, next });
     if (!parsed.success) {
       const field = firstZodField(parsed.error.issues[0]?.path);
-      setIssue(
-        issueFromError(
-          { ok: false, code: "VALIDATION", message: "Invalid input", ...(field ? { field } : {}) },
-          t,
-          common,
-          "login",
-        ),
-      );
+      // The stored lower bound is 1, so only an over-long password has a
+      // sentence of its own; a short one keeps the screen's generic text.
+      const nextIssue =
+        field === "password"
+          ? loginPasswordFieldIssue(password, t, common)
+          : issueFromError(
+              {
+                ok: false,
+                code: "VALIDATION",
+                message: "Invalid input",
+                ...(field ? { field } : {}),
+              },
+              t,
+              common,
+              "login",
+            );
+      setIssue(nextIssue);
       focusIssueField(field);
       return;
     }
@@ -78,7 +93,9 @@ export default function LoginScreen() {
     });
     setPending(false);
     if (!result.ok) {
-      const nextIssue = formIssue(result, t, common, "login");
+      const issue = formIssue(result, t, common, "login");
+      const nextIssue =
+        issue.field === "password" ? loginPasswordFieldIssue(password, t, common) : issue;
       setIssue(nextIssue);
       focusIssueField(nextIssue.field);
       return;

@@ -1,16 +1,21 @@
-import type { GiftCard, GiftUpdate } from "@gift-list/contracts";
-import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import {
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_TITLE_MAX,
+  textLength,
+  type GiftCard,
+  type GiftUpdate,
+} from "@gift-list/contracts";
+import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { useDiscardGuard } from "@/session/use-discard-guard";
-import { pageGutter } from "@/ui/card-grid";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { restoreFocus } from "@/ui/focus";
 import {
@@ -78,9 +83,6 @@ export default function EditGiftScreen() {
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
-  const { width } = useWindowDimensions();
-  const gutter = pageGutter(width);
-  const skeletonWidth = Math.max(0, Math.min(width, spacing["max-form"]) - gutter * 2);
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const id = paramValue(params.id) ?? "";
   // The guard sends a dead session back here after login, so the id travels along.
@@ -261,8 +263,14 @@ export default function EditGiftScreen() {
       return;
     }
     if (result.code === "VALIDATION") {
+      if (result.reason === "PAYLOAD_TOO_LARGE") {
+        // Not a field problem: the body is over the transport budget, and the
+        // catalog reason says so instead of the form's generic sentence.
+        setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+        return;
+      }
       // `GiftForm` shows the error under the field; phrase stays in the catalog.
-      setServerError({ field: result.field, message: result.message });
+      setServerError({ field: result.field });
       return;
     }
     setToast({ message: common(`errors.code.${result.code}`), tone: "error" });
@@ -423,15 +431,17 @@ export default function EditGiftScreen() {
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: giftForm("pageTitle.edit", { brand }) }} />
-        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
+        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. The gutter is
+            the Tamagui media clause `$page-gutter medium:$page-gutter-lg`, so the
+            window width is never read in JS: there is no card grid here. */}
         <PageScroll testID="gift-edit-page" keyboardShouldPersistTaps="handled">
           <PageContainer>
             <Column
               size="form"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >
@@ -441,19 +451,21 @@ export default function EditGiftScreen() {
               <Heading level={1}>{giftForm("title.edit")}</Heading>
               <YStack
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
               >
                 {state.status === "loading" ? (
-                  // The same named busy region as the list, with one form-width card.
+                  // The same named busy region as the list, with one form-width card:
+                  // a percentage fills the column's `max-form` box, so the skeleton no
+                  // longer needs the window width either.
                   <LoadingCards
                     testID="gift-edit-loading"
                     label={giftForm("loading")}
-                    width={skeletonWidth}
+                    width="100%"
                     count={1}
                   />
                 ) : state.status === "error" ? (
-                  <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
+                  <YStack width="100%" paddingVertical="$4" gap="$grid-gap">
                     <Text tone="muted" textAlign="center">
                       {state.kind === "network"
                         ? giftForm("loadError")
@@ -462,7 +474,7 @@ export default function EditGiftScreen() {
                     <PrimaryButton label={giftForm("retry")} onPress={retry} />
                   </YStack>
                 ) : state.status === "missing" ? (
-                  <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
+                  <YStack width="100%" paddingVertical="$4" gap="$grid-gap">
                     <Text tone="muted" textAlign="center">
                       {giftForm("giftNotFound")}
                     </Text>
@@ -482,31 +494,32 @@ export default function EditGiftScreen() {
                       submitRequest={submitRequest}
                       onDirtyChange={setDirty}
                       onCancel={cancel}
+                      // Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED.
+                      // The destructive action rides in the form's own button row (first, left),
+                      // text only, 44×44 (`DESIGN.md` → buttons); the ref keeps the focus return.
+                      secondaryAction={
+                        state.gift.status === "OPEN" ? (
+                          <Pressable
+                            ref={deleteButtonRef}
+                            role="button"
+                            aria-label={giftForm("delete.action")}
+                            onPress={startDelete}
+                            justifyContent="center"
+                            minHeight="$touch-target"
+                            minWidth="$touch-target"
+                            paddingHorizontal="$3"
+                          >
+                            <Text kind="button" tone="destructive">
+                              {giftForm("delete.action")}
+                            </Text>
+                          </Pressable>
+                        ) : undefined
+                      }
                       visibilityLocked={state.gift.status !== "OPEN"}
                       quantityLocked={state.gift.status !== "OPEN"}
                       tagCatalog={tagCatalog.state}
                       onRetryTagCatalog={tagCatalog.retry}
                     />
-                    {/* Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED. */}
-                    {state.gift.status === "OPEN" ? (
-                      // Secondary destructive action under the form: text only, 44×44
-                      // (`DESIGN.md` → buttons).
-                      <Pressable
-                        ref={deleteButtonRef}
-                        role="button"
-                        aria-label={giftForm("delete.action")}
-                        onPress={startDelete}
-                        alignSelf="flex-start"
-                        justifyContent="center"
-                        minHeight="$touch-target"
-                        minWidth="$touch-target"
-                        paddingHorizontal="$3"
-                      >
-                        <Text kind="button" tone="destructive">
-                          {giftForm("delete.action")}
-                        </Text>
-                      </Pressable>
-                    ) : null}
                   </>
                 )}
               </YStack>
@@ -544,7 +557,7 @@ export default function EditGiftScreen() {
           onClose={closeDiscard}
           onClosed={restoreFormFocus}
         />
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }
@@ -573,6 +586,13 @@ function toFormValues(gift: GiftCard): GiftFormValues {
  * value. An unchanged `OPEN` edit sends the stored values, which the server
  * treats as a no-op.
  *
+ * A stored text value longer than the current cap is legacy data (the contract
+ * has always capped these fields, so only a direct database write can produce
+ * one). Such an untouched value is left out of the body: the server would reject
+ * it as VALIDATION, while an absent key keeps it, so the owner can still change
+ * another field and save. The form does not report an untouched legacy value
+ * either — see `GiftFormBaseline`.
+ *
  * Story 2.5: `tags` is a full replacement, so the key is sent only when the set
  * actually changed. An unchanged edit omits it (the server keeps the stored
  * rows); removing the last tag sends `[]` and clears them.
@@ -580,14 +600,35 @@ function toFormValues(gift: GiftCard): GiftFormValues {
 function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
   const tagsChanged = !giftTagsEqual(values.tags, gift.tags.map(giftTagFromCard));
   const body: GiftUpdate = {
-    title: values.title,
-    description: values.description,
+    ...(keepsStoredText(values.title, gift.title, GIFT_TITLE_MAX)
+      ? {}
+      : { title: values.title }),
+    ...(keepsStoredText(values.description ?? "", gift.description, GIFT_DESCRIPTION_MAX)
+      ? {}
+      : { description: values.description }),
     priceAmount: values.priceAmount,
     priceCurrency: values.priceCurrency,
-    linkUrl: values.link,
+    ...(keepsStoredText(values.link ?? "", gift.linkUrl, GIFT_LINK_URL_MAX)
+      ? {}
+      : { linkUrl: values.link }),
     ...(tagsChanged ? { tags: giftTagInputs(values.tags) } : {}),
   };
   return gift.status === "OPEN"
     ? { ...body, visibility: values.visibility, quantity: values.quantity }
     : body;
+}
+
+/**
+ * The value is exactly the stored one and already over the cap: re-sending it
+ * would fail the server's schema, so the key is omitted and the row keeps it.
+ * The form shows no error for an untouched value either (`GiftFormBaseline`);
+ * both compare the trimmed text, so surrounding spaces are not an edit.
+ */
+function keepsStoredText(
+  value: string,
+  stored: string | null,
+  max: number,
+): boolean {
+  const text = value.trim();
+  return text === (stored ?? "").trim() && textLength(text) > max;
 }

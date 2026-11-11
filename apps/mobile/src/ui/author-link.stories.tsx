@@ -3,11 +3,10 @@ import { YStack } from "@gift-list/ui";
 import { AuthorLink } from "./author-link";
 
 /**
- * «Написать автору» of the app footer. The address is configuration
- * (`EXPO_PUBLIC_AUTHOR_URL`, AD-24); the catalog swaps that module for a mock and
- * always shows the pressable link. The configured-empty fallback — the same words
- * as plain text, no press — is covered by the unit tests of `AuthorLink`, because
- * a story cannot vary one module per story.
+ * «Написать автору» of the app footer. The address is the public `AUTHOR_MAILTO`
+ * constant from `packages/contracts` (AD-24, D-35), so the link is always active:
+ * there is no configured-empty state to show. A missing mail client only rejects
+ * `openURL`, which the component swallows.
  */
 const meta = {
   title: "App/AuthorLink",

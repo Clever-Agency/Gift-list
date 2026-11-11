@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PRODUCT_NAME } from "../brand";
 import { ERROR_CODES, ERROR_REASONS } from "../index";
 import {
   compareForSort,
@@ -83,8 +84,10 @@ describe("compareForSort", () => {
 });
 
 describe("catalogs", () => {
-  it("does not embed the product name", () => {
-    expect(JSON.stringify(getMessages("ru")).includes("Gift List")).toBe(false);
+  it("does not embed the product name, neither the current nor the old one", () => {
+    const catalog = JSON.stringify(getMessages("ru"));
+    expect(catalog.includes(PRODUCT_NAME)).toBe(false);
+    expect(catalog.includes("Gift List")).toBe(false);
   });
 });
 

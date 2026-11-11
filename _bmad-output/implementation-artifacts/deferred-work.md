@@ -177,3 +177,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-2-cooldown-toast-recovery.md`
   summary: (after Review, low) Общий `RATE_LIMITED` на экране профиля не передаёт `unit`/`count`, поэтому минутный лимит говорит «Попробуйте позже» вместо точного времени.
   evidence: `form-issue.ts` уже умеет `rateLimitValues`, а `relationshipAction` зовёт `common("errors.code.RATE_LIMITED")` без params. Осознанно не менялось: задача требовала сохранить прочие лимиты.
+
+## Deferred from: W1b.2 — бренд WishMoon и контакт автора (2026-11-11)
+
+- source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-10-wishmoon-brand.md` (§8)
+  summary: Ссылка «Написать автору» на Next-страницах `/l`, `/i`, `/unsubscribe` не реализована. Требование `DESIGN.md:520` (в §8 proposal — `:504`, а также `:443,448,449` по нумерации того же документа) остаётся открытым: по решению координатора (план t301, решение 6) и §8 proposal ссылка в W1b не добавляется. Linear-задача не заводилась.
+  evidence: В `apps/web/src/app/l/**`, `i/**` и `unsubscribe/**` футера со ссылкой нет, `AuthorLink` там не рендерится; в приложении ссылка уже есть (`apps/mobile/src/ui/site-footer.tsx`, `mailto:` на `AUTHOR_EMAIL`). Добавление ссылки на Next-страницы — отдельная задача.

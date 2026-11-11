@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@gift-list/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -35,7 +36,7 @@ describe("link-shape", () => {
     expect(message.html).toContain(`href="${escapeHtml(message.href)}"`);
     expect(message.html).not.toContain("/api/auth");
     expect(message.text).toContain(message.href);
-    expect(message.subject).toBe("Сброс пароля — Gift List");
+    expect(message.subject).toBe(`Сброс пароля — ${PRODUCT_NAME}`);
     expect(message.html).toContain("Задать новый пароль");
   });
 });

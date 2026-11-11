@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { PRODUCT_NAME } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -103,7 +104,7 @@ describe("UI6: страница 404", () => {
   it("показывает бренд, заголовок, объяснение и ссылку на главную", async () => {
     await mount();
 
-    expect(container.textContent).toContain("Gift List");
+    expect(container.textContent).toContain(PRODUCT_NAME);
     expect(container.textContent).toContain("Страница не найдена");
     expect(container.textContent).toContain("Такой страницы нет. Проверьте ссылку.");
     expect(container.textContent).toContain("На главную");

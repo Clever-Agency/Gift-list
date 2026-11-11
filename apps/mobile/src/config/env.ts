@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@gift-list/contracts";
 import { Platform } from "react-native";
 
 function readPublic(value: string | undefined): string {
@@ -22,19 +23,18 @@ export function normalizeWebOrigin(value: string | undefined): string {
   return match[1];
 }
 
-/** Empty `EXPO_PUBLIC_BRAND_NAME` becomes the fallback only in this module (AD-24). */
+/**
+ * Display name (AD-24): `EXPO_PUBLIC_BRAND_NAME` is a deliberate override, and a
+ * blank or missing value falls back to the one constant in `packages/contracts`.
+ */
 export function getBrandName(): string {
   const value = readPublic(process.env.EXPO_PUBLIC_BRAND_NAME);
-  return value.length > 0 ? value : "Gift List";
+  return value.length > 0 ? value : PRODUCT_NAME;
 }
 
 /** Empty means "not configured". Callers show the catalog phrase and do not throw. */
 export function getApiBaseUrl(): string {
   return readPublic(process.env.EXPO_PUBLIC_API_BASE_URL);
-}
-
-export function getAuthorUrl(): string {
-  return readPublic(process.env.EXPO_PUBLIC_AUTHOR_URL);
 }
 
 /**

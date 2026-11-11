@@ -7,9 +7,8 @@ import { SiteFooter } from "./site-footer";
  * (`common.footerTagline`, `common.writeToAuthor`). A screen may hand over its own
  * actions, and the wishlist does: «Выйти» and «Настройки» sit above the tagline.
  *
- * «Написать автору» reads its address from the configuration; the catalog mocks
- * that module and always shows the link. The no-address fallback (plain text,
- * no press) is covered by the unit tests of `AuthorLink`.
+ * «Написать автору» is a `mailto:` link to the author constant; the footer keeps
+ * the same link on every screen.
  */
 const meta = {
   title: "App/SiteFooter",

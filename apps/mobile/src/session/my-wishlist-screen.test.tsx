@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
+import { PRODUCT_NAME, formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -538,7 +538,7 @@ describe("мой вишлист: список", () => {
     respond(giftsAnswer([]));
     await mount();
 
-    expect(text()).toContain("Gift List");
+    expect(text()).toContain(PRODUCT_NAME);
     expect(text()).toContain("Мой вишлист");
     expect(text()).toContain("Написать автору");
     expectNoSmoke();

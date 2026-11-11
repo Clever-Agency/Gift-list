@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { PRODUCT_NAME } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -158,9 +159,9 @@ describe("W12.12: отступ анонимного экрана из медиа
   it("каркас на месте: бренд, заголовок и футер", async () => {
     await mount();
 
-    expect(container.textContent).toContain("Gift List");
+    expect(container.textContent).toContain(PRODUCT_NAME);
     expect(container.textContent).toContain("Вход");
-    expect(container.querySelector('[role="heading"]')?.textContent).toBe("Gift List");
+    expect(container.querySelector('[role="heading"]')?.textContent).toBe(PRODUCT_NAME);
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
   });
 });

@@ -199,6 +199,8 @@ export {
 
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
 
+export { AUTHOR_EMAIL, AUTHOR_MAILTO, PRODUCT_NAME, authorMailto } from "./brand";
+
 export { textLength } from "./text";
 
 export {

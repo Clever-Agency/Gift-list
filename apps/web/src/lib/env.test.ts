@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@gift-list/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getBrandName } from "./env";
 
@@ -29,10 +30,10 @@ function setRequiredEnv() {
 }
 
 describe("getBrandName", () => {
-  it("defaults to Gift List without DATABASE_URL", () => {
+  it("defaults to PRODUCT_NAME without DATABASE_URL", () => {
     delete process.env.BRAND_NAME;
     delete process.env.DATABASE_URL;
-    expect(getBrandName()).toBe("Gift List");
+    expect(getBrandName()).toBe(PRODUCT_NAME);
   });
 
   it("reads BRAND_NAME from the environment", () => {
@@ -42,7 +43,7 @@ describe("getBrandName", () => {
 
   it("treats a blank BRAND_NAME as unset", () => {
     process.env.BRAND_NAME = "  ";
-    expect(getBrandName()).toBe("Gift List");
+    expect(getBrandName()).toBe(PRODUCT_NAME);
   });
 
   it("getEnv uses the same blank-name default without failing the rest of the schema", async () => {
@@ -50,7 +51,7 @@ describe("getBrandName", () => {
     process.env.BRAND_NAME = "  ";
     vi.resetModules();
     const { getEnv } = await import("./env");
-    expect(getEnv().BRAND_NAME).toBe("Gift List");
+    expect(getEnv().BRAND_NAME).toBe(PRODUCT_NAME);
   });
 });
 

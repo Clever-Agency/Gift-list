@@ -7,9 +7,9 @@ import { TextField } from "./text-field";
 
 /**
  * The frame of the anonymous screens: the brand heading, the footer and the page
- * scroll around whatever the screen passes. The brand comes from the configuration
- * (`EXPO_PUBLIC_BRAND_NAME`, AD-24); the catalog mocks that module and shows
- * «Gift List».
+ * scroll around whatever the screen passes. The brand comes from `PRODUCT_NAME`
+ * in `packages/contracts` (AD-24); the catalog mocks the app config module and
+ * shows «WishMoon».
  */
 const meta = {
   title: "App/AnonymousScreen",
@@ -46,7 +46,7 @@ export const SignInForm: Story = {
 
 /** A long title at 360 px: the heading wraps, the footer stays at the bottom. */
 export const LongTitleNarrow: Story = {
-  args: { title: "Сброс пароля для аккаунта Gift List" },
+  args: { title: "Сброс пароля для аккаунта WishMoon" },
   render: function LongTitleNarrowStory(args) {
     return (
       <AnonymousScreen {...args}>

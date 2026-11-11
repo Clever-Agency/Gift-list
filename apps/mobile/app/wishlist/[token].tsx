@@ -21,7 +21,7 @@ import { fetchPublicWishlist, type PublicWishlistOwner } from "@/api/public-wish
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
+import { cardGrid } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
@@ -61,10 +61,17 @@ export default function PublicWishlistScreen() {
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
+  // W12.21: the page gutter is the Tamagui media clause
+  // `$page-gutter medium:$page-gutter-lg`, so the browser lays it out with a CSS
+  // media query and the phone reads the same theme key. The window width is still
+  // read for the one thing that is grid maths rather than a CSS breakpoint: the
+  // column count and the card width of `cardGrid` (`DESIGN.md` → Layout → columns),
+  // which the link skeleton and the wish cards share.
+  // Review m7: the safe-area insets (a notch in landscape) are outside the column,
+  // so the grid is measured against the width that is actually left for cards.
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const grid = cardGrid(width, insets);
-  const gutter = pageGutter(width);
   const params = useLocalSearchParams<{ token?: string }>();
   const route = publicWishlistRoute(paramValue(params.token));
   const token = route?.token ?? null;
@@ -183,7 +190,7 @@ export default function PublicWishlistScreen() {
             <Column
               size="wide"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >

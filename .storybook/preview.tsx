@@ -101,7 +101,9 @@ const withGiftListProvider: Decorator = function withGiftListProvider(Story) {
 };
 
 const preview: Preview = {
-  // The surface is the outermost decorator, so the screen frame is the page itself.
+  // A later entry wraps the earlier ones: `withGiftListProvider` is the outer
+  // decorator and `withStorySurface` the inner one, so every story renders inside
+  // both (DOM: `#storybook-root > span display:contents > ScreenFrame`).
   decorators: [withStorySurface, withGiftListProvider],
   parameters: {
     layout: "centered",

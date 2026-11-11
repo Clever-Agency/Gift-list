@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Toast } from "./toast";
-import { createMount, settle } from "./test-utils";
+import { createMount, settle, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -64,5 +64,16 @@ describe("Toast", () => {
     expect(root().style.transition).toContain("100ms");
     expect(root().style.transform).toBe("");
     expect(root().style.transition).not.toContain("translate");
+  });
+
+  it("кольцо кнопки — $ring-inverse и только на :focus-visible", async () => {
+    const { render } = mounted();
+    await render(<Toast testID="toast" message="Сохранено" closeLabel="Закрыть" onClose={noop} />);
+
+    const close = document.querySelector('[aria-label="Закрыть"]') as HTMLElement;
+    const keyboard = stateValues(close, "focus-visible", "outline-color");
+    expect(keyboard).toContain("var(--c-ring-inverse)");
+    expect(keyboard).not.toContain("var(--c-ring)");
+    expect(stateValues(close, "focus", "outline-color")).toEqual([]);
   });
 });

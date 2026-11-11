@@ -8,7 +8,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { controls, settle } from "@/test/dom";
-import { declarationsFor, paintedSpace, paintedValue } from "@/test/tamagui-css";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import ProfileScreen from "../../app/u/[nick]";
 
@@ -1254,5 +1254,16 @@ describe("W12.20: экран профиля на медиа-пропсах", () 
     expect(text()).toContain("мечта");
     expect(text()).toContain("на день рождения");
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  it("отступы и gap контента — токены $2/$section-gap/$grid-gap с прежними px", async () => {
+    await mountAt(1024);
+    const body = findByPaint(container, "padding-top", "2");
+
+    expect(body, "контент профиля").toBeDefined();
+    expect(paintedValue(body as Element, "padding-top", 360)).toBe("var(--t-space-2)");
+    expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
+    expect(paintedSpace(body as Element, "gap", 360)).toBe(spacing["grid-gap"]);
   });
 });

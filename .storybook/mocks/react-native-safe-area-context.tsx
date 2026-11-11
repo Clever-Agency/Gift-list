@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import { View, useWindowDimensions } from "react-native";
+import {
+  View,
+  useWindowDimensions,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 
 /**
  * The insets come from the native window; a catalog has none. The page keeps its
@@ -17,7 +22,7 @@ export function SafeAreaView({
   ...rest
 }: {
   children?: ReactNode;
-  style?: unknown;
+  style?: StyleProp<ViewStyle>;
   [key: string]: unknown;
 }) {
   return (

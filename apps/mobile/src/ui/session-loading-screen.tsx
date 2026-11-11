@@ -5,7 +5,6 @@ import {
   PageScroll,
   SafeArea,
   Screen,
-  spacing,
   YStack,
 } from "@gift-list/ui";
 import { useWindowDimensions } from "react-native";
@@ -56,9 +55,9 @@ export function SessionLoadingScreen({ size = "wide", testID = "session-loading"
             >
               <YStack
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
-                gap={spacing["grid-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
+                gap="$grid-gap"
               >
                 <LoadingCards
                   testID={testID}

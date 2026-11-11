@@ -1,5 +1,5 @@
 import type { GiftInputDraft } from "@gift-list/contracts";
-import { Column, Heading, PageContainer, PageScroll, SafeArea, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, Heading, PageContainer, PageScroll, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
@@ -231,8 +231,8 @@ export default function NewGiftScreen() {
               <Heading level={1}>{giftForm("title.create")}</Heading>
               <YStack
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
               >
                 <GiftForm
                   ref={formRef}

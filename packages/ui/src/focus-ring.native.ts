@@ -20,3 +20,13 @@ export const focusRing = {
   outlineWidth: "focus:2px",
   outlineOffset: 2,
 } as const;
+
+/**
+ * The inverse colour of the ring for the dark and red surfaces (`toast`),
+ * phone half of the platform pair: the same `focus` state as `focusRing`, with
+ * `$ring-inverse` instead of `$ring`. Style, width and offset come from
+ * `focusRing` on the surface itself (W12.9-1).
+ */
+export const focusRingInverse = {
+  outlineColor: "focus:$ring-inverse",
+} as const;

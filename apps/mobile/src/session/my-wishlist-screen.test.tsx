@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, pressScrim, settle } from "@/test/dom";
-import { declarationsFor, paintedSpace, paintedValue } from "@/test/tamagui-css";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import MyWishlistScreen from "../../app/(app)/index";
 
@@ -1935,5 +1935,16 @@ describe("W12.19: главный экран на медиа-пропсах", () 
     expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(4);
     expect(text()).toContain("мечта");
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  it("отступы и gap контента — токены $2/$section-gap/$grid-gap с прежними px", async () => {
+    await mountAt(1024);
+    const body = findByPaint(container, "padding-top", "2");
+
+    expect(body, "контент списка").toBeDefined();
+    expect(paintedValue(body as Element, "padding-top", 360)).toBe("var(--t-space-2)");
+    expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
+    expect(paintedSpace(body as Element, "gap", 360)).toBe(spacing["grid-gap"]);
   });
 });

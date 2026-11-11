@@ -6,7 +6,7 @@ import {
   type GiftCard,
   type GiftUpdate,
 } from "@gift-list/contracts";
-import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, SafeArea, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { useTranslations } from "use-intl";
@@ -451,8 +451,8 @@ export default function EditGiftScreen() {
               <Heading level={1}>{giftForm("title.edit")}</Heading>
               <YStack
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
               >
                 {state.status === "loading" ? (
                   // The same named busy region as the list, with one form-width card:
@@ -465,7 +465,7 @@ export default function EditGiftScreen() {
                     count={1}
                   />
                 ) : state.status === "error" ? (
-                  <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
+                  <YStack width="100%" paddingVertical="$4" gap="$grid-gap">
                     <Text tone="muted" textAlign="center">
                       {state.kind === "network"
                         ? giftForm("loadError")
@@ -474,7 +474,7 @@ export default function EditGiftScreen() {
                     <PrimaryButton label={giftForm("retry")} onPress={retry} />
                   </YStack>
                 ) : state.status === "missing" ? (
-                  <YStack width="100%" paddingVertical={spacing["section-gap"] / 2} gap="$grid-gap">
+                  <YStack width="100%" paddingVertical="$4" gap="$grid-gap">
                     <Text tone="muted" textAlign="center">
                       {giftForm("giftNotFound")}
                     </Text>

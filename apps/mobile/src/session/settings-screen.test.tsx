@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls } from "@/test/dom";
-import { declarationsFor, paintedSpace } from "@/test/tamagui-css";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { pageGutter } from "@/ui/card-grid";
 import SettingsScreen from "../../app/(app)/settings";
 
@@ -506,5 +506,16 @@ describe("W12.16: настройки на медиа-пропсах", () => {
     expect(field("Ник").value).toBe("anya");
     expect(button("Сохранить")).toBeDefined();
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  it("отступы контента — токены $2/$section-gap с прежними px", async () => {
+    signedIn();
+    await mountReady();
+    const body = findByPaint(container, "padding-top", "2");
+
+    expect(body, "контент настроек").toBeDefined();
+    expect(paintedValue(body as Element, "padding-top", 360)).toBe("var(--t-space-2)");
+    expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
   });
 });

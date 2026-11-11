@@ -5,7 +5,6 @@ import {
   PageScroll,
   SafeArea,
   Screen,
-  spacing,
   Text,
   YStack,
 } from "@gift-list/ui";
@@ -63,8 +62,8 @@ export function SessionErrorScreen({
                 maxWidth="$max-form"
                 alignSelf="center"
                 justifyContent="center"
-                paddingVertical={spacing["section-gap"]}
-                gap={spacing["grid-gap"]}
+                paddingVertical="$section-gap"
+                gap="$grid-gap"
               >
                 <Heading level={1} textAlign="center">
                   {t("sessionError.title")}

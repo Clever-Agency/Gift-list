@@ -196,9 +196,9 @@ export default function PublicWishlistScreen() {
             >
               <YStack
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
-                gap={spacing["grid-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
+                gap="$grid-gap"
               >
                 {view.status === "loading" ? (
                   <LoadingCards
@@ -274,7 +274,7 @@ function WishlistUnavailable() {
       testID="wishlist-unavailable"
       width="100%"
       alignItems="center"
-      paddingVertical={spacing["section-gap"]}
+      paddingVertical="$section-gap"
       gap="$grid-gap"
     >
       <Heading level={1} kind="display-sm" textAlign="center">
@@ -298,7 +298,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       width="100%"
       maxWidth="$max-form"
       alignSelf="center"
-      paddingVertical={spacing["section-gap"] / 2}
+      paddingVertical="$4"
       gap="$grid-gap"
     >
       <Text tone="muted" textAlign="center">

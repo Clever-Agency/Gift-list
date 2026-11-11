@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
 
 /**
  * The app draws its icons with `expo-symbols`, which loads a Material Symbols
@@ -12,7 +12,7 @@ type SymbolViewProps = {
   name?: unknown;
   size?: number;
   tintColor?: string;
-  style?: unknown;
+  style?: StyleProp<ViewStyle>;
   [key: string]: unknown;
 };
 

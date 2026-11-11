@@ -102,13 +102,23 @@ export const Headings: Story = {
   },
 };
 
-/** `LinkText` is the router link text: 44 px tall, primary, `$background` on hover, dimmed on press, focus ring on Tab. */
+/**
+ * `LinkText` is the router link text: 44 px tall, primary, `$background` on hover,
+ * dimmed on press, focus ring on Tab. In the app the text sits inside a router
+ * `<a>` (`NavLink`), which is what Tab reaches; the standalone span here takes
+ * `tabIndex` and `role="link"` in the story only, so the same `:focus-visible`
+ * ring is reachable and visible in the catalog (W12.9-4).
+ */
 export const Link: Story = {
   render: function LinkStory() {
     return (
       <YStack gap="$2" width={360} maxWidth="100%">
-        <LinkText onPress={noop}>Назад</LinkText>
-        <LinkText onPress={noop}>Скопировать ссылку на вишлист</LinkText>
+        <LinkText tabIndex={0} role="link" onPress={noop}>
+          Назад
+        </LinkText>
+        <LinkText tabIndex={0} role="link" onPress={noop}>
+          Скопировать ссылку на вишлист
+        </LinkText>
       </YStack>
     );
   },

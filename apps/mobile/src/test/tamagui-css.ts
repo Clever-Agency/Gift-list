@@ -82,8 +82,16 @@ export function paintedValue(
 }
 
 /**
+ * The 4-point scale of `packages/ui/src/config.ts` → `spaceTokens`: `$1`…`$6` are
+ * 4, 8, 12, 16, 24, 32. The named spacing map has no numeric keys, so a style that
+ * uses `$2` resolves through this table.
+ */
+const SCALE: Record<string, number> = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32 };
+
+/**
  * Same as `paintedValue`, for a property set to a theme token: the values are
- * references (`var(--t-space-page-gutter)`), so they resolve through `spacing`.
+ * references (`var(--t-space-page-gutter)`), so they resolve through `spacing`
+ * (named tokens) or the numeric scale (`$1`…`$6`).
  */
 export function paintedSpace(
   element: Element,
@@ -92,5 +100,21 @@ export function paintedSpace(
 ): number | undefined {
   const token = paintedValue(element, property, width)?.match(/var\(--t-space-([\w-]+)\)/)?.[1];
   if (token === undefined) return undefined;
-  return spacing[token as keyof typeof spacing];
+  return spacing[token as keyof typeof spacing] ?? SCALE[token];
+}
+
+/**
+ * The element the CSS paints with `property: var(--t-space-token)`. A style target
+ * without its own `testID` is found by the token it was given, which also proves
+ * the element got the token and not a number (W12.22).
+ */
+export function findByPaint(
+  root: ParentNode,
+  property: string,
+  token: string,
+  width = 360,
+): HTMLElement | undefined {
+  return Array.from(root.querySelectorAll<HTMLElement>("*")).find(
+    (element) => paintedValue(element, property, width) === `var(--t-space-${token})`,
+  );
 }

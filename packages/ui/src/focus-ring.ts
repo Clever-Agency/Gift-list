@@ -14,3 +14,14 @@ export const focusRing = {
   outlineWidth: "focus-visible:2px",
   outlineOffset: 2,
 } as const;
+
+/**
+ * The same ring in `$ring-inverse` for the dark and red surfaces (`DESIGN.md` →
+ * toast → `focus-ring`). Only the colour differs: the surface that takes it
+ * (`Pressable` in the toast) already brings style, width and offset from
+ * `focusRing` of the same platform half, so the web CSS stays exactly
+ * `outline-color` on `:focus-visible` (W12.9-1).
+ */
+export const focusRingInverse = {
+  outlineColor: "focus-visible:$ring-inverse",
+} as const;

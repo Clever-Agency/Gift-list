@@ -1,5 +1,6 @@
 import { View } from "@tamagui/core";
 import { XStack } from "@tamagui/stacks";
+import { focusRingInverse } from "./focus-ring";
 import { layerFade } from "./motion";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
@@ -148,8 +149,9 @@ function ToastButton({ label, onPress, onFocus, onBlur }: ToastButtonProps) {
       minWidth="$touch-target"
       alignItems="center"
       justifyContent="center"
-      // `ring-inverse` on the dark and red surfaces (`DESIGN.md` → toast.focus-ring).
-      outlineColor="focus-visible:$ring-inverse"
+      // `ring-inverse` on the dark and red surfaces (`DESIGN.md` → toast.focus-ring):
+      // the platform pair keeps the web on `:focus-visible` and the phone on `focus`.
+      {...focusRingInverse}
     >
       <Text kind="button" color="$background" textDecorationLine="underline">
         {label}

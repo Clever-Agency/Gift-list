@@ -1,5 +1,5 @@
 import { NICK_PATTERN, type Me } from "@gift-list/contracts";
-import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, SafeArea, Screen, spacing, Text, YStack } from "@gift-list/ui";
+import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import type { TextInputInstance } from "react-native";
@@ -226,8 +226,8 @@ function SettingsForm({
               <Heading level={1}>{t("settings.title")}</Heading>
               <YStack
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
               >
                 <YStack gap="$grid-gap">
                   <TextField

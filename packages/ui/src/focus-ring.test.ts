@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { focusRing } from "./focus-ring";
+import { focusRing, focusRingInverse } from "./focus-ring";
 
 /**
  * The web half of the focus ring (`DESIGN.md` → «Кольцо фокуса», W12.9): the ring
@@ -37,5 +37,9 @@ describe("focus-ring (web): кольцо только на :focus-visible", () =
       "outlineWidth",
     ]);
     expect(focusRing.outlineOffset).toBe(2);
+  });
+
+  it("inverse-кольцо тоста — тот же :focus-visible, но $ring-inverse", () => {
+    expect(focusRingInverse).toEqual({ outlineColor: "focus-visible:$ring-inverse" });
   });
 });

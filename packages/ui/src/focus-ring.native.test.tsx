@@ -15,6 +15,7 @@ import { Button } from "./button";
 import { Pressable } from "./pressable";
 import { LinkText } from "./text";
 import { createMount, declarationsFor, stateOf } from "./test-utils";
+import { focusRingInverse } from "./focus-ring";
 
 const mounted = createMount();
 
@@ -54,5 +55,9 @@ describe("focus-ring (native): кольцо по focus в компонентах
     const { container, render } = mounted();
     await render(<LinkText {...anchorProps}>Войти</LinkText>);
     expectRingOnFocus(container.querySelector("a") as HTMLElement);
+  });
+
+  it("inverse-кольцо тоста — тот же focus, но $ring-inverse", () => {
+    expect(focusRingInverse).toEqual({ outlineColor: "focus:$ring-inverse" });
   });
 });

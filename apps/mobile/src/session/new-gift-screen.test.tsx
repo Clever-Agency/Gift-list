@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, escape, settle, typeInto } from "@/test/dom";
-import { declarationsFor, paintedSpace } from "@/test/tamagui-css";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { pageGutter } from "@/ui/card-grid";
 import NewGiftScreen from "../../app/(app)/gifts/new";
 
@@ -1267,5 +1267,16 @@ describe("W12.17: новое желание на медиа-пропсах", () 
     expect(button("Добавить желание")).toBeDefined();
     expect(button("Отмена")).toBeDefined();
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  it("отступы контента — токены $2/$section-gap с прежними px", async () => {
+    signedIn();
+    await mountReady();
+    const body = findByPaint(container, "padding-top", "2");
+
+    expect(body, "контент формы").toBeDefined();
+    expect(paintedValue(body as Element, "padding-top", 360)).toBe("var(--t-space-2)");
+    expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
   });
 });

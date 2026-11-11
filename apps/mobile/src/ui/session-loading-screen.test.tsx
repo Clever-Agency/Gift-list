@@ -3,7 +3,7 @@ import { breakpoints, spacing } from "@gift-list/ui";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { declarationsFor, paintedSpace, paintedValue } from "@/test/tamagui-css";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 
@@ -279,6 +279,19 @@ describe("W12.15: SessionLoadingScreen на медиа-пропсах", () => {
 
     await remountAt(1024, "wide");
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
+  });
+
+  it("padding и gap — токены $2/$section-gap/$grid-gap с прежними px", async () => {
+    await mountAt(1024);
+    const body = findByPaint(container, "padding-top", "2");
+    const region = body as Element;
+
+    expect(body, "контент скелетона").toBeDefined();
+    expect(paintedValue(region, "padding-top", 1024)).toBe("var(--t-space-2)");
+    expect(paintedSpace(region, "padding-top", 1024)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedValue(region, "padding-bottom", 1024)).toBe("var(--t-space-section-gap)");
+    expect(paintedSpace(region, "padding-bottom", 1024)).toBe(spacing["section-gap"]);
+    expect(paintedSpace(region, "gap", 1024)).toBe(spacing["grid-gap"]);
   });
 
   it.each([breakpoints.medium - 1, breakpoints.medium])(

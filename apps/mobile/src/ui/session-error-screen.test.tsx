@@ -3,7 +3,7 @@ import { breakpoints, spacing } from "@gift-list/ui";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { declarationsFor, paintedSpace } from "@/test/tamagui-css";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { pageGutter } from "@/ui/card-grid";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 
@@ -190,6 +190,18 @@ describe("W12.14: SessionErrorScreen на медиа-пропсах", () => {
       const conditions = gutterRules.map((rule) => rule.minWidth);
       expect(conditions).toContain(null);
       expect(conditions).toContain(breakpoints.medium);
+    });
+
+    it("отступы и gap — токены $section-gap/$grid-gap с прежними px", async () => {
+      await mountError(size);
+      const body = findByPaint(container, "padding-block", "section-gap");
+      const region = body as Element;
+
+      expect(body, "контент экрана ошибки").toBeDefined();
+      expect(paintedValue(region, "padding-block", 360)).toBe("var(--t-space-section-gap)");
+      expect(paintedSpace(region, "padding-block", 360)).toBe(spacing["section-gap"]);
+      expect(paintedValue(region, "gap", 360)).toBe("var(--t-space-grid-gap)");
+      expect(paintedSpace(region, "gap", 360)).toBe(spacing["grid-gap"]);
     });
 
     it("alert, заголовок и кнопка на месте", async () => {

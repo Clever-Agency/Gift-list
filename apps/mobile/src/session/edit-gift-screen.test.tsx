@@ -1730,6 +1730,87 @@ describe("изменение желания: теги", () => {
     expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
 
+  /**
+   * CLE-79/D3: a fixed tag that left the catalogue is a `tags.N.catalogId`
+   * rejection. The chip keeps its stored label (AD-27), and the copy must say the
+   * tag is gone instead of the generic length/duplicate hint or the raw message.
+   */
+  it("устаревший фиксированный тег: VALIDATION tags.0.catalogId говорит «Такого тега больше нет»", async () => {
+    loaded(tagged);
+    // Only «нужно сейчас» is left in the catalogue: the stored «мечта» is stale.
+    tagApi.fetchTagCatalog.mockResolvedValue({
+      ok: true,
+      tags: [{ id: "tag_need", slug: "need-now", label: "нужно сейчас" }],
+    });
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "A fixed tag id is not in the catalog",
+      field: "tags.0.catalogId",
+    });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(text()).toContain("Такого тега больше нет в списке. Уберите его и попробуйте снова.");
+    expect(text()).not.toContain("Проверьте теги: до 30 символов и без повторов.");
+    expect(text()).not.toContain("A fixed tag id is not in the catalog");
+    // Q-09: `tags.0` is the stored «мечта» in the submitted order.
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBe("true");
+    expect(
+      container
+        .querySelector('[role="button"][aria-label="Убрать тег своё"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBeNull();
+    expect(field("Название").value).toBe("Наушники Sony");
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("устаревший тег не первый: tags.1.catalogId помечает свой чип, а не первый", async () => {
+    const pair: GiftCard = {
+      ...stored,
+      tags: [
+        { catalogId: "tag_dream", label: "мечта" },
+        { catalogId: "tag_need", label: "нужно сейчас" },
+      ],
+    };
+    loaded(pair);
+    tagApi.fetchTagCatalog.mockResolvedValue({
+      ok: true,
+      tags: [{ id: "tag_dream", slug: "dream", label: "мечта" }],
+    });
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "A fixed tag id is not in the catalog",
+      field: "tags.1.catalogId",
+    });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(text()).toContain("Такого тега больше нет в списке. Уберите его и попробуйте снова.");
+    expect(text()).not.toContain("Проверьте теги: до 30 символов и без повторов.");
+    expect(text()).not.toContain("A fixed tag id is not in the catalog");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="нужно сейчас"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBe("true");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBeNull();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
   it("загрузка каталога не скрывает сохранённые фиксированный и свой теги", async () => {
     tagApi.fetchTagCatalog.mockReturnValue(new Promise(() => {}));
     loaded(tagged);

@@ -23,9 +23,10 @@ const config: StorybookConfig = {
     "../packages/ui/src/**/*.stories.tsx",
     "../apps/mobile/src/**/*.stories.tsx",
   ],
-  // Viewport and backgrounds are part of Storybook 10 core; a11y is the one addon:
-  // it shows axe-core violations next to every story (`parameters.a11y.test`).
-  addons: ["@storybook/addon-a11y"],
+  // Viewport and backgrounds are part of Storybook 10 core; a11y shows axe-core
+  // violations next to every story (`parameters.a11y.test`), and docs renders the
+  // autodocs page of a component (`tags: ["autodocs"]`).
+  addons: ["@storybook/addon-a11y", "@storybook/addon-docs"],
   framework: {
     name: "@storybook/react-native-web-vite",
     options: {

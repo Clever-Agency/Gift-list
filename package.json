@@ -42,6 +42,7 @@
   },
   "devDependencies": {
     "@storybook/addon-a11y": "10.6.7",
+    "@storybook/addon-docs": "10.6.7",
     "@storybook/react-native-web-vite": "10.6.7",
     "storybook": "10.6.7"
   }

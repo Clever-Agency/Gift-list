@@ -1,10 +1,23 @@
 import { ButtonFrame as BehaviorFrame, ButtonText as BehaviorText } from "@tamagui/button";
-import { styled } from "@tamagui/core";
+import { View, styled } from "@tamagui/core";
 import { forwardRef, type ComponentRef } from "react";
 import { fontFor } from "./font-style";
 import { focusRing } from "./focus-ring";
+import { layerFade } from "./motion";
 import { Spinner } from "./spinner";
 import { colors, type ColorToken } from "./tokens";
+import { useReduceMotion } from "./use-reduce";
+
+/** The public variants, in the order the catalog shows them. */
+export const BUTTON_VARIANTS = [
+  "primary",
+  "reserve",
+  "secondary",
+  "ghost",
+  "destructive",
+] as const;
+
+export type ButtonVariant = (typeof BUTTON_VARIANTS)[number];
 
 /**
  * A blocked button (`disabled` or `busy`) keeps its resting look: no hover, no press.
@@ -15,6 +28,9 @@ import { colors, type ColorToken } from "./tokens";
  * for a live and a blocked button and no rule outside the variant can switch the state
  * off. A blocked button therefore gets its own variant value: the same tokens without
  * the state keys. No colour is added or duplicated.
+ *
+ * These `*Blocked` values are internal: callers pick a public variant and `Button`
+ * swaps it while the button is blocked.
  */
 const BLOCKED_VARIANT = {
   primary: "primaryBlocked",
@@ -22,9 +38,7 @@ const BLOCKED_VARIANT = {
   secondary: "secondaryBlocked",
   ghost: "ghostBlocked",
   destructive: "destructiveBlocked",
-} as const;
-
-export type ButtonVariant = keyof typeof BLOCKED_VARIANT;
+} as const satisfies Record<ButtonVariant, string>;
 
 /**
  * The label colour of each variant (`DESIGN.md` → components `button-*`), as a
@@ -47,6 +61,9 @@ const Frame = styled(BehaviorFrame, {
   paddingHorizontal: "$card-padding",
   borderRadius: "$md",
   cursor: "pointer",
+  // The busy spinner's slot is absolutely positioned over the frame, so the frame
+  // itself is the box it is centred on.
+  position: "relative",
   ...focusRing,
   variants: {
     variant: {
@@ -110,13 +127,8 @@ const Frame = styled(BehaviorFrame, {
       true: {
         opacity: 0.6,
         cursor: "default",
-        // The spinner joins the row as a flex item before the label (see `Button`):
-        // it takes `16 + 8` px of the label's room, so both horizontal paddings give
-        // 12 px back — `card-padding` 16 → 4 (`$1` of the 4-point scale, `spaceTokens`
-        // in `config.ts`). A content-sized button keeps its resting width; a stretched
-        // one takes the parent's width. The gap is `$2` = 8 px of the same scale.
-        paddingHorizontal: "$1",
-        gap: "$2",
+        // The paddings stay the resting ones: the spinner is drawn over the
+        // button, not laid out next to the label, so nothing has to be given back.
       },
     },
   } as const,
@@ -142,6 +154,38 @@ const Label = styled(BehaviorText, {
   defaultVariants: { variant: "primary" },
 });
 
+/**
+ * The busy spinner's slot (`t343u`, `t344u`): a box over the whole frame, out of
+ * the row, so the spinner takes no room and the button keeps its resting width
+ * and paddings. The spinner is centred on both axes; the box never takes a press,
+ * so a button under the invisible slot (opacity 0 at rest) still reacts as usual.
+ * The opacity goes 0 → 1 with the project's fade (`layerFade`, 160 ms, 100 ms with
+ * «уменьшить движение»); the fade carries the spinner in, nothing shifts.
+ */
+const SpinnerSlot = styled(View, {
+  name: "GLButtonSpinnerSlot",
+  position: "absolute",
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+  alignItems: "center",
+  justifyContent: "center",
+  pointerEvents: "none",
+  variants: {
+    busy: {
+      true: { opacity: 1 },
+      false: { opacity: 0 },
+    },
+  } as const,
+  defaultVariants: { busy: false },
+});
+
+/** The button types the web honours; a phone ignores the value and stays a pressable. */
+export const BUTTON_TYPES = ["button", "submit"] as const;
+
+export type ButtonType = (typeof BUTTON_TYPES)[number];
+
 export type ButtonProps = {
   /** The visible text and the accessible name. Copy comes from the caller. */
   label: string;
@@ -161,12 +205,15 @@ export type ButtonProps = {
    * `disabled` attribute), so a keyboard user can still find it and read why.
    */
   focusableWhenDisabled?: boolean;
-  /** The action is running: dimmed, announced busy, takes no second press. */
+  /**
+   * The action is running: dimmed, announced busy, takes no second press. The
+   * spinner is drawn over the hidden label, so the button keeps its size.
+   */
   busy?: boolean;
   fullWidth?: boolean;
   testID?: string;
   /** `submit` makes the web button submit its form; the phone ignores it. */
-  type?: "button" | "submit";
+  type?: ButtonType;
 };
 
 /**
@@ -175,11 +222,10 @@ export type ButtonProps = {
  * On the web it is a real `<button>` with the label as its name; a disabled one
  * never fires `onPress`.
  *
- * `busy` puts the 16 px spinner into the button's own row, right before the label
- * (`DESIGN.md`: «рядом с текстом»), and the frame gives back exactly the room it
- * takes: padding 16 → 4 on each side for the spinner's 16 px and the 8 px gap, so
- * the width of a content-sized button does not change and a stretched one keeps
- * the parent's width.
+ * `busy` keeps the button exactly the size it has at rest (`t343u`): the paddings
+ * do not change and the label keeps its place in the row, only its opacity drops
+ * to 0. The 16 px spinner is drawn over the button in an absolute slot, centred on
+ * both axes (`t344u`), and fades in from opacity 0, so nothing shifts.
  */
 export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(function Button(
   {
@@ -205,6 +251,9 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
   // `busy` keeps the button in the Tab order (focus must not drop to <body> when a
   // form is submitted); only a plain `disabled` is a native disabled button.
   const native = disabled && !focusableWhenDisabled;
+  // «Уменьшить движение»: the spinner slot fades in with the project's fade, 100 ms
+  // instead of 160 ms (`motion.ts`), the same rule the layers follow.
+  const reduce = useReduceMotion();
   return (
     <Frame
       ref={ref}
@@ -223,8 +272,23 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
       testID={testID}
       onPress={blocked ? undefined : onPress}
     >
-      {busy ? <Spinner color={colors[LABEL_COLOR[variant]]} /> : null}
-      <Label variant={variant}>{label}</Label>
+      {/*
+        The label stays in the row at opacity 0 while busy: it holds the width of
+        the resting button. The name does not change — the frame's `aria-label`
+        wins over the content — so the hidden text is not a second announcement.
+      */}
+      <Label variant={variant} opacity={busy ? 0 : undefined}>
+        {label}
+      </Label>
+      <SpinnerSlot
+        busy={busy}
+        transition={layerFade(reduce)}
+        // A `<button>` may hold phrasing content only: the slot is a `span`, not a
+        // block-level `div`. On a phone there are no tags and the slot stays a view.
+        render={<span />}
+      >
+        {busy ? <Spinner color={colors[LABEL_COLOR[variant]]} /> : null}
+      </SpinnerSlot>
     </Frame>
   );
 });

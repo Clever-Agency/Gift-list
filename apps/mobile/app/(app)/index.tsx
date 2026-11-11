@@ -16,15 +16,12 @@ import {
 } from "@gift-list/ui";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useWindowDimensions } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { fetchMyGifts, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
-import { cardGrid } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
 import { restoreFocus, type ChipNode } from "@/ui/focus";
 import { WishCard } from "@/ui/gift-card";
@@ -33,6 +30,7 @@ import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
+import { useCardGrid } from "@/ui/use-card-grid";
 import { VisibilityPicker } from "@/ui/visibility-picker";
 import { copyWishlistShareLink } from "@/wishlist/copy-link";
 import { hasWishVisibleToEveryone } from "@/wishlist/share-availability";
@@ -84,14 +82,15 @@ export default function MyWishlistScreen() {
   const auth = useAuth();
   // W12.19: the page gutter is the Tamagui media clause
   // `$page-gutter medium:$page-gutter-lg`, so the browser lays it out with a CSS
-  // media query and the phone reads the same theme key. The window width is still
-  // read for the one thing that is grid maths rather than a CSS breakpoint: the
-  // column count and the card width of `cardGrid` (`DESIGN.md` → Layout → columns).
-  // Review m7: the safe-area insets (a notch in landscape) are outside the column,
-  // so the grid is measured against the width that is actually left for cards.
-  const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const grid = cardGrid(width, insets);
+  // media query and the phone reads the same theme key.
+  // W12.23: the column count and the card width (`DESIGN.md` → Layout → columns) are
+  // grid math, so on the web they follow the measured content area, not the window:
+  // a classic scrollbar makes the window wider than this section by its own width.
+  // The container is measured before it is painted; until then the hook keeps
+  // `cardGrid(windowWidth, insets)` — the phone's numbers.
+  // Destructured: React's `refs` lint rule treats an object that holds a ref callback
+  // as a ref, and a member read of it during render is an error.
+  const { cardWidth, attachContainer } = useCardGrid();
   const params = useLocalSearchParams<{ toast?: string }>();
   const [state, setState] = useState<ScreenState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -502,6 +501,8 @@ export default function MyWishlistScreen() {
               </XStack>
 
               <YStack
+                testID="wishlist-content"
+                ref={attachContainer}
                 flexGrow={1}
                 paddingTop="$2"
                 paddingBottom="$section-gap"
@@ -511,7 +512,7 @@ export default function MyWishlistScreen() {
                   <LoadingCards
                     testID="my-wishlist-loading"
                     label={wishlist("loading")}
-                    width={grid.cardWidth}
+                    width={cardWidth}
                   />
                 ) : state.status === "error" ? (
                   <RetryView
@@ -553,7 +554,7 @@ export default function MyWishlistScreen() {
                         <WishCard
                           key={gift.id}
                           gift={gift}
-                          width={grid.cardWidth}
+                          width={cardWidth}
                           onPress={handlePress}
                           onVisibilityPress={handleVisibilityPress}
                           visibilityChipRef={setChipNode}

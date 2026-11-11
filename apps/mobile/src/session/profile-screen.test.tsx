@@ -8,8 +8,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { controls, settle } from "@/test/dom";
+import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
+import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
 import ProfileScreen from "../../app/u/[nick]";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -186,6 +187,8 @@ function actionCalls(suffix: string): number {
 
 let root: Root;
 let container: HTMLElement;
+/** W12.23: the content width a browser would report for the column. */
+let measuredLayout: SimulatedContent;
 
 function text(): string {
   return document.body.textContent ?? "";
@@ -245,6 +248,7 @@ async function rerenderWithNick(nick: string) {
 beforeEach(() => {
   vi.resetAllMocks();
   dimensions.width = null;
+  measuredLayout = observeContentWidth();
   search.params = { nick: "boris" };
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -254,6 +258,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  measuredLayout.restore();
 });
 
 describe("профиль: вход", () => {
@@ -1062,6 +1067,10 @@ describe("профиль: устаревший cooldown сервера (Story 4.
  * the whole row still fitting inside the column. Widths come from the CSS Tamagui
  * actually generated (see `@/test/tamagui-css`), not from a browser layout: real
  * rendering on a phone and in a browser is a manual check.
+ *
+ * W12.23 moved the numbers to the measured content area: this DOM never lays anything
+ * out, so these tests see the `cardGrid(width)` fallback, and the measured path has its
+ * own suite below.
  */
 describe("W12.20: экран профиля на медиа-пропсах", () => {
   /** Four wishes, as the coordinator's mock: three statuses, one tag, `relationship: NONE`. */
@@ -1265,5 +1274,53 @@ describe("W12.20: экран профиля на медиа-пропсах", () 
     expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
     expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
     expect(paintedSpace(body as Element, "gap", 360)).toBe(spacing["grid-gap"]);
+  });
+
+  /**
+   * W12.23: the grid follows the measured content area, not the window. A 600 px window
+   * with a classic ~15 px scrollbar leaves a 585 px column, so the cards get
+   * 585 − 2·24 = 537 px instead of the 552 px `cardGrid(600)` drew — the right gutter is
+   * 24 px again. Without a scrollbar the content area is the window minus the gutter and
+   * the numbers are the ones W12.19–W12.21 pinned.
+   */
+  describe("W12.23: сетка по ширине контента", () => {
+    it("окно 600 px, колонка 537 px: карточка 537 px и ряд влезает в колонку", async () => {
+      await mountAt(600);
+      await measuredLayout.measure(537);
+
+      const cssGutter = paintedSpace(pageColumn(), "padding-inline", 600) ?? 0;
+      const cardWidth = paintedWidth(gridCard(), 600);
+
+      expect(cssGutter).toBe(spacing["page-gutter-lg"]);
+      expect(cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 5);
+      expect(cardWidth).toBe(537);
+      // 537 px of cards plus two 24 px gutters is exactly the 585 px column, so the
+      // right edge of the last card sits on the 24 px gutter and not 9 px from it.
+      expect(cardWidth + cssGutter * 2).toBe(585);
+    });
+
+    it.each([
+      { width: 360, columns: 1, card: 328 },
+      { width: 600, columns: 1, card: 552 },
+      { width: 1024, columns: 3, card: 314.67 },
+      { width: 1280, columns: 3, card: 346.67 },
+    ])(
+      "окно $width px без скроллбара: карточка $card px — прежние числа",
+      async ({ width, columns, card }) => {
+        await mountAt(width);
+        const gutter = pageGutter(width);
+        const content = Math.min(width, spacing["max-wide"]) - gutter * 2;
+        await measuredLayout.measure(content);
+
+        const cardWidth = paintedWidth(gridCard(), width);
+
+        expect(cardGrid(width).columns).toBe(columns);
+        expect(cardWidth).toBeCloseTo(card, 2);
+        expect(cardWidth).toBeCloseTo(cardGrid(width).cardWidth, 5);
+
+        const row = cardWidth * columns + spacing["grid-gap"] * (columns - 1) + gutter * 2;
+        expect(row).toBeLessThanOrEqual(Math.min(width, spacing["max-wide"]) + 1e-6);
+      },
+    );
   });
 });

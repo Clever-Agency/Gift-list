@@ -14,14 +14,11 @@ import {
 } from "@gift-list/ui";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { useWindowDimensions } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
 import { fetchPublicWishlist, type PublicWishlistOwner } from "@/api/public-wishlist";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
-import { cardGrid } from "@/ui/card-grid";
 import { EmptyState } from "@/ui/empty-state";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
@@ -29,6 +26,7 @@ import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
 import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
+import { useCardGrid } from "@/ui/use-card-grid";
 import { publicWishlistRoute } from "@/wishlist/public-token";
 
 /**
@@ -63,15 +61,15 @@ export default function PublicWishlistScreen() {
   const auth = useAuth();
   // W12.21: the page gutter is the Tamagui media clause
   // `$page-gutter medium:$page-gutter-lg`, so the browser lays it out with a CSS
-  // media query and the phone reads the same theme key. The window width is still
-  // read for the one thing that is grid maths rather than a CSS breakpoint: the
-  // column count and the card width of `cardGrid` (`DESIGN.md` → Layout → columns),
-  // which the link skeleton and the wish cards share.
-  // Review m7: the safe-area insets (a notch in landscape) are outside the column,
-  // so the grid is measured against the width that is actually left for cards.
-  const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const grid = cardGrid(width, insets);
+  // media query and the phone reads the same theme key.
+  // W12.23: the column count and the card width (`DESIGN.md` → Layout → columns) are
+  // grid math, so on the web they follow the measured content area, not the window:
+  // a classic scrollbar makes the window wider than this section by its own width.
+  // The link skeleton and the wish cards share the one measurement, and until it
+  // lands the hook keeps the phone's `cardGrid(windowWidth, insets)` numbers.
+  // Destructured: React's `refs` lint rule treats an object that holds a ref callback
+  // as a ref, and a member read of it during render is an error.
+  const { cardWidth, attachContainer } = useCardGrid();
   const params = useLocalSearchParams<{ token?: string }>();
   const route = publicWishlistRoute(paramValue(params.token));
   const token = route?.token ?? null;
@@ -195,6 +193,8 @@ export default function PublicWishlistScreen() {
               gap="$2"
             >
               <YStack
+                testID="public-wishlist-content"
+                ref={attachContainer}
                 flexGrow={1}
                 paddingTop="$2"
                 paddingBottom="$section-gap"
@@ -204,7 +204,7 @@ export default function PublicWishlistScreen() {
                   <LoadingCards
                     testID="wishlist-loading"
                     label={myWishlist("loading")}
-                    width={grid.cardWidth}
+                    width={cardWidth}
                   />
                 ) : view.status === "error" ? (
                   <RetryView
@@ -234,7 +234,7 @@ export default function PublicWishlistScreen() {
                       <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
                         {view.gifts.map(function renderGift(gift) {
                           return (
-                            <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                            <PublicGiftCard key={gift.id} gift={gift} width={cardWidth} />
                           );
                         })}
                       </XStack>

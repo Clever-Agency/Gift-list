@@ -4,7 +4,8 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
+import { observeContentWidth, type SimulatedContent } from "@/test/layout";
+import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 
 /**
@@ -22,6 +23,10 @@ import { SessionLoadingScreen } from "@/ui/session-loading-screen";
  * Widths come from the CSS Tamagui actually generated (see `@/test/tamagui-css`),
  * not from a browser layout: real rendering on a phone and in a browser is a
  * manual check.
+ *
+ * W12.23 moved the wide numbers to the measured content area: this DOM never lays
+ * anything out, so these tests see the `cardGrid(width)` fallback, and the measured
+ * path has its own suite below.
  */
 
 /** The window width the screen sees; `calls` proves the probe hits this mock. */
@@ -65,6 +70,9 @@ vi.mock("react-native-safe-area-context", async () => {
   return {
     SafeAreaView: ({ children }: { children?: React.ReactNode }) =>
       React.createElement("div", null, children),
+    // W12.23: `useCardGrid` subtracts the insets before the first measurement; the
+    // browser mock has no notch, so the grid maths falls back to the plain window.
+    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
   };
 });
 
@@ -72,6 +80,8 @@ vi.mock("react-native-safe-area-context", async () => {
 
 let root: Root;
 let container: HTMLElement;
+/** W12.23: the content width a browser would report for the column. */
+let measuredLayout: SimulatedContent;
 
 async function mount(element: ReactNode) {
   await act(async () => {
@@ -82,6 +92,7 @@ async function mount(element: ReactNode) {
 beforeEach(() => {
   viewport.width = 1024;
   viewport.calls = 0;
+  measuredLayout = observeContentWidth();
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -90,6 +101,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  measuredLayout.restore();
 });
 
 describe("SessionLoadingScreen", () => {
@@ -306,6 +318,40 @@ describe("W12.15: SessionLoadingScreen на медиа-пропсах", () => {
 
       const columnWidth = Math.min(width, spacing["max-wide"]);
       expect(cardGrid(width).cardWidth + cssGutter * 2).toBeLessThanOrEqual(columnWidth);
+    },
+  );
+});
+
+describe("W12.23: широкий скелетон по ширине контента", () => {
+  it("окно 600 px, колонка 537 px: скелетон 537 px и ряд влезает в колонку", async () => {
+    await mountAt(600, "wide");
+    await measuredLayout.measure(537);
+
+    const cssGutter = paintedSpace(column(), "padding-inline", 600) ?? 0;
+    const cardWidth = paintedCardWidth(600);
+
+    expect(cssGutter).toBe(spacing["page-gutter-lg"]);
+    expect(cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 5);
+    expect(cardWidth).toBe(537);
+    // 537 px of cards plus two 24 px gutters is exactly the 585 px column.
+    expect(cardWidth + cssGutter * 2).toBe(585);
+  });
+
+  it.each([
+    { width: 360, content: 328 },
+    { width: 600, content: 552 },
+    { width: 1024, content: 976 },
+    { width: 1280, content: 1072 },
+  ])(
+    "окно $width px без скроллбара, контент $content px: прежние числа",
+    async ({ width, content }) => {
+      await mountAt(width, "wide");
+      await measuredLayout.measure(content);
+
+      expect(paintedCardWidth(width)).toBeCloseTo(cardGridForContent(content).cardWidth, 5);
+      // The content area of a window without a scrollbar is the window minus the
+      // gutter, so the measured grid is the numbers `cardGrid` gave before W12.23.
+      expect(paintedCardWidth(width)).toBeCloseTo(cardGrid(width).cardWidth, 5);
     },
   );
 });

@@ -284,11 +284,23 @@ describe("giftUpdateSchema", () => {
     },
   );
 
-  it("defaults the currency to USD when the amount is set without one", () => {
-    expect(giftUpdateSchema.parse({ priceAmount: 12_50 })).toEqual({
-      priceAmount: 12_50,
-      priceCurrency: "USD",
-    });
+  it("leaves the currency to the use-case when the amount comes without one", () => {
+    // AD-25/Н1: a PATCH of the amount alone keeps the stored currency; only the
+    // use-case knows whether there is one. The schema must not invent `USD`.
+    expect(giftUpdateSchema.parse({ priceAmount: 12_50 })).toEqual({ priceAmount: 12_50 });
+  });
+
+  it("rejects a set amount with an explicit null currency", () => {
+    // AD-25/D2: the amount and the currency are one price; `null` would store an
+    // amount that no card can show. The field is named for the client.
+    for (const body of [
+      { priceAmount: 1000, priceCurrency: null },
+      { priceAmount: 0, priceCurrency: null },
+    ]) {
+      const parsed = giftUpdateSchema.safeParse(body);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["priceCurrency"]);
+    }
   });
 
   it.each(CURRENCIES)("keeps the %s currency with an amount", (currency) => {

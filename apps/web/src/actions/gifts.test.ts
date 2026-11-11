@@ -507,25 +507,136 @@ describe("updateGift", () => {
     expect(findFirst).not.toHaveBeenCalled();
   });
 
-  it("prices an amount without a currency as USD", async () => {
+  /**
+   * AD-25/Н1 (epic-2 QA report): an amount sent alone keeps the stored currency —
+   * an absent field means "leave it", not "reset to USD". The contract leaves the
+   * key out, so the use-case reads the stored currency.
+   */
+  it("keeps the stored currency when only an amount comes in", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: 1000,
+      priceCurrency: "RUB",
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
+    await updateGift(headers, "g1", { priceAmount: 2000 });
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
+      select: {
+        priceAmount: true,
+        priceCurrency: true,
+        status: true,
+        visibility: true,
+        quantity: true,
+      },
+    });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { priceAmount: 2000, priceCurrency: "RUB" } }),
+    );
+  });
+
+  /** AD-25: a wish that had no price gets `USD`, since there is no currency to keep. */
+  it("prices an amount as USD when the wish had no price", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      priceCurrency: null,
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
     await updateGift(headers, "g1", { priceAmount: 1250 });
 
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { priceAmount: 1250, priceCurrency: "USD" } }),
     );
-    // The contract already pairs amount and currency, so no stored read is needed.
+  });
+
+  /** A legacy row may hold an amount without a currency; the repair is the same `USD` (AD-25). */
+  it("repairs an amount that has no stored currency with USD", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: 1000,
+      priceCurrency: null,
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
+    await updateGift(headers, "g1", { priceAmount: 1500 });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { priceAmount: 1500, priceCurrency: "USD" } }),
+    );
+  });
+
+  /** D2: an explicit `null` currency over a stored amount is a price without a currency. */
+  it("answers VALIDATION when a null currency targets a stored amount", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: 1000,
+      priceCurrency: "EUR",
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
+    expect(await updateGift(headers, "g1", { priceCurrency: null })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "priceCurrency",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  /** Without a stored amount there is nothing to price, so a null currency is a no-op. */
+  it("keeps a wish without a price when a null currency comes in", async () => {
+    findFirst.mockResolvedValue({
+      priceAmount: null,
+      priceCurrency: null,
+      status: "OPEN",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+
+    await updateGift(headers, "g1", { priceCurrency: null });
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { priceCurrency: null } }),
+    );
+  });
+
+  /** The contract rejects the pair before the database: an amount never lands with a null currency. */
+  it("rejects an amount with an explicit null currency before reading the gift", async () => {
+    expect(
+      await updateGift(headers, "g1", { priceAmount: 1000, priceCurrency: null }),
+    ).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "priceCurrency",
+    });
     expect(findFirst).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
   });
 
   /** AD-25: a currency alone keeps the stored amount, so the amount is read first. */
   it("keeps the stored amount when only a currency comes in", async () => {
-    findFirst.mockResolvedValue({ priceAmount: 5000 });
+    findFirst.mockResolvedValue({ priceAmount: 5000, priceCurrency: "RUB" });
 
     await updateGift(headers, "g1", { priceCurrency: "EUR" });
 
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
-      select: { priceAmount: true, status: true, visibility: true, quantity: true },
+      select: {
+        priceAmount: true,
+        priceCurrency: true,
+        status: true,
+        visibility: true,
+        quantity: true,
+      },
     });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { priceCurrency: "EUR" } }),
@@ -546,6 +657,17 @@ describe("updateGift", () => {
     findFirst.mockResolvedValue(null);
 
     expect(await updateGift(headers, "g-other", { priceCurrency: "EUR" })).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  /** The amount-only path reads the stored currency, so it answers NOT_FOUND the same way. */
+  it("answers NOT_FOUND without writing when an amount targets a foreign gift", async () => {
+    findFirst.mockResolvedValue(null);
+
+    expect(await updateGift(headers, "g-other", { priceAmount: 2000 })).toMatchObject({
       ok: false,
       code: "NOT_FOUND",
     });

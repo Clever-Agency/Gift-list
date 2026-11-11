@@ -318,6 +318,14 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
  * `where`, so a gift of another list — or an archived one (AD-8) — matches
  * nothing and answers NOT_FOUND without revealing that the id exists.
  *
+ * AD-25/D2/Н1: the amount and the currency are one price. `priceAmount: null`
+ * clears both; an explicit `priceCurrency: null` over a stored amount is
+ * VALIDATION (a price never exists without a currency); an amount sent alone
+ * keeps the stored currency and takes `USD` only when the wish had no price; a
+ * currency sent alone keeps the stored amount, or is dropped with a stored
+ * `null` amount. This is the canonical rule: no amount without a currency, no
+ * currency without an amount.
+ *
  * Story 2.3 (FR-10, AD-8): visibility moves only while the wish is `OPEN`. A
  * reserved or closed wish answers VALIDATION and writes nothing, but sending the
  * stored value back — the edit form of a reserved wish does that — is not a
@@ -355,24 +363,42 @@ export async function updateGift(
 
   const changesVisibility = fields.visibility !== undefined;
   const changesQuantity = fields.quantity !== undefined;
-  const needsStoredPrice = fields.priceCurrency !== undefined && fields.priceAmount === undefined;
+  // AD-25/D2/Н1: a price is a pair. A currency alone needs the stored amount
+  // (to keep it or to drop the currency when there is none); an amount alone
+  // needs the stored currency (to keep it, or `USD` when the wish had no price).
+  const setsAmountAlone =
+    fields.priceAmount !== undefined &&
+    fields.priceAmount !== null &&
+    fields.priceCurrency === undefined;
+  const setsCurrencyAlone = fields.priceCurrency !== undefined && fields.priceAmount === undefined;
+  const needsStoredPrice = setsAmountAlone || setsCurrencyAlone;
 
-  // One read serves both gates: AD-25 needs the stored amount, Story 2.3 needs
+  // One read serves both gates: AD-25 needs the stored price, Story 2.3 needs
   // the stored status and visibility, Story 2.5 needs the stored quantity. The
   // update below still carries the ownership gate, so this read is only for the
   // mix-in and the editability rules.
   if (changesVisibility || changesQuantity || needsStoredPrice) {
     const stored = await prisma.gift.findFirst({
       where: ownedGift,
-      select: { priceAmount: true, status: true, visibility: true, quantity: true },
+      select: { priceAmount: true, priceCurrency: true, status: true, visibility: true, quantity: true },
     });
     if (!stored) return notFound;
 
-    // AD-25: a currency sent without an amount keeps the stored amount; a stored
-    // `null` amount leaves nothing to price, so the currency is dropped again — a
-    // price never exists as a currency alone.
-    if (needsStoredPrice) {
+    if (setsCurrencyAlone) {
+      // AD-25/D2: an explicit `null` currency would leave a stored amount
+      // without a currency, and no card can show such a price — VALIDATION, not
+      // a silent `USD` nor a silent wipe of the amount. With no stored amount
+      // there is nothing to price, so the currency stays `null` and a lone
+      // currency is never stored.
+      if (fields.priceCurrency === null && stored.priceAmount !== null) {
+        return validation("priceCurrency");
+      }
       fields.priceCurrency = stored.priceAmount === null ? null : fields.priceCurrency;
+    } else if (setsAmountAlone) {
+      // AD-25/Н1: an absent currency keeps the stored one (a RUB wish stays
+      // RUB). Only a wish that had no price yet falls back to `USD`; a legacy
+      // row with an amount but no currency is repaired the same way.
+      fields.priceCurrency = stored.priceCurrency ?? "USD";
     }
 
     if (changesVisibility) {

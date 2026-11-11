@@ -9,7 +9,6 @@ import {
 import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, SafeArea, Screen, spacing, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { useWindowDimensions } from "react-native";
 import { useTranslations } from "use-intl";
 import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
@@ -17,7 +16,6 @@ import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { useDiscardGuard } from "@/session/use-discard-guard";
-import { pageGutter } from "@/ui/card-grid";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { restoreFocus } from "@/ui/focus";
 import {
@@ -85,9 +83,6 @@ export default function EditGiftScreen() {
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
-  const { width } = useWindowDimensions();
-  const gutter = pageGutter(width);
-  const skeletonWidth = Math.max(0, Math.min(width, spacing["max-form"]) - gutter * 2);
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const id = paramValue(params.id) ?? "";
   // The guard sends a dead session back here after login, so the id travels along.
@@ -438,13 +433,15 @@ export default function EditGiftScreen() {
     <Screen>
       <SafeArea>
         <Stack.Screen options={{ title: giftForm("pageTitle.edit", { brand }) }} />
-        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. */}
+        {/* A form reads best narrow: `DESIGN.md` → Layout → max-form. The gutter is
+            the Tamagui media clause `$page-gutter medium:$page-gutter-lg`, so the
+            window width is never read in JS: there is no card grid here. */}
         <PageScroll testID="gift-edit-page" keyboardShouldPersistTaps="handled">
           <PageContainer>
             <Column
               size="form"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >
@@ -458,11 +455,13 @@ export default function EditGiftScreen() {
                 paddingBottom={spacing["section-gap"]}
               >
                 {state.status === "loading" ? (
-                  // The same named busy region as the list, with one form-width card.
+                  // The same named busy region as the list, with one form-width card:
+                  // a percentage fills the column's `max-form` box, so the skeleton no
+                  // longer needs the window width either.
                   <LoadingCards
                     testID="gift-edit-loading"
                     label={giftForm("loading")}
-                    width={skeletonWidth}
+                    width="100%"
                     count={1}
                   />
                 ) : state.status === "error" ? (

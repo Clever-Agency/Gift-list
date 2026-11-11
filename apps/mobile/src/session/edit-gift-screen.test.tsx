@@ -1,11 +1,25 @@
 // @vitest-environment happy-dom
 import type { GiftCard } from "@gift-list/contracts";
+import { breakpoints, spacing } from "@gift-list/ui";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "@/session/auth-context";
+import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, escape, pressScrim, settle, typeInto } from "@/test/dom";
+import { declarationsFor, paintedSpace } from "@/test/tamagui-css";
+import { pageGutter } from "@/ui/card-grid";
 import EditGiftScreen from "../../app/(app)/gifts/[id]/edit";
+
+/**
+ * W12.18: the edit screen lays itself out with the Tamagui media clause
+ * `$page-gutter medium:$page-gutter-lg` instead of `useWindowDimensions` +
+ * `pageGutter(width)`. There is no card grid here, so the window width is never
+ * read in JS. Widths are checked against the CSS Tamagui actually generated (see
+ * `@/test/tamagui-css`), not against a browser layout.
+ */
+
+/** The counter proves the screen never asks React Native for the window width. */
+const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const gifts = vi.hoisted(() => ({
@@ -84,6 +98,14 @@ vi.mock("@/api/my-gifts", () => gifts);
 vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  function useWindowDimensions() {
+    dimensions.calls += 1;
+    return actual.useWindowDimensions();
+  }
+  return { ...actual, useWindowDimensions };
+});
 // The discard dialog draws its close cross with `expo-symbols`; decorative.
 vi.mock("expo-symbols", async () => {
   const React = await import("react");
@@ -371,6 +393,7 @@ function listThenForm() {
 beforeEach(() => {
   vi.resetAllMocks();
   guard.reset();
+  dimensions.calls = 0;
   platform.os = "android";
   search.params = { id: "g1" };
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
@@ -1636,5 +1659,114 @@ describe("изменение желания: фокус в вопросе о ч�
     });
 
     expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** The one `GLColumn` of the page: the column whose padding is the page gutter. */
+function formColumn(): HTMLElement {
+  const node = container.querySelector<HTMLElement>('[name="GLColumn"]');
+  expect(node, "колонка страницы").not.toBeNull();
+  return node as HTMLElement;
+}
+
+/**
+ * Mounts the edit screen only once the session is ready. The shared loading
+ * skeleton is a screen of its own (W12.15) and still reads the window width, so it
+ * must be out of the tree when the width counter is read.
+ */
+async function mountReady() {
+  function SignedIn() {
+    const auth = useAuth();
+    return auth.state.status === "ready" ? <EditGiftScreen /> : null;
+  }
+  await act(async () => {
+    root.render(
+      <AuthProvider>
+        <SignedIn />
+      </AuthProvider>,
+    );
+  });
+  await settle(10);
+}
+
+describe("W12.18: изменение желания на медиа-пропсах", () => {
+  it("ширина окна из JS не читается у загруженного желания", async () => {
+    loaded();
+    await mountReady();
+
+    expect(dimensions.calls).toBe(0);
+    // The ready form is really on screen, not a skeleton left over from loading.
+    expect(field("Название").value).toBe("Наушники");
+  });
+
+  it("ширина окна из JS не читается, пока желание грузится", async () => {
+    signedIn();
+    gifts.fetchGift.mockReturnValue(new Promise(() => {}));
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="gift-edit-loading"]')).not.toBeNull();
+    expect(dimensions.calls).toBe(0);
+  });
+
+  it("счётчик видит экран, который ширину читает (контроль)", async () => {
+    // A probe through the same import the screen used to call: a zero above means
+    // the mock is in place, not that the spy is broken.
+    const { useWindowDimensions } = await import("react-native");
+    function Probe() {
+      useWindowDimensions();
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+
+    expect(dimensions.calls).toBeGreaterThan(0);
+  });
+
+  it.each([360, 600, 1024, 1280])("ширина %ipx: отступ как у pageGutter", async (width) => {
+    loaded();
+    await mountReady();
+
+    expect(paintedSpace(formColumn(), "padding-inline", width)).toBe(pageGutter(width));
+  });
+
+  it("граница одна и та же: 16 до bp-medium, 24 от bp-medium", async () => {
+    loaded();
+    await mountReady();
+    const element = formColumn();
+
+    expect(paintedSpace(element, "padding-inline", 360)).toBe(spacing["page-gutter"]);
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium - 1)).toBe(
+      spacing["page-gutter"],
+    );
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium)).toBe(
+      spacing["page-gutter-lg"],
+    );
+    expect(paintedSpace(element, "padding-inline", 1280)).toBe(spacing["page-gutter-lg"]);
+  });
+
+  it("меняется только на одной медиа-точке, без лишних правил", async () => {
+    loaded();
+    await mountReady();
+    const gutterRules = declarationsFor(formColumn(), "padding-inline");
+
+    expect(gutterRules).toHaveLength(2);
+    const conditions = gutterRules.map((rule) => rule.minWidth);
+    expect(conditions).toContain(null);
+    expect(conditions).toContain(breakpoints.medium);
+  });
+
+  it("экран редактирования отрисован: заголовок, поля и «Удалить желание»", async () => {
+    loaded();
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="gift-edit-page"]')).not.toBeNull();
+    const heading = container.querySelector("[role='heading']");
+    expect(heading?.getAttribute("aria-level")).toBe("1");
+    expect(heading?.textContent).toBe("Изменить желание");
+    expect(field("Название")).toBeDefined();
+    expect(field("Описание (необязательно)")).toBeDefined();
+    expect(button("Сохранить")).toBeDefined();
+    expect(button("Отмена")).toBeDefined();
+    expect(button("Удалить желание")).toBeDefined();
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
   });
 });

@@ -6,6 +6,17 @@ import { focusRing } from "./focus-ring";
 import { Spinner } from "./spinner";
 import { colors, type ColorToken } from "./tokens";
 
+/** The public variants, in the order the catalog shows them. */
+export const BUTTON_VARIANTS = [
+  "primary",
+  "reserve",
+  "secondary",
+  "ghost",
+  "destructive",
+] as const;
+
+export type ButtonVariant = (typeof BUTTON_VARIANTS)[number];
+
 /**
  * A blocked button (`disabled` or `busy`) keeps its resting look: no hover, no press.
  *
@@ -15,6 +26,9 @@ import { colors, type ColorToken } from "./tokens";
  * for a live and a blocked button and no rule outside the variant can switch the state
  * off. A blocked button therefore gets its own variant value: the same tokens without
  * the state keys. No colour is added or duplicated.
+ *
+ * These `*Blocked` values are internal: callers pick a public variant and `Button`
+ * swaps it while the button is blocked.
  */
 const BLOCKED_VARIANT = {
   primary: "primaryBlocked",
@@ -22,9 +36,7 @@ const BLOCKED_VARIANT = {
   secondary: "secondaryBlocked",
   ghost: "ghostBlocked",
   destructive: "destructiveBlocked",
-} as const;
-
-export type ButtonVariant = keyof typeof BLOCKED_VARIANT;
+} as const satisfies Record<ButtonVariant, string>;
 
 /**
  * The label colour of each variant (`DESIGN.md` → components `button-*`), as a
@@ -142,6 +154,11 @@ const Label = styled(BehaviorText, {
   defaultVariants: { variant: "primary" },
 });
 
+/** The button types the web honours; a phone ignores the value and stays a pressable. */
+export const BUTTON_TYPES = ["button", "submit"] as const;
+
+export type ButtonType = (typeof BUTTON_TYPES)[number];
+
 export type ButtonProps = {
   /** The visible text and the accessible name. Copy comes from the caller. */
   label: string;
@@ -166,7 +183,7 @@ export type ButtonProps = {
   fullWidth?: boolean;
   testID?: string;
   /** `submit` makes the web button submit its form; the phone ignores it. */
-  type?: "button" | "submit";
+  type?: ButtonType;
 };
 
 /**

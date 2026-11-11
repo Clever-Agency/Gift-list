@@ -191,6 +191,25 @@ describe("mutationErrorMessage", () => {
     ).toBe("common:errors.reason.PAYLOAD_TOO_LARGE");
   });
 
+  /**
+   * CLE-82/S23.3: a closed and an archived wish share one sentence, and it comes from
+   * `errors.reason.*` rather than the generic VALIDATION text of the code.
+   */
+  it.each(["GIFT_ARCHIVED", "GIFT_CLOSED"] as const)(
+    "maps %s to its own catalog sentence",
+    (reason) => {
+      expect(mutationErrorMessage({ code: "VALIDATION", reason }, common)).toBe(
+        `common:errors.reason.${reason}`,
+      );
+    },
+  );
+
+  it("keeps a reason that needs params out: its screen interpolates them", () => {
+    expect(mutationErrorMessage({ code: "RATE_LIMITED", reason: "INVITE_COOLDOWN" }, common)).toBe(
+      "common:errors.code.RATE_LIMITED",
+    );
+  });
+
   it("falls back to the code text; the server message has no path here", () => {
     expect(mutationErrorMessage({ code: "CONFLICT" }, common)).toBe(
       "common:errors.code.CONFLICT",

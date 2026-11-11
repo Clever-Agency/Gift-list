@@ -7,9 +7,10 @@ import { WishCard } from "./gift-card";
 /**
  * The owner's gift card (AD-12, `DESIGN.md` → WishCard): title, price, status pill,
  * up to three tags with «+N», the reservation line and the interactive visibility
- * chip. Only an `onPress` makes the card a button; only an `OPEN` wish gets a
- * pressable chip. The stories use a fixture card: the server owns which fields a
- * viewer may see (`VisibilityPolicy`, AD-7), and the card just draws them.
+ * chip. Only an `onPress` makes the card a button; the chip is pressable on an
+ * `OPEN` or `RESERVED` wish and read-only on a closed or archived one. The stories
+ * use a fixture card: the server owns which fields a viewer may see
+ * (`VisibilityPolicy`, AD-7), and the card just draws them.
  */
 const meta = {
   title: "App/WishCard",
@@ -70,7 +71,10 @@ export const OwnerOpen: Story = {
   },
 };
 
-/** A granted wish of the owner: the reservation line names the holder. */
+/**
+ * A reserved wish of the owner: the card is a button, the chip opens the picker
+ * (CLE-82/S23.3), and the reservation line names the holder.
+ */
 export const ReservedWithHolder: Story = {
   args: {
     gift: giftCard({
@@ -78,6 +82,8 @@ export const ReservedWithHolder: Story = {
       visibility: "FRIENDS",
       reservedBy: { id: "user-2", nick: "masha", displayName: "Маша" },
     }),
+    onPress: noop,
+    onVisibilityPress: noop,
   },
   render: function ReservedWithHolderStory(args) {
     return (
@@ -112,10 +118,31 @@ export const ExpiredReservation: Story = {
   },
 };
 
-/** A received wish: the card is muted, the chip only shows the stored visibility. */
+/** A received wish: the card is muted, and the chip stays read-only even with a handler. */
 export const Received: Story = {
-  args: { gift: giftCard({ status: "CLOSED", visibility: "PUBLIC" }) },
+  args: {
+    gift: giftCard({ status: "CLOSED", visibility: "PUBLIC" }),
+    onVisibilityPress: noop,
+  },
   render: function ReceivedStory(args) {
+    return (
+      <CardList>
+        <WishCard {...args} />
+      </CardList>
+    );
+  },
+};
+
+/**
+ * An archived wish (`archivedAt` set): read-only as a whole (CLE-82/S23.3), so the chip
+ * only shows the stored visibility, exactly like a received one.
+ */
+export const Archived: Story = {
+  args: {
+    gift: giftCard({ archivedAt: "2026-10-01T00:00:00.000Z", visibility: "SECRET" }),
+    onVisibilityPress: noop,
+  },
+  render: function ArchivedStory(args) {
     return (
       <CardList>
         <WishCard {...args} />

@@ -7,7 +7,9 @@ const {
   findUnique,
   create,
   findFirst,
+  txFindFirst,
   update,
+  releaseMany,
   tagFindMany,
   tagDeleteMany,
   tagCreateMany,
@@ -30,7 +32,9 @@ const {
     findUnique: vi.fn(),
     create: vi.fn(),
     findFirst: vi.fn(),
+    txFindFirst: vi.fn(),
     update: vi.fn(),
+    releaseMany: vi.fn(),
     tagFindMany: vi.fn(),
     tagDeleteMany: vi.fn(),
     tagCreateMany: vi.fn(),
@@ -43,7 +47,7 @@ vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({
   prisma: {
     list: { findUnique },
-    gift: { create, findFirst, update },
+    gift: { create, findFirst, update, updateMany: releaseMany },
     tag: { findMany: tagFindMany },
     giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
     $transaction: transaction,
@@ -122,7 +126,9 @@ beforeEach(() => {
   findUnique.mockReset();
   create.mockReset();
   findFirst.mockReset();
+  txFindFirst.mockReset();
   update.mockReset();
+  releaseMany.mockReset();
   tagFindMany.mockReset();
   tagDeleteMany.mockReset();
   tagCreateMany.mockReset();
@@ -131,14 +137,16 @@ beforeEach(() => {
   findUnique.mockResolvedValue({ id: "l1" });
   create.mockResolvedValue(giftRow());
   findFirst.mockResolvedValue(null);
-  update.mockResolvedValue(giftRow());
+  txFindFirst.mockResolvedValue(giftRow());
+  update.mockResolvedValue({ id: "g1" });
+  releaseMany.mockResolvedValue({ count: 1 });
   tagFindMany.mockResolvedValue([]);
   tagDeleteMany.mockResolvedValue({ count: 0 });
   tagCreateMany.mockResolvedValue({ count: 0 });
   transaction.mockImplementation(
     async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        gift: { update, findFirst },
+        gift: { findFirst: txFindFirst, update, updateMany: releaseMany },
         tag: { findMany: tagFindMany },
         giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
       }),
@@ -312,14 +320,25 @@ describe("POST /api/v1/me/gifts tags", () => {
 });
 
 describe("PATCH /api/v1/me/gifts/[id] tags", () => {
+  const stored = {
+    priceAmount: null,
+    priceCurrency: null,
+    status: "OPEN" as const,
+    visibility: "PUBLIC" as const,
+    quantity: "SINGLE" as const,
+    archivedAt: null,
+    reservedById: null,
+  };
+
   it("keeps the stored tags when the body omits them", async () => {
-    update.mockResolvedValue(giftRow({ title: "Новое название", tags: [dreamRow] }));
+    txFindFirst
+      .mockResolvedValueOnce(stored)
+      .mockResolvedValueOnce(giftRow({ title: "Новое название", tags: [dreamRow] }));
 
     const { PATCH } = await import("./[id]/route");
     const res = await PATCH(patch({ title: "Новое название" }), context);
 
     expect(res.status).toBe(200);
-    expect(transaction).not.toHaveBeenCalled();
     expect(tagDeleteMany).not.toHaveBeenCalled();
     expect(tagCreateMany).not.toHaveBeenCalled();
     expect((await res.json()).data.tags).toEqual([{ catalogId: "tag_dream", label: "мечта" }]);
@@ -327,8 +346,9 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
 
   it("replaces the tag set in one transaction", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
-    update.mockResolvedValue({ id: "g1" });
-    findFirst.mockResolvedValue(giftRow({ tags: [dreamRow, customRow] }));
+    txFindFirst
+      .mockResolvedValueOnce(stored)
+      .mockResolvedValueOnce(giftRow({ tags: [dreamRow, customRow] }));
 
     const { PATCH } = await import("./[id]/route");
     const res = await PATCH(
@@ -337,6 +357,7 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(transaction).toHaveBeenCalledTimes(1);
     expect(tagDeleteMany).toHaveBeenCalledWith({ where: { giftId: "g1" } });
     expect(tagCreateMany).toHaveBeenCalledWith({
       data: [
@@ -351,8 +372,7 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
   });
 
   it("clears the tags with an explicit empty list", async () => {
-    update.mockResolvedValue({ id: "g1" });
-    findFirst.mockResolvedValue(giftRow());
+    txFindFirst.mockResolvedValueOnce(stored).mockResolvedValueOnce(giftRow());
 
     const { PATCH } = await import("./[id]/route");
     const res = await PATCH(patch({ tags: [] }), context);
@@ -365,6 +385,7 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
 
   it("answers 400 and touches no tag when a fixed tag id is unknown", async () => {
     tagFindMany.mockResolvedValue([]);
+    txFindFirst.mockResolvedValueOnce(stored);
 
     const { PATCH } = await import("./[id]/route");
     const res = await PATCH(patch({ tags: [{ catalogId: "tag_missing" }] }), context);
@@ -381,9 +402,7 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
   });
 
   it("answers 404 for another user's gift without writing tags", async () => {
-    update.mockRejectedValue(
-      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
-    );
+    txFindFirst.mockResolvedValueOnce(null);
 
     const { PATCH } = await import("./[id]/route");
     const res = await PATCH(patch({ tags: [{ text: "своё" }] }), context);
@@ -396,7 +415,6 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
   /** Q-10/F4: the tag replacement rolls back and answers VALIDATION, not a 500. */
   it("answers 400 in the envelope when the catalog tag races the replacement (P2003)", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
-    update.mockResolvedValue({ id: "g1" });
     tagCreateMany.mockRejectedValue(
       new PrismaClientKnownRequestError("Foreign key constraint violated", {
         code: "P2003",
@@ -426,7 +444,6 @@ describe("PATCH /api/v1/me/gifts/[id] tags", () => {
 
   it("answers 409 in the envelope when a unique tag index loses the race (P2002)", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
-    update.mockResolvedValue({ id: "g1" });
     tagCreateMany.mockRejectedValue(
       new PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",

@@ -105,6 +105,11 @@
       "title": "Кто видит «{title}»",
       "cancel": "Отмена"
     },
+    "visibilityConfirm": {
+      "title": "Бронирующий потеряет доступ, бронь снимется",
+      "confirm": "Подтвердить",
+      "cancel": "Отмена"
+    },
     "quantity": {
       "SINGLE": "Один раз",
       "UNLIMITED": "Можно дарить снова"
@@ -117,7 +122,7 @@
     "tagsMoreLabel": "Ещё теги ({count}): {tags}",
     "toast": {
       "visibility": "Видимость: {value}",
-      "visibilityLocked": "Желание уже забронировано — видимость не изменить."
+      "visibilityReservationCancelled": "Видимость: {value}. Бронь снята"
     }
   },
   "toast": {
@@ -185,7 +190,6 @@
         "FRIENDS": "только друзья",
         "SECRET": "только вы"
       },
-      "visibilityLocked": "Видимость меняется только у открытого желания.",
       "quantity": "Сколько раз можно дарить",
       "quantityHint": {
         "SINGLE": "Желание можно забронировать один раз.",

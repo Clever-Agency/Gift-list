@@ -7,6 +7,8 @@ import {
   GIFT_TITLE_MAX,
   giftInputSchema,
   giftUpdateSchema,
+  giftVisibilityPreviewQuerySchema,
+  giftVisibilityPreviewSchema,
 } from "./gift";
 
 describe("giftInputSchema", () => {
@@ -503,6 +505,37 @@ describe("gift text caps", () => {
       description: "Заметка",
       tags: [],
     });
+  });
+});
+
+/** CLE-82/S23.2 (FR-10): the confirm of a narrowing visibility change is a server preflight. */
+describe("giftVisibilityPreview", () => {
+  it.each(VISIBILITIES)("accepts the %s value in the preflight query", (visibility) => {
+    expect(giftVisibilityPreviewQuerySchema.parse({ visibility })).toEqual({ visibility });
+  });
+
+  it("rejects a missing, unknown or foreign query value", () => {
+    for (const query of [{}, { visibility: null }, { visibility: "EVERYONE" }, { visibility: [] }]) {
+      const parsed = giftVisibilityPreviewQuerySchema.safeParse(query);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["visibility"]);
+    }
+  });
+
+  it("rejects keys the preflight does not answer", () => {
+    expect(giftVisibilityPreviewQuerySchema.safeParse({ visibility: "SECRET", id: "g1" }).success).toBe(
+      false,
+    );
+  });
+
+  it("carries the reservation flag and nothing else", () => {
+    expect(giftVisibilityPreviewSchema.parse({ wouldCancelReservation: true })).toEqual({
+      wouldCancelReservation: true,
+    });
+    expect(giftVisibilityPreviewSchema.safeParse({ wouldCancelReservation: "yes" }).success).toBe(false);
+    expect(giftVisibilityPreviewSchema.safeParse({ wouldCancelReservation: true, id: "g1" }).success).toBe(
+      false,
+    );
   });
 });
 

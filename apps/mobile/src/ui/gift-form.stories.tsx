@@ -124,16 +124,47 @@ export const Saving: Story = {
   globals: { viewport: { value: "w360" } },
 };
 
-/** The edit screen of a reserved wish: visibility and quantity show the stored value. */
-export const LockedWish: Story = {
+/**
+ * A reserved wish of the edit screen (CLE-82/S23.3): the visibility is editable, the
+ * quantity keeps its stored value and stays frozen — «Один раз / Можно дарить снова»
+ * changes only on an open wish.
+ */
+export const ReservedWish: Story = {
   args: {
     submitLabel: "Сохранить",
-    visibilityLocked: true,
     quantityLocked: true,
     initialValues: {
       title: "Плед из шерсти мериноса",
       visibility: "FRIENDS",
       quantity: "UNLIMITED",
+    },
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
+/**
+ * A closed or archived wish is read-only (CLE-82/S23.3, product clarification t351u):
+ * the stored values are visible, nothing can be changed, there is no save button, and
+ * one caption covers both states.
+ */
+export const ReadOnlyArchived: Story = {
+  args: {
+    submitLabel: "Сохранить",
+    readOnly: true,
+    quantityLocked: true,
+    onCancel: noop,
+    initialValues: {
+      title: "Плед из шерсти мериноса",
+      description: "Тёплый, 200 × 140, цвет — овсяный.",
+      link: "https://market.example.com/pled",
+      priceAmount: 250000,
+      priceCurrency: "RUB",
+      visibility: "FRIENDS",
+      quantity: "SINGLE",
+      tags: [
+        { catalogId: "tag-home", label: "Дом" },
+        { text: "На день рождения" },
+      ],
     },
   },
   globals: { viewport: { value: "w360" } },

@@ -33,7 +33,6 @@ type AppCatalog = {
       linkPlaceholder: string;
       visibility: string;
       visibilityHint: Record<string, string>;
-      visibilityLocked: string;
       quantity: string;
       quantityHint: Record<string, string>;
       quantityLocked: string;
@@ -90,6 +89,18 @@ const app = JSON.parse(
 const form = app.giftForm;
 const visibilityLabel = app.gift.visibility;
 const quantityLabel = app.gift.quantity;
+
+/** The shared sentences, e.g. the read-only caption of a closed or archived wish. */
+const commonCatalog = JSON.parse(
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../..",
+      "packages/contracts/src/i18n/ru/common.json",
+    ),
+    "utf8",
+  ),
+) as { errors: { reason: Record<string, string> } };
 
 /** The fixed catalogue the form receives; labels stay verbatim from the server. */
 const catalog = {
@@ -453,39 +464,58 @@ describe("GiftForm: отправка", () => {
   });
 
   /**
-   * Story 2.3: a wish that is no longer open shows its stored visibility, but the
-   * rows are disabled and the hint says why. The form still sends the stored value.
+   * CLE-82/S23.3 (product clarification t351u): a `CLOSED` or archived wish is one
+   * read-only form. The fields keep their stored values but take no input, the
+   * choices and the tags are not controls, there is no save button, and the single
+   * caption is the same sentence for both states.
    */
-  it("visibilityLocked: радио показывают текущее значение, не меняются и подсказка видна", async () => {
+  it("readOnly: поля не редактируются, выбор и теги недоступны, сохранения нет", async () => {
     const onSubmit = await mount({
-      initialValues: { title: "Свитер", visibility: "SECRET" },
-      visibilityLocked: true,
+      initialValues: {
+        title: "Свитер",
+        visibility: "SECRET",
+        quantity: "UNLIMITED",
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { text: "своё" },
+        ],
+      },
+      readOnly: true,
+      quantityLocked: true,
+      tagCatalog: catalog,
     });
 
-    expect(text()).toContain(form.field.visibilityLocked);
-    const group = container.querySelector(
-      `[role="radiogroup"][aria-label="${form.field.visibility}"]`,
-    );
-    const described = document.getElementById(group?.getAttribute("aria-describedby") ?? "");
-    expect(described?.textContent).toBe(form.field.visibilityLocked);
-    expect(described?.getAttribute("role")).toBeNull();
-    expect(group?.getAttribute("aria-invalid")).toBeNull();
-    for (const code of VISIBILITIES) {
-      const option = radio(visibilityLabel[code]);
-      expect(option, visibilityLabel[code]).toBeDefined();
-      expect(option?.getAttribute("aria-disabled")).toBe("true");
+    expect(text()).toContain(commonCatalog.errors.reason.GIFT_ARCHIVED);
+    expect(container.querySelector('[data-testid="gift-form-read-only"]')).not.toBeNull();
+    for (const label of [
+      form.field.title,
+      form.field.description,
+      form.field.link,
+      form.field.price,
+    ]) {
+      expect(field(label).readOnly, label).toBe(true);
+    }
+    // The stored values stay readable.
+    expect(field(form.field.title).value).toBe("Свитер");
+
+    for (const label of [
+      ...VISIBILITIES.map((code) => visibilityLabel[code]),
+      ...QUANTITIES.map((code) => quantityLabel[code]),
+    ]) {
+      expect(radio(label)?.getAttribute("aria-disabled"), label).toBe("true");
     }
     expect(isChecked(visibilityLabel.SECRET)).toBe(true);
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
 
-    await press(visibilityLabel.PUBLIC);
+    // Tags are plain labels here: no «Свой тег» trigger and no checkable chips.
+    expect(container.querySelector('[data-testid="custom-tag-trigger"]')).toBeNull();
+    expect(container.querySelector('[role="checkbox"]')).toBeNull();
+    expect(text()).toContain("мечта");
+    expect(text()).toContain("своё");
 
-    expect(isChecked(visibilityLabel.SECRET)).toBe(true);
-    expect(isChecked(visibilityLabel.PUBLIC)).toBe(false);
-
-    await submit();
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ visibility: "SECRET" }),
-    );
+    // Nothing to save: the submit button is not rendered at all.
+    expect(submitButton()).toBeUndefined();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   /**

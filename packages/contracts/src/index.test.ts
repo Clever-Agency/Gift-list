@@ -74,6 +74,13 @@ describe("actionResultSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  /** CLE-82/S23.2: an archived or closed own wish is read-only with a machine-readable reason. */
+  it.each(["GIFT_ARCHIVED", "GIFT_CLOSED"] as const)("accepts the %s read-only reason", (reason) => {
+    expect(schema.safeParse({ ok: false, code: "VALIDATION", message: "Invalid input", reason }).success).toBe(
+      true,
+    );
+  });
+
   it("accepts params of primitives and rejects nested values", () => {
     const base = { ok: false, code: "VALIDATION", message: "?" };
     expect(schema.safeParse({ ...base, params: { max: 3, until: "2026-11-01", f: false, n: null } }).success).toBe(true);

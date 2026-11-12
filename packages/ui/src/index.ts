@@ -30,9 +30,11 @@ export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";
 export {
   PasswordField,
+  SearchField,
   TextField,
   type FieldInputRef,
   type PasswordFieldProps,
+  type SearchFieldProps,
   type TextFieldInputProps,
   type TextFieldProps,
 } from "./text-field";
@@ -57,6 +59,12 @@ export {
 export { WishCard, type WishCardProps } from "./wish-card";
 export { Skeleton, WishCardSkeleton, type WishCardSkeletonProps } from "./skeleton";
 export { LoadingCards, type LoadingCardsProps } from "./loading-cards";
+export {
+  PersonRow,
+  PersonRowSkeleton,
+  type PersonRowProps,
+  type PersonRowSkeletonProps,
+} from "./person-row";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";

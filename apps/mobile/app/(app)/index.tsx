@@ -520,6 +520,12 @@ export default function MyWishlistScreen() {
     router.push("/settings");
   }
 
+  function openSearch() {
+    // NOTE FOR UX: временный вход в «Поиск» до Story 6.2, где постоянное место —
+    // вкладка «Поиск» (DESIGN.md:449, UX-A13).
+    router.push("/search");
+  }
+
   function handleVisibilitySelect(next: GiftCard["visibility"]) {
     if (picker) void changeVisibility(picker.gift, next);
   }
@@ -679,6 +685,19 @@ export default function MyWishlistScreen() {
                     >
                       <Text kind="button" tone="destructive">
                         {wishlist("logout")}
+                      </Text>
+                    </Pressable>
+                    {/* Temporary entry point: search becomes a tab in Story 6.2. */}
+                    <Pressable
+                      role="button"
+                      testID="wishlist-search"
+                      onPress={openSearch}
+                      minHeight="$touch-target"
+                      minWidth="$touch-target"
+                      justifyContent="center"
+                    >
+                      <Text kind="button" tone="primary">
+                        {wishlist("search")}
                       </Text>
                     </Pressable>
                     {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}

@@ -42,6 +42,8 @@ model User {
   friendshipsAsHigh         Friendship[]       @relation("FriendshipHigh")
   blocksMade                Block[]            @relation("BlockBlocker")
   blocksReceived            Block[]            @relation("BlockBlocked")
+  subscriptionsMade         Subscription[]     @relation("SubscriptionSubscriber")
+  subscriptionsReceived     Subscription[]     @relation("SubscriptionTarget")
 
   inviteCooldownsAsLow        InviteCooldown[] @relation("InviteCooldownLow")
   inviteCooldownsAsHigh       InviteCooldown[] @relation("InviteCooldownHigh")
@@ -298,6 +300,28 @@ model Block {
 
   @@unique([blockerId, blockedId])
   @@index([blockedId])
+}
+
+// Subscription (AD-19, FR-46, Story 4.6). The edge is **directed**:
+// `subscriberId` follows `targetId` without confirmation, and unlike
+// `Friendship` the pair is not canonical, so A→B and B→A are two independent
+// rows. A subscription opens only the `PUBLIC` filter and never `FRIENDS` or
+// `SECRET` (AD-7, D-31); it is not a friendship. Either side may remove the
+// row, a repeat subscribe is a no-op, and `Block` deletes both directions
+// (AD-10 step 4 — Story 4.5 owns those mutations).
+model Subscription {
+  id           String   @id @default(cuid(2))
+  subscriberId String
+  targetId     String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  subscriber User @relation("SubscriptionSubscriber", fields: [subscriberId], references: [id], onDelete: Cascade)
+  target     User @relation("SubscriptionTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  /// One directed edge per pair (CHECK subscriber <> target in the migration).
+  @@unique([subscriberId, targetId])
+  /// "Who follows me" reads by the target.
+  @@index([targetId])
 }
 
 // Rejection cooldown of one canonical pair (AD-10 step 3, A-16, Story 4.2.1).

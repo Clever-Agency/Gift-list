@@ -7,6 +7,7 @@ const db = vi.hoisted(() => ({
   friendshipInvite: { findUnique: vi.fn() },
   inviteCooldown: { findUnique: vi.fn() },
   block: { findFirst: vi.fn() },
+  subscription: { findUnique: vi.fn() },
 }));
 
 vi.mock("@/db/client", () => ({ prisma: db }));
@@ -36,6 +37,7 @@ describe("relationshipReader", () => {
     db.friendshipInvite.findUnique.mockResolvedValue(null);
     db.inviteCooldown.findUnique.mockResolvedValue(null);
     db.block.findFirst.mockResolvedValue(null);
+    db.subscription.findUnique.mockResolvedValue(null);
   });
 
   it("reports no relations for an anonymous visitor without reading the database", async () => {
@@ -44,6 +46,7 @@ describe("relationshipReader", () => {
     );
     expect(db.friendship.findUnique).not.toHaveBeenCalled();
     expect(db.block.findFirst).not.toHaveBeenCalled();
+    expect(db.subscription.findUnique).not.toHaveBeenCalled();
   });
 
   it("reports no relations for the owner without reading the database", async () => {
@@ -52,6 +55,7 @@ describe("relationshipReader", () => {
     );
     expect(db.friendship.findUnique).not.toHaveBeenCalled();
     expect(db.block.findFirst).not.toHaveBeenCalled();
+    expect(db.subscription.findUnique).not.toHaveBeenCalled();
   });
 
   it("reports a friend from an accepted Friendship edge", async () => {
@@ -121,6 +125,60 @@ describe("relationshipReader", () => {
       "friend",
       "subscriber",
     ]);
+  });
+
+  it("reports a subscriber from a directed Subscription row (Story 4.6, AD-19)", async () => {
+    db.subscription.findUnique.mockResolvedValue({ id: "subscription_1" });
+
+    await expect(relationshipReader.relationsBetween(ZEBRA, ALPHA)).resolves.toEqual({
+      ...NO_RELATION_FACTS,
+      subscriber: true,
+    });
+    expect(db.subscription.findUnique).toHaveBeenCalledWith({
+      where: { subscriberId_targetId: { subscriberId: ZEBRA, targetId: ALPHA } },
+      select: { id: true },
+    });
+  });
+
+  it("reads the direction viewer → owner, not the opposite one", async () => {
+    db.subscription.findUnique.mockResolvedValue({ id: "subscription_1" });
+
+    const facts = await relationshipReader.relationsBetween(ALPHA, ZEBRA);
+
+    expect(facts.subscriber).toBe(true);
+    expect(db.subscription.findUnique).toHaveBeenCalledWith({
+      where: { subscriberId_targetId: { subscriberId: ALPHA, targetId: ZEBRA } },
+      select: { id: true },
+    });
+  });
+
+  it("does not turn a subscription into a friendship (D-31)", async () => {
+    db.subscription.findUnique.mockResolvedValue({ id: "subscription_1" });
+
+    const facts = await relationshipReader.relationsBetween(ZEBRA, ALPHA);
+
+    expect(facts).toEqual({ ...NO_RELATION_FACTS, subscriber: true });
+    expect(facts.friend).toBe(false);
+  });
+
+  it("reports no subscriber when the edge points the other way", async () => {
+    // The fake answers only the edge it is asked for; ALPHA → ZEBRA is absent.
+    db.subscription.findUnique.mockImplementation(
+      ({ where }: { where: { subscriberId_targetId: { subscriberId: string } } }) =>
+        Promise.resolve(
+          where.subscriberId_targetId.subscriberId === ZEBRA
+            ? { id: "subscription_1" }
+            : null,
+        ),
+    );
+
+    await expect(relationshipReader.relationsBetween(ZEBRA, ALPHA)).resolves.toEqual({
+      ...NO_RELATION_FACTS,
+      subscriber: true,
+    });
+    await expect(relationshipReader.relationsBetween(ALPHA, ZEBRA)).resolves.toEqual(
+      NO_RELATION_FACTS,
+    );
   });
 });
 

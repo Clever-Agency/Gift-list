@@ -9,6 +9,7 @@ const {
   ensureOwnerList,
   findFriendship,
   findBlock,
+  findSubscription,
 } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findUnique: vi.fn(),
@@ -17,6 +18,8 @@ const {
   // Story 4.1.1: the relation reader now asks the friendship and block tables.
   findFriendship: vi.fn(async () => null),
   findBlock: vi.fn(async () => null),
+  // Story 4.6: the relation reader also reads the directed Subscription edge.
+  findSubscription: vi.fn(async () => null),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
@@ -26,6 +29,7 @@ vi.mock("@/db/client", () => ({
     gift: { findMany },
     friendship: { findUnique: findFriendship },
     block: { findFirst: findBlock },
+    subscription: { findUnique: findSubscription },
   },
 }));
 vi.mock("@/lib/owner-list", () => ({ ensureOwnerList }));

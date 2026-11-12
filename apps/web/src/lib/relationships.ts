@@ -19,8 +19,11 @@ const noRelations: Omit<ViewerRelations, "viaListToken"> = {
  * - `friend` — an accepted `Friendship` edge, stored once as the canonical
  *   `userLowId < userHighId` pair;
  * - `blocked` — a `Block` in either direction, so a block hides both profiles;
- * - `subscriber` and `contactMatch` stay `false`: neither table exists in R1 and
- *   this reader must not pretend otherwise (AD-19, AD-18).
+ * - `subscriber` — a directed `Subscription` row `viewerId → ownerId` (AD-19).
+ *   It opens only PUBLIC wishes and never becomes a friendship, so a
+ *   subscriber is never reported as a friend;
+ * - `contactMatch` stays `false`: the table arrives with the phone-book story
+ *   and this reader must not pretend otherwise (AD-18).
  *
  * An anonymous viewer cannot have either edge, and the owner branch never asks
  * the port, so both answer without reading the database.
@@ -32,7 +35,7 @@ async function relationsBetween(
   if (viewerId === null || viewerId === ownerId) return noRelations;
 
   const pair = orderFriendPair(viewerId, ownerId);
-  const [friendship, block] = await Promise.all([
+  const [friendship, block, subscription] = await Promise.all([
     prisma.friendship.findUnique({
       where: { userLowId_userHighId: pair },
       select: { id: true },
@@ -46,12 +49,16 @@ async function relationsBetween(
       },
       select: { id: true },
     }),
+    prisma.subscription.findUnique({
+      where: { subscriberId_targetId: { subscriberId: viewerId, targetId: ownerId } },
+      select: { id: true },
+    }),
   ]);
 
   return {
     blocked: block !== null,
     friend: friendship !== null,
-    subscriber: false,
+    subscriber: subscription !== null,
     contactMatch: false,
   };
 }

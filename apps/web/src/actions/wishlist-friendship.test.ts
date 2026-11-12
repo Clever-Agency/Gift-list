@@ -5,13 +5,14 @@ vi.mock("server-only", () => ({}));
 /**
  * Isolated in-memory Prisma stand-in (Story 4.1.1). It implements only the
  * models this story reads and writes, so a query against a table that does not
- * exist in R1 (`Subscription`, `ContactMatch`) would fail the test instead of
- * silently returning "no relation".
+ * exist yet (`ContactMatch`) would fail the test instead of silently returning
+ * "no relation".
  */
 const fake = vi.hoisted(() => {
   type Invite = { fromUserId: string; toUserId: string };
   type Friendship = { userLowId: string; userHighId: string };
   type Block = { blockerId: string; blockedId: string };
+  type Subscription = { subscriberId: string; targetId: string };
   type Cooldown = {
     userLowId: string;
     userHighId: string;
@@ -61,6 +62,11 @@ const fake = vi.hoisted(() => {
     block: {
       findFirst(args: { where: { OR: Block[] } }): Promise<{ id: string } | null>;
     };
+    subscription: {
+      findUnique(args: {
+        where: { subscriberId_targetId: Subscription };
+      }): Promise<{ id: string } | null>;
+    };
     $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
     $transaction(
       work: (tx: PrismaLike) => Promise<unknown>,
@@ -75,6 +81,7 @@ const fake = vi.hoisted(() => {
     friendships: [] as Friendship[],
     blocks: [] as Block[],
     cooldowns: [] as Cooldown[],
+    subscriptions: [] as Subscription[],
     locks: [] as string[],
     lockStatements: [] as string[],
     transactionOptions: [] as { isolationLevel?: string }[],
@@ -177,6 +184,15 @@ const fake = vi.hoisted(() => {
           ),
         );
         return found ? { id: "block_1" } : null;
+      },
+    },
+    subscription: {
+      async findUnique(args) {
+        const { subscriberId, targetId } = args.where.subscriberId_targetId;
+        const found = state.subscriptions.find(
+          (edge) => edge.subscriberId === subscriberId && edge.targetId === targetId,
+        );
+        return found ? { id: "subscription_1" } : null;
       },
     },
     async $executeRaw(strings, ...values) {

@@ -2,15 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findMany, readProfileRelation } = vi.hoisted(() => ({
+const { getSession, findMany, readProfileRelations } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findMany: vi.fn(),
-  readProfileRelation: vi.fn(),
+  readProfileRelations: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { user: { findMany } } }));
-vi.mock("@/lib/relationships", () => ({ readProfileRelation }));
+vi.mock("@/lib/relationships", () => ({ readProfileRelations }));
 
 import {
   USER_SEARCH_LIMIT,
@@ -22,8 +22,13 @@ import { searchUsers } from "./search-users";
 
 const headers = new Headers();
 
-function card(name: string, nick: string, relationship: ProfileRelationship = "NONE") {
-  return { displayName: name, nick, relationship };
+function card(
+  name: string,
+  nick: string,
+  relationship: ProfileRelationship = "NONE",
+  subscribed = false,
+) {
+  return { displayName: name, nick, relationship, subscribed };
 }
 
 type Person = {
@@ -67,9 +72,11 @@ beforeEach(() => {
   blocks = [];
   getSession.mockReset();
   findMany.mockReset();
-  readProfileRelation.mockReset();
+  readProfileRelations.mockReset();
   getSession.mockResolvedValue({ user: { id: "viewer" }, session: { token: "t" } });
-  readProfileRelation.mockResolvedValue({ relationship: "NONE" });
+  readProfileRelations.mockImplementation((_viewer: string, ids: string[]) =>
+    Promise.resolve(new Map(ids.map((id) => [id, { relationship: "NONE", subscribed: false }]))),
+  );
   findMany.mockImplementation(function findPeople(args: FindManyArgs) {
     const nickQuery = args.where.nickNormalized?.startsWith;
     const nameQuery = args.where.nameNormalized?.contains;
@@ -135,7 +142,7 @@ describe("searchUsers", () => {
         take: USER_SEARCH_LIMIT,
       }),
     );
-    expect(readProfileRelation).toHaveBeenCalledWith("viewer", "u1");
+    expect(readProfileRelations).toHaveBeenCalledWith("viewer", ["u1"]);
   });
 
   it("finds a nick by prefix and does not match a prefix in the middle", async () => {
@@ -221,7 +228,7 @@ describe("searchUsers", () => {
       ok: true,
       data: { users: [] },
     });
-    expect(readProfileRelation).not.toHaveBeenCalled();
+    expect(readProfileRelations).not.toHaveBeenCalled();
   });
 
   it("hides a person who has blocked the viewer, in both buckets", async () => {
@@ -237,7 +244,7 @@ describe("searchUsers", () => {
       ok: true,
       data: { users: [] },
     });
-    expect(readProfileRelation).not.toHaveBeenCalled();
+    expect(readProfileRelations).not.toHaveBeenCalled();
   });
 
   it("sends the Block guard as relation filters in the same query, not per card", async () => {
@@ -256,7 +263,8 @@ describe("searchUsers", () => {
         blocksReceived: { none: { blockerId: "viewer" } },
       });
     }
-    expect(readProfileRelation).toHaveBeenCalledTimes(1);
+    expect(readProfileRelations).toHaveBeenCalledTimes(1);
+    expect(readProfileRelations).toHaveBeenCalledWith("viewer", ["u1"]);
   });
 
   it("keeps a person who blocked someone else", async () => {
@@ -311,7 +319,7 @@ describe("searchUsers", () => {
     );
   });
 
-  it("adds the viewer relation to every card, never wishlist fields (NFR-3)", async () => {
+  it("adds the viewer relation and the subscription flag to every card, never wishlist fields (NFR-3)", async () => {
     people = [person("u1", "Анна", "anna")];
 
     const result = await searchUsers({ q: "анна" }, headers);
@@ -321,47 +329,64 @@ describe("searchUsers", () => {
       "displayName",
       "nick",
       "relationship",
+      "subscribed",
     ]);
-    expect(personCard).toMatchObject({ relationship: "NONE" });
+    expect(personCard).toMatchObject({ relationship: "NONE", subscribed: false });
     expect(personCard).not.toHaveProperty("gifts");
     expect(personCard).not.toHaveProperty("hideFromSearch");
     expect(personCard).not.toHaveProperty("email");
   });
 
-  it("fills NONE, OUTGOING_PENDING, INCOMING_PENDING and FRIENDS in one answer", async () => {
+  it("reads the relation facts for the whole page in one batch (CLE-70 / F3)", async () => {
+    people = [
+      person("u1", "Анна", "anna"),
+      person("u2", "Борис", "anna_boris"),
+      person("u3", "Вера", "anna_vera"),
+    ];
+
+    await searchUsers({ q: "anna" }, headers);
+
+    // One call for every id of the page: the action never asks per card.
+    expect(readProfileRelations).toHaveBeenCalledTimes(1);
+    expect(readProfileRelations).toHaveBeenCalledWith("viewer", ["u1", "u2", "u3"]);
+  });
+
+  it("fills NONE, OUTGOING_PENDING, INCOMING_PENDING, FRIENDS and the subscription flag in one answer", async () => {
     people = [
       person("u1", "Анна", "anna"),
       person("u2", "Борис", "anna_boris"),
       person("u3", "Вера", "anna_vera"),
       person("u4", "Глеб", "anna_gleb"),
     ];
-    const relations: Record<string, ProfileRelationship> = {
-      u1: "NONE",
-      u2: "OUTGOING_PENDING",
-      u3: "INCOMING_PENDING",
-      u4: "FRIENDS",
+    const facts: Record<string, { relationship: ProfileRelationship; subscribed: boolean }> = {
+      u1: { relationship: "NONE", subscribed: true },
+      u2: { relationship: "OUTGOING_PENDING", subscribed: false },
+      u3: { relationship: "INCOMING_PENDING", subscribed: true },
+      u4: { relationship: "FRIENDS", subscribed: false },
     };
-    readProfileRelation.mockImplementation(function relationFor(_viewer: string, ownerId: string) {
-      return Promise.resolve({ relationship: relations[ownerId] });
+    readProfileRelations.mockImplementation(function factsFor(_viewer: string, ids: string[]) {
+      return Promise.resolve(new Map(ids.map((id) => [id, facts[id]])));
     });
 
     const result = await searchUsers({ q: "anna" }, headers);
 
     expect(result.ok && result.data.users).toEqual([
-      card("Анна", "anna", "NONE"),
+      card("Анна", "anna", "NONE", true),
       card("Борис", "anna_boris", "OUTGOING_PENDING"),
-      card("Вера", "anna_vera", "INCOMING_PENDING"),
+      card("Вера", "anna_vera", "INCOMING_PENDING", true),
       card("Глеб", "anna_gleb", "FRIENDS"),
     ]);
-    expect(readProfileRelation).toHaveBeenCalledTimes(4);
+    // One batch for the page, not four per-card reads.
+    expect(readProfileRelations).toHaveBeenCalledTimes(1);
   });
 
   it("carries a live cooldown in the profile shape next to relationship NONE", async () => {
     people = [person("u1", "Анна", "anna")];
-    readProfileRelation.mockResolvedValue({
-      relationship: "NONE",
-      inviteCooldown: { hours: 5, rejected: true },
-    });
+    readProfileRelations.mockResolvedValue(
+      new Map([
+        ["u1", { relationship: "NONE", inviteCooldown: { hours: 5, rejected: true }, subscribed: false }],
+      ]),
+    );
 
     const result = await searchUsers({ q: "анна" }, headers);
 
@@ -374,18 +399,21 @@ describe("searchUsers", () => {
             nick: "anna",
             relationship: "NONE",
             inviteCooldown: { hours: 5, rejected: true },
+            subscribed: false,
           },
         ],
       },
     });
   });
 
-  it("reads the relation for the viewer's own row through the same reader", async () => {
+  it("lets the batch reader keep the viewer's own row NONE and unsubscribed", async () => {
     people = [person("viewer", "Я", "me")];
 
     await searchUsers({ q: "me" }, headers);
 
-    expect(readProfileRelation).toHaveBeenCalledWith("viewer", "viewer");
+    // The self rule lives in the reader; the action still asks it once, with the
+    // viewer's own id included in the page.
+    expect(readProfileRelations).toHaveBeenCalledWith("viewer", ["viewer"]);
   });
 
   it("never asks for a relation when nothing matches", async () => {
@@ -393,6 +421,6 @@ describe("searchUsers", () => {
 
     await searchUsers({ q: "никого" }, headers);
 
-    expect(readProfileRelation).not.toHaveBeenCalled();
+    expect(readProfileRelations).not.toHaveBeenCalled();
   });
 });

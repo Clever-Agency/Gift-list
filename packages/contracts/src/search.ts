@@ -44,12 +44,19 @@ export type UserSearchQuery = z.infer<typeof userSearchQuerySchema>;
  * `relationship` is `NONE`: a rejection leaves no edge and no pending invite.
  * The viewer's own card is `NONE` — `PROFILE_RELATIONSHIPS` has no `SELF`, and
  * the screen tells «это я» by comparing the nick with the session.
+ *
+ * `subscribed` (Story 4.6, FR-46, AD-19) is the same optional flag the profile
+ * answers: `true` when the viewer has a directed `Subscription(viewerId →
+ * ownerId)`, absence reads as "not subscribed". It is one fact next to the
+ * relation, never a relation itself, so a subscriber is not a friend and the
+ * flag rides along with no id, email or wish field (NFR-3).
  */
 export const userSearchCardSchema = z.strictObject({
   displayName: z.string(),
   nick: z.string(),
   relationship: profileRelationshipSchema,
   inviteCooldown: profileInviteCooldownSchema.optional(),
+  subscribed: z.boolean().optional(),
 });
 
 export type UserSearchCard = z.infer<typeof userSearchCardSchema>;

@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const db = vi.hoisted(() => ({
-  friendship: { findUnique: vi.fn() },
-  friendshipInvite: { findUnique: vi.fn() },
-  inviteCooldown: { findUnique: vi.fn() },
+  friendship: { findUnique: vi.fn(), findMany: vi.fn() },
+  friendshipInvite: { findUnique: vi.fn(), findMany: vi.fn() },
+  inviteCooldown: { findUnique: vi.fn(), findMany: vi.fn() },
   block: { findFirst: vi.fn() },
-  subscription: { findUnique: vi.fn() },
+  subscription: { findUnique: vi.fn(), findMany: vi.fn() },
 }));
 
 vi.mock("@/db/client", () => ({ prisma: db }));
@@ -15,7 +15,7 @@ vi.mock("@/db/client", () => ({ prisma: db }));
 import {
   profileRelationFacts,
   readProfileInviteCooldown,
-  readProfileRelation,
+  readProfileRelations,
   readProfileRelationship,
   readProfileSubscription,
   relationshipReader,
@@ -376,50 +376,141 @@ describe("readProfileInviteCooldown (Story 4.2.2)", () => {
   });
 });
 
-describe("readProfileRelation (search cards, CLE-89)", () => {
+describe("readProfileRelations (search cards, CLE-89 / CLE-70 F3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    db.friendship.findUnique.mockResolvedValue(null);
-    db.friendshipInvite.findUnique.mockResolvedValue(null);
-    db.inviteCooldown.findUnique.mockResolvedValue(null);
-    db.block.findFirst.mockResolvedValue(null);
+    db.friendship.findMany.mockResolvedValue([]);
+    db.friendshipInvite.findMany.mockResolvedValue([]);
+    db.inviteCooldown.findMany.mockResolvedValue([]);
+    db.subscription.findMany.mockResolvedValue([]);
   });
 
-  it("answers the closed relation alone when no cooldown is live", async () => {
-    db.friendship.findUnique.mockResolvedValue({ id: "friendship_1" });
+  it("keeps the viewer's own row and an anonymous viewer NONE and unsubscribed without a query", async () => {
+    await expect(readProfileRelations(ALPHA, [ALPHA])).resolves.toEqual(
+      new Map([[ALPHA, { relationship: "NONE", subscribed: false }]]),
+    );
+    await expect(readProfileRelations(null, [ALPHA, ZEBRA])).resolves.toEqual(
+      new Map([
+        [ALPHA, { relationship: "NONE", subscribed: false }],
+        [ZEBRA, { relationship: "NONE", subscribed: false }],
+      ]),
+    );
 
-    await expect(readProfileRelation(ZEBRA, ALPHA)).resolves.toEqual({ relationship: "FRIENDS" });
+    expect(db.friendship.findMany).not.toHaveBeenCalled();
+    expect(db.friendshipInvite.findMany).not.toHaveBeenCalled();
+    expect(db.inviteCooldown.findMany).not.toHaveBeenCalled();
+    expect(db.subscription.findMany).not.toHaveBeenCalled();
   });
 
-  it("keeps NONE for the viewer's own card without reading the database", async () => {
-    await expect(readProfileRelation(ALPHA, ALPHA)).resolves.toEqual({ relationship: "NONE" });
-    await expect(readProfileRelation(null, ALPHA)).resolves.toEqual({ relationship: "NONE" });
-
-    expect(db.friendship.findUnique).not.toHaveBeenCalled();
-    expect(db.friendshipInvite.findUnique).not.toHaveBeenCalled();
-    expect(db.inviteCooldown.findUnique).not.toHaveBeenCalled();
-  });
-
-  it("forces NONE and carries the profile-shaped cooldown while the window is live", async () => {
-    db.friendshipInvite.findUnique.mockResolvedValue({ id: "invite_1" });
-    db.inviteCooldown.findUnique.mockResolvedValue({
-      until: new Date(Date.now() + 5 * 3_600_000),
-      rejectedFromUserId: ZEBRA,
+  it("reads a whole page in four flat queries, never two per card", async () => {
+    const page = Array.from({ length: 20 }, function ownerId(_, index) {
+      return `user_${String(index).padStart(2, "0")}`;
     });
 
-    await expect(readProfileRelation(ZEBRA, ALPHA)).resolves.toEqual({
+    const facts = await readProfileRelations(ZEBRA, page);
+
+    expect(facts.size).toBe(20);
+    expect(db.friendship.findMany).toHaveBeenCalledTimes(1);
+    expect(db.friendshipInvite.findMany).toHaveBeenCalledTimes(1);
+    expect(db.inviteCooldown.findMany).toHaveBeenCalledTimes(1);
+    expect(db.subscription.findMany).toHaveBeenCalledTimes(1);
+    const pairQuery = db.friendship.findMany.mock.calls[0]?.[0] as {
+      where: { OR: unknown[] };
+    };
+    expect(pairQuery.where.OR).toHaveLength(20);
+  });
+
+  it("queries both pending directions and the viewer's own subscriptions", async () => {
+    await readProfileRelations(ZEBRA, [ALPHA]);
+
+    expect(db.friendshipInvite.findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { fromUserId: ZEBRA, toUserId: { in: [ALPHA] } },
+          { fromUserId: { in: [ALPHA] }, toUserId: ZEBRA },
+        ],
+      },
+      select: { fromUserId: true, toUserId: true },
+    });
+    expect(db.subscription.findMany).toHaveBeenCalledWith({
+      where: { subscriberId: ZEBRA, targetId: { in: [ALPHA] } },
+      select: { targetId: true },
+    });
+  });
+
+  it("fills the four relations and the subscription flag for the page", async () => {
+    const page = [ALPHA, "mike_out", "nina_in", "sam_none"];
+    db.friendship.findMany.mockResolvedValue([{ userLowId: ALPHA, userHighId: ZEBRA }]);
+    db.friendshipInvite.findMany.mockResolvedValue([
+      { fromUserId: ZEBRA, toUserId: "mike_out" },
+      { fromUserId: "nina_in", toUserId: ZEBRA },
+    ]);
+    // A subscription is one directed fact and never a friendship (D-31).
+    db.subscription.findMany.mockResolvedValue([{ targetId: "mike_out" }]);
+
+    const facts = await readProfileRelations(ZEBRA, page);
+
+    expect(facts.get(ALPHA)).toEqual({ relationship: "FRIENDS", subscribed: false });
+    expect(facts.get("mike_out")).toEqual({ relationship: "OUTGOING_PENDING", subscribed: true });
+    expect(facts.get("nina_in")).toEqual({ relationship: "INCOMING_PENDING", subscribed: false });
+    expect(facts.get("sam_none")).toEqual({ relationship: "NONE", subscribed: false });
+  });
+
+  it("maps a canonical pair back to its owner, not to the first row", async () => {
+    // The pair is stored low/high, so the viewer may be the high id; the answer
+    // still belongs to ALPHA, the person the page asked about.
+    db.friendship.findMany.mockResolvedValue([{ userLowId: ALPHA, userHighId: ZEBRA }]);
+
+    const facts = await readProfileRelations(ZEBRA, [ALPHA, "sam_none"]);
+
+    expect(facts.get(ALPHA)).toEqual({ relationship: "FRIENDS", subscribed: false });
+    expect(facts.get("sam_none")).toEqual({ relationship: "NONE", subscribed: false });
+  });
+
+  it("carries the live cooldown in the profile shape and forces NONE", async () => {
+    db.friendshipInvite.findMany.mockResolvedValue([{ fromUserId: ZEBRA, toUserId: ALPHA }]);
+    db.inviteCooldown.findMany.mockResolvedValue([
+      {
+        userLowId: ALPHA,
+        userHighId: ZEBRA,
+        until: new Date(Date.now() + 5 * 3_600_000),
+        rejectedFromUserId: ZEBRA,
+      },
+    ]);
+
+    const facts = await readProfileRelations(ZEBRA, [ALPHA]);
+
+    expect(facts.get(ALPHA)).toEqual({
       relationship: "NONE",
       inviteCooldown: { hours: 5, rejected: true },
+      subscribed: false,
     });
   });
 
-  it("omits the cooldown field when the row is expired", async () => {
-    db.inviteCooldown.findUnique.mockResolvedValue({
-      until: new Date(Date.now() - 1_000),
-      rejectedFromUserId: ZEBRA,
-    });
+  it("omits the cooldown field when the row has expired", async () => {
+    db.inviteCooldown.findMany.mockResolvedValue([
+      {
+        userLowId: ALPHA,
+        userHighId: ZEBRA,
+        until: new Date(Date.now() - 1_000),
+        rejectedFromUserId: ZEBRA,
+      },
+    ]);
 
-    await expect(readProfileRelation(ZEBRA, ALPHA)).resolves.toEqual({ relationship: "NONE" });
+    const facts = await readProfileRelations(ZEBRA, [ALPHA]);
+
+    expect(facts.get(ALPHA)).toEqual({ relationship: "NONE", subscribed: false });
+    expect(facts.get(ALPHA)).not.toHaveProperty("inviteCooldown");
+  });
+
+  it("asks once for a repeated id and answers one entry", async () => {
+    const facts = await readProfileRelations(ZEBRA, [ALPHA, ALPHA]);
+
+    expect(facts.size).toBe(1);
+    const pairQuery = db.friendship.findMany.mock.calls[0]?.[0] as {
+      where: { OR: unknown[] };
+    };
+    expect(pairQuery.where.OR).toHaveLength(1);
   });
 });
 

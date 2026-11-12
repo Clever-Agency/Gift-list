@@ -86,6 +86,14 @@ describe("userSearchDataSchema", () => {
     ).toBe(false);
   });
 
+  it("carries the optional subscription flag next to the relation (Story 4.6)", () => {
+    expect(userSearchCardSchema.safeParse({ ...card, subscribed: true }).success).toBe(true);
+    expect(userSearchCardSchema.safeParse({ ...card, subscribed: false }).success).toBe(true);
+    // Absence is the same fact as `false`, exactly like the profile answer.
+    expect(userSearchCardSchema.parse(card)).not.toHaveProperty("subscribed");
+    expect(userSearchCardSchema.safeParse({ ...card, subscribed: "yes" }).success).toBe(false);
+  });
+
   it("rejects a hidden flag or gift data in a card (NFR-3)", () => {
     expect(
       userSearchDataSchema.safeParse({ users: [{ ...card, hideFromSearch: true }] }).success,

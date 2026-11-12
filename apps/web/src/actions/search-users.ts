@@ -12,7 +12,7 @@ import {
 import { prisma } from "@/db/client";
 import type { Prisma } from "@/db/generated/client";
 import { auth } from "@/lib/auth";
-import { readProfileRelation } from "@/lib/relationships";
+import { readProfileRelations, type PersonRelationFacts } from "@/lib/relationships";
 import { requestLocale } from "@/lib/request-locale";
 
 const unauthenticated = {
@@ -59,13 +59,14 @@ function notBlockedWithViewer(viewerId: string): Prisma.UserWhereInput {
  *
  * An empty query and a query with no matches both answer `ok: true` with an
  * empty `users` array — the empty state of FR-6, never an error. A card carries
- * `{ displayName, nick }` and the viewer's closed relation to that person
- * (Story 4.1.2, 4.2.2): the same facts the profile button reads, so the search
- * screen needs no per-card profile request and never touches wishes (NFR-3).
- * The relation comes from the profile readers and never from a second set of
- * friendship rules; the viewer's own card is `NONE`. An exact nick comes first,
- * then nick prefixes, then display-name matches: the documents do not fix the
- * order of these buckets, so this ranking is the one the screen receives.
+ * `{ displayName, nick }`, the viewer's closed relation to that person (Story
+ * 4.1.2, 4.2.2) and, since Story 4.6, the independent `subscribed` flag: the same
+ * facts the profile buttons read, so the search screen needs no per-card profile
+ * request and never touches wishes (NFR-3). The relation comes from the profile
+ * readers and never from a second set of friendship rules; the viewer's own card
+ * is `NONE` / `false`. An exact nick comes first, then nick prefixes, then
+ * display-name matches: the documents do not fix the order of these buckets, so
+ * this ranking is the one the screen receives.
  */
 export async function searchUsers(
   input: UserSearchQuery,
@@ -102,19 +103,25 @@ export async function searchUsers(
 
   const rows = mergeSearchRows(byNick, byDisplayName, query);
   const locale = requestLocale(headers.get("accept-language"));
-  // One relation read per card, all in parallel: never a full profile, so the
-  // amount of work stays bounded by USER_SEARCH_LIMIT rows.
-  const users = await Promise.all(
-    rankSearchRows(rows, query, locale)
-      .slice(0, USER_SEARCH_LIMIT)
-      .map(async function toCard(row) {
-        return {
-          displayName: row.name,
-          nick: row.nick,
-          ...(await readProfileRelation(session.user.id, row.id)),
-        };
-      }),
-  );
+  const page = rankSearchRows(rows, query, locale).slice(0, USER_SEARCH_LIMIT);
+  // One flat batch for the whole page (CLE-70 / F3): the relation, the
+  // rejection cooldown and the subscription are read for every id at once, so
+  // the number of queries never grows with the number of cards. An empty page
+  // asks nothing.
+  const facts =
+    page.length === 0
+      ? new Map<string, PersonRelationFacts>()
+      : await readProfileRelations(
+          session.user.id,
+          page.map((row) => row.id),
+        );
+  const users = page.map(function toCard(row) {
+    return {
+      displayName: row.name,
+      nick: row.nick,
+      ...(facts.get(row.id) ?? { relationship: "NONE", subscribed: false }),
+    };
+  });
   return { ok: true, data: userSearchDataSchema.parse({ users }) };
 }
 

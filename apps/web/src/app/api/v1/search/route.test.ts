@@ -2,15 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findMany, readProfileRelation } = vi.hoisted(() => ({
+const { getSession, findMany, readProfileRelations } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findMany: vi.fn(),
-  readProfileRelation: vi.fn(),
+  readProfileRelations: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { user: { findMany } } }));
-vi.mock("@/lib/relationships", () => ({ readProfileRelation }));
+vi.mock("@/lib/relationships", () => ({ readProfileRelations }));
 
 import { USER_SEARCH_QUERY_MAX, normalizeForSearch } from "@gift-list/contracts";
 
@@ -41,9 +41,11 @@ function request(query?: string) {
 beforeEach(() => {
   getSession.mockReset();
   findMany.mockReset();
-  readProfileRelation.mockReset();
+  readProfileRelations.mockReset();
   getSession.mockResolvedValue({ user: { id: "viewer" }, session: { token: "t" } });
-  readProfileRelation.mockResolvedValue({ relationship: "NONE" });
+  readProfileRelations.mockResolvedValue(
+    new Map([["u1", { relationship: "NONE", subscribed: false }]]),
+  );
   findMany.mockImplementation(function findPeople(args: FindManyArgs) {
     if (args.where.hideFromSearch !== false) return [];
     const nickQuery = args.where.nickNormalized?.startsWith;
@@ -62,7 +64,9 @@ describe("GET /api/v1/search", () => {
     expect(await res.json()).toEqual({
       ok: true,
       data: {
-        users: [{ displayName: "Алёна", nick: "alena", relationship: "NONE" }],
+        users: [
+          { displayName: "Алёна", nick: "alena", relationship: "NONE", subscribed: false },
+        ],
       },
     });
     expect(findMany).toHaveBeenCalledWith(
@@ -70,11 +74,13 @@ describe("GET /api/v1/search", () => {
         where: expect.objectContaining({ hideFromSearch: false }),
       }),
     );
-    expect(readProfileRelation).toHaveBeenCalledWith("viewer", "u1");
+    expect(readProfileRelations).toHaveBeenCalledWith("viewer", ["u1"]);
   });
 
-  it("fills each card with the relation the profile reader answers", async () => {
-    readProfileRelation.mockResolvedValueOnce({ relationship: "OUTGOING_PENDING" });
+  it("fills each card with the relation and subscription the batch reader answers", async () => {
+    readProfileRelations.mockResolvedValue(
+      new Map([["u1", { relationship: "OUTGOING_PENDING", subscribed: true }]]),
+    );
 
     const res = await GET(request("alena"));
 
@@ -82,7 +88,12 @@ describe("GET /api/v1/search", () => {
       ok: true,
       data: {
         users: [
-          { displayName: "Алёна", nick: "alena", relationship: "OUTGOING_PENDING" },
+          {
+            displayName: "Алёна",
+            nick: "alena",
+            relationship: "OUTGOING_PENDING",
+            subscribed: true,
+          },
         ],
       },
     });

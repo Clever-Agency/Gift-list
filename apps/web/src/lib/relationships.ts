@@ -2,7 +2,11 @@ import "server-only";
 
 import type { ProfileInviteCooldown, ProfileRelationship } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
-import { liveInviteCooldownHours, orderFriendPair } from "@/domain/friendship";
+import {
+  liveInviteCooldownHours,
+  orderFriendPair,
+  type FriendshipPair,
+} from "@/domain/friendship";
 import type { RelationshipReader, ViewerRelations } from "@/domain/visibility";
 
 /** Nobody is related to themselves; the owner branch never asks the port. */
@@ -162,6 +166,13 @@ export type ProfileRelationFacts = {
 };
 
 /**
+ * One person row: the friend action's facts and the independent subscription
+ * switch. A subscription is not a relation, so it travels next to
+ * `relationship` instead of changing it (AD-19).
+ */
+export type PersonRelationFacts = ProfileRelationFacts & { subscribed: boolean };
+
+/**
  * The pair of facts a «Добавить в друзья» button reads about one person
  * (Story 4.1.2, 4.2.2). While the rejection cooldown is live the relationship
  * is forced to `NONE`: a rejection leaves no edge and no pending invite, so
@@ -175,18 +186,121 @@ export function profileRelationFacts(
   return inviteCooldown === null ? { relationship } : { relationship: "NONE", inviteCooldown };
 }
 
+/** The viewer's own row and an anonymous viewer: no edge and no subscription. */
+function noPersonRelationFacts(): PersonRelationFacts {
+  return { relationship: "NONE", subscribed: false };
+}
+
 /**
- * The same facts for one person, read through the two readers above. Search
- * fills every card with this call instead of asking for a whole profile, so no
- * wishlist read is ever made for a search row (NFR-3).
+ * One key for a canonical pair. The ids are CUID2, so they never contain NUL and
+ * the two halves of the key can never be confused.
  */
-export async function readProfileRelation(
+function pairKey(pair: FriendshipPair): string {
+  return `${pair.userLowId}\u0000${pair.userHighId}`;
+}
+
+/**
+ * The same facts for a whole page of people in a fixed number of queries (Story
+ * 3.5, CLE-70 / F3). Search fills every card of one answer with this call: four
+ * flat `IN` reads for the whole list instead of two pair reads per card, so a
+ * 20-row answer costs exactly what a 1-row answer costs. Wishes are never read
+ * and no profile is assembled (NFR-3).
+ *
+ * The returned map has an entry for every requested id. A relation is decided by
+ * the same rules as the profile button: an accepted edge wins, then the viewer's
+ * outgoing invite, then an incoming one; a live rejection cooldown forces
+ * `relationship: NONE` through {@link profileRelationFacts}. A Block is not part
+ * of this answer because search drops blocked rows in SQL (AD-7). The viewer's
+ * own id and an anonymous viewer cost no query and answer `NONE` / `false`.
+ */
+export async function readProfileRelations(
   viewerId: string | null,
-  ownerId: string,
-): Promise<ProfileRelationFacts> {
-  const [relationship, inviteCooldown] = await Promise.all([
-    readProfileRelationship(viewerId, ownerId),
-    readProfileInviteCooldown(viewerId, ownerId),
+  ownerIds: readonly string[],
+): Promise<Map<string, PersonRelationFacts>> {
+  const facts = new Map<string, PersonRelationFacts>();
+  const owners = [...new Set(ownerIds)];
+  if (viewerId === null) {
+    for (const ownerId of owners) facts.set(ownerId, noPersonRelationFacts());
+    return facts;
+  }
+
+  const others = owners.filter((ownerId) => ownerId !== viewerId);
+  if (owners.includes(viewerId)) facts.set(viewerId, noPersonRelationFacts());
+  if (others.length === 0) return facts;
+
+  // A pair row is mapped back to its owner through this table, so the answer is
+  // assembled without one lookup per card.
+  const ownerByPair = new Map<string, string>();
+  const pairs = others.map(function pairForOwner(ownerId) {
+    const pair = orderFriendPair(viewerId, ownerId);
+    ownerByPair.set(pairKey(pair), ownerId);
+    return pair;
+  });
+
+  const [friendships, invites, cooldowns, subscriptions] = await Promise.all([
+    prisma.friendship.findMany({
+      where: { OR: pairs },
+      select: { userLowId: true, userHighId: true },
+    }),
+    // Both pending directions in one read: the viewer's own invite and an invite
+    // addressed to the viewer.
+    prisma.friendshipInvite.findMany({
+      where: {
+        OR: [
+          { fromUserId: viewerId, toUserId: { in: others } },
+          { fromUserId: { in: others }, toUserId: viewerId },
+        ],
+      },
+      select: { fromUserId: true, toUserId: true },
+    }),
+    prisma.inviteCooldown.findMany({
+      where: { OR: pairs },
+      select: { userLowId: true, userHighId: true, until: true, rejectedFromUserId: true },
+    }),
+    prisma.subscription.findMany({
+      where: { subscriberId: viewerId, targetId: { in: others } },
+      select: { targetId: true },
+    }),
   ]);
-  return profileRelationFacts(relationship, inviteCooldown);
+
+  const friends = new Set<string>();
+  for (const row of friendships) {
+    const ownerId = ownerByPair.get(pairKey(row));
+    if (ownerId !== undefined) friends.add(ownerId);
+  }
+  const outgoing = new Set(
+    invites
+      .filter((row) => row.fromUserId === viewerId)
+      .map((row) => row.toUserId),
+  );
+  const incoming = new Set(
+    invites
+      .filter((row) => row.toUserId === viewerId)
+      .map((row) => row.fromUserId),
+  );
+  const cooldownByOwner = new Map<string, ProfileInviteCooldown>();
+  for (const row of cooldowns) {
+    const ownerId = ownerByPair.get(pairKey(row));
+    if (ownerId === undefined) continue;
+    const hours = liveInviteCooldownHours(row);
+    if (hours === null) continue;
+    cooldownByOwner.set(ownerId, { hours, rejected: row.rejectedFromUserId === viewerId });
+  }
+  const subscribed = new Set(subscriptions.map((row) => row.targetId));
+
+  for (const ownerId of others) {
+    const relationship: ProfileRelationship = friends.has(ownerId)
+      ? "FRIENDS"
+      : outgoing.has(ownerId)
+        ? "OUTGOING_PENDING"
+        : incoming.has(ownerId)
+          ? "INCOMING_PENDING"
+          : "NONE";
+    facts.set(ownerId, {
+      ...profileRelationFacts(relationship, cooldownByOwner.get(ownerId) ?? null),
+      subscribed: subscribed.has(ownerId),
+    });
+  }
+
+  return facts;
 }

@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findMany } = vi.hoisted(() => ({
+const { getSession, findMany, readProfileRelation } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findMany: vi.fn(),
+  readProfileRelation: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { user: { findMany } } }));
+vi.mock("@/lib/relationships", () => ({ readProfileRelation }));
 
 import { USER_SEARCH_QUERY_MAX, normalizeForSearch } from "@gift-list/contracts";
 
@@ -39,7 +41,9 @@ function request(query?: string) {
 beforeEach(() => {
   getSession.mockReset();
   findMany.mockReset();
+  readProfileRelation.mockReset();
   getSession.mockResolvedValue({ user: { id: "viewer" }, session: { token: "t" } });
+  readProfileRelation.mockResolvedValue({ relationship: "NONE" });
   findMany.mockImplementation(function findPeople(args: FindManyArgs) {
     if (args.where.hideFromSearch !== false) return [];
     const nickQuery = args.where.nickNormalized?.startsWith;
@@ -57,13 +61,31 @@ describe("GET /api/v1/search", () => {
     expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(await res.json()).toEqual({
       ok: true,
-      data: { users: [{ displayName: "Алёна", nick: "alena" }] },
+      data: {
+        users: [{ displayName: "Алёна", nick: "alena", relationship: "NONE" }],
+      },
     });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ hideFromSearch: false }),
       }),
     );
+    expect(readProfileRelation).toHaveBeenCalledWith("viewer", "u1");
+  });
+
+  it("fills each card with the relation the profile reader answers", async () => {
+    readProfileRelation.mockResolvedValueOnce({ relationship: "OUTGOING_PENDING" });
+
+    const res = await GET(request("alena"));
+
+    expect(await res.json()).toEqual({
+      ok: true,
+      data: {
+        users: [
+          { displayName: "Алёна", nick: "alena", relationship: "OUTGOING_PENDING" },
+        ],
+      },
+    });
   });
 
   it("treats a missing query as a successful empty list", async () => {

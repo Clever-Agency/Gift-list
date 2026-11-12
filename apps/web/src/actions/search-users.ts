@@ -11,6 +11,7 @@ import {
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { auth } from "@/lib/auth";
+import { readProfileRelation } from "@/lib/relationships";
 import { requestLocale } from "@/lib/request-locale";
 
 const unauthenticated = {
@@ -38,11 +39,14 @@ type SearchRow = {
  * keep working (AD-7).
  *
  * An empty query and a query with no matches both answer `ok: true` with an
- * empty `users` array — the empty state of FR-6, never an error. The answer
- * carries only `{ displayName, nick }` cards: the wishlist composition is
- * never revealed by search (NFR-3). An exact nick comes first, then nick
- * prefixes, then display-name matches: the documents do not fix the order of
- * these buckets, so this ranking is the one the screen receives.
+ * empty `users` array — the empty state of FR-6, never an error. A card carries
+ * `{ displayName, nick }` and the viewer's closed relation to that person
+ * (Story 4.1.2, 4.2.2): the same facts the profile button reads, so the search
+ * screen needs no per-card profile request and never touches wishes (NFR-3).
+ * The relation comes from the profile readers and never from a second set of
+ * friendship rules; the viewer's own card is `NONE`. An exact nick comes first,
+ * then nick prefixes, then display-name matches: the documents do not fix the
+ * order of these buckets, so this ranking is the one the screen receives.
  */
 export async function searchUsers(
   input: UserSearchQuery,
@@ -71,11 +75,19 @@ export async function searchUsers(
 
   const rows = mergeSearchRows(byNick, byDisplayName, query);
   const locale = requestLocale(headers.get("accept-language"));
-  const users = rankSearchRows(rows, query, locale)
-    .slice(0, USER_SEARCH_LIMIT)
-    .map(function toCard(row) {
-      return { displayName: row.name, nick: row.nick };
-    });
+  // One relation read per card, all in parallel: never a full profile, so the
+  // amount of work stays bounded by USER_SEARCH_LIMIT rows.
+  const users = await Promise.all(
+    rankSearchRows(rows, query, locale)
+      .slice(0, USER_SEARCH_LIMIT)
+      .map(async function toCard(row) {
+        return {
+          displayName: row.name,
+          nick: row.nick,
+          ...(await readProfileRelation(session.user.id, row.id)),
+        };
+      }),
+  );
   return { ok: true, data: userSearchDataSchema.parse({ users }) };
 }
 

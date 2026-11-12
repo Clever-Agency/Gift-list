@@ -21,11 +21,17 @@ vi.mock("@/db/client", () => ({
     gift: { findMany: findManyGifts },
   },
 }));
-vi.mock("@/lib/relationships", () => ({
-  relationshipReader: { relationsBetween },
-  readProfileRelationship,
-  readProfileInviteCooldown,
-}));
+// The pure `profileRelationFacts` stays real: the tests below pin the cooldown
+// composition while only the two database readers are replaced.
+vi.mock("@/lib/relationships", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/relationships")>();
+  return {
+    ...actual,
+    relationshipReader: { relationsBetween },
+    readProfileRelationship,
+    readProfileInviteCooldown,
+  };
+});
 
 type Row = {
   id: string;

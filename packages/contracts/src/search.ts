@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DISPLAY_NAME_MAX } from "./auth";
+import { profileInviteCooldownSchema, profileRelationshipSchema } from "./friendship";
 
 /**
  * Story 3.5 / AD-13, AD-27: user search by nick (exact or prefix) and by
@@ -32,13 +33,23 @@ export const userSearchQuerySchema = z.strictObject({
 export type UserSearchQuery = z.infer<typeof userSearchQuerySchema>;
 
 /**
- * A person card in the search answer: exactly the two fields the list row
- * shows (the same shape as `listOwnerSchema`). Email, id, `hideFromSearch` and
- * any gift fields are not part of the contract (NFR-3, AD-13).
+ * A person card in the search answer: the two fields the list row shows (the
+ * same shape as `listOwnerSchema`) plus the viewer's relation to this person
+ * (Story 4.1.2, 4.2.2). Email, id, `hideFromSearch` and any gift fields are not
+ * part of the contract (NFR-3, AD-13).
+ *
+ * `relationship` reuses the profile vocabulary, so the same «Добавить в друзья»
+ * button reads one closed set on `/u/:nick` and in `/search`. A live rejection
+ * cooldown travels in the same shape as on the profile and, while present,
+ * `relationship` is `NONE`: a rejection leaves no edge and no pending invite.
+ * The viewer's own card is `NONE` — `PROFILE_RELATIONSHIPS` has no `SELF`, and
+ * the screen tells «это я» by comparing the nick with the session.
  */
 export const userSearchCardSchema = z.strictObject({
   displayName: z.string(),
   nick: z.string(),
+  relationship: profileRelationshipSchema,
+  inviteCooldown: profileInviteCooldownSchema.optional(),
 });
 
 export type UserSearchCard = z.infer<typeof userSearchCardSchema>;

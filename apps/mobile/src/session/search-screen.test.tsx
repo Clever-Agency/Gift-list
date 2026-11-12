@@ -109,8 +109,8 @@ const user: Me = {
   hideFromSearch: false,
 };
 
-const alena: UserSearchCard = { displayName: "Алёна", nick: "alena" };
-const ivan: UserSearchCard = { displayName: "Иван", nick: "ivan" };
+const alena: UserSearchCard = { displayName: "Алёна", nick: "alena", relationship: "NONE" };
+const ivan: UserSearchCard = { displayName: "Иван", nick: "ivan", relationship: "OUTGOING_PENDING" };
 
 let root: Root;
 let container: HTMLElement;

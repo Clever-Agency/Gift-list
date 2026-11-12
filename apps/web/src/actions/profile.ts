@@ -6,7 +6,11 @@ import { prisma } from "@/db/client";
 import { isValidNick, normalizeNick } from "@/domain/nick";
 import { auth } from "@/lib/auth";
 import { requestLocale } from "@/lib/request-locale";
-import { readProfileInviteCooldown, readProfileRelationship } from "@/lib/relationships";
+import {
+  profileRelationFacts,
+  readProfileInviteCooldown,
+  readProfileRelationship,
+} from "@/lib/relationships";
 
 const unauthenticated = {
   ok: false as const,
@@ -81,8 +85,7 @@ export async function getProfileByNick(
     data: listDataSchema.parse({
       ...data,
       owner: { displayName: owner.name, nick: owner.nick },
-      relationship: inviteCooldown === null ? relationship : "NONE",
-      ...(inviteCooldown === null ? {} : { inviteCooldown }),
+      ...profileRelationFacts(relationship, inviteCooldown),
     }),
   };
 }

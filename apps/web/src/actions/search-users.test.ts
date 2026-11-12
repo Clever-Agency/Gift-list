@@ -2,19 +2,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findMany } = vi.hoisted(() => ({
+const { getSession, findMany, readProfileRelation } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findMany: vi.fn(),
+  readProfileRelation: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { user: { findMany } } }));
+vi.mock("@/lib/relationships", () => ({ readProfileRelation }));
 
-import { USER_SEARCH_LIMIT, normalizeForSearch } from "@gift-list/contracts";
+import {
+  USER_SEARCH_LIMIT,
+  normalizeForSearch,
+  type ProfileRelationship,
+} from "@gift-list/contracts";
 
 import { searchUsers } from "./search-users";
 
 const headers = new Headers();
+
+function card(name: string, nick: string, relationship: ProfileRelationship = "NONE") {
+  return { displayName: name, nick, relationship };
+}
 
 type Person = {
   id: string;
@@ -51,7 +61,9 @@ beforeEach(() => {
   people = [];
   getSession.mockReset();
   findMany.mockReset();
+  readProfileRelation.mockReset();
   getSession.mockResolvedValue({ user: { id: "viewer" }, session: { token: "t" } });
+  readProfileRelation.mockResolvedValue({ relationship: "NONE" });
   findMany.mockImplementation(function findPeople(args: FindManyArgs) {
     const nickQuery = args.where.nickNormalized?.startsWith;
     const nameQuery = args.where.nameNormalized?.contains;
@@ -95,13 +107,14 @@ describe("searchUsers", () => {
 
     const result = await searchUsers({ q: "ANNA" }, headers);
 
-    expect(result).toEqual({ ok: true, data: { users: [{ displayName: "Анна", nick: "anna" }] } });
+    expect(result).toEqual({ ok: true, data: { users: [card("Анна", "anna")] } });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { hideFromSearch: false, nickNormalized: { startsWith: "anna" } },
         take: USER_SEARCH_LIMIT,
       }),
     );
+    expect(readProfileRelation).toHaveBeenCalledWith("viewer", "u1");
   });
 
   it("finds a nick by prefix and does not match a prefix in the middle", async () => {
@@ -124,11 +137,11 @@ describe("searchUsers", () => {
 
     expect(await searchUsers({ q: "Алена" }, headers)).toEqual({
       ok: true,
-      data: { users: [{ displayName: "Алёна", nick: "alena" }] },
+      data: { users: [card("Алёна", "alena")] },
     });
     expect(await searchUsers({ q: "Алёна".normalize("NFD") }, headers)).toEqual({
       ok: true,
-      data: { users: [{ displayName: "Алёна", nick: "alena" }] },
+      data: { users: [card("Алёна", "alena")] },
     });
   });
 
@@ -151,7 +164,7 @@ describe("searchUsers", () => {
 
     expect(await searchUsers({ q: "лена" }, headers)).toEqual({
       ok: true,
-      data: { users: [{ displayName: "Алёна", nick: "alena" }] },
+      data: { users: [card("Алёна", "alena")] },
     });
   });
 
@@ -162,7 +175,7 @@ describe("searchUsers", () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { users: [{ displayName: "Anna", nick: "anna" }] },
+      data: { users: [card("Anna", "anna")] },
     });
     expect(findMany).toHaveBeenCalledTimes(2);
   });
@@ -221,14 +234,88 @@ describe("searchUsers", () => {
     );
   });
 
-  it("returns only displayName and nick (NFR-3)", async () => {
+  it("adds the viewer relation to every card, never wishlist fields (NFR-3)", async () => {
     people = [person("u1", "Анна", "anna")];
 
     const result = await searchUsers({ q: "анна" }, headers);
-    const card = result.ok ? result.data.users[0] : undefined;
+    const personCard = result.ok ? result.data.users[0] : undefined;
 
-    expect(card && Object.keys(card).sort()).toEqual(["displayName", "nick"]);
-    expect(card).not.toHaveProperty("gifts");
-    expect(card).not.toHaveProperty("hideFromSearch");
+    expect(personCard && Object.keys(personCard).sort()).toEqual([
+      "displayName",
+      "nick",
+      "relationship",
+    ]);
+    expect(personCard).toMatchObject({ relationship: "NONE" });
+    expect(personCard).not.toHaveProperty("gifts");
+    expect(personCard).not.toHaveProperty("hideFromSearch");
+    expect(personCard).not.toHaveProperty("email");
+  });
+
+  it("fills NONE, OUTGOING_PENDING, INCOMING_PENDING and FRIENDS in one answer", async () => {
+    people = [
+      person("u1", "Анна", "anna"),
+      person("u2", "Борис", "anna_boris"),
+      person("u3", "Вера", "anna_vera"),
+      person("u4", "Глеб", "anna_gleb"),
+    ];
+    const relations: Record<string, ProfileRelationship> = {
+      u1: "NONE",
+      u2: "OUTGOING_PENDING",
+      u3: "INCOMING_PENDING",
+      u4: "FRIENDS",
+    };
+    readProfileRelation.mockImplementation(function relationFor(_viewer: string, ownerId: string) {
+      return Promise.resolve({ relationship: relations[ownerId] });
+    });
+
+    const result = await searchUsers({ q: "anna" }, headers);
+
+    expect(result.ok && result.data.users).toEqual([
+      card("Анна", "anna", "NONE"),
+      card("Борис", "anna_boris", "OUTGOING_PENDING"),
+      card("Вера", "anna_vera", "INCOMING_PENDING"),
+      card("Глеб", "anna_gleb", "FRIENDS"),
+    ]);
+    expect(readProfileRelation).toHaveBeenCalledTimes(4);
+  });
+
+  it("carries a live cooldown in the profile shape next to relationship NONE", async () => {
+    people = [person("u1", "Анна", "anna")];
+    readProfileRelation.mockResolvedValue({
+      relationship: "NONE",
+      inviteCooldown: { hours: 5, rejected: true },
+    });
+
+    const result = await searchUsers({ q: "анна" }, headers);
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        users: [
+          {
+            displayName: "Анна",
+            nick: "anna",
+            relationship: "NONE",
+            inviteCooldown: { hours: 5, rejected: true },
+          },
+        ],
+      },
+    });
+  });
+
+  it("reads the relation for the viewer's own row through the same reader", async () => {
+    people = [person("viewer", "Я", "me")];
+
+    await searchUsers({ q: "me" }, headers);
+
+    expect(readProfileRelation).toHaveBeenCalledWith("viewer", "viewer");
+  });
+
+  it("never asks for a relation when nothing matches", async () => {
+    people = [person("u1", "Анна", "anna")];
+
+    await searchUsers({ q: "никого" }, headers);
+
+    expect(readProfileRelation).not.toHaveBeenCalled();
   });
 });

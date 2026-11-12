@@ -11,7 +11,13 @@ const db = vi.hoisted(() => ({
 
 vi.mock("@/db/client", () => ({ prisma: db }));
 
-import { readProfileInviteCooldown, readProfileRelationship, relationshipReader } from "@/lib/relationships";
+import {
+  profileRelationFacts,
+  readProfileInviteCooldown,
+  readProfileRelation,
+  readProfileRelationship,
+  relationshipReader,
+} from "@/lib/relationships";
 
 const ALPHA = "alpha_user";
 const ZEBRA = "zebra_user";
@@ -269,5 +275,68 @@ describe("readProfileInviteCooldown (Story 4.2.2)", () => {
     });
 
     await expect(readProfileInviteCooldown(ZEBRA, ALPHA)).resolves.toBeNull();
+  });
+});
+
+describe("readProfileRelation (search cards, CLE-89)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.friendship.findUnique.mockResolvedValue(null);
+    db.friendshipInvite.findUnique.mockResolvedValue(null);
+    db.inviteCooldown.findUnique.mockResolvedValue(null);
+    db.block.findFirst.mockResolvedValue(null);
+  });
+
+  it("answers the closed relation alone when no cooldown is live", async () => {
+    db.friendship.findUnique.mockResolvedValue({ id: "friendship_1" });
+
+    await expect(readProfileRelation(ZEBRA, ALPHA)).resolves.toEqual({ relationship: "FRIENDS" });
+  });
+
+  it("keeps NONE for the viewer's own card without reading the database", async () => {
+    await expect(readProfileRelation(ALPHA, ALPHA)).resolves.toEqual({ relationship: "NONE" });
+    await expect(readProfileRelation(null, ALPHA)).resolves.toEqual({ relationship: "NONE" });
+
+    expect(db.friendship.findUnique).not.toHaveBeenCalled();
+    expect(db.friendshipInvite.findUnique).not.toHaveBeenCalled();
+    expect(db.inviteCooldown.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("forces NONE and carries the profile-shaped cooldown while the window is live", async () => {
+    db.friendshipInvite.findUnique.mockResolvedValue({ id: "invite_1" });
+    db.inviteCooldown.findUnique.mockResolvedValue({
+      until: new Date(Date.now() + 5 * 3_600_000),
+      rejectedFromUserId: ZEBRA,
+    });
+
+    await expect(readProfileRelation(ZEBRA, ALPHA)).resolves.toEqual({
+      relationship: "NONE",
+      inviteCooldown: { hours: 5, rejected: true },
+    });
+  });
+
+  it("omits the cooldown field when the row is expired", async () => {
+    db.inviteCooldown.findUnique.mockResolvedValue({
+      until: new Date(Date.now() - 1_000),
+      rejectedFromUserId: ZEBRA,
+    });
+
+    await expect(readProfileRelation(ZEBRA, ALPHA)).resolves.toEqual({ relationship: "NONE" });
+  });
+});
+
+describe("profileRelationFacts", () => {
+  it("returns the relation alone and no cooldown key without a live cooldown", () => {
+    const facts = profileRelationFacts("INCOMING_PENDING", null);
+
+    expect(facts).toEqual({ relationship: "INCOMING_PENDING" });
+    expect(facts).not.toHaveProperty("inviteCooldown");
+  });
+
+  it("forces NONE next to a live cooldown", () => {
+    expect(profileRelationFacts("FRIENDS", { hours: 3, rejected: false })).toEqual({
+      relationship: "NONE",
+      inviteCooldown: { hours: 3, rejected: false },
+    });
   });
 });

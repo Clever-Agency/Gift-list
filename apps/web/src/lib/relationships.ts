@@ -127,3 +127,39 @@ export async function readProfileInviteCooldown(
 
   return { hours, rejected: row.rejectedFromUserId === viewerId };
 }
+
+/** What a «Добавить в друзья» button may learn about one person. */
+export type ProfileRelationFacts = {
+  relationship: ProfileRelationship;
+  inviteCooldown?: ProfileInviteCooldown;
+};
+
+/**
+ * The pair of facts a «Добавить в друзья» button reads about one person
+ * (Story 4.1.2, 4.2.2). While the rejection cooldown is live the relationship
+ * is forced to `NONE`: a rejection leaves no edge and no pending invite, so
+ * neither `FRIENDS` nor a pending direction may be shown next to the cooldown.
+ * The field is absent when the window is closed or expired.
+ */
+export function profileRelationFacts(
+  relationship: ProfileRelationship,
+  inviteCooldown: ProfileInviteCooldown | null,
+): ProfileRelationFacts {
+  return inviteCooldown === null ? { relationship } : { relationship: "NONE", inviteCooldown };
+}
+
+/**
+ * The same facts for one person, read through the two readers above. Search
+ * fills every card with this call instead of asking for a whole profile, so no
+ * wishlist read is ever made for a search row (NFR-3).
+ */
+export async function readProfileRelation(
+  viewerId: string | null,
+  ownerId: string,
+): Promise<ProfileRelationFacts> {
+  const [relationship, inviteCooldown] = await Promise.all([
+    readProfileRelationship(viewerId, ownerId),
+    readProfileInviteCooldown(viewerId, ownerId),
+  ]);
+  return profileRelationFacts(relationship, inviteCooldown);
+}

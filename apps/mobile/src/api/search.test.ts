@@ -6,7 +6,7 @@ const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 
 vi.mock("@/api/client", () => api);
 
-const alena = { displayName: "Алёна", nick: "alena" };
+const alena = { displayName: "Алёна", nick: "alena", relationship: "NONE" };
 
 function answer(data: unknown) {
   return { ok: true, data };
@@ -112,5 +112,33 @@ describe("searchUsers", () => {
     api.apiRequest.mockResolvedValue(answer({ users: [{ ...alena, gifts: [] }] }));
 
     await expect(searchUsers("alena")).resolves.toEqual({ ok: false, invalid: true });
+  });
+
+  it("rejects a card without the viewer relation (CLE-89)", async () => {
+    api.apiRequest.mockResolvedValue(
+      answer({ users: [{ displayName: "Алёна", nick: "alena" }] }),
+    );
+
+    await expect(searchUsers("alena")).resolves.toEqual({ ok: false, invalid: true });
+  });
+
+  it("keeps the relation and the cooldown of every card", async () => {
+    const friend = {
+      displayName: "Иван",
+      nick: "ivan",
+      relationship: "FRIENDS",
+    };
+    const cooled = {
+      displayName: "Пётр",
+      nick: "petr",
+      relationship: "NONE",
+      inviteCooldown: { hours: 2, rejected: false },
+    };
+    api.apiRequest.mockResolvedValue(answer({ users: [alena, friend, cooled] }));
+
+    await expect(searchUsers("ал")).resolves.toEqual({
+      ok: true,
+      users: [alena, friend, cooled],
+    });
   });
 });

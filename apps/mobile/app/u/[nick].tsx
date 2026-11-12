@@ -28,6 +28,11 @@ import {
 } from "@/profile/relationship-action";
 import { RelationshipActions } from "@/profile/relationship-actions";
 import { profileRoute } from "@/profile/profile-route";
+import {
+  requestSubscriptionAction,
+  type SubscriptionAction,
+} from "@/profile/subscription-action";
+import { SubscriptionActions } from "@/profile/subscription-actions";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { EmptyState } from "@/ui/empty-state";
@@ -62,6 +67,11 @@ type ScreenState =
        * server did not send the field, which means no cooldown is active.
        */
       inviteCooldown: ProfileInviteCooldown | null;
+      /**
+       * Story 4.6: the viewer's own directed subscription to this owner. A
+       * `false` body without the field means there is no edge.
+       */
+      subscribed: boolean;
     }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
@@ -86,6 +96,11 @@ type ToastState = { message: string; tone: "info" | "error"; nick: string };
  * opened the window: that answer shows the catalogue hours and rereads the
  * profile, so the screen lands on the server's cooldown state. The screen never
  * filters wishes by visibility; the server decides.
+ *
+ * Story 4.6 adds the one-way subscription switch from the same profile answer:
+ * «Подписаться» while `subscribed` is false and «Отписаться» once it is true.
+ * The own profile and a friend show no switch; a subscription only opens
+ * `PUBLIC`, which the server already filtered.
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
@@ -117,8 +132,11 @@ export default function ProfileScreen() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [pendingNick, setPendingNick] = useState<string | null>(null);
+  const [subscriptionNick, setSubscriptionNick] = useState<string | null>(null);
   const requestSeq = useRef(0);
   const inviteInFlight = useRef<string | null>(null);
+  const subscriptionInFlight = useRef<string | null>(null);
+  const subscriptionSeq = useRef(0);
   const nickRef = useRef(nick);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
@@ -153,6 +171,9 @@ export default function ProfileScreen() {
   useEffect(function rememberRouteNick() {
     nickRef.current = nick;
     requestSeq.current += 1;
+    // A subscription answer belongs to the nick it was asked for; the new route
+    // must never receive it as its own state.
+    subscriptionSeq.current += 1;
   }, [nick]);
 
   useEffect(function loadProfile() {
@@ -174,6 +195,7 @@ export default function ProfileScreen() {
                 owner: result.owner,
                 relationship: result.relationship,
                 inviteCooldown: result.inviteCooldown ?? null,
+                subscribed: result.subscribed ?? false,
               },
         );
         return;
@@ -244,6 +266,7 @@ export default function ProfileScreen() {
     view.status === "ready" &&
     view.owner.nick.toLowerCase() === viewer.nick.toLowerCase();
   const sending = pendingNick === nick;
+  const sendingSubscription = subscriptionNick === nick;
 
   /**
    * Story 4.1.3 / 4.2.3: one action path for a first invite, an explicit
@@ -380,6 +403,97 @@ export default function ProfileScreen() {
     setToast({ message: result.message, tone: "error", nick: requestedNick });
   }
 
+  /**
+   * Story 4.6: one subscription press. The optimistic flag is the requested
+   * state; every failure rolls it back, and an answer that belongs to a
+   * previous nick or an older press is ignored. The subscription has its own
+   * in-flight slot and sequence, so it never cancels a friend action that is
+   * still on the wire. The wishlist is not reread: a subscription opens only
+   * `PUBLIC`, which the server has already filtered, and the screen must never
+   * add `FRIENDS` or `SECRET` wishes on its own.
+   */
+  async function subscriptionAction(kind: SubscriptionAction) {
+    if (nick === null || subscriptionInFlight.current === nick) return;
+    const requestedView = view;
+    if (requestedView.status !== "ready") return;
+
+    const requestedNick = nick;
+    const previous = requestedView.subscribed;
+    const desired = kind === "subscribe";
+    if (previous === desired) return;
+
+    const seq = subscriptionSeq.current + 1;
+    subscriptionSeq.current = seq;
+    subscriptionInFlight.current = requestedNick;
+    setSubscriptionNick(requestedNick);
+    setToast(null);
+
+    setState(function applyOptimisticSubscription(current) {
+      return current.status === "ready" && current.nick === requestedNick
+        ? { ...current, subscribed: desired }
+        : current;
+    });
+
+    const result = await requestSubscriptionAction(kind, requestedNick, {
+      profile,
+      common,
+    });
+    if (seq !== subscriptionSeq.current || nickRef.current !== requestedNick) {
+      // The route moved on: drop this answer and release only its own slot.
+      if (subscriptionInFlight.current === requestedNick) subscriptionInFlight.current = null;
+      setSubscriptionNick(function clearStaleSubscription(current) {
+        return current === requestedNick ? null : current;
+      });
+      return;
+    }
+    if (subscriptionInFlight.current === requestedNick) subscriptionInFlight.current = null;
+    setSubscriptionNick(function clearSubscription(current) {
+      return current === requestedNick ? null : current;
+    });
+
+    function stillThisProfile(current: ScreenState): boolean {
+      return current.status === "ready" && current.nick === requestedNick;
+    }
+
+    if (result.status === "subscribed" || result.status === "unsubscribed") {
+      const subscribed = result.status === "subscribed";
+      setState(function applySubscriptionAnswer(current) {
+        return stillThisProfile(current) ? { ...current, subscribed } : current;
+      });
+      setToast({
+        message: profile(
+          result.status === "subscribed"
+            ? "subscription.toast.subscribed"
+            : "subscription.toast.unsubscribed",
+        ),
+        tone: "info",
+        nick: requestedNick,
+      });
+      return;
+    }
+
+    setState(function rollbackSubscription(current) {
+      return stillThisProfile(current) ? { ...current, subscribed: previous } : current;
+    });
+
+    if (result.status === "expired") {
+      const signedOut = await expireSession();
+      if (!signedOut) {
+        setToast({
+          message: profile("subscription.network"),
+          tone: "error",
+          nick: requestedNick,
+        });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setState({ status: "missing" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error", nick: requestedNick });
+  }
+
   return (
     <Screen>
       <SafeArea>
@@ -437,15 +551,32 @@ export default function ProfileScreen() {
                         {t("form.nickPreview", { nick: view.owner.nick })}
                       </Text>
                     </YStack>
-                    <RelationshipActions
-                      relationship={view.relationship}
-                      inviteCooldown={view.inviteCooldown}
-                      ownProfile={ownProfile}
-                      busy={sending}
-                      onAction={function actOnRelation(kind) {
-                        void relationshipAction(kind);
-                      }}
-                    />
+                    <XStack flexWrap="wrap" alignItems="center" gap="$2">
+                      <RelationshipActions
+                        relationship={view.relationship}
+                        inviteCooldown={view.inviteCooldown}
+                        ownProfile={ownProfile}
+                        busy={sending}
+                        onAction={function actOnRelation(kind) {
+                          void relationshipAction(kind);
+                        }}
+                      />
+                      {/*
+                        Story 4.6: a subscription is independent of the friend
+                        action and sits next to it. The own profile and a
+                        friendship have no subscription switch: EXPERIENCE says
+                        a friend sees more than a subscriber already.
+                      */}
+                      {!ownProfile && view.relationship !== "FRIENDS" ? (
+                        <SubscriptionActions
+                          subscribed={view.subscribed}
+                          busy={sendingSubscription}
+                          onAction={function actOnSubscription(kind) {
+                            void subscriptionAction(kind);
+                          }}
+                        />
+                      ) : null}
+                    </XStack>
                     {view.gifts.length === 0 ? (
                       <EmptyState title={wishlist("emptyTitle")} />
                     ) : (

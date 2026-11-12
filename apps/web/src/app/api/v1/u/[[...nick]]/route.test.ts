@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUser, findList, findManyGifts, relationsBetween, readProfileRelationship, readProfileInviteCooldown } =
+const { getSession, findUser, findList, findManyGifts, relationsBetween, readProfileRelationship, readProfileInviteCooldown, readProfileSubscription } =
   vi.hoisted(() => ({
     getSession: vi.fn(),
     findUser: vi.fn(),
@@ -11,6 +11,7 @@ const { getSession, findUser, findList, findManyGifts, relationsBetween, readPro
     relationsBetween: vi.fn(),
     readProfileRelationship: vi.fn(),
     readProfileInviteCooldown: vi.fn(),
+    readProfileSubscription: vi.fn(),
   }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
@@ -30,6 +31,7 @@ vi.mock("@/lib/relationships", async (importOriginal) => {
     relationshipReader: { relationsBetween },
     readProfileRelationship,
     readProfileInviteCooldown,
+    readProfileSubscription,
   };
 });
 
@@ -148,10 +150,12 @@ beforeEach(() => {
   relationsBetween.mockReset();
   readProfileRelationship.mockReset();
   readProfileInviteCooldown.mockReset();
+  readProfileSubscription.mockReset();
 
   getSession.mockResolvedValue(null);
   readProfileRelationship.mockResolvedValue("NONE");
   readProfileInviteCooldown.mockResolvedValue(null);
+  readProfileSubscription.mockResolvedValue(false);
   findUser.mockImplementation(({ where }: { where: { nickNormalized: string } }) =>
     Promise.resolve(users.find((user) => user.nickNormalized === where.nickNormalized) ?? null),
   );
@@ -251,10 +255,12 @@ describe("GET /api/v1/u/:nick", () => {
         owner: { displayName: "Анна", nick: "Anna" },
         gifts: [],
         relationship: "NONE",
+        subscribed: false,
       },
     });
     expect(relationsBetween).toHaveBeenCalledWith("u9", "u1");
     expect(readProfileRelationship).toHaveBeenCalledWith("u9", "u1");
+    expect(readProfileSubscription).toHaveBeenCalledWith("u9", "u1");
     expect(findManyGifts).not.toHaveBeenCalled();
     expect(Object.keys(body.data)).not.toContain("publicToken");
     expect(JSON.stringify(body)).not.toContain("anna@example.com");
@@ -308,6 +314,18 @@ describe("GET /api/v1/u/:nick", () => {
     expect(JSON.stringify(body)).not.toContain("Секрет");
   });
 
+  it("names the viewer's own subscription without turning it into a relationship", async () => {
+    signIn();
+    relationsBetween.mockResolvedValue(relations({ subscriber: true }));
+    readProfileSubscription.mockResolvedValue(true);
+
+    const { body } = await callRoute(["Anna"]);
+
+    expect(body.data.subscribed).toBe(true);
+    expect(body.data.relationship).toBe("NONE");
+    expect(titles(body)).toEqual(["Публичное"]);
+  });
+
   it("gives a ContactMatch viewer only PUBLIC gifts", async () => {
     signIn();
     relationsBetween.mockResolvedValue(relations({ contactMatch: true }));
@@ -327,7 +345,9 @@ describe("GET /api/v1/u/:nick", () => {
     expect(titles(body)).toEqual(["Публичное", "Для друзей", "Секрет"]);
     expect(body.data.owner).toEqual({ displayName: "Анна", nick: "Anna" });
     expect(body.data.relationship).toBe("NONE");
+    expect(body.data.subscribed).toBe(false);
     expect(readProfileRelationship).toHaveBeenCalledWith("u1", "u1");
+    expect(readProfileSubscription).toHaveBeenCalledWith("u1", "u1");
     expect(JSON.stringify(body)).not.toContain("anna@example.com");
     expect(relationsBetween).not.toHaveBeenCalled();
   });

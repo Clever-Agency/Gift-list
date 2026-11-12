@@ -17,6 +17,7 @@ import {
   readProfileInviteCooldown,
   readProfileRelation,
   readProfileRelationship,
+  readProfileSubscription,
   relationshipReader,
 } from "@/lib/relationships";
 
@@ -260,6 +261,45 @@ describe("readProfileRelationship (Story 4.1.2)", () => {
 
     await expect(readProfileRelationship(ZEBRA, ALPHA)).resolves.toBe("NONE");
     expect(db.block.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("readProfileSubscription (Story 4.6)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.subscription.findUnique.mockResolvedValue(null);
+  });
+
+  it("returns false for the owner and an anonymous viewer without reading the database", async () => {
+    await expect(readProfileSubscription(ALPHA, ALPHA)).resolves.toBe(false);
+    await expect(readProfileSubscription(null, ALPHA)).resolves.toBe(false);
+
+    expect(db.subscription.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("reads the directed viewer-to-owner edge, not the reverse one", async () => {
+    await readProfileSubscription(ZEBRA, ALPHA);
+
+    expect(db.subscription.findUnique).toHaveBeenCalledWith({
+      where: { subscriberId_targetId: { subscriberId: ZEBRA, targetId: ALPHA } },
+      select: { id: true },
+    });
+  });
+
+  it("answers false without a row and true when the edge exists", async () => {
+    await expect(readProfileSubscription(ZEBRA, ALPHA)).resolves.toBe(false);
+
+    db.subscription.findUnique.mockResolvedValue({ id: "subscription_1" });
+    await expect(readProfileSubscription(ZEBRA, ALPHA)).resolves.toBe(true);
+  });
+
+  it("never reads a friendship: a subscription is one fact, not a relationship", async () => {
+    db.subscription.findUnique.mockResolvedValue({ id: "subscription_1" });
+
+    await readProfileSubscription(ZEBRA, ALPHA);
+
+    expect(db.friendship.findUnique).not.toHaveBeenCalled();
+    expect(db.friendshipInvite.findUnique).not.toHaveBeenCalled();
   });
 });
 

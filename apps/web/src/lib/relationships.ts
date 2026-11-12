@@ -135,6 +135,26 @@ export async function readProfileInviteCooldown(
   return { hours, rejected: row.rejectedFromUserId === viewerId };
 }
 
+/**
+ * The viewer's own directed subscription to the profile owner (Story 4.6,
+ * FR-46, AD-19). The profile screen reads it only to pick «Подписаться» or
+ * «Отписаться»; `/l/:token` and `/me` never ask. The owner and an anonymous
+ * viewer have no edge and cost no query. A subscription is not a relationship
+ * and never becomes a friendship: this reader says one fact, not a relation.
+ */
+export async function readProfileSubscription(
+  viewerId: string | null,
+  ownerId: string,
+): Promise<boolean> {
+  if (viewerId === null || viewerId === ownerId) return false;
+
+  const row = await prisma.subscription.findUnique({
+    where: { subscriberId_targetId: { subscriberId: viewerId, targetId: ownerId } },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
 /** What a «Добавить в друзья» button may learn about one person. */
 export type ProfileRelationFacts = {
   relationship: ProfileRelationship;

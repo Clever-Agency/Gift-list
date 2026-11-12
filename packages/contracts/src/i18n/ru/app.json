@@ -176,6 +176,15 @@
         "friends": "{name} теперь в друзьях"
       },
       "network": "Нет сети. Попробуйте ещё раз."
+    },
+    "subscription": {
+      "subscribe": "Подписаться",
+      "unsubscribe": "Отписаться",
+      "toast": {
+        "subscribed": "Вы подписались",
+        "unsubscribed": "Вы отписались"
+      },
+      "network": "Нет сети. Попробуйте ещё раз."
     }
   },
   "invite": {

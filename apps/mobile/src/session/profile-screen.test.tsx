@@ -139,6 +139,7 @@ function giftsAnswer(
   ownerBlock: unknown = owner,
   relationship: string | undefined = "NONE",
   inviteCooldown?: unknown,
+  subscribed?: boolean,
 ) {
   return {
     ok: true,
@@ -148,11 +149,16 @@ function giftsAnswer(
       ...(ownerBlock === undefined ? {} : { owner: ownerBlock }),
       ...(relationship === undefined ? {} : { relationship }),
       ...(inviteCooldown === undefined ? {} : { inviteCooldown }),
+      ...(subscribed === undefined ? {} : { subscribed }),
     },
   };
 }
 
 function inviteAnswer(outcome: string) {
+  return { ok: true, data: { outcome } };
+}
+
+function subscriptionAnswer(outcome: string) {
   return { ok: true, data: { outcome } };
 }
 
@@ -168,8 +174,21 @@ function respond(profile: unknown, session: unknown = { ok: true, data: user }) 
 }
 
 function profileReads(): number {
+  return api.apiRequest.mock.calls.filter(([path]) => {
+    const value = String(path);
+    return (
+      value.startsWith("/api/v1/u/") &&
+      !value.includes("/invite") &&
+      !value.endsWith("/subscription")
+    );
+  }).length;
+}
+
+function subscriptionCalls(method: "POST" | "DELETE"): number {
   return api.apiRequest.mock.calls.filter(
-    ([path]) => String(path).startsWith("/api/v1/u/") && !String(path).includes("/invite"),
+    ([path, init]) =>
+      String(path).endsWith("/subscription") &&
+      (init as { method?: string } | undefined)?.method === method,
   ).length;
 }
 
@@ -380,13 +399,13 @@ describe("профиль: карточка и желания", () => {
     expect(text()).not.toContain("Секретный подарок");
   });
 
-  it("при «нет связи» рисует только «Добавить в друзья», без подписки и блока", async () => {
+  it("при «нет связи» рисует «Добавить в друзья» и «Подписаться», без блока и прочих", async () => {
     respond(giftsAnswer([]));
     await mount();
 
     expect(button("Добавить в друзья")).toBeDefined();
     expect(button("Принять приглашение")).toBeUndefined();
-    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Подписаться")).toBeDefined();
     expect(button("Отписаться")).toBeUndefined();
     expect(button("Заблокировать")).toBeUndefined();
     expect(button("Отменить приглашение")).toBeUndefined();
@@ -486,7 +505,7 @@ describe("профиль: карточка и желания", () => {
 });
 
 describe("профиль: принятие и отказ (Story 4.2.3)", () => {
-  it("входящий pending: рядом «Принять приглашение» и «Отклонить», без подписки и блока", async () => {
+  it("входящий pending: рядом «Принять приглашение», «Отклонить» и «Подписаться», без блока", async () => {
     respond(giftsAnswer([], owner, "INCOMING_PENDING"));
     await mount();
 
@@ -494,7 +513,7 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
     expect(button("Принять приглашение")).toBeDefined();
     expect(button("Отклонить")).toBeDefined();
     expect(button("Добавить в друзья")).toBeUndefined();
-    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Подписаться")).toBeDefined();
     expect(button("Отписаться")).toBeUndefined();
     expect(button("Заблокировать")).toBeUndefined();
     expect(button("Отменить приглашение")).toBeUndefined();
@@ -680,8 +699,6 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
 
 describe("профиль: приглашение в друзья (Story 4.1.3)", () => {
   function expectNoForeignActions() {
-    expect(button("Подписаться")).toBeUndefined();
-    expect(button("Отписаться")).toBeUndefined();
     expect(button("Заблокировать")).toBeUndefined();
     expect(button("Отменить приглашение")).toBeUndefined();
     expect(button("Отклонить")).toBeUndefined();
@@ -717,6 +734,8 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(text()).toContain("Приглашение отправлено");
     expect(text()).toContain("Ожидает ответа");
     expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
     expectNoForeignActions();
   });
 
@@ -727,6 +746,8 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(text()).toContain("Ожидает ответа");
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
     expectNoForeignActions();
   });
 
@@ -765,6 +786,8 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(button("Принять приглашение")).toBeUndefined();
     expect(button("Отклонить")).toBeUndefined();
+    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Отписаться")).toBeUndefined();
     expectNoForeignActions();
   });
 
@@ -775,6 +798,8 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(text()).toContain("Друзья");
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Отписаться")).toBeUndefined();
     expectNoForeignActions();
   });
 
@@ -786,6 +811,8 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(text()).toContain("Это вы");
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Отписаться")).toBeUndefined();
     expectNoForeignActions();
   });
 
@@ -1052,6 +1079,188 @@ describe("профиль: устаревший cooldown сервера (Story 4.
       expect(button("Добавить в друзья")).toBeDefined();
     },
   );
+});
+
+/**
+ * Story 4.6: the subscription switch reads one profile-only fact and writes one
+ * directed edge. The friend action and the subscription never cancel each
+ * other, and a repeat success is not an error.
+ */
+describe("профиль: подписка (Story 4.6)", () => {
+  it("нет подписки: «Подписаться» шлёт POST, сразу меняет на «Отписаться» и говорит тост", async () => {
+    let resolveSubscribe: (value: unknown) => void = () => {};
+    const subscribe = new Promise((resolve) => {
+      resolveSubscribe = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/subscription") return subscribe;
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
+
+    await press("Подписаться");
+
+    expect(subscriptionCalls("POST")).toBe(1);
+    expect(button("Отписаться")).toBeDefined();
+    expect(button("Подписаться")).toBeUndefined();
+    // A subscription opens PUBLIC only, so the wishlist is not refetched.
+    expect(profileReads()).toBe(1);
+
+    await act(async () => resolveSubscribe(subscriptionAnswer("SUBSCRIBED")));
+    await settle(10);
+
+    expect(text()).toContain("Вы подписались");
+    expect(button("Отписаться")).toBeDefined();
+    expect(profileReads()).toBe(1);
+  });
+
+  it("уже подписан: «Отписаться» шлёт DELETE и возвращает «Подписаться»", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/subscription") {
+        return Promise.resolve(subscriptionAnswer("UNSUBSCRIBED"));
+      }
+      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, true));
+    });
+    await mount();
+
+    expect(button("Отписаться")).toBeDefined();
+    expect(button("Подписаться")).toBeUndefined();
+
+    await press("Отписаться");
+
+    expect(subscriptionCalls("DELETE")).toBe(1);
+    expect(subscriptionCalls("POST")).toBe(0);
+    expect(text()).toContain("Вы отписались");
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
+    expect(profileReads()).toBe(1);
+  });
+
+  it("повторная подписка — успешный no-op, без ошибки и с тем же тостом", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/subscription") {
+        return Promise.resolve(subscriptionAnswer("ALREADY_SUBSCRIBED"));
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Подписаться");
+
+    expect(text()).toContain("Вы подписались");
+    expect(text()).not.toContain("Нет доступа");
+    expect(text()).not.toContain("Не получилось");
+    expect(button("Отписаться")).toBeDefined();
+  });
+
+  it("повторная отписка — успешный no-op, без ошибки", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/subscription") {
+        return Promise.resolve(subscriptionAnswer("NOT_SUBSCRIBED"));
+      }
+      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, true));
+    });
+    await mount();
+
+    await press("Отписаться");
+
+    expect(text()).toContain("Вы отписались");
+    expect(text()).not.toContain("Нет доступа");
+    expect(button("Подписаться")).toBeDefined();
+  });
+
+  it("FORBIDDEN: тост «Нет доступа», подписка откатывается", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/subscription") {
+        return Promise.resolve({ ok: false, code: "FORBIDDEN", message: "Forbidden" });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Подписаться");
+
+    expect(text()).toContain("Нет доступа.");
+    expect(text()).not.toContain("Вы подписались");
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
+  });
+
+  it("сеть: подписка откатывается, кнопка возвращается, тост остаётся", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/subscription") {
+        return Promise.resolve({ ok: false, network: true });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Подписаться");
+
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Вы подписались");
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
+  });
+
+  it("401 при подписке уводит на вход с прежним безопасным next", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/subscription") {
+        return Promise.resolve({ ok: false, code: "UNAUTHENTICATED", message: "" });
+      }
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Подписаться");
+
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/u/boris", reason: "session_expired" },
+    });
+  });
+
+  it("подписка и дружба не отменяют друг друга: ответ приглашения не теряется", async () => {
+    let resolveInvite: (value: unknown) => void = () => {};
+    const invite = new Promise((resolve) => {
+      resolveInvite = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") return invite;
+      if (path === "/api/v1/u/boris/subscription") {
+        return Promise.resolve(subscriptionAnswer("SUBSCRIBED"));
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await press("Добавить в друзья");
+    expect(text()).toContain("Ожидает ответа");
+
+    await press("Подписаться");
+    expect(text()).toContain("Вы подписались");
+
+    await act(async () => resolveInvite(inviteAnswer("INVITED")));
+    await settle(10);
+
+    expect(text()).toContain("Приглашение отправлено");
+    expect(text()).toContain("Ожидает ответа");
+    expect(button("Отписаться")).toBeDefined();
+  });
 });
 
 /**

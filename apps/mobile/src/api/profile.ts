@@ -28,6 +28,12 @@ export type ProfileResult =
       relationship: ProfileRelationship;
       /** Present only while the server reports a live rejection cooldown. */
       inviteCooldown?: ProfileInviteCooldown;
+      /**
+       * Story 4.6: the viewer's directed subscription to this owner. Absence
+       * reads as `false`, so a body without the flag never claims a
+       * subscription the server did not report.
+       */
+      subscribed?: boolean;
     }
   | { ok: true; access: "not_found" }
   | { ok: false; invalid: true }
@@ -45,6 +51,9 @@ export type ProfileResult =
  *
  * Story 4.2.3 reads the profile-only `inviteCooldown` from the same answer. It
  * still never filters wishes by visibility: only the server decides that.
+ *
+ * Story 4.6 reads the profile-only `subscribed` flag for the subscription
+ * switch. It is one fact, not a relationship, and it never widens the list.
  */
 export async function fetchProfile(nick: string): Promise<ProfileResult> {
   const route = profileRoute(nick);
@@ -72,5 +81,8 @@ export async function fetchProfile(nick: string): Promise<ProfileResult> {
     ...(parsed.data.inviteCooldown === undefined
       ? {}
       : { inviteCooldown: parsed.data.inviteCooldown }),
+    // Story 4.6: the profile-only viewer-to-owner flag. Absence is "not
+    // subscribed"; the wishlist stays exactly as the server filtered it.
+    ...(parsed.data.subscribed === undefined ? {} : { subscribed: parsed.data.subscribed }),
   };
 }

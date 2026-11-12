@@ -72,7 +72,7 @@ development_status:
   4-3-друзья-подписки-и-заявки: backlog
   4-4-удаление-из-друзей: backlog
   4-5-блокировка-и-разблокировка: backlog
-  4-6-подписка: backlog
+  4-6-подписка: done # CLE-70: 4.6 готова 2026-11-12: модель Subscription + миграция, relationships/AD-15(10) — подписчик видит только PUBLIC, без FRIENDS и дат, API подписки, отписки и снятия подписчика целью, кнопки на /u/:nick; epic-4 остаётся in-progress
   4-7-ссылка-приглашение-i-token: backlog
   epic-4-retrospective: optional
 

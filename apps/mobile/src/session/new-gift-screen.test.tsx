@@ -492,6 +492,40 @@ describe("новое желание: форма", () => {
     });
   });
 
+  /**
+   * CLE-79/D3: the same `tags.N.catalogId` envelope comes back from create, so the
+   * screen must word the stale tag the same way instead of the generic hint.
+   */
+  it("устаревший фиксированный тег: VALIDATION tags.0.catalogId говорит «Такого тега больше нет»", async () => {
+    signedIn();
+    tagApi.fetchTagCatalog.mockResolvedValue({
+      ok: true,
+      tags: [{ id: "tag_dream", slug: "dream", label: "мечта" }],
+    });
+    gifts.createGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "A fixed tag id is not in the catalog",
+      field: "tags.0.catalogId",
+    });
+    await mount();
+
+    await type("Название", "Наушники");
+    await press("мечта");
+    await press("Добавить желание");
+
+    expect(text()).toContain("Такого тега больше нет в списке. Уберите его и попробуйте снова.");
+    expect(text()).not.toContain("Проверьте теги: до 30 символов и без повторов.");
+    expect(text()).not.toContain("A fixed tag id is not in the catalog");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBe("true");
+    expect(field("Название").value).toBe("Наушники");
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
   it("пустой каталог: свой тег всё равно добавляется и уходит", async () => {
     signedIn();
     tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: [] });

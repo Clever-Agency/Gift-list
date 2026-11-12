@@ -1480,10 +1480,14 @@ describe("gift tags", () => {
 
     expect(
       await createGift(headers, { title: "Книга", tags: [{ catalogId: "tag_missing" }] }),
-    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags.0.catalogId" });
     expect(create).not.toHaveBeenCalled();
   });
 
+  /**
+   * CLE-79/D3: the field names the stale tag's index in the request, so the
+   * client shows «Такого тега больше нет» instead of the generic tag hint.
+   */
   it("accepts only the known fixed tag ids", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
 
@@ -1492,7 +1496,20 @@ describe("gift tags", () => {
         title: "Книга",
         tags: [{ catalogId: "tag_dream" }, { catalogId: "tag_missing" }],
       }),
-    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags.1.catalogId" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  /** CLE-79/D3: custom text keeps its position, so the index is the array's. */
+  it("keeps the stale tag index after a custom tag", async () => {
+    tagFindMany.mockResolvedValue([]);
+
+    expect(
+      await createGift(headers, {
+        title: "Книга",
+        tags: [{ text: "своё" }, { catalogId: "tag_missing" }],
+      }),
+    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags.1.catalogId" });
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -1741,7 +1758,21 @@ describe("gift tags", () => {
 
     expect(
       await updateGift(headers, "g1", { tags: [{ catalogId: "tag_missing" }] }),
-    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags" });
+    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags.0.catalogId" });
+    expect(update).not.toHaveBeenCalled();
+    expect(tagDeleteMany).not.toHaveBeenCalled();
+    expect(tagCreateMany).not.toHaveBeenCalled();
+  });
+
+  /** CLE-79/D3: the update envelope points at the stale tag's index too. */
+  it("names the stale tag index when it is not the first tag", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
+
+    expect(
+      await updateGift(headers, "g1", {
+        tags: [{ catalogId: "tag_dream" }, { text: "своё" }, { catalogId: "tag_missing" }],
+      }),
+    ).toMatchObject({ ok: false, code: "VALIDATION", field: "tags.2.catalogId" });
     expect(update).not.toHaveBeenCalled();
     expect(tagDeleteMany).not.toHaveBeenCalled();
     expect(tagCreateMany).not.toHaveBeenCalled();

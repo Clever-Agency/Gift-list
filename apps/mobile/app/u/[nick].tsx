@@ -4,13 +4,11 @@ import type {
   ProfileRelationship,
 } from "@gift-list/contracts";
 import {
-  Button,
   Column,
   Heading,
   LoadingCards,
   PageContainer,
   PageScroll,
-  RelationshipChip,
   SafeArea,
   Screen,
   spacing,
@@ -21,16 +19,16 @@ import {
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
-import {
-  acceptFriendInvite,
-  rejectFriendInvite,
-  sendFriendInvite,
-} from "@/api/friend-invite";
 import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
+import {
+  optimisticRelation,
+  requestRelationshipAction,
+  type RelationshipAction,
+} from "@/profile/relationship-action";
+import { RelationshipActions } from "@/profile/relationship-actions";
 import { profileRoute } from "@/profile/profile-route";
 import { useAuth } from "@/session/auth-context";
-import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
@@ -69,8 +67,6 @@ type ScreenState =
   | { status: "error"; kind: "network" | "generic" };
 
 type ToastState = { message: string; tone: "info" | "error"; nick: string };
-
-type RelationshipAction = "add" | "accept" | "reject";
 
 /**
  * Story 3.4 / AD-13: the app screen behind `/u/:nick`. An anonymous visitor
@@ -271,24 +267,23 @@ export default function ProfileScreen() {
     setPendingNick(requestedNick);
     setToast(null);
 
-    const optimistic: ProfileRelationship =
-      kind === "accept" ? "FRIENDS" : kind === "reject" ? "NONE" : "OUTGOING_PENDING";
-    // Reject writes the 24-hour window in the same transaction (AD-10 step 3).
-    // The refetch below replaces this estimate with the server's whole hours.
-    const optimisticCooldown: ProfileInviteCooldown | null =
-      kind === "reject" ? { hours: 24, rejected: false } : null;
+    const optimistic = optimisticRelation(kind);
     setState(function applyOptimistic(current) {
       return current.status === "ready" && current.nick === requestedNick
-        ? { ...current, relationship: optimistic, inviteCooldown: optimisticCooldown }
+        ? {
+            ...current,
+            relationship: optimistic.relationship,
+            inviteCooldown: optimistic.inviteCooldown,
+          }
         : current;
     });
 
-    const result =
-      kind === "reject"
-        ? await rejectFriendInvite(requestedNick)
-        : kind === "accept"
-          ? await acceptFriendInvite(requestedNick)
-          : await sendFriendInvite(requestedNick);
+    // One shared answer for the profile and the search row: outcomes and error
+    // codes are read in `requestRelationshipAction`, never in the screen.
+    const result = await requestRelationshipAction(kind, requestedNick, {
+      relationship: profile,
+      common,
+    });
     if (seq !== requestSeq.current || nickRef.current !== requestedNick) {
       // The route moved on: drop this answer and release only its own slot.
       if (inviteInFlight.current === requestedNick) inviteInFlight.current = null;
@@ -306,36 +301,36 @@ export default function ProfileScreen() {
       return current.status === "ready" && current.nick === requestedNick;
     }
 
-    if (result.ok) {
-      if (kind === "reject") {
-        setState(function applyRejection(current) {
-          return stillThisProfile(current)
-            ? { ...current, relationship: "NONE", inviteCooldown: optimisticCooldown }
-            : current;
-        });
-        // The cooldown hours come only from the server's profile answer.
-        setAttempt((value) => value + 1);
-        return;
-      }
+    if (result.status === "rejected") {
+      setState(function applyRejection(current) {
+        return stillThisProfile(current)
+          ? { ...current, relationship: "NONE", inviteCooldown: result.inviteCooldown }
+          : current;
+      });
+      // The cooldown hours come only from the server's profile answer.
+      setAttempt((value) => value + 1);
+      return;
+    }
 
-      if (result.outcome === "FRIENDS_CREATED" || result.outcome === "ALREADY_FRIENDS") {
-        setState(function applyFriendship(current) {
-          return stillThisProfile(current)
-            ? { ...current, relationship: "FRIENDS", inviteCooldown: null }
-            : current;
-        });
-        setToast({
-          message: profile("relationship.toast.friends", {
-            name: requestedView.owner.displayName,
-          }),
-          tone: "info",
-          nick: requestedNick,
-        });
-        // FRIENDS wishes only appear when the server says the edge exists.
-        setAttempt((value) => value + 1);
-        return;
-      }
+    if (result.status === "friends") {
+      setState(function applyFriendship(current) {
+        return stillThisProfile(current)
+          ? { ...current, relationship: "FRIENDS", inviteCooldown: null }
+          : current;
+      });
+      setToast({
+        message: profile("relationship.toast.friends", {
+          name: requestedView.owner.displayName,
+        }),
+        tone: "info",
+        nick: requestedNick,
+      });
+      // FRIENDS wishes only appear when the server says the edge exists.
+      setAttempt((value) => value + 1);
+      return;
+    }
 
+    if (result.status === "pending") {
       setState(function applyPending(current) {
         return stillThisProfile(current)
           ? { ...current, relationship: "OUTGOING_PENDING", inviteCooldown: null }
@@ -359,23 +354,7 @@ export default function ProfileScreen() {
         : current;
     });
 
-    if ("network" in result) {
-      setToast({
-        message: profile("relationship.network"),
-        tone: "error",
-        nick: requestedNick,
-      });
-      return;
-    }
-    if ("invalid" in result) {
-      setToast({
-        message: common("errors.generic"),
-        tone: "error",
-        nick: requestedNick,
-      });
-      return;
-    }
-    if (result.code === "UNAUTHENTICATED") {
+    if (result.status === "expired") {
       const signedOut = await expireSession();
       if (!signedOut) {
         setToast({
@@ -386,31 +365,19 @@ export default function ProfileScreen() {
       }
       return;
     }
-    if (result.code === "NOT_FOUND") {
+    if (result.status === "missing") {
       setState({ status: "missing" });
       return;
     }
-    // A stale screen can still offer the button while the server already holds
-    // the rejection window. The closed reason carries the remaining hours, so
-    // the toast uses the catalogue phrase instead of the generic rate-limit
-    // text, and the profile is reread so the rolled-back relationship and the
-    // stale cooldown are replaced by the server's answer (hours and `rejected`).
-    // A malformed `hours` still rereads: the reason alone proves the window.
-    if (result.code === "RATE_LIMITED" && result.reason === "INVITE_COOLDOWN") {
-      const hours = result.params?.hours;
-      const message =
-        typeof hours === "number" && Number.isInteger(hours) && hours >= 1
-          ? common("errors.reason.INVITE_COOLDOWN", { hours })
-          : common("errors.code.RATE_LIMITED");
-      setToast({ message, tone: "error", nick: requestedNick });
+    if (result.status === "cooldown") {
+      // The reason alone proves the window even when the hours are malformed;
+      // the profile is reread so the rolled-back relationship and the stale
+      // cooldown are replaced by the server's answer (hours and `rejected`).
+      setToast({ message: result.message, tone: "error", nick: requestedNick });
       setAttempt((value) => value + 1);
       return;
     }
-    setToast({
-      message: mutationErrorMessage(result, common),
-      tone: "error",
-      nick: requestedNick,
-    });
+    setToast({ message: result.message, tone: "error", nick: requestedNick });
   }
 
   return (
@@ -470,84 +437,15 @@ export default function ProfileScreen() {
                         {t("form.nickPreview", { nick: view.owner.nick })}
                       </Text>
                     </YStack>
-                    <XStack
-                      testID="profile-relationship"
-                      alignItems="center"
-                      flexWrap="wrap"
-                      gap="$2"
-                    >
-                      {ownProfile ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.SELF")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.inviteCooldown !== null ? (
-                        view.inviteCooldown.rejected ? (
-                          <RelationshipChip
-                            label={profile("relationship.chips.REJECTED")}
-                            testID="profile-relationship-chip"
-                          />
-                        ) : (
-                          <>
-                            <Button
-                              label={profile("relationship.addFriend")}
-                              disabled
-                              focusableWhenDisabled
-                              testID="profile-add-friend"
-                            />
-                            <Text kind="caption" tone="muted" testID="profile-invite-cooldown">
-                              {profile("relationship.cooldown", {
-                                hours: view.inviteCooldown.hours,
-                              })}
-                            </Text>
-                          </>
-                        )
-                      ) : view.relationship === "FRIENDS" ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.FRIENDS")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.relationship === "OUTGOING_PENDING" ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.OUTGOING_PENDING")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.relationship === "INCOMING_PENDING" ? (
-                        <>
-                          <RelationshipChip
-                            label={profile("relationship.chips.INCOMING_PENDING")}
-                            emphasis
-                            testID="profile-relationship-chip"
-                          />
-                          <Button
-                            label={profile("relationship.acceptInvite")}
-                            onPress={function acceptInvite() {
-                              void relationshipAction("accept");
-                            }}
-                            busy={sending}
-                            testID="profile-accept-invite"
-                          />
-                          <Button
-                            label={profile("relationship.rejectInvite")}
-                            variant="ghost"
-                            onPress={function rejectInvite() {
-                              void relationshipAction("reject");
-                            }}
-                            busy={sending}
-                            testID="profile-reject-invite"
-                          />
-                        </>
-                      ) : (
-                        <Button
-                          label={profile("relationship.addFriend")}
-                          onPress={function addFriend() {
-                            void relationshipAction("add");
-                          }}
-                          busy={sending}
-                          testID="profile-add-friend"
-                        />
-                      )}
-                    </XStack>
+                    <RelationshipActions
+                      relationship={view.relationship}
+                      inviteCooldown={view.inviteCooldown}
+                      ownProfile={ownProfile}
+                      busy={sending}
+                      onAction={function actOnRelation(kind) {
+                        void relationshipAction(kind);
+                      }}
+                    />
                     {view.gifts.length === 0 ? (
                       <EmptyState title={wishlist("emptyTitle")} />
                     ) : (

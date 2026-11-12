@@ -111,6 +111,9 @@ const user: Me = {
 
 const alena: UserSearchCard = { displayName: "Алёна", nick: "alena", relationship: "NONE" };
 const ivan: UserSearchCard = { displayName: "Иван", nick: "ivan", relationship: "OUTGOING_PENDING" };
+const friend: UserSearchCard = { displayName: "Фёдор", nick: "fedor", relationship: "FRIENDS" };
+const inviter: UserSearchCard = { displayName: "Глеб", nick: "gleb", relationship: "INCOMING_PENDING" };
+const ownCard: UserSearchCard = { displayName: "Аня", nick: "anya", relationship: "NONE" };
 
 let root: Root;
 let container: HTMLElement;
@@ -121,6 +124,25 @@ function signedIn(account: Me = user) {
       path === "/api/v1/me" ? { ok: true, data: account } : { ok: true, data: { signedOut: true } },
     ),
   );
+}
+
+/** The session read, plus the answers of the invite paths a test exercises. */
+function signedInWith(table: Record<string, unknown>, account: Me = user) {
+  api.apiRequest.mockImplementation((path: string) =>
+    Promise.resolve(
+      path === "/api/v1/me"
+        ? { ok: true, data: account }
+        : (table[path] ?? { ok: true, data: { signedOut: true } }),
+    ),
+  );
+}
+
+function actionCalls(path: string): unknown[][] {
+  return api.apiRequest.mock.calls.filter(([called]) => called === path);
+}
+
+function testId(id: string): HTMLElement | null {
+  return container.querySelector<HTMLElement>(`[data-testid="${id}"]`);
 }
 
 function text(): string {
@@ -149,10 +171,14 @@ async function settle(ms = 300) {
   });
 }
 
-function press(label: string) {
-  const target = Array.from(
+function button(label: string): HTMLElement | undefined {
+  return Array.from(
     container.querySelectorAll<HTMLElement>('button, [role="button"]'),
   ).find((node) => (node.textContent ?? "").includes(label));
+}
+
+function press(label: string) {
+  const target = button(label);
   expect(target, `кнопка «${label}»`).not.toBeUndefined();
   return target as HTMLElement;
 }
@@ -434,5 +460,208 @@ describe("поиск: debounce и выдача", () => {
       pathname: "/login",
       params: { next: "/search", reason: "session_expired" },
     });
+  });
+});
+
+describe("поиск: отношение и действия (CLE-89)", () => {
+  it("свой профиль: chip «Это вы» и никаких действий", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [ownCard] });
+    await mount();
+
+    await type("аня");
+    await settle();
+
+    expect(text()).toContain("Это вы");
+    expect(testId("search-relationship-chip")).not.toBeNull();
+    expect(testId("search-add-friend")).toBeNull();
+    expect(button("Добавить в друзья")).toBeUndefined();
+  });
+
+  it("нет связи: кнопка зовёт sendFriendInvite, не открывает профиль и даёт оптимистичный chip", async () => {
+    signedInWith({
+      "/api/v1/u/alena/invite": { ok: true, data: { outcome: "INVITED" } },
+    });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena] });
+    await mount();
+
+    await type("ал");
+    await settle();
+
+    expect(testId("search-add-friend")).not.toBeNull();
+    // The button is a sibling of the profile link, not a child of `<a>`.
+    expect(container.querySelectorAll("a button")).toHaveLength(0);
+
+    await pressLabel("Добавить в друзья");
+
+    expect(actionCalls("/api/v1/u/alena/invite")).toHaveLength(1);
+    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/alena/invite", { method: "POST" });
+    expect(text()).toContain("Ожидает ответа");
+    expect(text()).toContain("Приглашение отправлено");
+    expect(testId("search-add-friend")).toBeNull();
+    expect(links.pressed).toHaveLength(0);
+    expect(navigation.push).not.toHaveBeenCalled();
+  });
+
+  it("друзья и исходящее приглашение: только chip, без кнопки", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [friend, ivan] });
+    await mount();
+
+    await type("ф");
+    await settle();
+
+    expect(text()).toContain("Друзья");
+    expect(text()).toContain("Ожидает ответа");
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Принять приглашение")).toBeUndefined();
+  });
+
+  it("отклонённое приглашение: chip «Отклонено», без кнопки", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({
+      ok: true,
+      users: [
+        {
+          displayName: "Дарья",
+          nick: "darya",
+          relationship: "NONE",
+          inviteCooldown: { hours: 3, rejected: true },
+        },
+      ],
+    });
+    await mount();
+
+    await type("да");
+    await settle();
+
+    expect(text()).toContain("Отклонено");
+    expect(button("Добавить в друзья")).toBeUndefined();
+  });
+
+  it("живой cooldown без «Отклонено»: выключенная кнопка и часы", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({
+      ok: true,
+      users: [
+        {
+          displayName: "Дарья",
+          nick: "darya",
+          relationship: "NONE",
+          inviteCooldown: { hours: 5, rejected: false },
+        },
+      ],
+    });
+    await mount();
+
+    await type("да");
+    await settle();
+
+    const add = testId("search-add-friend");
+    expect(add).not.toBeNull();
+    expect(add?.getAttribute("aria-disabled")).toBe("true");
+    expect(testId("search-invite-cooldown")?.textContent).toBe("Можно снова через 5 ч");
+  });
+
+  it("входящее приглашение: «Принять приглашение» зовёт accept и даёт дружбу", async () => {
+    signedInWith({
+      "/api/v1/u/gleb/invite/accept": { ok: true, data: { outcome: "FRIENDS_CREATED" } },
+    });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [inviter] });
+    await mount();
+
+    await type("гл");
+    await settle();
+
+    expect(text()).toContain("Зовёт в друзья");
+    expect(testId("search-accept-invite")).not.toBeNull();
+
+    await pressLabel("Принять приглашение");
+
+    expect(actionCalls("/api/v1/u/gleb/invite/accept")).toHaveLength(1);
+    expect(actionCalls("/api/v1/u/gleb/invite")).toHaveLength(0);
+    expect(text()).toContain("Друзья");
+    expect(text()).toContain("Глеб теперь в друзьях");
+    expect(button("Принять приглашение")).toBeUndefined();
+  });
+
+  it("входящее приглашение: «Отклонить» зовёт reject и оставляет cooldown", async () => {
+    signedInWith({
+      "/api/v1/u/gleb/invite/reject": { ok: true, data: { outcome: "REJECTED" } },
+    });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [inviter] });
+    await mount();
+
+    await type("гл");
+    await settle();
+
+    await pressLabel("Отклонить");
+
+    expect(actionCalls("/api/v1/u/gleb/invite/reject")).toHaveLength(1);
+    expect(text()).toContain("Можно снова через 24 ч");
+    expect(button("Принять приглашение")).toBeUndefined();
+    expect(button("Отклонить")).toBeUndefined();
+    expect(testId("search-add-friend")?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("FORBIDDEN показывает ту же ошибку, что профиль, и откатывает chip", async () => {
+    signedInWith({
+      "/api/v1/u/alena/invite": { ok: false, code: "FORBIDDEN", message: "" },
+    });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena] });
+    await mount();
+
+    await type("ал");
+    await settle();
+
+    await pressLabel("Добавить в друзья");
+
+    expect(text()).toContain("Нет доступа.");
+    expect(testId("search-add-friend")).not.toBeNull();
+    expect(testId("search-add-friend")?.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("INVITE_COOLDOWN: часы из ответа в тосте и на карточке, без чтения профиля", async () => {
+    signedInWith({
+      "/api/v1/u/alena/invite": {
+        ok: false,
+        code: "RATE_LIMITED",
+        reason: "INVITE_COOLDOWN",
+        message: "",
+        params: { hours: 7 },
+      },
+    });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena] });
+    await mount();
+
+    await type("ал");
+    await settle();
+
+    await pressLabel("Добавить в друзья");
+
+    expect(text()).toContain("Можно снова через 7 ч");
+    expect(testId("search-invite-cooldown")?.textContent).toBe("Можно снова через 7 ч");
+    expect(testId("search-add-friend")?.getAttribute("aria-disabled")).toBe("true");
+    // The invite answer carries no profile: no `/u/:nick` read follows (NFR-3).
+    expect(actionCalls("/api/v1/u/alena")).toHaveLength(0);
+    expect(search.searchUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it("ссылка-строка по-прежнему ведёт на профиль, даже рядом с кнопками", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [inviter] });
+    await mount();
+
+    await type("гл");
+    await settle();
+
+    const link = container.querySelector<HTMLAnchorElement>('a[href="/u/gleb"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("aria-label")).toBe("Открыть профиль @gleb");
+
+    await act(async () => {
+      link?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(links.pressed).toEqual(["/u/gleb"]);
   });
 });

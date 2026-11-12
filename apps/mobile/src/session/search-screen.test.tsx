@@ -665,3 +665,151 @@ describe("поиск: отношение и действия (CLE-89)", () => {
     expect(links.pressed).toEqual(["/u/gleb"]);
   });
 });
+
+/**
+ * Story 4.6 / CLE-70 F1: the search row carries the profile's one-way switch
+ * next to the friend action — for «нет связи» and for a pending invite, hidden
+ * for the viewer's own card and for a friend (EXPERIENCE L159–175). The press
+ * writes one directed edge and never reads the profile or the wishlist.
+ */
+describe("поиск: подписка (Story 4.6, CLE-70 F1)", () => {
+  it("нет связи: «Подписаться» рядом с «Добавить в друзья», POST и оптимистичное «Отписаться»", async () => {
+    signedInWith({
+      "/api/v1/u/alena/subscription": { ok: true, data: { outcome: "SUBSCRIBED" } },
+    });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena] });
+    await mount();
+
+    await type("ал");
+    await settle();
+
+    expect(button("Добавить в друзья")).toBeDefined();
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
+    expect(testId("search-subscription")).not.toBeNull();
+    // The switch is a sibling of the profile link, never a child of `<a>`.
+    expect(container.querySelectorAll("a button")).toHaveLength(0);
+
+    await pressLabel("Подписаться");
+
+    expect(actionCalls("/api/v1/u/alena/subscription")).toHaveLength(1);
+    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/alena/subscription", {
+      method: "POST",
+    });
+    expect(text()).toContain("Вы подписались");
+    expect(button("Отписаться")).toBeDefined();
+    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Добавить в друзья")).toBeDefined();
+    // A subscription opens PUBLIC only, so no profile read follows (NFR-3).
+    expect(actionCalls("/api/v1/u/alena")).toHaveLength(0);
+  });
+
+  it("уже подписан: «Отписаться» шлёт DELETE и возвращает «Подписаться»", async () => {
+    signedInWith({
+      "/api/v1/u/alena/subscription": { ok: true, data: { outcome: "UNSUBSCRIBED" } },
+    });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [{ ...alena, subscribed: true }] });
+    await mount();
+
+    await type("ал");
+    await settle();
+
+    expect(button("Отписаться")).toBeDefined();
+    expect(button("Подписаться")).toBeUndefined();
+
+    await pressLabel("Отписаться");
+
+    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/alena/subscription", {
+      method: "DELETE",
+    });
+    expect(text()).toContain("Вы отписались");
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
+  });
+
+  it("pending приглашение: подписка остаётся рядом с чипом", async () => {
+    signedInWith({
+      "/api/v1/u/ivan/subscription": { ok: true, data: { outcome: "SUBSCRIBED" } },
+    });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [{ ...ivan, subscribed: false }] });
+    await mount();
+
+    await type("ив");
+    await settle();
+
+    expect(text()).toContain("Ожидает ответа");
+    expect(button("Подписаться")).toBeDefined();
+
+    await pressLabel("Подписаться");
+
+    expect(actionCalls("/api/v1/u/ivan/subscription")).toHaveLength(1);
+    expect(text()).toContain("Ожидает ответа");
+    expect(button("Отписаться")).toBeDefined();
+  });
+
+  it("входящее приглашение: подписка рядом с «Принять приглашение»", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [inviter] });
+    await mount();
+
+    await type("гл");
+    await settle();
+
+    expect(button("Принять приглашение")).toBeDefined();
+    expect(button("Подписаться")).toBeDefined();
+  });
+
+  it("друзья и свой профиль: кнопки подписки нет", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [friend, ownCard] });
+    await mount();
+
+    await type("ф");
+    await settle();
+
+    expect(text()).toContain("Друзья");
+    expect(text()).toContain("Это вы");
+    expect(testId("search-subscription")).toBeNull();
+    expect(button("Подписаться")).toBeUndefined();
+    expect(button("Отписаться")).toBeUndefined();
+  });
+
+  it("живой cooldown: подписка остаётся рядом с выключенной кнопкой дружбы", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({
+      ok: true,
+      users: [
+        {
+          displayName: "Дарья",
+          nick: "darya",
+          relationship: "NONE",
+          inviteCooldown: { hours: 5, rejected: false },
+          subscribed: true,
+        },
+      ],
+    });
+    await mount();
+
+    await type("да");
+    await settle();
+
+    expect(testId("search-add-friend")?.getAttribute("aria-disabled")).toBe("true");
+    expect(button("Отписаться")).toBeDefined();
+  });
+
+  it("сеть: подписка откатывается, кнопка возвращается, тост остаётся", async () => {
+    signedInWith({ "/api/v1/u/alena/subscription": { ok: false, network: true } });
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena] });
+    await mount();
+
+    await type("ал");
+    await settle();
+
+    await pressLabel("Подписаться");
+
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Отписаться")).toBeUndefined();
+    expect(text()).not.toContain("Вы подписались");
+  });
+});

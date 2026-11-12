@@ -17,6 +17,7 @@ import {
   Screen,
   SearchField,
   Text,
+  XStack,
   YStack,
 } from "@gift-list/ui";
 import { Link, router, Stack } from "expo-router";
@@ -31,6 +32,11 @@ import {
 } from "@/profile/relationship-action";
 import { RelationshipActions } from "@/profile/relationship-actions";
 import { profileRoute } from "@/profile/profile-route";
+import {
+  requestSubscriptionAction,
+  type SubscriptionAction,
+} from "@/profile/subscription-action";
+import { SubscriptionActions } from "@/profile/subscription-actions";
 import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -68,6 +74,11 @@ function withRelation(
   if (inviteCooldown === null) delete next.inviteCooldown;
   else next.inviteCooldown = inviteCooldown;
   return next;
+}
+
+/** The same card with the subscription switch replaced; `true` is «Отписаться». */
+function withSubscription(card: UserSearchCard, subscribed: boolean): UserSearchCard {
+  return { ...card, subscribed };
 }
 
 /**
@@ -126,6 +137,10 @@ function SearchScreenContent({
   // invite while the first answer is still missing.
   const [pendingNick, setPendingNick] = useState<string | null>(null);
   const inviteInFlight = useRef<string | null>(null);
+  // The subscription switch has its own slot, so a subscribe never cancels a
+  // friend invite that is still on the wire (Story 4.6).
+  const [subscriptionNick, setSubscriptionNick] = useState<string | null>(null);
+  const subscriptionInFlight = useRef<string | null>(null);
   // Only the newest answer may touch the list: a slow earlier request cannot
   // overwrite a newer one, and a cleared field cancels whatever was in flight.
   const latest = useRef(0);
@@ -309,6 +324,73 @@ function SearchScreenContent({
     setToast({ message: result.message, tone: "error" });
   }
 
+  /**
+   * Story 4.6 (FR-46, AD-19): one subscription press on a search row, the same
+   * switch the profile shows. The optimistic flag is the requested state and
+   * every failure rolls it back; a subscription has its own in-flight slot, so
+   * it never cancels a friend invite that is still on the wire. No profile and
+   * no wishlist is read after the answer: a subscription opens only `PUBLIC`,
+   * which the server has already filtered (NFR-3).
+   */
+  async function subscriptionAction(user: UserSearchCard, kind: SubscriptionAction) {
+    if (subscriptionInFlight.current !== null) return;
+    const requestedNick = user.nick;
+    const previous = user.subscribed ?? false;
+    const desired = kind === "subscribe";
+    if (previous === desired) return;
+
+    subscriptionInFlight.current = requestedNick;
+    setSubscriptionNick(requestedNick);
+    setToast(null);
+
+    updateCard(requestedNick, function applyOptimisticSubscription(card) {
+      return withSubscription(card, desired);
+    });
+
+    const result = await requestSubscriptionAction(kind, requestedNick, { profile, common });
+    if (subscriptionInFlight.current === requestedNick) subscriptionInFlight.current = null;
+    setSubscriptionNick(function clearSubscription(current) {
+      return current === requestedNick ? null : current;
+    });
+
+    if (result.status === "subscribed" || result.status === "unsubscribed") {
+      const subscribed = result.status === "subscribed";
+      updateCard(requestedNick, function applySubscriptionAnswer(card) {
+        return withSubscription(card, subscribed);
+      });
+      setToast({
+        message: profile(
+          result.status === "subscribed"
+            ? "subscription.toast.subscribed"
+            : "subscription.toast.unsubscribed",
+        ),
+        tone: "info",
+      });
+      return;
+    }
+
+    updateCard(requestedNick, function rollbackSubscription(card) {
+      return withSubscription(card, previous);
+    });
+
+    if (result.status === "expired") {
+      // Same as the other `(app)` screens: clear the dead session and let the
+      // guard open login with the reason and a return to the search.
+      onSessionExpired(true);
+      const signedOut = await auth.signOut();
+      if (!signedOut.ok) {
+        onSessionExpired(false);
+        setToast({ message: profile("subscription.network"), tone: "error" });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error" });
+  }
+
   // `null` until the first answer. An answer for another query belongs to the
   // previous text, so the current one is still loading.
   const current = answer?.query === prepared ? answer : null;
@@ -432,18 +514,33 @@ function SearchScreenContent({
                             actions in the ⋯ menu. CLE-89 asks for the profile's
                             buttons in the search row, so the same block sits next
                             to the link — never inside `<a>`, so a press on a
-                            button cannot open the profile.
+                            button cannot open the profile. Story 4.6 adds the
+                            subscription switch next to the friend action, hidden
+                            for the viewer's own card and for a friend exactly
+                            like on the profile (EXPERIENCE «Поиск», L159–175).
                           */}
-                          <RelationshipActions
-                            relationship={user.relationship}
-                            inviteCooldown={user.inviteCooldown ?? null}
-                            ownProfile={ownProfile}
-                            busy={pendingNick === user.nick}
-                            onAction={function actOnRelation(kind) {
-                              void relationshipAction(user, kind);
-                            }}
-                            testIDPrefix="search"
-                          />
+                          <XStack flexWrap="wrap" alignItems="center" gap="$2">
+                            <RelationshipActions
+                              relationship={user.relationship}
+                              inviteCooldown={user.inviteCooldown ?? null}
+                              ownProfile={ownProfile}
+                              busy={pendingNick === user.nick}
+                              onAction={function actOnRelation(kind) {
+                                void relationshipAction(user, kind);
+                              }}
+                              testIDPrefix="search"
+                            />
+                            {!ownProfile && user.relationship !== "FRIENDS" ? (
+                              <SubscriptionActions
+                                subscribed={user.subscribed ?? false}
+                                busy={subscriptionNick === user.nick}
+                                onAction={function actOnSubscription(kind) {
+                                  void subscriptionAction(user, kind);
+                                }}
+                                testIDPrefix="search"
+                              />
+                            ) : null}
+                          </XStack>
                         </YStack>
                       );
                     })}

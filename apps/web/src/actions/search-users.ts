@@ -10,6 +10,7 @@ import {
   type UserSearchQuery,
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
+import type { Prisma } from "@/db/generated/client";
 import { auth } from "@/lib/auth";
 import { readProfileRelation } from "@/lib/relationships";
 import { requestLocale } from "@/lib/request-locale";
@@ -28,15 +29,33 @@ type SearchRow = {
 };
 
 /**
+ * A `Block` in either direction removes the person from search entirely
+ * (AD-7, EXPERIENCE.md L172): the row is absent, not merely marked, so a
+ * blocked person cannot be found, invited or opened from the search screen.
+ *
+ * Both halves are relation filters, so Prisma renders them as `NOT EXISTS`
+ * subqueries inside the single `SELECT` of each bucket — never a query per
+ * card, and never a second round-trip after the rows are fetched.
+ */
+function notBlockedWithViewer(viewerId: string): Prisma.UserWhereInput {
+  return {
+    // The candidate blocked the viewer.
+    blocksMade: { none: { blockedId: viewerId } },
+    // The viewer blocked the candidate.
+    blocksReceived: { none: { blockerId: viewerId } },
+  };
+}
+
+/**
  * Story 3.5 (AD-13, AD-27, FR-6, FR-8, NFR-3): a signed-in user finds anybody
  * by nick (exact or prefix) or by display name (fuzzy, any substring).
  *
  * The query is compared only in the `normalizeForSearch()` form: NFC, lower
  * case, `ё → е`, `й` stays `й`. The database keeps that form in
  * `User.nickNormalized` / `User.nameNormalized`; a handful of rows is fetched
- * per bucket, not the whole table. `hideFromSearch = true` is filtered in SQL,
- * so a hidden person is absent from this answer while `/u/:nick` and `/l/:token`
- * keep working (AD-7).
+ * per bucket, not the whole table. `hideFromSearch = true` and a `Block` in
+ * either direction are filtered in SQL, so a hidden or blocked person is absent
+ * from this answer while `/u/:nick` and `/l/:token` keep working (AD-7).
  *
  * An empty query and a query with no matches both answer `ok: true` with an
  * empty `users` array — the empty state of FR-6, never an error. A card carries
@@ -60,13 +79,21 @@ export async function searchUsers(
 
   const [byNick, byDisplayName] = await Promise.all([
     prisma.user.findMany({
-      where: { hideFromSearch: false, nickNormalized: { startsWith: query } },
+      where: {
+        hideFromSearch: false,
+        nickNormalized: { startsWith: query },
+        ...notBlockedWithViewer(session.user.id),
+      },
       select: { id: true, name: true, nick: true },
       orderBy: { nickNormalized: "asc" },
       take: USER_SEARCH_LIMIT,
     }),
     prisma.user.findMany({
-      where: { hideFromSearch: false, nameNormalized: { contains: query } },
+      where: {
+        hideFromSearch: false,
+        nameNormalized: { contains: query },
+        ...notBlockedWithViewer(session.user.id),
+      },
       select: { id: true, name: true, nick: true },
       orderBy: { nameNormalized: "asc" },
       take: USER_SEARCH_LIMIT,

@@ -40,11 +40,16 @@ type FindManyArgs = {
     hideFromSearch: boolean;
     nickNormalized?: { startsWith: string };
     nameNormalized?: { contains: string };
+    blocksMade?: { none: { blockedId: string } };
+    blocksReceived?: { none: { blockerId: string } };
   };
   take: number;
 };
 
+type BlockRow = { blockerId: string; blockedId: string };
+
 let people: Person[] = [];
+let blocks: BlockRow[] = [];
 
 function person(id: string, name: string, nick: string, hidden = false): Person {
   return {
@@ -59,6 +64,7 @@ function person(id: string, name: string, nick: string, hidden = false): Person 
 
 beforeEach(() => {
   people = [];
+  blocks = [];
   getSession.mockReset();
   findMany.mockReset();
   readProfileRelation.mockReset();
@@ -67,14 +73,26 @@ beforeEach(() => {
   findMany.mockImplementation(function findPeople(args: FindManyArgs) {
     const nickQuery = args.where.nickNormalized?.startsWith;
     const nameQuery = args.where.nameNormalized?.contains;
+    const viewerId = args.where.blocksReceived?.none.blockerId;
     return people.filter(function visibleMatch(row) {
       if (args.where.hideFromSearch !== false || row.hideFromSearch) return false;
+      // Mirrors the pair of NOT EXISTS subqueries the action sends: a Block in
+      // either direction drops the row before it ever reaches a card.
+      if (viewerId !== undefined && blockedEitherWay(viewerId, row.id)) return false;
       return nickQuery === undefined
         ? row.nameNormalized.includes(nameQuery ?? "")
         : row.nickNormalized.startsWith(nickQuery);
     });
   });
 });
+
+function blockedEitherWay(viewerId: string, candidateId: string): boolean {
+  return blocks.some(
+    (block) =>
+      (block.blockerId === viewerId && block.blockedId === candidateId) ||
+      (block.blockerId === candidateId && block.blockedId === viewerId),
+  );
+}
 
 describe("searchUsers", () => {
   it("requires a session before any query", async () => {
@@ -110,7 +128,10 @@ describe("searchUsers", () => {
     expect(result).toEqual({ ok: true, data: { users: [card("Анна", "anna")] } });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { hideFromSearch: false, nickNormalized: { startsWith: "anna" } },
+        where: expect.objectContaining({
+          hideFromSearch: false,
+          nickNormalized: { startsWith: "anna" },
+        }),
         take: USER_SEARCH_LIMIT,
       }),
     );
@@ -190,6 +211,62 @@ describe("searchUsers", () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ hideFromSearch: false }) }),
     );
+  });
+
+  it("hides a person the viewer has blocked, even with hideFromSearch off (AD-7)", async () => {
+    people = [person("u1", "Анна", "anna")];
+    blocks = [{ blockerId: "viewer", blockedId: "u1" }];
+
+    expect(await searchUsers({ q: "anna" }, headers)).toEqual({
+      ok: true,
+      data: { users: [] },
+    });
+    expect(readProfileRelation).not.toHaveBeenCalled();
+  });
+
+  it("hides a person who has blocked the viewer, in both buckets", async () => {
+    // Matches by nick and by display name, so both queries must drop the row.
+    people = [person("u1", "Анна", "anna")];
+    blocks = [{ blockerId: "u1", blockedId: "viewer" }];
+
+    expect(await searchUsers({ q: "anna" }, headers)).toEqual({
+      ok: true,
+      data: { users: [] },
+    });
+    expect(await searchUsers({ q: "анна" }, headers)).toEqual({
+      ok: true,
+      data: { users: [] },
+    });
+    expect(readProfileRelation).not.toHaveBeenCalled();
+  });
+
+  it("sends the Block guard as relation filters in the same query, not per card", async () => {
+    people = [person("u1", "Анна", "anna"), person("u2", "Борис", "anna_boris")];
+    blocks = [{ blockerId: "viewer", blockedId: "u2" }];
+
+    const result = await searchUsers({ q: "anna" }, headers);
+
+    expect(result.ok && result.data.users.map(function nick(user) { return user.nick; })).toEqual([
+      "anna",
+    ]);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    for (const [args] of findMany.mock.calls as [FindManyArgs][]) {
+      expect(args.where).toMatchObject({
+        blocksMade: { none: { blockedId: "viewer" } },
+        blocksReceived: { none: { blockerId: "viewer" } },
+      });
+    }
+    expect(readProfileRelation).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a person who blocked someone else", async () => {
+    people = [person("u1", "Анна", "anna")];
+    blocks = [{ blockerId: "u1", blockedId: "u9" }];
+
+    expect(await searchUsers({ q: "anna" }, headers)).toEqual({
+      ok: true,
+      data: { users: [card("Анна", "anna")] },
+    });
   });
 
   it("caps the answer at USER_SEARCH_LIMIT", async () => {

@@ -63,7 +63,7 @@ development_status:
   3-2-visibilitypolicy-и-wire-dto-доступа: done
   3-3-публичная-ссылка-l-publictoken: review # CLE-53: 3.3.1 GET /api/v1/l/:token готов 2026-11-06; 3.3.2 страница /l готова 2026-11-06; 3.3.3 экран /wishlist/:token готов, корневые гейты typecheck/lint/test/build — exit 0 на 577ddfe 2026-11-06; не done до приёмки человеком
   3-4-профиль-u-nick: review # CLE-54: 3.4.1 GET /api/v1/u/:nick и 3.4.2 экран /u/[nick] готовы 2026-11-06; 3.4.3 — корневые typecheck/lint/test/build exit 0 на b18650c 2026-11-06; не done: друг/Block только на моках, кнопки Epic 4 скрыты, приёмка человеком
-  3-5-поиск-пользователей-и-скрыть-из-поиска: backlog
+  3-5-поиск-пользователей-и-скрыть-из-поиска: done # CLE-50: 3.5.1–3.5.4 готовы 2026-11-12: поиск, «скрыть из поиска», ранжирование, настоящие ссылки на /u/:nick; epic-3 остаётся in-progress
   epic-3-retrospective: optional
 
   epic-4: in-progress

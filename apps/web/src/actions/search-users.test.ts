@@ -193,8 +193,26 @@ describe("searchUsers", () => {
     );
   });
 
-  it("sorts cards by display name through compareForSort", async () => {
-    people = [person("u1", "Марат", "marat"), person("u2", "Анна", "anna")];
+  it("ranks an exact nick, then a nick prefix, then a display-name match", async () => {
+    people = [
+      person("u1", "Яна", "anna"), // exact nick
+      person("u2", "Boris", "anna_2"), // nick prefix
+      person("u3", "Anna", "kate"), // display name only
+    ];
+
+    const result = await searchUsers({ q: "anna" }, headers);
+
+    expect(result.ok && result.data.users.map(function nick(card) { return card.nick; })).toEqual([
+      "anna",
+      "anna_2",
+      "kate",
+    ]);
+  });
+
+  it("sorts display-name matches by name through compareForSort", async () => {
+    // Both cards are name-only matches; their nicks sort the other way, so the
+    // test pins the order inside the last bucket, not a whole-answer sort.
+    people = [person("u1", "Марат", "zzz"), person("u2", "Анна", "aaa")];
 
     const result = await searchUsers({ q: "а" }, headers);
 

@@ -40,7 +40,9 @@ type SearchRow = {
  * An empty query and a query with no matches both answer `ok: true` with an
  * empty `users` array — the empty state of FR-6, never an error. The answer
  * carries only `{ displayName, nick }` cards: the wishlist composition is
- * never revealed by search (NFR-3).
+ * never revealed by search (NFR-3). An exact nick comes first, then nick
+ * prefixes, then display-name matches: the documents do not fix the order of
+ * these buckets, so this ranking is the one the screen receives.
  */
 export async function searchUsers(
   input: UserSearchQuery,
@@ -69,25 +71,20 @@ export async function searchUsers(
 
   const rows = mergeSearchRows(byNick, byDisplayName, query);
   const locale = requestLocale(headers.get("accept-language"));
-  rows.sort(function byDisplayName(left, right) {
-    return (
-      compareForSort(locale, left.name, right.name) ||
-      compareForSort(locale, left.nick, right.nick)
-    );
-  });
-
-  const users = rows.map(function toCard(row) {
-    return { displayName: row.name, nick: row.nick };
-  });
+  const users = rankSearchRows(rows, query, locale)
+    .slice(0, USER_SEARCH_LIMIT)
+    .map(function toCard(row) {
+      return { displayName: row.name, nick: row.nick };
+    });
   return { ok: true, data: userSearchDataSchema.parse({ users }) };
 }
 
 /**
- * Merges the two buckets without duplicates and keeps at most
- * {@link USER_SEARCH_LIMIT} cards. Nick matches come first, because an exact or
- * prefix nick is the most precise answer; display-name matches then fill the
- * rest. The pure predicate is repeated here, so a `LIKE` wildcard in the query
- * cannot smuggle in a row and the answer stays a real prefix/substring match.
+ * Merges the two buckets without duplicates. The pure predicate is repeated
+ * here, so a `LIKE` wildcard in the query cannot smuggle in a row and the answer
+ * stays a real prefix/substring match. Ranking and the
+ * {@link USER_SEARCH_LIMIT} cap happen after the merge, so an exact nick is
+ * never pushed out by a longer list of weaker matches.
  */
 function mergeSearchRows(
   byNick: readonly SearchRow[],
@@ -97,7 +94,6 @@ function mergeSearchRows(
   const seen = new Set<string>();
   const rows: SearchRow[] = [];
   for (const row of [...byNick, ...byDisplayName]) {
-    if (rows.length >= USER_SEARCH_LIMIT) break;
     if (seen.has(row.id)) continue;
     const matchesNick = normalizeForSearch(row.nick).startsWith(query);
     const matchesDisplayName = normalizeForSearch(row.name).includes(query);
@@ -106,4 +102,35 @@ function mergeSearchRows(
     rows.push(row);
   }
   return rows;
+}
+
+/**
+ * The order of the answer: an exact nick first, then nick prefixes, then
+ * display-name matches. Neither `epics.md` nor the PRD fixes the order of these
+ * buckets, so this ranking is the one the search screen gets. Within the prefix
+ * and display-name buckets the locale-aware `compareForSort` orders cards, so
+ * equal relevance still reads alphabetically.
+ */
+function rankSearchRows(rows: readonly SearchRow[], query: string, locale: string): SearchRow[] {
+  const exact: SearchRow[] = [];
+  const prefix: SearchRow[] = [];
+  const byDisplayName: SearchRow[] = [];
+
+  for (const row of rows) {
+    const nickNormalized = normalizeForSearch(row.nick);
+    if (nickNormalized === query) exact.push(row);
+    else if (nickNormalized.startsWith(query)) prefix.push(row);
+    else byDisplayName.push(row);
+  }
+
+  function byName(left: SearchRow, right: SearchRow) {
+    return (
+      compareForSort(locale, left.name, right.name) ||
+      compareForSort(locale, left.nick, right.nick)
+    );
+  }
+
+  prefix.sort(byName);
+  byDisplayName.sort(byName);
+  return [...exact, ...prefix, ...byDisplayName];
 }

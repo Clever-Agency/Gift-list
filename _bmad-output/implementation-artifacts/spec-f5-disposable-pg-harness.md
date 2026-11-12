@@ -34,6 +34,7 @@ F1 добавил data-миграцию `20261106120000_fixed_tags_catalog`, н�
 Дополнительно harness:
 
 - перед первой миграцией проверяет, что в БД нет ни одной пользовательской таблицы, `current_database()` совпадает с целью, а фактические параметры подключения клиента (`host`, `port`, `database`) — с проверенным loopback-адресом; запоминает `system_identifier` кластера;
+- после соединения проверяет кластер: мажор `server_version` — только 17 или 18, `server_encoding` — UTF8 (без учёта регистра, `UTF8`/`UTF-8`). Необязательный `DISPOSABLE_PG_MAJOR` (`17` или `18`) пинит мажор, пустое значение допускает любой из двух; неверный пин или несовпадение — отказ;
 - передаёт дочерним процессам `DATABASE_URL`/`DIRECT_URL` только на время запуска и указывает `DOTENV_CONFIG_PATH` на пустой файл, чтобы `prisma.config.ts` не взял цель из `apps/web/.env`;
 - после `migrate deploy` повторно проверяет `current_database()`, параметры подключения и тот же `system_identifier` — доказательство, что миграция не ушла в другую БД. `inet_server_addr()` для этого не используется: за Docker published port он возвращает адрес контейнера, а не loopback;
 - не печатает и не сохраняет пароль; доказательства пишутся без учётных данных.
@@ -47,7 +48,7 @@ F1 добавил data-миграцию `20261106120000_fixed_tags_catalog`, н�
 5. `Tag_labels_object_check`: массив и `null` отклоняются (23514).
 6. `GiftTag_shape_check`: нет ни `tagId`, ни непустого `customText`; пробельный текст; `aggregateEligible=true` без `tagId` — отклоняются (23514).
 7. Уникальные индексы `Tag.slug`, `GiftTag(giftId, tagId)`, `GiftTag(giftId, customText)` — 23505.
-8. `GiftTag_tagId_fkey` с `ON DELETE RESTRICT` — удаление используемого тега отклоняется (23503).
+8. `GiftTag_tagId_fkey` с `ON DELETE RESTRICT` — удаление используемого тега отклоняется (23503 на PostgreSQL 17, 23001 на PostgreSQL 18).
 9. Вложенный `create` тегов вместе с желанием; несуществующий `catalogId` → P2003, желание не остаётся.
 10. `$transaction`: откат обновления желания и вставки тегов; следующий коммит сохраняется.
 11. `createMany`: вставка пачки и P2002 на повторной пачке.
@@ -60,6 +61,8 @@ F1 добавил data-миграцию `20261106120000_fixed_tags_catalog`, н�
 
 - `apps/web/src/db/disposable-pg/guard.ts` — безопасный разбор цели.
 - `apps/web/src/db/disposable-pg/guard.test.ts` — unit-тесты отказа/допуска; входят в обычный прогон.
+- `apps/web/src/db/disposable-pg/cluster-preflight.ts` — проверка мажора 17/18 и кодировки UTF8 после соединения.
+- `apps/web/src/db/disposable-pg/cluster-preflight.test.ts` — unit-тесты разбора `server_version` и кодировки; входят в обычный прогон.
 - `apps/web/src/db/disposable-pg/verify.pgtest.ts` — проверки на реальной БД; только по явному запуску.
 - `apps/web/scripts/require-disposable-pg.mjs` — preflight с понятным отказом до vitest.
 - `apps/web/vitest.pg.config.ts` — отдельный конфиг, не пересекается с CI.
@@ -67,22 +70,33 @@ F1 добавил data-миграцию `20261106120000_fixed_tags_catalog`, н�
 
 ## 6. Запуск
 
+Поддерживаемая матрица — PostgreSQL **17 и 18**; известные хорошие точки QA — 17.11 и 18.6. Кластер обязан быть в **UTF-8**: нативный `initdb` на Windows иначе берёт локаль и кодовую страницу системы, и эмодзи в теге падают с `22P05` (наблюдалось на 18.6 с `WIN1251`). Harness проверяет это после соединения и до `migrate deploy`; сам он кластер не создаёт и ничего не устанавливает.
+
 ```powershell
-# 1. Поднять одноразовый PostgreSQL на уникальном loopback-порту, без host-mount и общих volume.
-#    Пример: docker run --rm -d --name gift-f5-<random> \
-#      -e POSTGRES_PASSWORD=<синтетический> -p 127.0.0.1:<49152-65535>:5432 postgres:17-alpine
+# 1. Поднять одноразовый PostgreSQL 17 или 18 на уникальном loopback-порту,
+#    без host-mount и общих volume. Официальный образ:
+#    docker run --rm -d --name gift-f5-<random> `
+#      -e POSTGRES_PASSWORD=<синтетический> `
+#      -e POSTGRES_INITDB_ARGS=--encoding=UTF8 `
+#      -p 127.0.0.1:<49152-65535>:5432 postgres:17-alpine
+#    (или postgres:18-alpine; патчи 17.11 / 18.6 — примеры, не обязательные теги.)
+#    Нативный кластер — явная кодировка и нейтральная локаль, без опоры на локаль Windows:
+#    initdb -D <каталог> -U <пользователь> --encoding=UTF8 --locale=C
 # 2. Создать новую пустую БД gift_f5_<random>.
 # 3. Экспортировать ТОЛЬКО на процесс:
 $env:DISPOSABLE_DATABASE_URL = "postgresql://postgres:<пароль>@127.0.0.1:<порт>/gift_f5_<random>"
 $env:DISPOSABLE_DIRECT_URL   = $env:DISPOSABLE_DATABASE_URL
 $env:DISPOSABLE_PG_CONFIRM   = "gift_f5_<random>"
+$env:DISPOSABLE_PG_MAJOR     = "18"   # необязательно: 17 или 18; пусто — любой из двух
 $env:DATABASE_URL            = $env:DISPOSABLE_DATABASE_URL
 $env:DIRECT_URL              = $env:DISPOSABLE_DIRECT_URL
 npm run verify:disposable-pg -w @gift-list/web
-# 4. Удалить только свой контейнер (и его анонимный volume, если остался); env-переменные процесса не сохранять.
+# 4. Удалить только свой контейнер или свой кластер (и его volume, если остался); env-переменные процесса не сохранять.
 ```
 
 Успешный прогон создаёт `_bmad-output/implementation-artifacts/opencode-microtasks/fixup-F5-evidence-<UTC>.md`; этот файл прикладывается к отчёту F5. Прогон 2026-11-06 завершился **15/15** на PostgreSQL 17.11; evidence — `fixup-F5-evidence-2026-11-06T043913.md`.
+
+Те же требования к кластеру (PostgreSQL 17/18, UTF-8) желательны и для `friendship.pgtest.ts`; в этом заходе он не менялся.
 
 ## 7. Итог первого реального прогона
 

@@ -40,7 +40,14 @@ beforeEach(() => {
     result: {
       ok: true,
       data: {
-        user: { id: "u1", email: "a@example.com", name: "Анна", nick: "anna", timeZone: null },
+        user: {
+          id: "u1",
+          email: "a@example.com",
+          name: "Анна",
+          nick: "anna",
+          timeZone: null,
+          hideFromSearch: false,
+        },
         next: "/",
       },
     },

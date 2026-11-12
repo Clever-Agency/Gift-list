@@ -22,7 +22,7 @@ import SettingsScreen from "../../app/(app)/settings";
 const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
-const me = vi.hoisted(() => ({ updateNick: vi.fn() }));
+const me = vi.hoisted(() => ({ updateNick: vi.fn(), updateHideFromSearch: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
@@ -108,6 +108,7 @@ const user: Me = {
   name: "Аня",
   nick: "anya",
   timeZone: "Europe/Minsk",
+  hideFromSearch: false,
 };
 
 type Auth = ReturnType<typeof useAuth>;
@@ -125,10 +126,10 @@ let root: Root;
 let container: HTMLElement;
 
 /** `/api/v1/me` answers with the session. */
-function signedIn() {
+function signedIn(account: Me = user) {
   api.apiRequest.mockImplementation((path: string) =>
     Promise.resolve(
-      path === "/api/v1/me" ? { ok: true, data: user } : { ok: true, data: { signedOut: true } },
+      path === "/api/v1/me" ? { ok: true, data: account } : { ok: true, data: { signedOut: true } },
     ),
   );
 }
@@ -168,6 +169,20 @@ async function press(label: string) {
   expect(target, `кнопка «${label}»`).toBeDefined();
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+/** Story 3.5: the one switch of the screen (`role="switch"`). */
+function hideSwitch(): HTMLElement {
+  const node = container.querySelector<HTMLElement>('[role="switch"]');
+  expect(node, "переключатель «Не показывать в поиске»").not.toBeNull();
+  return node as HTMLElement;
+}
+
+async function flipSwitch() {
+  const node = hideSwitch();
+  await act(async () => {
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 }
 
@@ -389,6 +404,87 @@ describe("настройки: ник", () => {
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(field("Ник").value).toBe("newnick");
     expect(probe.auth?.state).toEqual({ status: "ready", user });
+  });
+});
+
+describe("настройки: скрыть из поиска", () => {
+  it("выключен по умолчанию; включение сразу шлёт PATCH и обновляет контекст", async () => {
+    signedIn();
+    const hidden = { ...user, hideFromSearch: true };
+    me.updateHideFromSearch.mockResolvedValue({ ok: true, data: hidden });
+    await mount();
+
+    const node = hideSwitch();
+    expect(node.getAttribute("aria-checked")).toBe("false");
+    expect(text()).toContain("Не показывать в поиске");
+    expect(text()).toContain("Прямые ссылки на профиль и вишлист по-прежнему работают.");
+
+    await flipSwitch();
+
+    expect(me.updateHideFromSearch).toHaveBeenCalledWith(true);
+    expect(hideSwitch().getAttribute("aria-checked")).toBe("true");
+    expect(probe.auth?.state).toEqual({ status: "ready", user: hidden });
+  });
+
+  it("исходное true приходит с /me; выключение шлёт false", async () => {
+    signedIn({ ...user, hideFromSearch: true });
+    const visible = { ...user, hideFromSearch: false };
+    me.updateHideFromSearch.mockResolvedValue({ ok: true, data: visible });
+    await mount();
+
+    expect(hideSwitch().getAttribute("aria-checked")).toBe("true");
+
+    await flipSwitch();
+
+    expect(me.updateHideFromSearch).toHaveBeenCalledWith(false);
+    expect(hideSwitch().getAttribute("aria-checked")).toBe("false");
+    expect(probe.auth?.state).toEqual({ status: "ready", user: visible });
+  });
+
+  it("пока PATCH идёт, переключатель недоступен и второй тап не шлёт второй запрос", async () => {
+    signedIn();
+    me.updateHideFromSearch.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    await flipSwitch();
+
+    expect(me.updateHideFromSearch).toHaveBeenCalledTimes(1);
+    expect(hideSwitch().getAttribute("aria-disabled")).toBe("true");
+
+    await act(async () => {
+      hideSwitch().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(me.updateHideFromSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("обрыв сети: флаг откатывается и показан тост", async () => {
+    signedIn();
+    me.updateHideFromSearch.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await flipSwitch();
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(hideSwitch().getAttribute("aria-checked")).toBe("false");
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+  });
+
+  it("401: сессия закончилась, вход с возвратом в настройки", async () => {
+    signedIn();
+    me.updateHideFromSearch.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    await mount();
+
+    await flipSwitch();
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/settings", reason: "session_expired" },
+    });
   });
 });
 

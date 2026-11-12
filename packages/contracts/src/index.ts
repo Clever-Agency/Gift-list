@@ -92,6 +92,12 @@ export const meSchema = z.strictObject({
   nick: z.string(),
   /** `null` until the client reports an IANA zone (Story 1.8). */
   timeZone: z.string().nullable(),
+  /**
+   * Story 3.5 (FR-8, AD-13, AD-27): the settings screen shows the switch and the
+   * search hides this person from its buckets. `/u/:nick` and `/l/:token` ignore
+   * the flag (AD-7).
+   */
+  hideFromSearch: z.boolean(),
 });
 
 export type Me = z.infer<typeof meSchema>;
@@ -199,6 +205,7 @@ export {
   NICK_PATTERN,
   PASSWORD_MAX,
   PASSWORD_MIN,
+  hideFromSearchUpdateBodySchema,
   loginBodySchema,
   nickUpdateBodySchema,
   passwordForgotBodySchema,
@@ -206,6 +213,7 @@ export {
   registerBodySchema,
   safeNextPath,
   timeZoneBodySchema,
+  type HideFromSearchUpdateBody,
   type LoginBody,
   type NickUpdateBody,
   type PasswordForgotBody,

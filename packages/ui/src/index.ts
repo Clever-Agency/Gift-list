@@ -24,6 +24,7 @@ export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./te
 export { ScrollView, type ScrollViewProps } from "./scroll";
 export { focusRing } from "./focus-ring";
 export { Pressable, type PressableProps } from "./pressable";
+export { Switch, type SwitchProps } from "./switch";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
 export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";

@@ -54,7 +54,7 @@ describe("registerUser", () => {
     expect(outcome.result).toMatchObject({
       ok: true,
       data: {
-        user: { email: "a@example.com", name: "Анна", nick: "anna", timeZone: null },
+        user: { email: "a@example.com", name: "Анна", nick: "anna", timeZone: null, hideFromSearch: false },
         next: "/",
       },
     });

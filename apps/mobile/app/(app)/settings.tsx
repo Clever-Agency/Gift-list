@@ -1,10 +1,10 @@
 import { NICK_PATTERN, type Me } from "@gift-list/contracts";
-import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
+import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, SafeArea, Screen, Switch, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import type { TextInputInstance } from "react-native";
 import { useTranslations } from "use-intl";
-import { updateNick } from "@/api/me";
+import { updateHideFromSearch, updateNick } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { formIssue } from "@/session/form-issue";
@@ -80,10 +80,15 @@ function SettingsForm({
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [unchanged, setUnchanged] = useState(false);
   const [pending, setPending] = useState(false);
+  const [hideFromSearch, setHideFromSearch] = useState(user.hideFromSearch);
+  const [hidePending, setHidePending] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   // The disabled button follows a state update, which flushes after the handler:
   // a second tap in the same frame must not send a second PUT.
   const inFlight = useRef(false);
+  // The switch is disabled while its PATCH runs for the same reason: one toggle,
+  // one request, and the row never flips twice before the answer arrives.
+  const hideInFlight = useRef(false);
 
   const normalized = nick.trim().toLowerCase();
   const valid = NICK_PATTERN.test(normalized);
@@ -191,6 +196,56 @@ function SettingsForm({
     setToast(null);
   }
 
+  function changeHideFromSearch(next: boolean) {
+    void submitHideFromSearch(next);
+  }
+
+  /**
+   * Story 3.5 (FR-8): the flag saves at once, without a separate «Сохранить».
+   * The row flips optimistically and is disabled until the answer; any failure
+   * rolls it back to the server value, so the screen never disagrees with `/me`.
+   */
+  async function submitHideFromSearch(next: boolean) {
+    if (hideInFlight.current) return;
+    hideInFlight.current = true;
+    setHideFromSearch(next);
+    setHidePending(true);
+
+    const result = await updateHideFromSearch(next);
+
+    hideInFlight.current = false;
+    setHidePending(false);
+
+    if (result.ok) {
+      setHideFromSearch(result.data.hideFromSearch);
+      auth.setUser(result.data);
+      setToast({ message: t("settings.hideFromSearchSaved"), tone: "info" });
+      return;
+    }
+
+    setHideFromSearch(!next);
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      // The same session-expired path as the nick form above.
+      onSessionExpired(true);
+      const signedOut = await auth.signOut();
+      if (!signedOut.ok) {
+        onSessionExpired(false);
+        setToast({ message: t("form.network"), tone: "error" });
+      }
+      return;
+    }
+    const issue = formIssue(result, t, common, "register");
+    setToast({ message: issue.text, tone: "error" });
+  }
+
   return (
     <Screen>
       <SafeArea>
@@ -247,6 +302,18 @@ function SettingsForm({
                     }}
                   />
                   <PrimaryButton label={t("settings.save")} onPress={save} disabled={pending} />
+                </YStack>
+                {/* Story 3.5: the search visibility switch lives under the nick block
+                    and saves at once; the hint stays in the catalog. */}
+                <YStack gap="$2" paddingTop="$grid-gap">
+                  <Switch
+                    label={t("settings.hideFromSearch")}
+                    hint={t("settings.hideFromSearchHint")}
+                    checked={hideFromSearch}
+                    disabled={hidePending}
+                    onChange={changeHideFromSearch}
+                    testID="hide-from-search"
+                  />
                 </YStack>
               </YStack>
               <SiteFooter />

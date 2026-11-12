@@ -97,6 +97,31 @@ export const nickUpdateBodySchema = z.object({
 export type NickUpdateBody = z.infer<typeof nickUpdateBodySchema>;
 
 /**
+ * Story 3.5 (FR-8): the settings switch stores one flag. Any other key is a
+ * `VALIDATION` answer on `hideFromSearch` — the route names the field the
+ * screen sent, instead of a bare rejection from `z.strictObject` (whose
+ * `unrecognized_keys` issue has no path). The output is only the flag.
+ */
+export const hideFromSearchUpdateBodySchema = z
+  .object({ hideFromSearch: z.boolean() })
+  .passthrough()
+  .superRefine(function onlyTheFlag(value, ctx) {
+    for (const key of Object.keys(value)) {
+      if (key === "hideFromSearch") continue;
+      ctx.addIssue({
+        code: "custom",
+        path: ["hideFromSearch"],
+        message: "Invalid input",
+      });
+    }
+  })
+  .transform(function toHideFromSearchUpdateBody(value) {
+    return { hideFromSearch: value.hideFromSearch };
+  });
+
+export type HideFromSearchUpdateBody = z.infer<typeof hideFromSearchUpdateBodySchema>;
+
+/**
  * `password` keeps the lower bound at 1 instead of `PASSWORD_MIN`: an account may
  * hold a shorter password from before the rule, and sign-in must not refuse it
  * before the hash is even checked. The upper bound is the same unit and number as

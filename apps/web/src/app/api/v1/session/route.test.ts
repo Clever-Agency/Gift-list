@@ -29,6 +29,7 @@ const user = {
   name: "Анна",
   nick: "anna",
   timeZone: "Europe/Minsk",
+  hideFromSearch: false,
 };
 
 function post(body: unknown, ip = "203.0.113.8") {

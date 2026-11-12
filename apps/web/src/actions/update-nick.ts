@@ -39,6 +39,7 @@ export async function updateNick(input: NickUpdateBody, headers: Headers): Promi
       nick: true,
       nickNormalized: true,
       timeZone: true,
+      hideFromSearch: true,
     },
   });
   if (!row) return unauthenticated;
@@ -51,6 +52,7 @@ export async function updateNick(input: NickUpdateBody, headers: Headers): Promi
     name: row.name,
     nick: row.nick,
     timeZone: storedTimeZone(row.timeZone),
+    hideFromSearch: row.hideFromSearch,
   });
   if (nickNormalized === row.nickNormalized) return { ok: true, data: current };
 

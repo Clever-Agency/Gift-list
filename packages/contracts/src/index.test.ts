@@ -247,10 +247,33 @@ describe("listDataSchema", () => {
 });
 
 describe("meSchema", () => {
-  it("is strict", () => {
-    const me = { id: "u1", email: "a@example.com", name: "Анна", nick: "anna", timeZone: null };
+  it("is strict and carries the search visibility flag", () => {
+    const me = {
+      id: "u1",
+      email: "a@example.com",
+      name: "Анна",
+      nick: "anna",
+      timeZone: null,
+      hideFromSearch: false,
+    };
     expect(meSchema.safeParse(me).success).toBe(true);
-    expect(meSchema.safeParse({ ...me, timeZone: "Europe/Minsk" }).success).toBe(true);
-    expect(meSchema.safeParse({ ...me, hideFromSearch: true }).success).toBe(false);
+    expect(meSchema.safeParse({ ...me, timeZone: "Europe/Minsk", hideFromSearch: true }).success).toBe(
+      true,
+    );
+    expect(meSchema.safeParse({ ...me, hideFromSearch: "true" }).success).toBe(false);
+    expect(meSchema.parse(me)).not.toHaveProperty("gifts");
+    expect(meSchema.safeParse({ ...me, emailVerified: true }).success).toBe(false);
+  });
+
+  it("requires hideFromSearch, so a client never guesses the switch state", () => {
+    expect(
+      meSchema.safeParse({
+        id: "u1",
+        email: "a@example.com",
+        name: "Анна",
+        nick: "anna",
+        timeZone: null,
+      }).success,
+    ).toBe(false);
   });
 });

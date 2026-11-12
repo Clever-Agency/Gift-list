@@ -18,6 +18,7 @@ const user = {
   name: "Анна",
   nick: "anna",
   timeZone: null as string | null,
+  hideFromSearch: false,
 };
 
 beforeEach(() => {
@@ -41,7 +42,14 @@ describe("GET /api/v1/me", () => {
     expect(res.status).toBe(200);
     expect(viaHttp).toEqual({
       ok: true,
-      data: { id: "u1", email: "a@example.com", name: "Анна", nick: "anna", timeZone: null },
+      data: {
+        id: "u1",
+        email: "a@example.com",
+        name: "Анна",
+        nick: "anna",
+        timeZone: null,
+        hideFromSearch: false,
+      },
     });
   });
 

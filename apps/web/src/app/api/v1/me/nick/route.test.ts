@@ -24,6 +24,7 @@ const user = {
   nick: "anna",
   nickNormalized: "anna",
   timeZone: null as string | null,
+  hideFromSearch: false,
 };
 
 function put(body: string) {
@@ -59,6 +60,7 @@ describe("PUT /api/v1/me/nick", () => {
         name: "Анна",
         nick: "newnick",
         timeZone: null,
+        hideFromSearch: false,
       },
     });
     expect(update).toHaveBeenCalledWith({

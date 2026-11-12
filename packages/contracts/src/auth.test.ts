@@ -9,6 +9,7 @@ import {
   PASSWORD_MIN,
   loginBodySchema,
   nickUpdateBodySchema,
+  hideFromSearchUpdateBodySchema,
   passwordForgotBodySchema,
   passwordResetBodySchema,
   registerBodySchema,
@@ -88,6 +89,26 @@ describe("nickUpdateBodySchema", () => {
     expect(NICK_PATTERN.test("a".repeat(NICK_MAX))).toBe(true);
     expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(NICK_MIN) }).success).toBe(true);
     expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(NICK_MAX) }).success).toBe(true);
+  });
+});
+
+describe("hideFromSearchUpdateBodySchema", () => {
+  it("accepts both switch states", () => {
+    expect(hideFromSearchUpdateBodySchema.parse({ hideFromSearch: true })).toEqual({
+      hideFromSearch: true,
+    });
+    expect(hideFromSearchUpdateBodySchema.parse({ hideFromSearch: false })).toEqual({
+      hideFromSearch: false,
+    });
+  });
+
+  it("rejects a missing flag, a non-boolean flag and extra keys", () => {
+    expect(hideFromSearchUpdateBodySchema.safeParse({}).success).toBe(false);
+    expect(hideFromSearchUpdateBodySchema.safeParse({ hideFromSearch: "true" }).success).toBe(false);
+    expect(hideFromSearchUpdateBodySchema.safeParse({ hideFromSearch: 1 }).success).toBe(false);
+    expect(
+      hideFromSearchUpdateBodySchema.safeParse({ hideFromSearch: true, nick: "anna" }).success,
+    ).toBe(false);
   });
 });
 

@@ -4,11 +4,11 @@ import { YStack } from "@tamagui/stacks";
 import { forwardRef, useId, useState, type ComponentProps, type ComponentRef } from "react";
 import { a11yHintProps } from "./a11y-hint";
 import { fontFor } from "./font-style";
-import { Eye, EyeOff } from "./icons";
+import { Close, Eye, EyeOff, Search } from "./icons";
 import { passwordToggleA11yProps } from "./password-toggle-a11y";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
-import { spacing } from "./tokens";
+import { colors, spacing } from "./tokens";
 
 const inputSkin = {
   ...fontFor("body"),
@@ -222,3 +222,93 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
 );
 
 PasswordField.displayName = "PasswordField";
+
+export type SearchFieldProps = {
+  /** The accessible name of the field; the visible copy is the placeholder. */
+  label: string;
+  placeholder: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  /** The accessible name of the clear (×) button, e.g. «Очистить». */
+  clearLabel: string;
+  /** Everything else of the input: `maxLength`, `autoCapitalize`, `onSubmitEditing`… */
+  input?: TextFieldInputProps;
+  testID?: string;
+};
+
+/**
+ * `DESIGN.md` → Мелкие элементы: SearchField — a field with a magnifier and the
+ * clear (×) button. Both sit in 44×44 touch zones inside the control, so the
+ * text never runs under them. The clear button appears only when there is
+ * something to clear; it presses with Enter/Space and returns focus to the input.
+ */
+export const SearchField = forwardRef<FieldInputRef, SearchFieldProps>(function SearchField(
+  { label, placeholder, value, onChangeText, clearLabel, input, testID },
+  ref,
+) {
+  const id = useId();
+  const canClear = value.length > 0;
+
+  function clear() {
+    onChangeText("");
+  }
+
+  // A browser press on the button would move focus out of the field; clearing
+  // types nothing, so the caret stays where the next character belongs.
+  function keepFieldFocus(event: { preventDefault: () => void }) {
+    event.preventDefault();
+  }
+
+  return (
+    <YStack gap="$1">
+      <YStack position="relative" justifyContent="center">
+        <InputFrame
+          {...(input as object)}
+          ref={ref as never}
+          id={id}
+          testID={testID}
+          width="100%"
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          // The icons own the field's edges: the text starts after the magnifier
+          // and ends before the clear button.
+          paddingLeft={spacing["touch-target"]}
+          paddingRight={canClear ? spacing["touch-target"] : undefined}
+          aria-label={label}
+        />
+        <YStack
+          position="absolute"
+          left={0}
+          top={0}
+          bottom={0}
+          width="$touch-target"
+          alignItems="center"
+          justifyContent="center"
+          pointerEvents="none"
+        >
+          <Search size={spacing["icon-inline"]} color={colors["muted-foreground"]} />
+        </YStack>
+        {canClear ? (
+          <Pressable
+            aria-label={clearLabel}
+            onPress={clear}
+            onMouseDown={isWeb ? keepFieldFocus : undefined}
+            position="absolute"
+            right={0}
+            top={0}
+            bottom={0}
+            width="$touch-target"
+            alignItems="center"
+            justifyContent="center"
+            color="$foreground"
+          >
+            <Close size={spacing["icon-inline"]} color={colors.foreground} />
+          </Pressable>
+        ) : null}
+      </YStack>
+    </YStack>
+  );
+});
+
+SearchField.displayName = "SearchField";

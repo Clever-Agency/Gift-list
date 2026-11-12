@@ -41,6 +41,7 @@ describe("signInUser", () => {
       name: "Анна",
       nick: "anna",
       timeZone: "Europe/Minsk",
+      hideFromSearch: false,
     });
     const outcome = await signInUser(input, headers);
     expect(outcome.result).toEqual({
@@ -52,6 +53,7 @@ describe("signInUser", () => {
           name: "Анна",
           nick: "anna",
           timeZone: "Europe/Minsk",
+          hideFromSearch: false,
         },
         next: "/wishlist/tok_1",
       },
@@ -87,6 +89,7 @@ describe("signInUser", () => {
       name: "Анна",
       nick: "anna",
       timeZone: null,
+      hideFromSearch: false,
     });
     await signInUser(input, headers);
     expect(authRateLimit).toHaveBeenCalled();

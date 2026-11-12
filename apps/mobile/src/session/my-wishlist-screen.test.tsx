@@ -913,6 +913,25 @@ describe("мой вишлист: список", () => {
   });
 
   /**
+   * Story 3.5 creates «Поиск» before Story 6.2 gives it a place in the navigation
+   * (вкладка «Поиск»), so the wishlist footer carries a temporary entry point.
+   */
+  it("в подвале есть «Поиск», нажатие открывает /search", async () => {
+    respond(giftsAnswer([]));
+    await mount();
+
+    const footer = container.querySelector('[data-testid="page-footer"]');
+    const search = footer?.querySelector('[data-testid="wishlist-search"]');
+    expect(search?.textContent).toContain("Поиск");
+
+    await act(async () => {
+      search?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(navigation.push).toHaveBeenCalledWith("/search");
+  });
+
+  /**
    * Story 3.1 creates «Настройки» before Story 6.2 gives them a place in the
    * navigation (Профиль → Настройки), so the wishlist footer carries a temporary
    * entry point.

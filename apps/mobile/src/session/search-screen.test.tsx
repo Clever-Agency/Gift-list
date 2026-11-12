@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import type { Me, UserSearchCard } from "@gift-list/contracts";
-import { act } from "react";
+import { act, cloneElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
@@ -16,6 +16,9 @@ const navigation = vi.hoisted(() => ({
   back: vi.fn(),
   canGoBack: vi.fn(),
 }));
+const links = vi.hoisted(function createLinks() {
+  return { pressed: [] as string[] };
+});
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/search", () => search);
@@ -65,6 +68,26 @@ vi.mock("use-intl", async () => {
 vi.mock("expo-router", () => ({
   router: navigation,
   Stack: { Screen: () => null },
+  // An honest `asChild`: the router's Link puts `href` and `onPress` onto its
+  // only child and draws nothing of its own (a second element would give two
+  // links, and the row itself draws the anchor).
+  Link: function Link({
+    href,
+    asChild,
+    children,
+  }: {
+    href: string;
+    asChild?: boolean;
+    children: ReactElement<Record<string, unknown>>;
+  }) {
+    if (!asChild) return <a href={href}>{children}</a>;
+    return cloneElement(children, {
+      href,
+      onPress: function onPress() {
+        links.pressed.push(href);
+      },
+    });
+  },
 }));
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
@@ -163,6 +186,7 @@ async function mount() {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
+  links.pressed.length = 0;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
   container = document.createElement("div");
@@ -248,7 +272,7 @@ describe("поиск: debounce и выдача", () => {
     expect(search.searchUsers).toHaveBeenCalledWith("ал");
   });
 
-  it("показывает имя и @ник, без желаний, и открывает профиль", async () => {
+  it("показывает имя и @ник, без желаний, и ведёт настоящей ссылкой в профиль", async () => {
     signedIn();
     search.searchUsers.mockResolvedValue({ ok: true, users: [alena, ivan] });
     await mount();
@@ -264,12 +288,20 @@ describe("поиск: debounce и выдача", () => {
     expect(text()).not.toContain("Открыт");
     expect(container.querySelectorAll('[data-testid="wish-card"]')).toHaveLength(0);
 
-    const link = container.querySelector<HTMLElement>('[aria-label="Открыть профиль @alena"]');
+    const anchors = Array.from(container.querySelectorAll<HTMLAnchorElement>("a"));
+    expect(anchors.map((anchor) => anchor.getAttribute("href"))).toEqual(["/u/alena", "/u/ivan"]);
+    expect(container.querySelectorAll("a a")).toHaveLength(0);
+
+    const link = container.querySelector<HTMLAnchorElement>('a[href="/u/alena"]');
     expect(link).not.toBeNull();
+    expect(link?.getAttribute("role")).toBe("link");
+    expect(link?.getAttribute("aria-label")).toBe("Открыть профиль @alena");
+
     await act(async () => {
       link?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(navigation.push).toHaveBeenCalledWith("/u/alena");
+    expect(links.pressed).toEqual(["/u/alena"]);
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 
   it("@ в поле не попадает в запрос", async () => {

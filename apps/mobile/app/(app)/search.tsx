@@ -14,7 +14,7 @@ import {
   Text,
   YStack,
 } from "@gift-list/ui";
-import { router, Stack } from "expo-router";
+import { Link, router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { searchUsers } from "@/api/search";
@@ -178,11 +178,6 @@ function SearchScreenContent({
     else router.replace("/");
   }
 
-  function openProfile(nick: string) {
-    const route = profileRoute(nick);
-    if (route) router.push(route.next);
-  }
-
   function dismissToast() {
     setToast(null);
   }
@@ -273,18 +268,17 @@ function SearchScreenContent({
                       const route = profileRoute(user.nick);
                       return (
                         <YStack role="listitem" key={user.nick}>
-                          <PersonRow
-                            displayName={user.displayName}
-                            nick={user.nick}
-                            {...(route
-                              ? {
-                                  pressLabel: search("openProfile", { nick: route.nick }),
-                                  onPress: function openResult() {
-                                    openProfile(user.nick);
-                                  },
-                                }
-                              : {})}
-                          />
+                          {route ? (
+                            <Link href={route.next} asChild>
+                              <PersonRow
+                                displayName={user.displayName}
+                                nick={user.nick}
+                                pressLabel={search("openProfile", { nick: route.nick })}
+                              />
+                            </Link>
+                          ) : (
+                            <PersonRow displayName={user.displayName} nick={user.nick} />
+                          )}
                         </YStack>
                       );
                     })}

@@ -60,6 +60,7 @@ describe("registerUser", () => {
     });
     const data = create.mock.calls[0]?.[0].data;
     expect(data.locale).toBe("ru");
+    expect(data.nameNormalized).toBe("анна");
     expect(data.lists.create).toEqual({ publicToken: expect.any(String) });
     expect(data.lists.create).not.toHaveProperty("type");
     expect(data.accounts.create.accountId).toBe(data.id);

@@ -4,6 +4,7 @@ import { createId } from "@paralleldrive/cuid2";
 import { hashPassword } from "better-auth/crypto";
 import {
   negotiateLocale,
+  normalizeForSearch,
   preferredFromAcceptLanguage,
   rateLimitedError,
   safeNextPath,
@@ -61,6 +62,7 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
       data: {
         id: userId,
         name: displayName,
+        nameNormalized: normalizeForSearch(displayName),
         email,
         nick,
         nickNormalized: nick,

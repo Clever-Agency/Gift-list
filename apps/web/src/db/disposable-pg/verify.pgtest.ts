@@ -240,6 +240,7 @@ async function createGiftFixture(title: string): Promise<{ giftId: string; listI
   const user = await prisma.user.create({
     data: {
       name: "F5",
+      nameNormalized: "f5",
       email: `${suffix}@f5.invalid`,
       nick: `f5${suffix}`,
       nickNormalized: `f5${suffix}`,
@@ -258,6 +259,7 @@ async function createOwnerFixture(): Promise<{ userId: string; listId: string }>
   const user = await prisma.user.create({
     data: {
       name: "F4",
+      nameNormalized: "f4",
       email: `${suffix}@f4.invalid`,
       nick: `f4${suffix}`,
       nickNormalized: `f4${suffix}`,

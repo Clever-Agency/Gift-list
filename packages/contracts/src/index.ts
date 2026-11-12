@@ -216,6 +216,17 @@ export {
 
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
 
+export {
+  USER_SEARCH_LIMIT,
+  USER_SEARCH_QUERY_MAX,
+  userSearchCardSchema,
+  userSearchDataSchema,
+  userSearchQuerySchema,
+  type UserSearchCard,
+  type UserSearchData,
+  type UserSearchQuery,
+} from "./search";
+
 export { AUTHOR_EMAIL, AUTHOR_MAILTO, PRODUCT_NAME, authorMailto } from "./brand";
 
 export { textLength } from "./text";

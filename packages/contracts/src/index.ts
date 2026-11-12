@@ -240,6 +240,19 @@ export { AUTHOR_EMAIL, AUTHOR_MAILTO, PRODUCT_NAME, authorMailto } from "./brand
 export { textLength } from "./text";
 
 export {
+  SUBSCRIBE_OUTCOMES,
+  SUBSCRIPTION_REMOVAL_OUTCOMES,
+  subscribeDataSchema,
+  subscribeOutcomeSchema,
+  subscriptionRemovalDataSchema,
+  subscriptionRemovalOutcomeSchema,
+  type SubscribeData,
+  type SubscribeOutcome,
+  type SubscriptionRemovalData,
+  type SubscriptionRemovalOutcome,
+} from "./subscription";
+
+export {
   FRIEND_ACCEPT_OUTCOMES,
   FRIEND_INVITE_OUTCOMES,
   FRIEND_REJECT_OUTCOMES,

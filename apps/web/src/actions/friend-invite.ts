@@ -6,14 +6,13 @@ import type {
   FriendInviteData,
   FriendRejectData,
 } from "@gift-list/contracts";
-import { prisma } from "@/db/client";
 import {
   acceptFriendInvite,
   rejectFriendInvite,
   sendFriendInvite,
 } from "@/domain/friendship";
-import { isValidNick, normalizeNick } from "@/domain/nick";
 import { auth } from "@/lib/auth";
+import { findUserIdByNick } from "@/lib/find-user-by-nick";
 import { friendshipStore } from "@/lib/friendship-store";
 
 const unauthenticated = {
@@ -41,23 +40,6 @@ const forbidden = {
 };
 
 /**
- * The target is exactly one nick path segment. `normalizeNick` is the same gate
- * `GET /api/v1/u/:nick` uses: case does not matter, and a nick left behind by a
- * rename does not resolve. A `null` answer covers both an unknown and a
- * malformed nick, so the caller answers one closed `NOT_FOUND`.
- */
-async function findOwnerIdByNick(nick: string): Promise<string | null> {
-  const nickNormalized = normalizeNick(nick);
-  if (!isValidNick(nickNormalized)) return null;
-
-  const owner = await prisma.user.findUnique({
-    where: { nickNormalized },
-    select: { id: true },
-  });
-  return owner?.id ?? null;
-}
-
-/**
  * Story 4.1.2 (AD-10, AD-12, ARCH-A12): a signed-in user invites somebody by
  * nick. The route resolves exactly one path segment to this function, so the
  * target can never come from a request body or an arbitrary user id.
@@ -81,7 +63,7 @@ export async function sendInviteByNick(
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
-  const ownerId = await findOwnerIdByNick(nick);
+  const ownerId = await findUserIdByNick(nick);
   if (ownerId === null) return notFound;
 
   const result = await sendFriendInvite(
@@ -126,7 +108,7 @@ export async function acceptInviteByNick(
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
-  const ownerId = await findOwnerIdByNick(nick);
+  const ownerId = await findUserIdByNick(nick);
   if (ownerId === null) return notFound;
 
   const result = await acceptFriendInvite(
@@ -158,7 +140,7 @@ export async function rejectInviteByNick(
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
-  const ownerId = await findOwnerIdByNick(nick);
+  const ownerId = await findUserIdByNick(nick);
   if (ownerId === null) return notFound;
 
   const result = await rejectFriendInvite(

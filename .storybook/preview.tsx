@@ -23,7 +23,6 @@ function CatalogSurface({ children }: { children: ReactNode }) {
     <div
       style={{
         boxSizing: "border-box",
-        minHeight: "100vh",
         padding: 24,
         backgroundColor: colors.background,
         color: colors.foreground,
@@ -47,8 +46,6 @@ CatalogSurface.displayName = "CatalogSurface";
  *
  * This frame is the viewport column instead, full bleed (the app page paints its
  * own background, so the catalog's padding and surface would only fake a border).
- * `height: 100vh` is a definite height for the flex chain, and the page scroll then
- * gets the window height and scrolls when the content is taller than it.
  */
 function ScreenFrame({ children }: { children: ReactNode }) {
   return (
@@ -56,7 +53,6 @@ function ScreenFrame({ children }: { children: ReactNode }) {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100vh",
         minWidth: 0,
         backgroundColor: colors.background,
         color: colors.foreground,

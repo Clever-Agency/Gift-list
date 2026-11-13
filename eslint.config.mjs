@@ -12,6 +12,11 @@ import tseslint from "typescript-eslint";
  * absent: AGENTS.md scopes them to `src/ui` components and `app/` screens, and
  * the decorators of `preview.tsx` are named function expressions, which the
  * catalog keeps as they are (W12.22).
+ *
+ * `tsconfigRootDir` must be set: accessing `tseslint.configs.*` from several
+ * `eslint.config.*` files in the monorepo registers multiple candidates, and the
+ * editor parser then fails without an explicit root
+ * (https://tseslint.com/parser-tsconfigrootdir).
  */
 export default tseslint.config(
   { ignores: ["node_modules/**", "storybook-static/**"] },
@@ -21,6 +26,11 @@ export default tseslint.config(
   })),
   {
     files: [".storybook/**/*.{ts,tsx}"],
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     plugins: { "react-hooks": reactHooks },
     rules: {
       "@typescript-eslint/no-unused-vars": [

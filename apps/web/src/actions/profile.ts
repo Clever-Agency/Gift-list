@@ -6,7 +6,12 @@ import { prisma } from "@/db/client";
 import { isValidNick, normalizeNick } from "@/domain/nick";
 import { auth } from "@/lib/auth";
 import { requestLocale } from "@/lib/request-locale";
-import { readProfileInviteCooldown, readProfileRelationship } from "@/lib/relationships";
+import {
+  profileRelationFacts,
+  readProfileInviteCooldown,
+  readProfileRelationship,
+  readProfileSubscription,
+} from "@/lib/relationships";
 
 const unauthenticated = {
   ok: false as const,
@@ -46,6 +51,10 @@ const notFound: ListData = { access: "not_found", gifts: [] };
  * pending invite, so neither `FRIENDS` nor `OUTGOING_PENDING` may be shown. The
  * cooldown never reaches `/l/:token` or `/me`, because those use-cases never add
  * the field.
+ *
+ * Story 4.6 adds one viewer-to-owner fact, `subscribed`, for the profile's
+ * «Подписаться» / «Отписаться» switch. It is not a relationship and never
+ * widens `readWishlist`: the subscriber still sees `PUBLIC` only (AD-19).
  */
 export async function getProfileByNick(
   nick: string,
@@ -63,9 +72,12 @@ export async function getProfileByNick(
   });
   if (owner === null) return { ok: true, data: listDataSchema.parse(notFound) };
 
-  const [relationship, inviteCooldown, data] = await Promise.all([
+  const [relationship, inviteCooldown, subscribed, data] = await Promise.all([
     readProfileRelationship(session.user.id, owner.id),
     readProfileInviteCooldown(session.user.id, owner.id),
+    // Story 4.6: one fact for the «Подписаться» / «Отписаться» switch. It never
+    // widens the wishlist: `readWishlist` keeps deciding from its own facts.
+    readProfileSubscription(session.user.id, owner.id),
     readWishlist({
       viewer: { id: session.user.id },
       target: { ownerId: owner.id },
@@ -81,8 +93,8 @@ export async function getProfileByNick(
     data: listDataSchema.parse({
       ...data,
       owner: { displayName: owner.name, nick: owner.nick },
-      relationship: inviteCooldown === null ? relationship : "NONE",
-      ...(inviteCooldown === null ? {} : { inviteCooldown }),
+      ...profileRelationFacts(relationship, inviteCooldown),
+      subscribed,
     }),
   };
 }

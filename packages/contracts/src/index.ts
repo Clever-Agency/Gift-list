@@ -191,6 +191,14 @@ export const listDataSchema = z.discriminatedUnion("access", [
      * their answer unchanged. Absence means no live cooldown.
      */
     inviteCooldown: profileInviteCooldownSchema.optional(),
+    /**
+     * Story 4.6 (FR-46, AD-19): `true` when the viewer has a directed
+     * `Subscription(viewerId → ownerId)`. Only `/u/:nick` adds it, so `/l/:token`
+     * and `/me` stay unchanged; absence reads as "not subscribed". The flag is
+     * one fact and never a relation: a subscriber is not a friend, and no id,
+     * email or wish field rides along.
+     */
+    subscribed: z.boolean().optional(),
   }),
   z.strictObject({ access: z.literal("not_found"), gifts: z.tuple([]) }),
 ]);
@@ -238,6 +246,19 @@ export {
 export { AUTHOR_EMAIL, AUTHOR_MAILTO, PRODUCT_NAME, authorMailto } from "./brand";
 
 export { textLength } from "./text";
+
+export {
+  SUBSCRIBE_OUTCOMES,
+  SUBSCRIPTION_REMOVAL_OUTCOMES,
+  subscribeDataSchema,
+  subscribeOutcomeSchema,
+  subscriptionRemovalDataSchema,
+  subscriptionRemovalOutcomeSchema,
+  type SubscribeData,
+  type SubscribeOutcome,
+  type SubscriptionRemovalData,
+  type SubscriptionRemovalOutcome,
+} from "./subscription";
 
 export {
   FRIEND_ACCEPT_OUTCOMES,

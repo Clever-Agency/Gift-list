@@ -1,4 +1,9 @@
-import { USER_SEARCH_QUERY_MAX, type UserSearchCard } from "@gift-list/contracts";
+import {
+  USER_SEARCH_QUERY_MAX,
+  type ProfileInviteCooldown,
+  type ProfileRelationship,
+  type UserSearchCard,
+} from "@gift-list/contracts";
 import {
   Column,
   EmptyState,
@@ -12,6 +17,7 @@ import {
   Screen,
   SearchField,
   Text,
+  XStack,
   YStack,
 } from "@gift-list/ui";
 import { Link, router, Stack } from "expo-router";
@@ -19,7 +25,18 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { searchUsers } from "@/api/search";
 import { getBrandName } from "@/config/env";
+import {
+  optimisticRelation,
+  requestRelationshipAction,
+  type RelationshipAction,
+} from "@/profile/relationship-action";
+import { RelationshipActions } from "@/profile/relationship-actions";
 import { profileRoute } from "@/profile/profile-route";
+import {
+  requestSubscriptionAction,
+  type SubscriptionAction,
+} from "@/profile/subscription-action";
+import { SubscriptionActions } from "@/profile/subscription-actions";
 import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -38,11 +55,31 @@ type SearchAnswer =
   | { status: "ready"; query: string; users: UserSearchCard[] }
   | { status: "error"; query: string; kind: "network" | "generic" };
 
-/** One toast at a time: only a failed sign-out reaches it on this screen. */
+/** One toast at a time: a failed sign-out and a failed relation press reach it. */
 type ToastState = { message: string; tone: "info" | "error" };
 
 /** One constant for the whole screen; the documents name no other value. */
 const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * The same card with one relation field replaced. The contract has no `null`
+ * cooldown, so a closed window drops the key instead of writing `undefined`.
+ */
+function withRelation(
+  card: UserSearchCard,
+  relationship: ProfileRelationship,
+  inviteCooldown: ProfileInviteCooldown | null,
+): UserSearchCard {
+  const next: UserSearchCard = { ...card, relationship };
+  if (inviteCooldown === null) delete next.inviteCooldown;
+  else next.inviteCooldown = inviteCooldown;
+  return next;
+}
+
+/** The same card with the subscription switch replaced; `true` is «Отписаться». */
+function withSubscription(card: UserSearchCard, subscribed: boolean): UserSearchCard {
+  return { ...card, subscribed };
+}
 
 /**
  * `/search` (Story 3.5, UX-A13): the session gate is the same as on settings.
@@ -87,6 +124,8 @@ function SearchScreenContent({
 }) {
   const app = useTranslations("app");
   const search = useTranslations("app.search");
+  const profile = useTranslations("app.profile");
+  const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
 
@@ -94,6 +133,14 @@ function SearchScreenContent({
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  // One relation press at a time across the list: a second row cannot start an
+  // invite while the first answer is still missing.
+  const [pendingNick, setPendingNick] = useState<string | null>(null);
+  const inviteInFlight = useRef<string | null>(null);
+  // The subscription switch has its own slot, so a subscribe never cancels a
+  // friend invite that is still on the wire (Story 4.6).
+  const [subscriptionNick, setSubscriptionNick] = useState<string | null>(null);
+  const subscriptionInFlight = useRef<string | null>(null);
   // Only the newest answer may touch the list: a slow earlier request cannot
   // overwrite a newer one, and a cleared field cancels whatever was in flight.
   const latest = useRef(0);
@@ -167,10 +214,190 @@ function SearchScreenContent({
     void load(prepared, id);
   }
 
+  /**
+   * Replaces one card of the newest answer. A card that left the list (the
+   * query moved on) simply keeps the list as it is: an answer never resurrects
+   * a person the current search no longer returns.
+   */
+  function updateCard(nick: string, apply: (card: UserSearchCard) => UserSearchCard) {
+    setAnswer(function applyToCard(current) {
+      if (current === null || current.status !== "ready") return current;
+      if (!current.users.some((card) => card.nick === nick)) return current;
+      return {
+        ...current,
+        users: current.users.map((card) => (card.nick === nick ? apply(card) : card)),
+      };
+    });
+  }
+
+  /**
+   * Story 4.1.3 / 4.2.3 / CLE-89: the profile's relation automaton on one search
+   * row. The optimistic chip is rolled back on every failure; the invite answer
+   * carries no profile, so the card is updated in place and no `/u/:nick` read
+   * or wish read follows (NFR-3). A `INVITE_COOLDOWN` shows the server's hours
+   * on the card when it named them.
+   */
+  async function relationshipAction(user: UserSearchCard, kind: RelationshipAction) {
+    if (inviteInFlight.current !== null) return;
+    const requestedNick = user.nick;
+    const previous = {
+      relationship: user.relationship,
+      inviteCooldown: user.inviteCooldown ?? null,
+    };
+    inviteInFlight.current = requestedNick;
+    setPendingNick(requestedNick);
+    setToast(null);
+
+    const optimistic = optimisticRelation(kind);
+    updateCard(requestedNick, function applyOptimistic(card) {
+      return withRelation(card, optimistic.relationship, optimistic.inviteCooldown);
+    });
+
+    const result = await requestRelationshipAction(kind, requestedNick, {
+      relationship: profile,
+      common,
+    });
+    if (inviteInFlight.current === requestedNick) inviteInFlight.current = null;
+    setPendingNick(function clearPending(current) {
+      return current === requestedNick ? null : current;
+    });
+
+    if (result.status === "friends") {
+      updateCard(requestedNick, function applyFriendship(card) {
+        return withRelation(card, "FRIENDS", null);
+      });
+      setToast({
+        message: profile("relationship.toast.friends", { name: user.displayName }),
+        tone: "info",
+      });
+      return;
+    }
+    if (result.status === "pending") {
+      updateCard(requestedNick, function applyPending(card) {
+        return withRelation(card, "OUTGOING_PENDING", null);
+      });
+      setToast({ message: profile("relationship.toast.invited"), tone: "info" });
+      return;
+    }
+    if (result.status === "rejected") {
+      // The rejection window is written in the same transaction (AD-10 step 3);
+      // a search row keeps the estimate because no profile read follows.
+      updateCard(requestedNick, function applyRejection(card) {
+        return withRelation(card, "NONE", result.inviteCooldown);
+      });
+      return;
+    }
+
+    function rollback(card: UserSearchCard): UserSearchCard {
+      return withRelation(card, previous.relationship, previous.inviteCooldown);
+    }
+
+    if (result.status === "cooldown") {
+      if (result.inviteCooldown !== null) {
+        const cooldown = result.inviteCooldown;
+        updateCard(requestedNick, function applyCooldown(card) {
+          return withRelation(card, "NONE", cooldown);
+        });
+      } else {
+        updateCard(requestedNick, rollback);
+      }
+      setToast({ message: result.message, tone: "error" });
+      return;
+    }
+    updateCard(requestedNick, rollback);
+
+    if (result.status === "expired") {
+      // Same as the other `(app)` screens: clear the dead session and let the
+      // guard open login with the reason and a return to the search.
+      onSessionExpired(true);
+      const signedOut = await auth.signOut();
+      if (!signedOut.ok) {
+        onSessionExpired(false);
+        setToast({ message: app("form.network"), tone: "error" });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error" });
+  }
+
+  /**
+   * Story 4.6 (FR-46, AD-19): one subscription press on a search row, the same
+   * switch the profile shows. The optimistic flag is the requested state and
+   * every failure rolls it back; a subscription has its own in-flight slot, so
+   * it never cancels a friend invite that is still on the wire. No profile and
+   * no wishlist is read after the answer: a subscription opens only `PUBLIC`,
+   * which the server has already filtered (NFR-3).
+   */
+  async function subscriptionAction(user: UserSearchCard, kind: SubscriptionAction) {
+    if (subscriptionInFlight.current !== null) return;
+    const requestedNick = user.nick;
+    const previous = user.subscribed ?? false;
+    const desired = kind === "subscribe";
+    if (previous === desired) return;
+
+    subscriptionInFlight.current = requestedNick;
+    setSubscriptionNick(requestedNick);
+    setToast(null);
+
+    updateCard(requestedNick, function applyOptimisticSubscription(card) {
+      return withSubscription(card, desired);
+    });
+
+    const result = await requestSubscriptionAction(kind, requestedNick, { profile, common });
+    if (subscriptionInFlight.current === requestedNick) subscriptionInFlight.current = null;
+    setSubscriptionNick(function clearSubscription(current) {
+      return current === requestedNick ? null : current;
+    });
+
+    if (result.status === "subscribed" || result.status === "unsubscribed") {
+      const subscribed = result.status === "subscribed";
+      updateCard(requestedNick, function applySubscriptionAnswer(card) {
+        return withSubscription(card, subscribed);
+      });
+      setToast({
+        message: profile(
+          result.status === "subscribed"
+            ? "subscription.toast.subscribed"
+            : "subscription.toast.unsubscribed",
+        ),
+        tone: "info",
+      });
+      return;
+    }
+
+    updateCard(requestedNick, function rollbackSubscription(card) {
+      return withSubscription(card, previous);
+    });
+
+    if (result.status === "expired") {
+      // Same as the other `(app)` screens: clear the dead session and let the
+      // guard open login with the reason and a return to the search.
+      onSessionExpired(true);
+      const signedOut = await auth.signOut();
+      if (!signedOut.ok) {
+        onSessionExpired(false);
+        setToast({ message: profile("subscription.network"), tone: "error" });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error" });
+  }
+
   // `null` until the first answer. An answer for another query belongs to the
   // previous text, so the current one is still loading.
   const current = answer?.query === prepared ? answer : null;
   const loading = prepared !== "" && (current === null || retrying);
+  // A search may return the viewer's own card; the relation has no `SELF`
+  // value, so the screen compares the nick with the session like the profile.
+  const viewerNick = auth.state.status === "ready" ? auth.state.user.nick : null;
 
   function goBack() {
     // A direct link has no history behind it: fall back to the wishlist.
@@ -266,8 +493,11 @@ function SearchScreenContent({
                   <YStack role="list" gap="$2">
                     {current.users.map(function renderPerson(user) {
                       const route = profileRoute(user.nick);
+                      const ownProfile =
+                        viewerNick !== null &&
+                        user.nick.toLowerCase() === viewerNick.toLowerCase();
                       return (
-                        <YStack role="listitem" key={user.nick}>
+                        <YStack role="listitem" key={user.nick} gap="$2">
                           {route ? (
                             <Link href={route.next} asChild>
                               <PersonRow
@@ -279,6 +509,38 @@ function SearchScreenContent({
                           ) : (
                             <PersonRow displayName={user.displayName} nick={user.nick} />
                           )}
+                          {/*
+                            NOTE FOR UX: `DESIGN.md` → PersonRow keeps the row's
+                            actions in the ⋯ menu. CLE-89 asks for the profile's
+                            buttons in the search row, so the same block sits next
+                            to the link — never inside `<a>`, so a press on a
+                            button cannot open the profile. Story 4.6 adds the
+                            subscription switch next to the friend action, hidden
+                            for the viewer's own card and for a friend exactly
+                            like on the profile (EXPERIENCE «Поиск», L159–175).
+                          */}
+                          <XStack flexWrap="wrap" alignItems="center" gap="$2">
+                            <RelationshipActions
+                              relationship={user.relationship}
+                              inviteCooldown={user.inviteCooldown ?? null}
+                              ownProfile={ownProfile}
+                              busy={pendingNick === user.nick}
+                              onAction={function actOnRelation(kind) {
+                                void relationshipAction(user, kind);
+                              }}
+                              testIDPrefix="search"
+                            />
+                            {!ownProfile && user.relationship !== "FRIENDS" ? (
+                              <SubscriptionActions
+                                subscribed={user.subscribed ?? false}
+                                busy={subscriptionNick === user.nick}
+                                onAction={function actOnSubscription(kind) {
+                                  void subscriptionAction(user, kind);
+                                }}
+                                testIDPrefix="search"
+                              />
+                            ) : null}
+                          </XStack>
                         </YStack>
                       );
                     })}

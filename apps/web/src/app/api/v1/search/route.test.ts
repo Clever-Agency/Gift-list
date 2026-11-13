@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findMany } = vi.hoisted(() => ({
+const { getSession, findMany, readProfileRelations } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findMany: vi.fn(),
+  readProfileRelations: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { user: { findMany } } }));
+vi.mock("@/lib/relationships", () => ({ readProfileRelations }));
 
 import { USER_SEARCH_QUERY_MAX, normalizeForSearch } from "@gift-list/contracts";
 
@@ -39,7 +41,11 @@ function request(query?: string) {
 beforeEach(() => {
   getSession.mockReset();
   findMany.mockReset();
+  readProfileRelations.mockReset();
   getSession.mockResolvedValue({ user: { id: "viewer" }, session: { token: "t" } });
+  readProfileRelations.mockResolvedValue(
+    new Map([["u1", { relationship: "NONE", subscribed: false }]]),
+  );
   findMany.mockImplementation(function findPeople(args: FindManyArgs) {
     if (args.where.hideFromSearch !== false) return [];
     const nickQuery = args.where.nickNormalized?.startsWith;
@@ -57,13 +63,40 @@ describe("GET /api/v1/search", () => {
     expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(await res.json()).toEqual({
       ok: true,
-      data: { users: [{ displayName: "Алёна", nick: "alena" }] },
+      data: {
+        users: [
+          { displayName: "Алёна", nick: "alena", relationship: "NONE", subscribed: false },
+        ],
+      },
     });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ hideFromSearch: false }),
       }),
     );
+    expect(readProfileRelations).toHaveBeenCalledWith("viewer", ["u1"]);
+  });
+
+  it("fills each card with the relation and subscription the batch reader answers", async () => {
+    readProfileRelations.mockResolvedValue(
+      new Map([["u1", { relationship: "OUTGOING_PENDING", subscribed: true }]]),
+    );
+
+    const res = await GET(request("alena"));
+
+    expect(await res.json()).toEqual({
+      ok: true,
+      data: {
+        users: [
+          {
+            displayName: "Алёна",
+            nick: "alena",
+            relationship: "OUTGOING_PENDING",
+            subscribed: true,
+          },
+        ],
+      },
+    });
   });
 
   it("treats a missing query as a successful empty list", async () => {

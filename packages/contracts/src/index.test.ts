@@ -240,6 +240,18 @@ describe("listDataSchema", () => {
     );
   });
 
+  it("accepts the viewer's profile-only subscription flag", () => {
+    expect(
+      listDataSchema.safeParse({ access: "gifts", gifts: [], subscribed: true }).success,
+    ).toBe(true);
+    expect(
+      listDataSchema.safeParse({ access: "gifts", gifts: [], subscribed: false }).success,
+    ).toBe(true);
+    expect(listDataSchema.safeParse({ access: "gifts", gifts: [], subscribed: "yes" }).success).toBe(
+      false,
+    );
+  });
+
   it("rejects keys outside the list data and unknown access values", () => {
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [], total: 0 }).success).toBe(false);
     expect(listDataSchema.safeParse({ access: "hidden", gifts: [] }).success).toBe(false);

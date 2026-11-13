@@ -103,6 +103,29 @@ describe("fetchProfile", () => {
     expect(result).not.toHaveProperty("inviteCooldown");
   });
 
+  it("passes the profile-only subscription flag through", async () => {
+    api.apiRequest.mockResolvedValue(
+      answer({ access: "gifts", gifts: [], owner, subscribed: true }),
+    );
+
+    await expect(fetchProfile("anya")).resolves.toEqual({
+      ok: true,
+      access: "gifts",
+      gifts: [],
+      owner,
+      relationship: "NONE",
+      subscribed: true,
+    });
+  });
+
+  it("leaves the subscription flag absent when the server sent none", async () => {
+    api.apiRequest.mockResolvedValue(answer({ access: "gifts", gifts: [], owner }));
+
+    const result = await fetchProfile("anya");
+
+    expect(result).not.toHaveProperty("subscribed");
+  });
+
   it("never filters wishes by visibility on its own", async () => {
     const gifts = [
       card(),

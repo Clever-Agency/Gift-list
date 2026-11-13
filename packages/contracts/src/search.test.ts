@@ -8,6 +8,8 @@ import {
   userSearchQuerySchema,
 } from "./search";
 
+const card = { displayName: "Алёна", nick: "alena", relationship: "NONE" };
+
 describe("userSearchQuerySchema", () => {
   it("defaults an absent query to an empty string", () => {
     expect(userSearchQuerySchema.parse({})).toEqual({ q: "" });
@@ -37,25 +39,67 @@ describe("userSearchDataSchema", () => {
     expect(userSearchDataSchema.parse({ users: [] })).toEqual({ users: [] });
   });
 
-  it("keeps only the person card fields", () => {
-    expect(userSearchDataSchema.parse({ users: [{ displayName: "Алёна", nick: "alena" }] })).toEqual(
-      { users: [{ displayName: "Алёна", nick: "alena" }] },
-    );
+  it("keeps the person card fields and the viewer relation", () => {
+    expect(userSearchDataSchema.parse({ users: [card] })).toEqual({ users: [card] });
     expect(
       userSearchCardSchema.safeParse({
-        displayName: "Алёна",
-        nick: "alena",
+        ...card,
         email: "a@example.com",
       }).success,
     ).toBe(false);
   });
 
+  it("carries the same closed relation vocabulary as the profile (Story 4.1.2)", () => {
+    for (const relationship of ["NONE", "OUTGOING_PENDING", "INCOMING_PENDING", "FRIENDS"]) {
+      expect(userSearchDataSchema.safeParse({ users: [{ ...card, relationship }] }).success).toBe(
+        true,
+      );
+    }
+    expect(
+      userSearchDataSchema.safeParse({ users: [{ ...card, relationship: "BLOCKED" }] }).success,
+    ).toBe(false);
+    expect(
+      userSearchDataSchema.safeParse({ users: [{ ...card, relationship: "SELF" }] }).success,
+    ).toBe(false);
+  });
+
+  it("requires the relation on every card", () => {
+    expect(
+      userSearchDataSchema.safeParse({ users: [{ displayName: "Алёна", nick: "alena" }] }).success,
+    ).toBe(false);
+  });
+
+  it("accepts the profile invite cooldown in the same shape as the profile field", () => {
+    const cooldown = { hours: 5, rejected: true };
+
+    expect(
+      userSearchDataSchema.safeParse({ users: [{ ...card, inviteCooldown: cooldown }] }).success,
+    ).toBe(true);
+    expect(
+      userSearchDataSchema.safeParse({
+        users: [{ ...card, inviteCooldown: { hours: 0, rejected: true } }],
+      }).success,
+    ).toBe(false);
+    expect(
+      userSearchDataSchema.safeParse({ users: [{ ...card, inviteCooldown: { hours: 5 } }] })
+        .success,
+    ).toBe(false);
+  });
+
+  it("carries the optional subscription flag next to the relation (Story 4.6)", () => {
+    expect(userSearchCardSchema.safeParse({ ...card, subscribed: true }).success).toBe(true);
+    expect(userSearchCardSchema.safeParse({ ...card, subscribed: false }).success).toBe(true);
+    // Absence is the same fact as `false`, exactly like the profile answer.
+    expect(userSearchCardSchema.parse(card)).not.toHaveProperty("subscribed");
+    expect(userSearchCardSchema.safeParse({ ...card, subscribed: "yes" }).success).toBe(false);
+  });
+
   it("rejects a hidden flag or gift data in a card (NFR-3)", () => {
-    const card = { displayName: "Алёна", nick: "alena" };
-    expect(userSearchDataSchema.safeParse({ users: [{ ...card, hideFromSearch: true }] }).success).toBe(
-      false,
-    );
+    expect(
+      userSearchDataSchema.safeParse({ users: [{ ...card, hideFromSearch: true }] }).success,
+    ).toBe(false);
     expect(userSearchDataSchema.safeParse({ users: [{ ...card, gifts: [] }] }).success).toBe(false);
+    expect(userSearchDataSchema.safeParse({ users: [{ ...card, id: "u1" }] }).success).toBe(false);
   });
 
   it("exposes one limit constant for both clients", () => {

@@ -84,11 +84,30 @@ const authRateLimitSchema = envSchema.pick({
   AUTH_RATE_LIMIT_WINDOW_SECONDS: true,
 });
 
+/**
+ * `BETTER_AUTH_URL` is required everywhere except Vercel Preview. Ordinary
+ * branch deploys have no stable domain, so they may omit it and inherit the
+ * deployment host from Vercel (`VERCEL_BRANCH_URL`, then `VERCEL_URL`); those
+ * hosts carry no protocol, hence the `https://` prefix. An explicit value
+ * always wins (staging sets one), and production never falls back to
+ * `*.vercel.app` — a missing or blank value there still fails validation.
+ */
+function resolveBetterAuthUrl(env: NodeJS.ProcessEnv): unknown {
+  const explicit = blankToUndefined(env.BETTER_AUTH_URL);
+  if (explicit !== undefined) return explicit;
+  if (env.VERCEL_ENV !== "preview") return env.BETTER_AUTH_URL;
+  const host = blankToUndefined(env.VERCEL_BRANCH_URL) ?? blankToUndefined(env.VERCEL_URL);
+  return host === undefined ? undefined : `https://${host}`;
+}
+
 let cached: Env | undefined;
 
 /** Typed, lazily validated server env (lazy so `next build` works without secrets). */
 export function getEnv(): Env {
-  cached ??= envSchema.parse(process.env);
+  cached ??= envSchema.parse({
+    ...process.env,
+    BETTER_AUTH_URL: resolveBetterAuthUrl(process.env),
+  });
   return cached;
 }
 

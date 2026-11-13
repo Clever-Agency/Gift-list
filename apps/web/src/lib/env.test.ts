@@ -123,6 +123,92 @@ describe("AUTH_DEV_TRUSTED_ORIGINS", () => {
   });
 });
 
+describe("BETTER_AUTH_URL fallback on Vercel Preview", () => {
+  const originalVercelEnv = process.env.VERCEL_ENV;
+  const originalVercelBranchUrl = process.env.VERCEL_BRANCH_URL;
+  const originalVercelUrl = process.env.VERCEL_URL;
+
+  function restore(name: string, value: string | undefined) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+
+  afterEach(() => {
+    restore("VERCEL_ENV", originalVercelEnv);
+    restore("VERCEL_BRANCH_URL", originalVercelBranchUrl);
+    restore("VERCEL_URL", originalVercelUrl);
+  });
+
+  async function loadEnv() {
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    return getEnv();
+  }
+
+  it("uses VERCEL_BRANCH_URL on preview, even when VERCEL_URL is also set", async () => {
+    setRequiredEnv();
+    delete process.env.BETTER_AUTH_URL;
+    process.env.VERCEL_ENV = "preview";
+    process.env.VERCEL_BRANCH_URL = "gift-list-git-staging.vercel.app";
+    process.env.VERCEL_URL = "gift-list-abc123.vercel.app";
+    expect((await loadEnv()).BETTER_AUTH_URL).toBe("https://gift-list-git-staging.vercel.app");
+  });
+
+  it("falls back to VERCEL_URL on preview when the branch URL is unset", async () => {
+    setRequiredEnv();
+    delete process.env.BETTER_AUTH_URL;
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.VERCEL_BRANCH_URL;
+    process.env.VERCEL_URL = "gift-list-abc123.vercel.app";
+    expect((await loadEnv()).BETTER_AUTH_URL).toBe("https://gift-list-abc123.vercel.app");
+  });
+
+  it("keeps an explicit BETTER_AUTH_URL on preview and ignores the host vars", async () => {
+    setRequiredEnv();
+    process.env.BETTER_AUTH_URL = "https://staging.wishmoon.clever-agency.dev";
+    process.env.VERCEL_ENV = "preview";
+    process.env.VERCEL_BRANCH_URL = "gift-list-git-staging.vercel.app";
+    process.env.VERCEL_URL = "gift-list-abc123.vercel.app";
+    expect((await loadEnv()).BETTER_AUTH_URL).toBe("https://staging.wishmoon.clever-agency.dev");
+  });
+
+  it("treats a blank BETTER_AUTH_URL as unset on preview and falls back", async () => {
+    setRequiredEnv();
+    process.env.BETTER_AUTH_URL = "   ";
+    process.env.VERCEL_ENV = "preview";
+    process.env.VERCEL_BRANCH_URL = "  ";
+    process.env.VERCEL_URL = "gift-list-abc123.vercel.app";
+    expect((await loadEnv()).BETTER_AUTH_URL).toBe("https://gift-list-abc123.vercel.app");
+  });
+
+  it("fails on preview when neither Vercel host is set", async () => {
+    setRequiredEnv();
+    delete process.env.BETTER_AUTH_URL;
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.VERCEL_BRANCH_URL;
+    delete process.env.VERCEL_URL;
+    await expect(loadEnv()).rejects.toThrow(/BETTER_AUTH_URL/);
+  });
+
+  it("does not fall back to VERCEL_URL in production", async () => {
+    setRequiredEnv();
+    delete process.env.BETTER_AUTH_URL;
+    process.env.VERCEL_ENV = "production";
+    delete process.env.VERCEL_BRANCH_URL;
+    process.env.VERCEL_URL = "gift-list-abc123.vercel.app";
+    await expect(loadEnv()).rejects.toThrow(/BETTER_AUTH_URL/);
+  });
+
+  it("requires BETTER_AUTH_URL locally", async () => {
+    setRequiredEnv();
+    delete process.env.BETTER_AUTH_URL;
+    delete process.env.VERCEL_ENV;
+    delete process.env.VERCEL_BRANCH_URL;
+    process.env.VERCEL_URL = "gift-list-abc123.vercel.app";
+    await expect(loadEnv()).rejects.toThrow(/BETTER_AUTH_URL/);
+  });
+});
+
 describe("AUTH_RATE_LIMIT_*", () => {
   async function loadEnv() {
     setRequiredEnv();

@@ -18,10 +18,14 @@
 // - `hideFromSearch` is a global-search flag (AD-13) and is deliberately not read
 //   here. A friend is already in the viewer's circle, so the flag changes nothing.
 
-import { normalizeForSearch, type ProfileRelationship } from "@gift-list/contracts";
+import {
+  CIRCLE_PAGE_SIZE,
+  normalizeForSearch,
+  type ProfileRelationship,
+} from "@gift-list/contracts";
 
-/** One page of every circle list (Story 4.3, AD-13). */
-export const CIRCLE_PAGE_SIZE = 15;
+/** One page of every circle list (Story 4.3, AD-13); the size lives in the contract. */
+export { CIRCLE_PAGE_SIZE };
 
 /**
  * The stable sort and cursor key of one person: `nameNormalized` first, then the

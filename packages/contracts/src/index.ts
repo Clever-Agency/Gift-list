@@ -262,11 +262,14 @@ export {
 
 export {
   FRIEND_ACCEPT_OUTCOMES,
+  FRIEND_CANCEL_OUTCOMES,
   FRIEND_INVITE_OUTCOMES,
   FRIEND_REJECT_OUTCOMES,
   PROFILE_RELATIONSHIPS,
   friendAcceptDataSchema,
   friendAcceptOutcomeSchema,
+  friendCancelDataSchema,
+  friendCancelOutcomeSchema,
   friendInviteDataSchema,
   friendInviteOutcomeSchema,
   friendRejectDataSchema,
@@ -275,6 +278,8 @@ export {
   profileRelationshipSchema,
   type FriendAcceptData,
   type FriendAcceptOutcome,
+  type FriendCancelData,
+  type FriendCancelOutcome,
   type FriendInviteData,
   type FriendInviteOutcome,
   type FriendRejectData,
@@ -282,6 +287,20 @@ export {
   type ProfileInviteCooldown,
   type ProfileRelationship,
 } from "./friendship";
+
+export {
+  CIRCLE_PAGE_SIZE,
+  circleCardSchema,
+  circleInvitesDataSchema,
+  circleInvitesQuerySchema,
+  circleListQuerySchema,
+  circlePageSchema,
+  type CircleCard,
+  type CircleInvitesData,
+  type CircleInvitesQuery,
+  type CircleListQuery,
+  type CirclePage,
+} from "./circle";
 
 export {
   DEFAULT_QUANTITY,

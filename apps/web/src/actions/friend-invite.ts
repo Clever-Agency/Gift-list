@@ -3,11 +3,13 @@ import "server-only";
 import type {
   ActionResult,
   FriendAcceptData,
+  FriendCancelData,
   FriendInviteData,
   FriendRejectData,
 } from "@gift-list/contracts";
 import {
   acceptFriendInvite,
+  cancelFriendInvite,
   rejectFriendInvite,
   sendFriendInvite,
 } from "@/domain/friendship";
@@ -126,8 +128,8 @@ export async function acceptInviteByNick(
  * Story 4.2.2 (FR-14, AD-10 step 3): the recipient rejects the pending invite
  * from the nick's owner. Rejection is recipient-only: the sender calling this
  * route has no pending row in the requested direction, so it answers the same
- * closed `NOT_FOUND` and never writes a cooldown (a sender-side cancel is Story
- * 4.3).
+ * closed `NOT_FOUND` and never writes a cooldown (a sender cancels through
+ * {@link cancelInviteByNick}).
  *
  * Success is the closed `REJECTED` acknowledgement; the domain has already
  * deleted exactly that invite and written one 24-hour cooldown row. A Block is
@@ -145,6 +147,43 @@ export async function rejectInviteByNick(
 
   const result = await rejectFriendInvite(
     { fromUserId: ownerId, viewerId: session.user.id },
+    friendshipStore,
+  );
+  if (!result.ok) {
+    return result.code === "FORBIDDEN" ? forbidden : notFound;
+  }
+
+  return { ok: true, data: { outcome: result.outcome } };
+}
+
+/**
+ * Story 4.3 (AD-10 step 3): the sender withdraws their own pending invite to
+ * the nick's owner. The session user is the sender (`viewerId`), the path nick
+ * is the recipient (`toUserId`), so neither the body nor another user id can
+ * choose the pair; the body is not read.
+ *
+ * The nick goes through the same `findUserIdByNick` gate as the other invite
+ * routes: case does not matter, and an unknown, renamed or malformed nick and a
+ * missing outgoing pending invite are one closed `NOT_FOUND` without a name. A
+ * `Block` in either direction is `FORBIDDEN` without a reason and writes
+ * nothing. `ALREADY_FRIENDS` is the domain's successful no-op and stays a 200.
+ *
+ * The cancel writes the same 24-hour `InviteCooldown` row as a rejection
+ * (Story 4.3.1); the storage cannot tell the two apart, so this action does not
+ * claim which one happened.
+ */
+export async function cancelInviteByNick(
+  nick: string,
+  headers: Headers,
+): Promise<ActionResult<FriendCancelData>> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return unauthenticated;
+
+  const toUserId = await findUserIdByNick(nick);
+  if (toUserId === null) return notFound;
+
+  const result = await cancelFriendInvite(
+    { toUserId, viewerId: session.user.id },
     friendshipStore,
   );
   if (!result.ok) {

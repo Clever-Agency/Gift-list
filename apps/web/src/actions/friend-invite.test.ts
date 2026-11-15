@@ -2,15 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findUser, sendFriendInvite, acceptFriendInvite, rejectFriendInvite, store } =
-  vi.hoisted(() => ({
-    getSession: vi.fn(),
-    findUser: vi.fn(),
-    sendFriendInvite: vi.fn(),
-    acceptFriendInvite: vi.fn(),
-    rejectFriendInvite: vi.fn(),
-    store: { transaction: vi.fn() },
-  }));
+const {
+  getSession,
+  findUser,
+  sendFriendInvite,
+  acceptFriendInvite,
+  rejectFriendInvite,
+  cancelFriendInvite,
+  store,
+} = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  findUser: vi.fn(),
+  sendFriendInvite: vi.fn(),
+  acceptFriendInvite: vi.fn(),
+  rejectFriendInvite: vi.fn(),
+  cancelFriendInvite: vi.fn(),
+  store: { transaction: vi.fn() },
+}));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { user: { findUnique: findUser } } }));
@@ -19,9 +27,15 @@ vi.mock("@/domain/friendship", () => ({
   sendFriendInvite,
   acceptFriendInvite,
   rejectFriendInvite,
+  cancelFriendInvite,
 }));
 
-import { acceptInviteByNick, rejectInviteByNick, sendInviteByNick } from "./friend-invite";
+import {
+  acceptInviteByNick,
+  cancelInviteByNick,
+  rejectInviteByNick,
+  sendInviteByNick,
+} from "./friend-invite";
 
 const anna = { id: "u1", nickNormalized: "anna" };
 const users = [anna];
@@ -34,6 +48,7 @@ beforeEach(() => {
   sendFriendInvite.mockReset();
   acceptFriendInvite.mockReset();
   rejectFriendInvite.mockReset();
+  cancelFriendInvite.mockReset();
   store.transaction.mockReset();
 
   getSession.mockResolvedValue(session);
@@ -43,6 +58,7 @@ beforeEach(() => {
   sendFriendInvite.mockResolvedValue({ ok: true, outcome: "INVITED" });
   acceptFriendInvite.mockResolvedValue({ ok: true, outcome: "FRIENDS_CREATED" });
   rejectFriendInvite.mockResolvedValue({ ok: true, outcome: "REJECTED" });
+  cancelFriendInvite.mockResolvedValue({ ok: true, outcome: "CANCELLED" });
 });
 
 describe("sendInviteByNick", () => {
@@ -307,5 +323,82 @@ describe("rejectInviteByNick (Story 4.2.2)", () => {
       code: "NOT_FOUND",
       message: "Not found",
     });
+  });
+});
+
+describe("cancelInviteByNick (Story 4.3)", () => {
+  it("answers UNAUTHENTICATED without reading a user or calling the protocol", async () => {
+    getSession.mockResolvedValue(null);
+
+    await expect(cancelInviteByNick("anna", new Headers())).resolves.toEqual({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    expect(findUser).not.toHaveBeenCalled();
+    expect(cancelFriendInvite).not.toHaveBeenCalled();
+  });
+
+  it("treats a malformed or unknown nick as the same NOT_FOUND", async () => {
+    for (const nick of ["", "ab", "a/b", "anna!", "x".repeat(25), "no-such-nick"]) {
+      await expect(cancelInviteByNick(nick, new Headers()), nick).resolves.toEqual({
+        ok: false,
+        code: "NOT_FOUND",
+        message: "Not found",
+      });
+    }
+
+    expect(cancelFriendInvite).not.toHaveBeenCalled();
+  });
+
+  it("cancels with the session user as the sender and the nick as the recipient", async () => {
+    await cancelInviteByNick("AnNa", new Headers());
+
+    expect(findUser).toHaveBeenCalledWith({
+      where: { nickNormalized: "anna" },
+      select: { id: true },
+    });
+    expect(cancelFriendInvite).toHaveBeenCalledWith({ toUserId: "u1", viewerId: "u9" }, store);
+  });
+
+  it.each(["CANCELLED", "ALREADY_FRIENDS"] as const)(
+    "returns the closed cancel outcome %s as a success",
+    async (outcome) => {
+      cancelFriendInvite.mockResolvedValue({ ok: true, outcome });
+
+      await expect(cancelInviteByNick("anna", new Headers())).resolves.toEqual({
+        ok: true,
+        data: { outcome },
+      });
+    },
+  );
+
+  it("maps a Block to FORBIDDEN without a reason", async () => {
+    cancelFriendInvite.mockResolvedValue({ ok: false, code: "FORBIDDEN" });
+
+    const result = await cancelInviteByNick("anna", new Headers());
+
+    expect(result).toEqual({ ok: false, code: "FORBIDDEN", message: "Forbidden" });
+    expect(result).not.toHaveProperty("reason");
+    expect(result).not.toHaveProperty("params");
+  });
+
+  it("maps a missing own pending to the closed NOT_FOUND", async () => {
+    cancelFriendInvite.mockResolvedValue({ ok: false, code: "NOT_FOUND" });
+
+    await expect(cancelInviteByNick("anna", new Headers())).resolves.toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Not found",
+    });
+  });
+
+  it("never returns an email, name or token", async () => {
+    const result = await cancelInviteByNick("anna", new Headers());
+    const serialized = JSON.stringify(result);
+
+    expect(serialized).not.toContain("anna@example.com");
+    expect(serialized).not.toContain("Анна");
+    expect(serialized).not.toContain("publicToken");
   });
 });

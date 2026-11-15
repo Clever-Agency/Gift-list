@@ -87,6 +87,21 @@ async function createFriendship(
   });
 }
 
+/**
+ * Unfriend (Story 4.4, AD-10 step 4). `deleteMany` keeps the removal idempotent:
+ * a pair without an edge is a no-op instead of a `P2025`, which is what the
+ * domain's `ALREADY_REMOVED` answer relies on. Only the edge is removed here;
+ * subscriptions and any block row are left to their own stories.
+ */
+async function deleteFriendship(
+  tx: TransactionClient,
+  pair: FriendshipPair,
+): Promise<void> {
+  await tx.friendship.deleteMany({
+    where: { userLowId: pair.userLowId, userHighId: pair.userHighId },
+  });
+}
+
 async function deleteInvitesBetween(
   tx: TransactionClient,
   firstUserId: string,
@@ -167,6 +182,9 @@ function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
     },
     createFriendship(pair) {
       return createFriendship(tx, pair);
+    },
+    deleteFriendship(pair) {
+      return deleteFriendship(tx, pair);
     },
     deleteInvitesBetween(firstUserId, secondUserId) {
       return deleteInvitesBetween(tx, firstUserId, secondUserId);

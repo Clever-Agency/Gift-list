@@ -166,8 +166,10 @@ describe("generate-brand-icons", () => {
     }
   });
 
-  it("подключено в +html.tsx и app.config.ts", () => {
-    const html = readFileSync(path.join(root, "apps/mobile/app/+html.tsx"), "utf8");
+  it("подключено в шаблоне SPA и app.config.ts", () => {
+    // `web.output: "single"` ignores `app/+html.tsx`; Expo builds the shell from
+    // `public/index.html` (dev server and export alike).
+    const html = readFileSync(path.join(root, "apps/mobile/public/index.html"), "utf8");
     for (const link of [
       '<link rel="icon" href="/favicon.ico" sizes="any" />',
       '<link rel="icon" type="image/svg+xml" href="/favicon.svg" />',
@@ -177,8 +179,10 @@ describe("generate-brand-icons", () => {
     ]) {
       assert.ok(html.includes(link), link);
     }
-    assert.ok(html.includes(`<html lang="ru">`), "lang");
-    assert.ok(html.includes("<ScrollViewStyleReset />"), "ScrollViewStyleReset");
+    // Expo substitutes both placeholders for `web.lang` and the app name.
+    assert.ok(html.includes('lang="%LANG_ISO_CODE%"'), "lang placeholder");
+    assert.ok(html.includes("<title>%WEB_TITLE%</title>"), "title placeholder");
+    assert.ok(html.includes('<div id="root"></div>'), "root element");
 
     const config = readFileSync(path.join(root, "apps/mobile/app.config.ts"), "utf8");
     for (const field of [

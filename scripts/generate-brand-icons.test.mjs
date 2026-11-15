@@ -91,7 +91,12 @@ describe("generate-brand-icons", () => {
     for (const image of images) {
       const decoded = await sharp(image.data).metadata();
       assert.equal(decoded.width, image.size);
-      assert.equal(decoded.channels, 3, `${image.size} px без альфа-канала`);
+      // Next.js decodes ICO entries only as RGBA; every pixel must still be opaque.
+      assert.equal(decoded.channels, 4, `${image.size} px RGBA`);
+      const { data, info } = await sharp(image.data).raw().toBuffer({ resolveWithObject: true });
+      for (let at = 3; at < data.length; at += info.channels) {
+        assert.equal(data[at], 255, `${image.size} px прозрачный пиксель`);
+      }
     }
   });
 

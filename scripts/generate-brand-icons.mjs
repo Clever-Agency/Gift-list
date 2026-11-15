@@ -52,16 +52,16 @@ const png = { compressionLevel: 9, adaptiveFiltering: false };
  * attributes: libvips then draws the strokes at that size instead of shrinking a
  * 1024 px bitmap. The result is flattened onto opaque white, because SVG
  * antialiasing leaves semi-transparent pixels on the disc edge otherwise.
+ *
+ * `rgba` keeps an alpha channel filled with 255: Next's ICO decoder rejects
+ * PNG-compressed icon entries without one.
  */
-async function renderAt(svg, size) {
+async function renderAt(svg, size, { rgba = false } = {}) {
   const sized = Buffer.from(
     svg.replace('width="1024"', `width="${size}"`).replace('height="1024"', `height="${size}"`),
   );
-  return sharp(sized)
-    .flatten({ background: ICON_WHITE })
-    .removeAlpha()
-    .png(png)
-    .toBuffer();
+  const image = sharp(sized).flatten({ background: ICON_WHITE });
+  return (rgba ? image.ensureAlpha() : image.removeAlpha()).png(png).toBuffer();
 }
 
 /** Renders the mark on a `canvas` square, with the moon disc inside `zone` of it. */
@@ -166,9 +166,9 @@ async function main() {
     "favicon.ico",
     buildIco([
       // Only 16 px uses the simplified mark; 32 and 48 keep the detailed one.
-      { size: 16, data: await renderAt(simple, 16) },
-      { size: 32, data: await renderAt(master, 32) },
-      { size: 48, data: await renderAt(master, 48) },
+      { size: 16, data: await renderAt(simple, 16, { rgba: true }) },
+      { size: 32, data: await renderAt(master, 32, { rgba: true }) },
+      { size: 48, data: await renderAt(master, 48, { rgba: true }) },
     ]),
   );
   files.set("site.webmanifest", Buffer.from(`${JSON.stringify(webManifest(), null, 2)}\n`));

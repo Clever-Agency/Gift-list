@@ -48,12 +48,14 @@ const config: ExpoConfig = {
   slug: "gift-list",
   scheme: "giftlist",
   version: "0.1.0",
+  icon: "./assets/icon.png",
   orientation: "default",
   userInterfaceStyle: "light",
   web: {
     output: "single",
     bundler: "metro",
     lang: "ru",
+    favicon: "./assets/favicon.png",
   },
   plugins: ["expo-router"],
   ios: {
@@ -69,6 +71,12 @@ const config: ExpoConfig = {
   },
   android: {
     package: "app.giftlist.mobile",
+    // The generated foreground already keeps the moon inside the adaptive safe
+    // zone (`scripts/generate-brand-icons.mjs`); the background is plain white.
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#FFFFFF",
+    },
     ...(linkHost
       ? {
           intentFilters: [

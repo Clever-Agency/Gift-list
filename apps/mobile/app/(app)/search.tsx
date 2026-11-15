@@ -20,7 +20,7 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { Link, router, Stack } from "expo-router";
+import { Link, router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { searchUsers } from "@/api/search";
@@ -39,6 +39,7 @@ import {
 import { SubscriptionActions } from "@/profile/subscription-actions";
 import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
+import { paramValue } from "@/session/return-path";
 import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
@@ -79,6 +80,16 @@ function withRelation(
 /** The same card with the subscription switch replaced; `true` is «Отписаться». */
 function withSubscription(card: UserSearchCard, subscribed: boolean): UserSearchCard {
   return { ...card, subscribed };
+}
+
+/**
+ * Story 4.3.3 / CLE-72: the friends screen sends its zero-result text here as
+ * `?q=`, so the field opens with it and the usual pause runs the search. The
+ * router may hand the value over as one string or as a list, and the field's
+ * own limit still applies: a longer value is cut like the field would cut it.
+ */
+function seedQuery(value: string | string[] | undefined): string {
+  return (paramValue(value) ?? "").slice(0, USER_SEARCH_QUERY_MAX);
 }
 
 /**
@@ -129,7 +140,14 @@ function SearchScreenContent({
   const brand = getBrandName();
   const auth = useAuth();
 
-  const [query, setQuery] = useState("");
+  // The route's `?q=` is the starting text (Story 4.3.3): a missing or empty
+  // param leaves the field empty, exactly as before. A value that changes while
+  // the screen stays open is applied once, so the same param never overwrites
+  // what the person has already typed and the effects cannot ping-pong.
+  const params = useLocalSearchParams<{ q?: string | string[] }>();
+  const routeQuery = seedQuery(params.q);
+  const [query, setQuery] = useState(routeQuery);
+  const appliedRouteQuery = useRef(routeQuery);
   const [answer, setAnswer] = useState<SearchAnswer | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -144,6 +162,12 @@ function SearchScreenContent({
   // Only the newest answer may touch the list: a slow earlier request cannot
   // overwrite a newer one, and a cleared field cancels whatever was in flight.
   const latest = useRef(0);
+
+  useEffect(function applyRouteQuery() {
+    if (routeQuery === "" || routeQuery === appliedRouteQuery.current) return;
+    appliedRouteQuery.current = routeQuery;
+    setQuery(routeQuery);
+  }, [routeQuery]);
 
   // Derived, not stored: an empty field (and a lone @) is «до ввода» with no
   // request, and a query without an answer yet is the loading state.

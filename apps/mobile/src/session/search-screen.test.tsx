@@ -16,6 +16,8 @@ const navigation = vi.hoisted(() => ({
   back: vi.fn(),
   canGoBack: vi.fn(),
 }));
+/** The route params of the mounted screen: `/friends` links here with `?q=`. */
+const route = vi.hoisted(() => ({ params: {} as { q?: string | string[] } }));
 const links = vi.hoisted(function createLinks() {
   return { pressed: [] as string[] };
 });
@@ -68,6 +70,8 @@ vi.mock("use-intl", async () => {
 vi.mock("expo-router", () => ({
   router: navigation,
   Stack: { Screen: () => null },
+  // No `q` by default: a plain entry to `/search` starts with an empty field.
+  useLocalSearchParams: () => route.params,
   // An honest `asChild`: the router's Link puts `href` and `onPress` onto its
   // only child and draws nothing of its own (a second element would give two
   // links, and the row itself draws the anchor).
@@ -199,7 +203,8 @@ async function pressAria(label: string) {
   });
 }
 
-async function mount() {
+/** The screen itself; a second call re-renders it, which is how a route change lands. */
+async function render() {
   await act(async () => {
     root.render(
       <AuthProvider>
@@ -209,10 +214,15 @@ async function mount() {
   });
 }
 
+async function mount() {
+  await render();
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
   links.pressed.length = 0;
+  route.params = {};
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
   container = document.createElement("div");
@@ -460,6 +470,89 @@ describe("поиск: debounce и выдача", () => {
       pathname: "/login",
       params: { next: "/search", reason: "session_expired" },
     });
+  });
+});
+
+/**
+ * Story 4.3.3 / CLE-72: `/friends` sends its zero-result text to `/search` as
+ * `?q=`. The field opens with that text and the usual 300 ms pause runs the
+ * search; a plain entry stays «до ввода».
+ */
+describe("поиск: запрос из «Искать среди всех пользователей» (Story 4.3.3)", () => {
+  it("q подставляется в поле сразу и уходит в searchUsers после debounce", async () => {
+    route.params = { q: "алёна" };
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena] });
+    await mount();
+
+    expect(input().value).toBe("алёна");
+    expect(search.searchUsers).not.toHaveBeenCalled();
+
+    await settle(299);
+    expect(search.searchUsers).not.toHaveBeenCalled();
+
+    await settle(1);
+    expect(search.searchUsers).toHaveBeenCalledTimes(1);
+    expect(search.searchUsers).toHaveBeenCalledWith("алёна");
+    expect(text()).toContain("Алёна");
+  });
+
+  it("q массивом: берётся одно значение", async () => {
+    route.params = { q: ["иван", "алёна"] };
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [ivan] });
+    await mount();
+
+    expect(input().value).toBe("иван");
+
+    await settle();
+    expect(search.searchUsers).toHaveBeenCalledWith("иван");
+  });
+
+  it("пустой q — поле пустое, запроса нет", async () => {
+    route.params = { q: "" };
+    signedIn();
+    await mount();
+
+    expect(input().value).toBe("");
+    expect(text()).toContain("Найдите человека по нику или имени.");
+
+    await settle();
+    expect(search.searchUsers).not.toHaveBeenCalled();
+  });
+
+  it("смена q на уже открытом экране подставляет новое значение", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena] });
+    await mount();
+
+    await type("ал");
+    await settle();
+    expect(text()).toContain("Алёна");
+
+    route.params = { q: "иван" };
+    search.searchUsers.mockResolvedValue({ ok: true, users: [ivan] });
+    await render();
+
+    expect(input().value).toBe("иван");
+    await settle();
+    expect(search.searchUsers).toHaveBeenLastCalledWith("иван");
+    expect(text()).toContain("Иван");
+  });
+
+  it("тот же q не перетирает то, что человек уже набрал", async () => {
+    route.params = { q: "ал" };
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena] });
+    await mount();
+    await settle();
+    expect(input().value).toBe("ал");
+
+    await type("алёна");
+    await render();
+    await settle();
+
+    expect(input().value).toBe("алёна");
   });
 });
 

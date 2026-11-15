@@ -54,4 +54,37 @@ describe("PersonRow", () => {
 
     expect(ref.current).toBe(container.querySelector("a"));
   });
+
+  it("чип и ⋯ — рядом со ссылкой, не внутри неё", async () => {
+    const { container, render } = mounted();
+    await render(
+      <PersonRow
+        displayName="Алёна"
+        nick="alena"
+        pressLabel="Открыть профиль: Алёна, @alena, Друзья"
+        href="/u/alena"
+        chip={<span>Друзья</span>}
+        actions={<button type="button">⋯</button>}
+      />,
+    );
+
+    expect(container.textContent).toContain("Алёна");
+    expect(container.textContent).toContain("Друзья");
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    // A press on the menu must not open the profile: the button is a sibling.
+    expect(container.querySelectorAll("a button")).toHaveLength(0);
+    expect(container.querySelector("a")?.getAttribute("aria-label")).toBe(
+      "Открыть профиль: Алёна, @alena, Друзья",
+    );
+  });
+
+  it("без actions ведёт себя как раньше: одна ссылка и никаких кнопок", async () => {
+    const { container, render } = mounted();
+    await render(
+      <PersonRow displayName="Иван" nick="ivan" href="/u/ivan" pressLabel="Открыть профиль @ivan" />,
+    );
+
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    expect(container.querySelectorAll("button")).toHaveLength(0);
+  });
 });

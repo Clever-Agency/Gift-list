@@ -95,6 +95,31 @@ export type RejectFriendInviteResult =
   | { readonly ok: false; readonly code: "FORBIDDEN" | "NOT_FOUND" };
 
 /**
+ * The actor of a cancel is the sender of a pending invite (`viewerId`), and
+ * `toUserId` is the recipient. The recipient of that invite has no outgoing
+ * pending row of their own, so calling cancel with the direction reversed is a
+ * closed `NOT_FOUND` and never deletes the other person's invite.
+ */
+export type OutgoingInvite = {
+  readonly toUserId: string;
+  readonly viewerId: string;
+};
+
+/**
+ * Closed success outcomes of cancelling one's own pending invite (Story 4.3).
+ * `CANCELLED` deleted the invite and wrote the pair cooldown; `ALREADY_FRIENDS`
+ * is the no-op of an anomalous pending row next to a live friendship and writes
+ * nothing — no second edge, no cooldown.
+ */
+export const FRIEND_CANCEL_OUTCOMES = ["CANCELLED", "ALREADY_FRIENDS"] as const;
+
+export type FriendCancelOutcome = (typeof FRIEND_CANCEL_OUTCOMES)[number];
+
+export type CancelFriendInviteResult =
+  | { readonly ok: true; readonly outcome: FriendCancelOutcome }
+  | { readonly ok: false; readonly code: "FORBIDDEN" | "NOT_FOUND" };
+
+/**
  * The operations the protocol needs inside one transaction. The adapter answers
  * only the facts the rules ask for; it never decides the outcome itself.
  */
@@ -313,8 +338,8 @@ export async function acceptFriendInvite(
 /**
  * Recipient-only rejection of an incoming invite (Story 4.2.1, AD-10 step 3,
  * A-16). `viewerId` is the authenticated actor and must be the recipient of the
- * pending row; the sender has no valid direction to call, so a sender-side
- * cancel is impossible here (that is Story 4.3).
+ * pending row; the sender has no valid direction to call, so a sender cancels
+ * through {@link cancelFriendInvite} instead (Story 4.3).
  *
  * Success deletes exactly that invite and writes one `InviteCooldown` row for
  * the canonical pair with `until = now + 24h` UTC and `rejectedFromUserId` set
@@ -338,5 +363,55 @@ export async function rejectFriendInvite(
     await tx.deleteInvite(fromUserId, viewerId);
     await tx.createInviteCooldown(pair, fromUserId, new Date(Date.now() + INVITE_COOLDOWN_MS));
     return { ok: true, outcome: "REJECTED" };
+  });
+}
+
+/**
+ * The sender withdraws their own pending invite (Story 4.3, AD-10 step 3): the
+ * mirror of {@link rejectFriendInvite} in the other direction.
+ *
+ * `viewerId` is the authenticated actor and must be the sender of the pending
+ * row `viewerId → toUserId`; the recipient calling cancel has no outgoing
+ * pending row, so the answer is a closed `NOT_FOUND` and the inviter's row
+ * survives. A self pair is answered before the store is touched. A missing
+ * pending row is `NOT_FOUND` in every state, even when the pair is already
+ * friends. A `Block` in either direction is `FORBIDDEN` and writes nothing at
+ * all.
+ *
+ * Success deletes exactly that directed invite and writes one `InviteCooldown`
+ * row for the canonical pair with `until = now + 24h` UTC and
+ * `rejectedFromUserId` set to the cancelling sender, so a repeat invite in the
+ * window is refused by `sendFriendInvite` with `RATE_LIMITED` /
+ * `INVITE_COOLDOWN`. No `Friendship` edge is created.
+ *
+ * A pending row next to a live friendship is an anomaly: the protocol never
+ * produces it (accept deletes every pair invite and the pair cooldown). It is
+ * the closed no-op `ALREADY_FRIENDS` and writes nothing — no second edge and no
+ * cooldown — so a second accept cannot be faked through cancel.
+ *
+ * Storage note for Story 4.3.2/4.3.3: `InviteCooldown` has no column that says
+ * who ended the invite, so a cancelled and a rejected window look identical
+ * (`rejectedFromUserId` is the inviter's id in both). The domain cannot tell
+ * them apart without a migration; the UI must not show «отклонено» after a
+ * self-cancel (see `FRIEND_CANCEL_OUTCOMES`).
+ */
+export async function cancelFriendInvite(
+  input: OutgoingInvite,
+  store: FriendshipStore,
+): Promise<CancelFriendInviteResult> {
+  const { toUserId, viewerId } = input;
+  if (viewerId === toUserId) return NOT_FOUND_RESULT;
+
+  return store.transaction(async function runCancelProtocol(tx) {
+    const pair = orderFriendPair(viewerId, toUserId);
+    await tx.lockPair(pair);
+
+    if (await tx.hasBlockBetween(viewerId, toUserId)) return FORBIDDEN_RESULT;
+    if (!(await tx.findPendingInvite(viewerId, toUserId))) return NOT_FOUND_RESULT;
+    if (await tx.findFriendship(pair)) return { ok: true, outcome: "ALREADY_FRIENDS" };
+
+    await tx.deleteInvite(viewerId, toUserId);
+    await tx.createInviteCooldown(pair, viewerId, new Date(Date.now() + INVITE_COOLDOWN_MS));
+    return { ok: true, outcome: "CANCELLED" };
   });
 }

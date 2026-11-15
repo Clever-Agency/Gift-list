@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { act } from "react";
 import { describe, expect, it } from "vitest";
 import { Column, PageContainer } from "./layout";
 import { PageScroll } from "./page-scroll";
@@ -24,6 +25,26 @@ describe("PageScroll", () => {
     const content = area?.firstElementChild;
     expect(content).not.toBeNull();
     expect(getComputedStyle(content as Element).flexGrow).toBe("1");
+  });
+
+  it("отдаёт прокрутку страницы наружу: список подгружает по подходу к концу", async () => {
+    const view = mounted();
+    let fired = 0;
+    function onScroll() {
+      fired += 1;
+    }
+    await view.render(
+      <PageScroll testID="page" onScroll={onScroll} scrollEventThrottle={16}>
+        <span>content</span>
+      </PageScroll>,
+    );
+
+    const area = view.container.querySelector('[data-testid="page"]');
+    await act(async () => {
+      area?.dispatchEvent(new Event("scroll", { bubbles: false }));
+    });
+
+    expect(fired).toBe(1);
   });
 });
 

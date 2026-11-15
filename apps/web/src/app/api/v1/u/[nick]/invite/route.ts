@@ -1,4 +1,4 @@
-import { sendInviteByNick } from "@/actions/friend-invite";
+import { cancelInviteByNick, sendInviteByNick } from "@/actions/friend-invite";
 import { notFoundResponse, toResponse } from "@/lib/api-v1";
 
 /**
@@ -20,7 +20,22 @@ export async function POST(
   return toResponse(await sendInviteByNick(nick, request.headers));
 }
 
+/**
+ * Story 4.3 (AD-10 step 3): `DELETE /api/v1/u/:nick/invite` — the sender
+ * withdraws their own pending invite. The session user is the sender, the path
+ * nick is the recipient, and the body is never read. Both closed success
+ * outcomes (`CANCELLED`, `ALREADY_FRIENDS`) are 200; unknown nick, missing own
+ * pending and a blocked pair map to the closed refusals of the neighbouring
+ * invite routes.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ nick: string }> },
+) {
+  const { nick } = await params;
+  return toResponse(await cancelInviteByNick(nick, request.headers));
+}
+
 export const GET = notFoundResponse;
 export const PUT = notFoundResponse;
 export const PATCH = notFoundResponse;
-export const DELETE = notFoundResponse;

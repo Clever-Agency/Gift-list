@@ -5,10 +5,27 @@ import { Resend } from "resend";
 import { getMessages, negotiateLocale } from "@gift-list/contracts";
 import { getBrandName, getEnv } from "@/lib/env";
 
-/** `https://{host}/reset?token=` from `BETTER_AUTH_URL`. Never the `/api/auth` callback. */
+/** Loopback and `*.localhost`: a local `http:` auth URL stays `http` in the email. */
+function isLocalDevHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "127.0.0.1" ||
+    host === "[::1]" ||
+    host === "::1"
+  );
+}
+
+/**
+ * `/reset?token=` from `BETTER_AUTH_URL`. Real hosts are forced to `https`
+ * so an accidental `http` value never lands in the letter. Loopback and
+ * `*.localhost` keep `http:`. Never the `/api/auth` callback.
+ */
 export function passwordResetLink(betterAuthUrl: string, token: string): string {
   const base = new URL(betterAuthUrl);
-  const href = new URL("/reset", `https://${base.host}`);
+  const protocol = isLocalDevHost(base.hostname) && base.protocol === "http:" ? "http:" : "https:";
+  const href = new URL("/reset", `${protocol}//${base.host}`);
   href.searchParams.set("token", token);
   return href.toString();
 }

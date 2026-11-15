@@ -189,3 +189,9 @@
 - source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-11-reserved-visibility.md` (§1, §7)
   summary: Уведомление держателю, когда владелец сузил видимость и бронь снята (in-app + email), не отправляется — инфраструктуры уведомлений ещё нет. Снятие тихое; в коде его нельзя обещать как работающее. Тот же долг — подсказка «Желание забронировано — бронировавший получит уведомление» при правке других полей: уведомление появится с Epic 5–6.
   evidence: В `apps/web/src` нет ни одного упоминания Notification; правила снятия брони по видимости внесены в AD-7/AD-8 и FR-10 (S23.1), код — S23.2–S23.3. Когда появятся Notification и Resend, снятие по сужению видимости должно слать событие как удаление/правка `RESERVED` (AD-14, FR-26).
+
+## Deferred from: ссылка сброса на loopback (2026-11-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-password-reset-loopback-http.md`
+  summary: Документ деплоя и замороженная Story 1.7 по-прежнему говорят, что ссылка сброса всегда `https`.
+  evidence: `docs/deployment-environments.md` пишет «Ссылка сброса всегда имеет вид `https://<хост из BETTER_AUTH_URL>/reset?token=…`». Замороженный блок `spec-1-7-сброс-пароля-по-email.md` требует `https://{origin}/reset?token=`, а его журнал ревью отклоняет сохранение локального `http`. Для прод, staging и preview код по-прежнему ставит `https`; расхождение только у loopback. Эти файлы вне разрешённого diff, замороженный блок Story 1.7 не меняется.

@@ -526,6 +526,12 @@ export default function MyWishlistScreen() {
     router.push("/search");
   }
 
+  function openFriends() {
+    // NOTE FOR UX: временный вход в «Друзья» до Story 6.2, где постоянное место —
+    // вкладка «Друзья» в нижней навигации (DESIGN.md:455, UX-A13).
+    router.push("/friends");
+  }
+
   function handleVisibilitySelect(next: GiftCard["visibility"]) {
     if (picker) void changeVisibility(picker.gift, next);
   }
@@ -698,6 +704,19 @@ export default function MyWishlistScreen() {
                     >
                       <Text kind="button" tone="primary">
                         {wishlist("search")}
+                      </Text>
+                    </Pressable>
+                    {/* Temporary entry point: friends become a tab in Story 6.2. */}
+                    <Pressable
+                      role="button"
+                      testID="wishlist-friends"
+                      onPress={openFriends}
+                      minHeight="$touch-target"
+                      minWidth="$touch-target"
+                      justifyContent="center"
+                    >
+                      <Text kind="button" tone="primary">
+                        {wishlist("friends")}
                       </Text>
                     </Pressable>
                     {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}

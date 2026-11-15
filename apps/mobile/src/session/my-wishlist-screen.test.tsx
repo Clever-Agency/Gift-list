@@ -950,6 +950,26 @@ describe("мой вишлист: список", () => {
 
     expect(navigation.push).toHaveBeenCalledWith("/settings");
   });
+
+  /**
+   * Story 4.3 creates «Друзья» before Story 6.2 gives them a place in the
+   * navigation (вкладка «Друзья»), so the wishlist footer carries a temporary
+   * entry point.
+   */
+  it("в подвале есть «Друзья», нажатие открывает /friends", async () => {
+    respond(giftsAnswer([]));
+    await mount();
+
+    const footer = container.querySelector('[data-testid="page-footer"]');
+    const friends = footer?.querySelector('[data-testid="wishlist-friends"]');
+    expect(friends?.textContent).toContain("Друзья");
+
+    await act(async () => {
+      friends?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(navigation.push).toHaveBeenCalledWith("/friends");
+  });
 });
 
 /**

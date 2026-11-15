@@ -65,7 +65,8 @@
     "loading": "Загружаем вишлист",
     "reservedBy": "Берёт {name}",
     "settings": "Настройки",
-    "search": "Поиск"
+    "search": "Поиск",
+    "friends": "Друзья"
   },
   "settings": {
     "title": "Настройки",
@@ -95,6 +96,78 @@
     "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз.",
     "retry": "Повторить",
     "openProfile": "Открыть профиль @{nick}"
+  },
+  "friends": {
+    "pageTitle": "Друзья — {brand}",
+    "title": "Друзья",
+    "back": "Назад",
+    "findContacts": "Найти знакомых",
+    "searchAll": "Искать среди всех пользователей",
+    "openProfileLabel": "Открыть профиль: {name}, @{nick}",
+    "openProfileChipLabel": "Открыть профиль: {name}, @{nick}, {chip}",
+    "tabs": {
+      "label": "Разделы друзей",
+      "friends": "Друзья",
+      "subscriptions": "Подписки",
+      "requests": "Запросы"
+    },
+    "friendsSearch": {
+      "label": "Искать среди друзей",
+      "clear": "Очистить",
+      "counter": "{shown} из {total}",
+      "emptyTitle": "Никого не нашли по «{query}»",
+      "emptyBody": "Проверьте имя или ник."
+    },
+    "list": {
+      "loading": "Загружаем…",
+      "allShown": "Показаны все ({count})"
+    },
+    "loadError": "Не получилось загрузить. Проверьте сеть.",
+    "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз.",
+    "retry": "Повторить",
+    "empty": {
+      "friendsTitle": "Пока нет друзей",
+      "friendsBody": "Найдите человека по нику или отправьте ссылку-приглашение.",
+      "subscribedTitle": "Вы ни на кого не подписаны",
+      "subscribedBody": "Подписка показывает желания «всем» без дружбы.",
+      "subscribersTitle": "Пока никто не подписан",
+      "subscribersBody": "Подписчики видят ваши желания «всем».",
+      "requestsTitle": "Запросов нет",
+      "requestsBody": "Здесь появятся приглашения в друзья."
+    },
+    "subscriptions": {
+      "label": "Подписки",
+      "subscribed": "Я подписан ({count})",
+      "subscribedPlain": "Я подписан",
+      "subscribers": "Мои подписчики ({count})",
+      "subscribersPlain": "Мои подписчики"
+    },
+    "requests": {
+      "incoming": "Входящие",
+      "outgoing": "Исходящие"
+    },
+    "actions": {
+      "accept": "Принять",
+      "reject": "Отклонить",
+      "cancel": "Отменить"
+    },
+    "menu": {
+      "actions": "Действия: {name}",
+      "openProfile": "Открыть профиль",
+      "cancelInvite": "Отменить приглашение",
+      "removeSubscriber": "Убрать подписчика"
+    },
+    "cooldown": "Можно снова через {hours} ч",
+    "removeSubscriber": {
+      "title": "Убрать подписчика?",
+      "body": "{name} перестанет видеть ваши желания «всем» в подписках.",
+      "confirm": "Убрать",
+      "cancel": "Отмена"
+    },
+    "toast": {
+      "inviteCancelled": "Приглашение отменено",
+      "subscriberRemoved": "{name} больше не подписан"
+    }
   },
   "newGift": {
     "pageTitle": "Новое желание — {brand}",
@@ -169,7 +242,9 @@
         "INCOMING_PENDING": "Зовёт в друзья",
         "FRIENDS": "Друзья",
         "REJECTED": "Отклонено",
-        "SELF": "Это вы"
+        "SELF": "Это вы",
+        "FOLLOWS_YOU": "Подписан на вас",
+        "MUTUAL": "Взаимная подписка"
       },
       "toast": {
         "invited": "Приглашение отправлено",

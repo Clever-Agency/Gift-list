@@ -65,6 +65,12 @@ export {
   type PersonRowProps,
   type PersonRowSkeletonProps,
 } from "./person-row";
+export {
+  OverflowMenu,
+  type OverflowMenuItem,
+  type OverflowMenuProps,
+} from "./overflow-menu";
+export { SegmentTabs, type SegmentTab, type SegmentTabsProps } from "./segment-tabs";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";

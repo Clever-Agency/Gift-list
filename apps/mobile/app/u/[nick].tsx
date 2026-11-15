@@ -23,6 +23,7 @@ import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
 import {
   optimisticRelation,
+  requestFriendRemoval,
   requestRelationshipAction,
   type RelationshipAction,
 } from "@/profile/relationship-action";
@@ -35,6 +36,7 @@ import {
 import { SubscriptionActions } from "@/profile/subscription-actions";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -101,10 +103,16 @@ type ToastState = { message: string; tone: "info" | "error"; nick: string };
  * «Подписаться» while `subscribed` is false and «Отписаться» once it is true.
  * The own profile and a friend show no switch; a subscription only opens
  * `PUBLIC`, which the server already filtered.
+ *
+ * Story 4.4 adds «Удалить из друзей» next to the «Друзья» chip with the same
+ * confirm as the friends list. The optimistically former friend loses the
+ * `FRIENDS` wishes at once; a success rereads the profile and leaves the route
+ * open, because the person still exists and keeps their `PUBLIC` wishes.
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
   const profile = useTranslations("app.profile");
+  const friends = useTranslations("app.friends");
   const wishlist = useTranslations("app.wishlist");
   const myWishlist = useTranslations("app.myWishlist");
   const common = useTranslations("common");
@@ -136,8 +144,12 @@ export default function ProfileScreen() {
   const requestSeq = useRef(0);
   const inviteInFlight = useRef<string | null>(null);
   const subscriptionInFlight = useRef<string | null>(null);
+  const removalInFlight = useRef<string | null>(null);
   const subscriptionSeq = useRef(0);
   const nickRef = useRef(nick);
+  // Story 4.4: the confirm of «Удалить из друзей» and its in-flight state.
+  const [friendConfirmOpen, setFriendConfirmOpen] = useState(false);
+  const [friendConfirmBusy, setFriendConfirmBusy] = useState(false);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -494,6 +506,115 @@ export default function ProfileScreen() {
     setToast({ message: result.message, tone: "error", nick: requestedNick });
   }
 
+  /**
+   * Story 4.4: the confirm of «Удалить из друзей» on the profile. The optimistic
+   * relation is `NONE`, so the «Друзья» chip becomes the actions of a former
+   * friend, and the wishes only a friend sees leave at once (`EXPERIENCE.md` →
+   * «Друзья»); the subscription edge is untouched. A success rereads the profile
+   * so the wishlist and the relation come from the server, and every failure
+   * rolls the optimistic state back. The route stays open in both cases.
+   */
+  async function removeFriendAction() {
+    if (nick === null || removalInFlight.current === nick) return;
+    const requestedView = view;
+    if (requestedView.status !== "ready" || requestedView.relationship !== "FRIENDS") return;
+
+    const requestedNick = nick;
+    const previous = {
+      relationship: requestedView.relationship,
+      inviteCooldown: requestedView.inviteCooldown,
+      gifts: requestedView.gifts,
+    };
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
+    removalInFlight.current = requestedNick;
+    setToast(null);
+
+    setState(function applyOptimisticRemoval(current) {
+      return current.status === "ready" && current.nick === requestedNick
+        ? {
+            ...current,
+            relationship: "NONE",
+            inviteCooldown: null,
+            // A friend may see `FRIENDS`; `SECRET` never arrives from the server,
+            // but the rule stays closed: only `PUBLIC` survives the removal.
+            gifts: current.gifts.filter((gift) => gift.visibility === "PUBLIC"),
+          }
+        : current;
+    });
+
+    const result = await requestFriendRemoval(requestedNick, { relationship: profile, common });
+    if (seq !== requestSeq.current || nickRef.current !== requestedNick) {
+      // The route moved on: drop this answer and release only its own slot.
+      if (removalInFlight.current === requestedNick) removalInFlight.current = null;
+      return;
+    }
+    if (removalInFlight.current === requestedNick) removalInFlight.current = null;
+
+    function stillThisProfile(current: ScreenState): boolean {
+      return current.status === "ready" && current.nick === requestedNick;
+    }
+
+    if (result.status === "removed") {
+      setFriendConfirmOpen(false);
+      setToast({
+        message: friends("toast.friendRemoved", { name: requestedView.owner.displayName }),
+        tone: "info",
+        nick: requestedNick,
+      });
+      // The server owns the wishlist and the relation: read them back.
+      setAttempt((value) => value + 1);
+      return;
+    }
+
+    setState(function rollbackRemoval(current) {
+      return stillThisProfile(current)
+        ? {
+            ...current,
+            relationship: previous.relationship,
+            inviteCooldown: previous.inviteCooldown,
+            gifts: previous.gifts,
+          }
+        : current;
+    });
+    setFriendConfirmOpen(false);
+
+    if (result.status === "expired") {
+      const signedOut = await expireSession();
+      if (!signedOut) {
+        setToast({
+          message: profile("relationship.network"),
+          tone: "error",
+          nick: requestedNick,
+        });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setState({ status: "missing" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error", nick: requestedNick });
+  }
+
+  function confirmFriendRemoval() {
+    if (friendConfirmBusy) return;
+    setFriendConfirmBusy(true);
+    void removeFriendAction().finally(function release() {
+      setFriendConfirmBusy(false);
+    });
+  }
+
+  function cancelFriendRemoval() {
+    if (friendConfirmBusy) return;
+    setFriendConfirmOpen(false);
+  }
+
+  function askRemoveFriend() {
+    setToast(null);
+    setFriendConfirmOpen(true);
+  }
+
   return (
     <Screen>
       <SafeArea>
@@ -560,6 +681,7 @@ export default function ProfileScreen() {
                         onAction={function actOnRelation(kind) {
                           void relationshipAction(kind);
                         }}
+                        onRemoveFriend={ownProfile ? undefined : askRemoveFriend}
                       />
                       {/*
                         Story 4.6: a subscription is independent of the friend
@@ -603,6 +725,22 @@ export default function ProfileScreen() {
             offsetBottom={spacing["page-gutter"]}
           />
         ) : null}
+        <ConfirmDialog
+          variant="confirm"
+          visible={friendConfirmOpen}
+          title={friends("removeFriend.title", {
+            name: view.status === "ready" ? view.owner.displayName : "",
+          })}
+          body={friends("removeFriend.body")}
+          confirmLabel={friends("removeFriend.confirm")}
+          cancelLabel={friends("removeFriend.cancel")}
+          busy={friendConfirmBusy}
+          onConfirm={confirmFriendRemoval}
+          onCancel={cancelFriendRemoval}
+          onClosed={function friendConfirmClosed() {
+            setFriendConfirmBusy(false);
+          }}
+        />
       </SafeArea>
     </Screen>
   );

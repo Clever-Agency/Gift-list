@@ -14,6 +14,11 @@ export type RelationshipActionsProps = {
   busy: boolean;
   onAction: (kind: RelationshipAction) => void;
   /**
+   * Story 4.4: the profile shows «Удалить из друзей» next to the «Друзья» chip.
+   * A search row passes nothing, so the action stays on `/u/:nick` alone.
+   */
+  onRemoveFriend?: () => void;
+  /**
    * The id namespace: `profile` keeps the profile ids, and a list row passes its
    * own prefix so two rows never share `data-testid`.
    */
@@ -30,6 +35,9 @@ export type RelationshipActionsProps = {
  * The block is a sibling of the profile link, never its child: a press on a
  * button must not open the profile. The labels are the profile catalogue keys,
  * so both places speak the same words.
+ *
+ * Story 4.4: `onRemoveFriend` adds «Удалить из друзей» next to the «Друзья»
+ * chip. Only the profile passes it; a search row keeps the chip alone.
  */
 export function RelationshipActions({
   relationship,
@@ -37,6 +45,7 @@ export function RelationshipActions({
   ownProfile,
   busy,
   onAction,
+  onRemoveFriend,
   testIDPrefix = "profile",
 }: RelationshipActionsProps) {
   const profile = useTranslations("app.profile");
@@ -51,6 +60,10 @@ export function RelationshipActions({
 
   function addFriend() {
     onAction("add");
+  }
+
+  function removeFriend() {
+    if (onRemoveFriend !== undefined) onRemoveFriend();
   }
 
   return (
@@ -80,10 +93,21 @@ export function RelationshipActions({
           </>
         )
       ) : relationship === "FRIENDS" ? (
-        <RelationshipChip
-          label={profile("relationship.chips.FRIENDS")}
-          testID={`${testIDPrefix}-relationship-chip`}
-        />
+        <>
+          <RelationshipChip
+            label={profile("relationship.chips.FRIENDS")}
+            testID={`${testIDPrefix}-relationship-chip`}
+          />
+          {onRemoveFriend === undefined ? null : (
+            <Button
+              label={profile("relationship.removeFriend")}
+              variant="ghost"
+              onPress={removeFriend}
+              busy={busy}
+              testID={`${testIDPrefix}-remove-friend`}
+            />
+          )}
+        </>
       ) : relationship === "OUTGOING_PENDING" ? (
         <RelationshipChip
           label={profile("relationship.chips.OUTGOING_PENDING")}

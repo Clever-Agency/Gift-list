@@ -1,4 +1,5 @@
 import type { ProfileInviteCooldown, ProfileRelationship } from "@gift-list/contracts";
+import { removeFriend } from "@/api/circle";
 import {
   acceptFriendInvite,
   rejectFriendInvite,
@@ -101,6 +102,39 @@ export async function requestRelationshipAction(
       inviteCooldown: valid ? { hours, rejected: false } : null,
     };
   }
+
+  return { status: "failed", message: mutationErrorMessage(result, copy.common) };
+}
+
+/**
+ * Story 4.4: the closed answer of one unfriend press on the profile. Both
+ * `REMOVED` and the idempotent `ALREADY_REMOVED` are successes, so the screen
+ * never reports a repeat removal as an error. The vocabulary matches the
+ * neighbouring relation mutations, and the profile screen owns the optimistic
+ * relation and the reread.
+ */
+export type FriendRemovalAnswer =
+  | { status: "removed" }
+  | { status: "expired" }
+  | { status: "missing" }
+  | { status: "failed"; message: string };
+
+export async function requestFriendRemoval(
+  nick: string,
+  copy: { relationship: Translate; common: Translate },
+): Promise<FriendRemovalAnswer> {
+  const result = await removeFriend(nick);
+
+  if (result.ok) return { status: "removed" };
+
+  if ("network" in result) {
+    return { status: "failed", message: copy.relationship("relationship.network") };
+  }
+  if ("invalid" in result) {
+    return { status: "failed", message: copy.common("errors.generic") };
+  }
+  if (result.code === "UNAUTHENTICATED") return { status: "expired" };
+  if (result.code === "NOT_FOUND") return { status: "missing" };
 
   return { status: "failed", message: mutationErrorMessage(result, copy.common) };
 }

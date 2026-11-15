@@ -33,6 +33,7 @@ import {
   fetchInvites,
   fetchSubscribers,
   fetchSubscriptions,
+  removeFriend,
   removeSubscriber,
 } from "@/api/circle";
 import { acceptFriendInvite, rejectFriendInvite, sendFriendInvite } from "@/api/friend-invite";
@@ -178,6 +179,9 @@ function FriendsContent({
   // The subscriber confirm (`EXPERIENCE.md` → правила confirm).
   const [subscriberConfirm, setSubscriberConfirm] = useState<CircleCard | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  // Story 4.4: «Удалить из друзей» has its own confirm, next to the subscriber one.
+  const [friendConfirm, setFriendConfirm] = useState<CircleCard | null>(null);
+  const [friendConfirmBusy, setFriendConfirmBusy] = useState(false);
 
   // Focus: the ⋯ of each row, so an action can put focus back; the page title is
   // the last resort of «Куда уходит фокус».
@@ -669,6 +673,44 @@ function FriendsContent({
     await reportFailure(result);
   }
 
+  /**
+   * Story 4.4: either side of the friendship removes it; the confirm has said so.
+   * Only the friends list loses the row — a subscription in either direction is
+   * not touched (`EXPERIENCE.md` → правила), and the other tabs keep their rows.
+   */
+  async function removeFriendRow(card: CircleCard) {
+    if (!startAction(card)) return;
+    const state = friendsList;
+    if (state.status !== "ready") {
+      finishAction(card);
+      return;
+    }
+    const snapshot = state;
+    setFriendsList({
+      ...state,
+      items: state.items.filter((item) => item.nick !== card.nick),
+      total: Math.max(0, state.total - 1),
+    });
+
+    const result = await removeFriend(card.nick).finally(function release() {
+      finishAction(card);
+    });
+
+    if (result.ok) {
+      // `REMOVED` and the idempotent `ALREADY_REMOVED` are both successes.
+      setFriendConfirm(null);
+      setToast({
+        message: friends("toast.friendRemoved", { name: card.displayName }),
+        tone: "info",
+      });
+      focusAfterRemoval(snapshot.items, card.nick);
+      return;
+    }
+    setFriendsList(snapshot);
+    setFriendConfirm(null);
+    await reportFailure(result);
+  }
+
   async function subscribeRow(card: CircleCard) {
     if (!startAction(card)) return;
     const state = subscribersList;
@@ -843,13 +885,32 @@ function FriendsContent({
     menuNodes.current.set(nick, node);
   }
 
+  /** The one item every circle row shares: open the person's profile. */
+  function openProfileItem(card: CircleCard): OverflowMenuItem {
+    return {
+      key: "profile",
+      label: friends("menu.openProfile"),
+      onPress: function openViaMenu() {
+        openProfile(card.nick);
+      },
+    };
+  }
+
+  /**
+   * The ⋯ of «Друзья» (`EXPERIENCE.md` → Отношение → статус и меню): «Открыть
+   * профиль», then the destructive «Удалить из друзей» with its confirm. Story
+   * 4.5 adds «Заблокировать» after it.
+   */
   function profileItems(card: CircleCard): OverflowMenuItem[] {
     return [
+      openProfileItem(card),
       {
-        key: "profile",
-        label: friends("menu.openProfile"),
-        onPress: function openViaMenu() {
-          openProfile(card.nick);
+        key: "remove-friend",
+        label: friends("menu.removeFriend"),
+        destructive: true,
+        onPress: function askRemoveFriend() {
+          setToast(null);
+          setFriendConfirm(card);
         },
       },
     ];
@@ -857,7 +918,7 @@ function FriendsContent({
 
   /** The ⋯ of «Я подписан»: the table minus «Удалить из друзей» and «Заблокировать». */
   function subscribedItems(card: CircleCard): OverflowMenuItem[] {
-    const items = profileItems(card);
+    const items = [openProfileItem(card)];
     if (card.relationship === "NONE") {
       items.push({
         key: "friend",
@@ -879,7 +940,7 @@ function FriendsContent({
 
   /** The ⋯ of «Мои подписчики»: the subscription back and the removal with confirm. */
   function subscriberItems(card: CircleCard): OverflowMenuItem[] {
-    const items = profileItems(card);
+    const items = [openProfileItem(card)];
     if (card.relationship === "NONE") {
       items.push({
         key: "friend",
@@ -1047,6 +1108,29 @@ function FriendsContent({
           }}
           onClosed={function confirmClosed() {
             setConfirmBusy(false);
+          }}
+        />
+        <ConfirmDialog
+          variant="confirm"
+          visible={friendConfirm !== null}
+          title={friends("removeFriend.title", { name: friendConfirm?.displayName ?? "" })}
+          body={friends("removeFriend.body")}
+          confirmLabel={friends("removeFriend.confirm")}
+          cancelLabel={friends("removeFriend.cancel")}
+          busy={friendConfirmBusy}
+          onConfirm={function confirmRemoveFriend() {
+            if (friendConfirm === null) return;
+            setFriendConfirmBusy(true);
+            void removeFriendRow(friendConfirm).finally(function release() {
+              setFriendConfirmBusy(false);
+            });
+          }}
+          onCancel={function cancelRemoveFriend() {
+            if (friendConfirmBusy) return;
+            setFriendConfirm(null);
+          }}
+          onClosed={function friendConfirmClosed() {
+            setFriendConfirmBusy(false);
           }}
         />
         {toast ? <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} /> : null}

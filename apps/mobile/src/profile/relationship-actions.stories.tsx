@@ -14,7 +14,9 @@ import { RelationshipActions } from "./relationship-actions";
  * `SELF` value the contract never carries: «Это вы» and no action at all.
  *
  * `testIDPrefix` only namespaces the `data-testid`s, so two search rows never
- * share ids; the default `profile` is what the stories below use.
+ * share ids; the default `profile` is what the stories below use. Story 4.4
+ * adds `onRemoveFriend`: the profile passes it next to the «Друзья» chip, the
+ * search row does not.
  */
 const meta = {
   title: "App/RelationshipActions",
@@ -50,6 +52,33 @@ export const IncomingPending: Story = {
 /** An accepted edge: the chip only, there is no friend action left to press. */
 export const Friends: Story = {
   args: { relationship: "FRIENDS" },
+};
+
+/**
+ * The profile of a friend (Story 4.4): the chip plus the ghost «Удалить из
+ * друзей», which opens the shared confirm. A search row passes no
+ * `onRemoveFriend`, so it keeps the chip alone.
+ */
+export const FriendOnProfile: Story = {
+  args: { relationship: "FRIENDS", onRemoveFriend: noop },
+};
+
+/** The unfriend press is in flight: the button is busy and takes no second press. */
+export const BusyRemoveFriend: Story = {
+  args: { relationship: "FRIENDS", onRemoveFriend: noop, busy: true },
+};
+
+/** The friend row at 360 px: the chip and «Удалить из друзей» wrap inside the gutter. */
+export const FriendOnProfileNarrow: Story = {
+  args: { relationship: "FRIENDS", onRemoveFriend: noop },
+  render: function FriendOnProfileNarrowStory(args) {
+    return (
+      <YStack width={328}>
+        <RelationshipActions {...args} />
+      </YStack>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
 };
 
 /** The viewer's own card: «Это вы» instead of any action. */

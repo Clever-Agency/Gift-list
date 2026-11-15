@@ -19,11 +19,33 @@ afterEach(() => {
 });
 
 describe("link-shape", () => {
-  it("builds an https reset url from the auth origin and ignores the api callback path", () => {
-    const href = passwordResetLink("http://127.0.0.1:3000", "tok");
-    expect(href).toBe("https://127.0.0.1:3000/reset?token=tok");
+  it("keeps http on loopback hosts and forces https on a real host", () => {
+    expect(passwordResetLink("http://localhost:3000", "tok")).toBe(
+      "http://localhost:3000/reset?token=tok",
+    );
+    expect(passwordResetLink("http://127.0.0.1:3000", "tok")).toBe(
+      "http://127.0.0.1:3000/reset?token=tok",
+    );
+    expect(passwordResetLink("http://[::1]:3000", "tok")).toBe("http://[::1]:3000/reset?token=tok");
+    expect(passwordResetLink("http://app.localhost:3000", "tok")).toBe(
+      "http://app.localhost:3000/reset?token=tok",
+    );
+    expect(passwordResetLink("https://localhost:3000", "tok")).toBe(
+      "https://localhost:3000/reset?token=tok",
+    );
+    const href = passwordResetLink("http://example.com/api/auth", "tok");
+    expect(href).toBe("https://example.com/reset?token=tok");
     expect(href.startsWith("https://")).toBe(true);
     expect(href).not.toContain("/api/auth");
+    expect(passwordResetLink("http://127.0.0.2:3000", "tok")).toBe(
+      "https://127.0.0.2:3000/reset?token=tok",
+    );
+    expect(passwordResetLink("http://localhost.example.com", "tok")).toBe(
+      "https://localhost.example.com/reset?token=tok",
+    );
+    expect(passwordResetLink("http://example.com:8443/api/auth", "tok")).toBe(
+      "https://example.com:8443/reset?token=tok",
+    );
   });
 
   it("escapes the url and the letter before they enter html", () => {
@@ -32,7 +54,7 @@ describe("link-shape", () => {
     );
     delete process.env.BRAND_NAME;
     const message = buildPasswordResetMessage("ru", "tok", "http://127.0.0.1:3000");
-    expect(message.href).toBe("https://127.0.0.1:3000/reset?token=tok");
+    expect(message.href).toBe("http://127.0.0.1:3000/reset?token=tok");
     expect(message.html).toContain(`href="${escapeHtml(message.href)}"`);
     expect(message.html).not.toContain("/api/auth");
     expect(message.text).toContain(message.href);
@@ -64,7 +86,7 @@ describe("sendPasswordResetEmail", () => {
     const payload = send.mock.calls[0]?.[0] as { from: string; subject: string; html: string };
     expect(payload.from).toBe("List <noreply@example.com>");
     expect(payload.subject).toBe("Сброс пароля — Paper");
-    expect(payload.html).toContain("https://127.0.0.1:3000/reset?token=tok");
+    expect(payload.html).toContain("http://127.0.0.1:3000/reset?token=tok");
     expect(payload.html).not.toContain("/api/auth");
   });
 

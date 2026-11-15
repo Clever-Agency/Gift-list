@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   acceptFriendInvite,
+  cancelFriendInvite,
   orderFriendPair,
   rejectFriendInvite,
   sendFriendInvite,
@@ -625,6 +626,189 @@ describe("rejectFriendInvite", () => {
     expect(result).toEqual({ ok: false, code: "NOT_FOUND" });
     expect(memory.transactions).toBe(0);
     expect(memory.writes).toEqual([]);
+  });
+});
+
+describe("cancelFriendInvite", () => {
+  let memory: Memory;
+  let store: FriendshipStore;
+
+  beforeEach(() => {
+    useNow(NOW);
+    ({ memory, store } = createStore());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("deletes exactly the sender's pending invite and writes one 24-hour cooldown", async () => {
+    ({ memory, store } = createStore({
+      invites: [
+        { fromUserId: ALPHA, toUserId: ZEBRA },
+        { fromUserId: ZEBRA, toUserId: ALPHA },
+      ],
+    }));
+
+    const result = await cancelFriendInvite({ toUserId: ZEBRA, viewerId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "CANCELLED" });
+    expect(memory.transactions).toBe(1);
+    expect(memory.locks).toEqual([{ userLowId: ALPHA, userHighId: ZEBRA }]);
+    expect(memory.trace[0]).toBe("lock");
+    expect(memory.invites).toEqual([{ fromUserId: ZEBRA, toUserId: ALPHA }]);
+    expect(memory.friendships).toEqual([]);
+    expect(memory.cooldowns).toEqual([
+      {
+        userLowId: ALPHA,
+        userHighId: ZEBRA,
+        rejectedFromUserId: ALPHA,
+        until: new Date(NOW.getTime() + DAY_MS),
+      },
+    ]);
+    expect(memory.writes).toEqual(["delete-invite", "cooldown"]);
+  });
+
+  it("stores the canonical pair and the cancelling sender whatever the direction", async () => {
+    ({ memory, store } = createStore({
+      invites: [{ fromUserId: ZEBRA, toUserId: ALPHA }],
+    }));
+
+    const result = await cancelFriendInvite({ toUserId: ALPHA, viewerId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "CANCELLED" });
+    expect(memory.invites).toEqual([]);
+    expect(memory.friendships).toEqual([]);
+    expect(memory.cooldowns).toEqual([
+      {
+        userLowId: ALPHA,
+        userHighId: ZEBRA,
+        rejectedFromUserId: ZEBRA,
+        until: new Date(NOW.getTime() + DAY_MS),
+      },
+    ]);
+  });
+
+  it("is sender-only: the recipient cannot cancel through the reverse direction", async () => {
+    ({ memory, store } = createStore({
+      invites: [{ fromUserId: ALPHA, toUserId: ZEBRA }],
+    }));
+
+    const cancelled = await cancelFriendInvite({ toUserId: ALPHA, viewerId: ZEBRA }, store);
+    expect(cancelled).toEqual({ ok: false, code: "NOT_FOUND" });
+    expect(memory.invites).toEqual([{ fromUserId: ALPHA, toUserId: ZEBRA }]);
+    expect(memory.cooldowns).toEqual([]);
+    expect(memory.writes).toEqual([]);
+
+    const rejected = await rejectFriendInvite({ fromUserId: ALPHA, viewerId: ZEBRA }, store);
+    expect(rejected).toEqual({ ok: true, outcome: "REJECTED" });
+    expect(memory.invites).toEqual([]);
+    expect(memory.cooldowns).toHaveLength(1);
+  });
+
+  it("returns the closed NOT_FOUND without a cooldown when no own pending exists", async () => {
+    const result = await cancelFriendInvite({ toUserId: ZEBRA, viewerId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: false, code: "NOT_FOUND" });
+    expect(memory.cooldowns).toEqual([]);
+    expect(memory.writes).toEqual([]);
+  });
+
+  it("answers NOT_FOUND for a self pair without touching the store", async () => {
+    const result = await cancelFriendInvite({ toUserId: ALPHA, viewerId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: false, code: "NOT_FOUND" });
+    expect(memory.transactions).toBe(0);
+    expect(memory.writes).toEqual([]);
+  });
+
+  it("refuses when the pair is blocked and keeps the invite without a cooldown row", async () => {
+    ({ memory, store } = createStore({
+      invites: [{ fromUserId: ALPHA, toUserId: ZEBRA }],
+      blocks: [{ blockerId: ZEBRA, blockedId: ALPHA }],
+    }));
+
+    const result = await cancelFriendInvite({ toUserId: ZEBRA, viewerId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(memory.invites).toEqual([{ fromUserId: ALPHA, toUserId: ZEBRA }]);
+    expect(memory.cooldowns).toEqual([]);
+    expect(memory.writes).toEqual([]);
+  });
+
+  it("is a no-op when the friendship already exists, without a second edge or a cooldown", async () => {
+    ({ memory, store } = createStore({
+      friendships: [{ userLowId: ALPHA, userHighId: ZEBRA }],
+      invites: [{ fromUserId: ALPHA, toUserId: ZEBRA }],
+    }));
+
+    const result = await cancelFriendInvite({ toUserId: ZEBRA, viewerId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "ALREADY_FRIENDS" });
+    expect(memory.friendships).toHaveLength(1);
+    expect(memory.invites).toEqual([{ fromUserId: ALPHA, toUserId: ZEBRA }]);
+    expect(memory.cooldowns).toEqual([]);
+    expect(memory.writes).toEqual([]);
+  });
+
+  it("stays NOT_FOUND for a friendship without any pending invite", async () => {
+    ({ memory, store } = createStore({
+      friendships: [{ userLowId: ALPHA, userHighId: ZEBRA }],
+    }));
+
+    const result = await cancelFriendInvite({ toUserId: ZEBRA, viewerId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: false, code: "NOT_FOUND" });
+    expect(memory.friendships).toHaveLength(1);
+    expect(memory.cooldowns).toEqual([]);
+    expect(memory.writes).toEqual([]);
+  });
+
+  it("refuses a repeat invite for 24 hours after a cancel and allows it once until has passed", async () => {
+    ({ memory, store } = createStore({
+      invites: [{ fromUserId: ALPHA, toUserId: ZEBRA }],
+    }));
+
+    await cancelFriendInvite({ toUserId: ZEBRA, viewerId: ALPHA }, store);
+
+    vi.setSystemTime(new Date(NOW.getTime() + 60 * 60 * 1000));
+    const early = await sendFriendInvite({ fromUserId: ALPHA, toUserId: ZEBRA }, store);
+    expect(early).toEqual({
+      ok: false,
+      code: "RATE_LIMITED",
+      reason: "INVITE_COOLDOWN",
+      hours: 23,
+    });
+    expect(memory.invites).toEqual([]);
+    expect(memory.cooldowns).toHaveLength(1);
+
+    vi.setSystemTime(new Date(NOW.getTime() + DAY_MS));
+    const late = await sendFriendInvite({ fromUserId: ALPHA, toUserId: ZEBRA }, store);
+    expect(late).toEqual({ ok: true, outcome: "INVITED" });
+    expect(memory.cooldowns).toEqual([]);
+    expect(memory.invites).toEqual([{ fromUserId: ALPHA, toUserId: ZEBRA }]);
+  });
+
+  it("serializes a concurrent cancel against a repeat send on the same pair lock", async () => {
+    const serialized = createSerializedStore({
+      invites: [{ fromUserId: ALPHA, toUserId: ZEBRA }],
+    });
+
+    const results = await Promise.all([
+      cancelFriendInvite({ toUserId: ZEBRA, viewerId: ALPHA }, serialized.store),
+      sendFriendInvite({ fromUserId: ALPHA, toUserId: ZEBRA }, serialized.store),
+    ]);
+
+    expect(results).toEqual([
+      { ok: true, outcome: "CANCELLED" },
+      { ok: false, code: "RATE_LIMITED", reason: "INVITE_COOLDOWN", hours: 24 },
+    ]);
+    expect(serialized.memory.locks).toEqual([
+      { userLowId: ALPHA, userHighId: ZEBRA },
+      { userLowId: ALPHA, userHighId: ZEBRA },
+    ]);
+    expect(serialized.memory.invites).toEqual([]);
+    expect(serialized.memory.cooldowns).toHaveLength(1);
   });
 });
 

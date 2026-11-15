@@ -2,10 +2,12 @@ import {
   circleInvitesDataSchema,
   circlePageSchema,
   friendCancelDataSchema,
+  friendRemoveDataSchema,
   subscriptionRemovalDataSchema,
   type CircleInvitesData,
   type CirclePage,
   type FriendCancelOutcome,
+  type FriendRemoveOutcome,
   type SubscriptionRemovalOutcome,
 } from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
@@ -31,6 +33,9 @@ type OutcomeResult<T extends string> =
 
 /** Story 4.3: the sender withdrew their own pending invite. */
 export type FriendCancelResult = OutcomeResult<FriendCancelOutcome>;
+
+/** Story 4.4: either side removed the accepted friendship, a repeat is a no-op. */
+export type FriendRemoveResult = OutcomeResult<FriendRemoveOutcome>;
 
 /** Story 4.3: the profile owner removed one subscriber, a repeat is a no-op. */
 export type RemoveSubscriberResult = OutcomeResult<SubscriptionRemovalOutcome>;
@@ -129,6 +134,30 @@ export async function cancelFriendInvite(nick: string): Promise<FriendCancelResu
   if (!result.ok) return result;
 
   const parsed = friendCancelDataSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, outcome: parsed.data.outcome };
+}
+
+/**
+ * Story 4.4 (FR-23, AD-10 step 4): either side of an accepted friendship removes
+ * it. One DELETE to the `friend` segment of exactly one nick; the body is not
+ * sent, because the target is the nick in the path. A malformed segment is
+ * rejected before a request, like the profile read and the server route. The
+ * friendship is undirected, so the caller passes the former friend's nick
+ * whichever side they are; both closed outcomes are successful answers.
+ */
+export async function removeFriend(nick: string): Promise<FriendRemoveResult> {
+  const route = profileRoute(nick);
+  if (route === null) return { ok: false, invalid: true };
+
+  const result = await apiRequest<unknown>(
+    `/api/v1/u/${encodeURIComponent(route.nick)}/friend`,
+    { method: "DELETE" },
+  );
+  if (!result.ok) return result;
+
+  const parsed = friendRemoveDataSchema.safeParse(result.data);
   if (!parsed.success) return { ok: false, invalid: true };
 
   return { ok: true, outcome: parsed.data.outcome };

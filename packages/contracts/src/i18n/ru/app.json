@@ -155,7 +155,8 @@
       "actions": "Действия: {name}",
       "openProfile": "Открыть профиль",
       "cancelInvite": "Отменить приглашение",
-      "removeSubscriber": "Убрать подписчика"
+      "removeSubscriber": "Убрать подписчика",
+      "removeFriend": "Удалить из друзей"
     },
     "cooldown": "Можно снова через {hours} ч",
     "removeSubscriber": {
@@ -164,9 +165,16 @@
       "confirm": "Убрать",
       "cancel": "Отмена"
     },
+    "removeFriend": {
+      "title": "Удалить {name} из друзей?",
+      "body": "Желания «друзьям» перестанут быть видны друг другу. Брони останутся.",
+      "confirm": "Удалить",
+      "cancel": "Отмена"
+    },
     "toast": {
       "inviteCancelled": "Приглашение отменено",
-      "subscriberRemoved": "{name} больше не подписан"
+      "subscriberRemoved": "{name} больше не подписан",
+      "friendRemoved": "{name} удалён из друзей"
     }
   },
   "newGift": {
@@ -236,6 +244,7 @@
       "addFriend": "Добавить в друзья",
       "acceptInvite": "Принять приглашение",
       "rejectInvite": "Отклонить",
+      "removeFriend": "Удалить из друзей",
       "cooldown": "Можно снова через {hours} ч",
       "chips": {
         "OUTGOING_PENDING": "Ожидает ответа",

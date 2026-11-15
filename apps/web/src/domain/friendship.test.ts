@@ -4,6 +4,7 @@ import {
   cancelFriendInvite,
   orderFriendPair,
   rejectFriendInvite,
+  removeFriend,
   sendFriendInvite,
   type FriendshipPair,
   type FriendshipStore,
@@ -83,6 +84,12 @@ function createStore(seed: Partial<Memory> = {}) {
         async createFriendship(pair) {
           memory.friendships.push(pair);
           memory.writes.push("friendship");
+        },
+        async deleteFriendship(pair) {
+          memory.friendships = memory.friendships.filter(
+            (edge) => !(edge.userLowId === pair.userLowId && edge.userHighId === pair.userHighId),
+          );
+          memory.writes.push("delete-friendship");
         },
         async deleteInvitesBetween(firstUserId, secondUserId) {
           memory.invites = memory.invites.filter(
@@ -809,6 +816,162 @@ describe("cancelFriendInvite", () => {
     ]);
     expect(serialized.memory.invites).toEqual([]);
     expect(serialized.memory.cooldowns).toHaveLength(1);
+  });
+});
+
+describe("removeFriend", () => {
+  let memory: Memory;
+  let store: FriendshipStore;
+
+  beforeEach(() => {
+    ({ memory, store } = createStore());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A live edge plus the anomaly the protocol never produces: invites of both sides. */
+  function seedFriends(): void {
+    ({ memory, store } = createStore({
+      friendships: [{ userLowId: ALPHA, userHighId: ZEBRA }],
+      invites: [
+        { fromUserId: ALPHA, toUserId: ZEBRA },
+        { fromUserId: ZEBRA, toUserId: ALPHA },
+      ],
+    }));
+  }
+
+  it("deletes the edge and every invite of the pair in one transaction", async () => {
+    seedFriends();
+
+    const result = await removeFriend({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "REMOVED" });
+    expect(memory.transactions).toBe(1);
+    expect(memory.locks).toEqual([{ userLowId: ALPHA, userHighId: ZEBRA }]);
+    expect(memory.trace[0]).toBe("lock");
+    expect(memory.friendships).toEqual([]);
+    expect(memory.invites).toEqual([]);
+    expect(memory.cooldowns).toEqual([]);
+    expect(memory.writes).toEqual(["delete-friendship", "delete-invites"]);
+  });
+
+  it("lets the other side of the edge remove it too", async () => {
+    seedFriends();
+
+    const result = await removeFriend({ viewerId: ZEBRA, otherUserId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "REMOVED" });
+    expect(memory.locks).toEqual([{ userLowId: ALPHA, userHighId: ZEBRA }]);
+    expect(memory.friendships).toEqual([]);
+    expect(memory.invites).toEqual([]);
+  });
+
+  it("still deletes dangling pair invites when the edge is already gone", async () => {
+    ({ memory, store } = createStore({
+      invites: [
+        { fromUserId: ALPHA, toUserId: ZEBRA },
+        { fromUserId: ZEBRA, toUserId: ALPHA },
+      ],
+    }));
+
+    const result = await removeFriend({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "ALREADY_REMOVED" });
+    expect(memory.invites).toEqual([]);
+    expect(memory.friendships).toEqual([]);
+    expect(memory.writes).toEqual(["delete-invites"]);
+  });
+
+  it("is an idempotent ALREADY_REMOVED when nothing of the pair is left", async () => {
+    const result = await removeFriend({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+    const repeat = await removeFriend({ viewerId: ZEBRA, otherUserId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "ALREADY_REMOVED" });
+    expect(repeat).toEqual({ ok: true, outcome: "ALREADY_REMOVED" });
+    expect(memory.transactions).toBe(2);
+    expect(memory.writes).toEqual(["delete-invites", "delete-invites"]);
+    expect(memory.cooldowns).toEqual([]);
+  });
+
+  it("refuses a self removal before touching the store", async () => {
+    const result = await removeFriend({ viewerId: ALPHA, otherUserId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(memory.transactions).toBe(0);
+    expect(memory.locks).toEqual([]);
+    expect(memory.writes).toEqual([]);
+  });
+
+  it("refuses when the pair is blocked and keeps the edge and the invites", async () => {
+    ({ memory, store } = createStore({
+      friendships: [{ userLowId: ALPHA, userHighId: ZEBRA }],
+      invites: [{ fromUserId: ALPHA, toUserId: ZEBRA }],
+      blocks: [{ blockerId: ZEBRA, blockedId: ALPHA }],
+    }));
+
+    const result = await removeFriend({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(memory.friendships).toHaveLength(1);
+    expect(memory.invites).toEqual([{ fromUserId: ALPHA, toUserId: ZEBRA }]);
+    expect(memory.writes).toEqual([]);
+  });
+
+  it("never writes a cooldown and leaves an existing pair cooldown untouched", async () => {
+    seedFriends();
+    memory.cooldowns.push({
+      ...pairOf(),
+      rejectedFromUserId: ALPHA,
+      until: new Date(NOW.getTime() + DAY_MS),
+    });
+
+    const result = await removeFriend({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "REMOVED" });
+    expect(memory.cooldowns).toEqual([
+      {
+        ...pairOf(),
+        rejectedFromUserId: ALPHA,
+        until: new Date(NOW.getTime() + DAY_MS),
+      },
+    ]);
+    expect(memory.trace).not.toContain("cooldown-read");
+    expect(memory.writes).toEqual(["delete-friendship", "delete-invites"]);
+  });
+
+  it("leaves the pair free to invite again at once, and only an accepted invite restores the edge", async () => {
+    seedFriends();
+
+    await removeFriend({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    const invited = await sendFriendInvite({ fromUserId: ALPHA, toUserId: ZEBRA }, store);
+    expect(invited).toEqual({ ok: true, outcome: "INVITED" });
+    expect(memory.cooldowns).toEqual([]);
+    expect(memory.friendships).toEqual([]);
+
+    const accepted = await acceptFriendInvite({ fromUserId: ALPHA, viewerId: ZEBRA }, store);
+    expect(accepted).toEqual({ ok: true, outcome: "FRIENDS_CREATED" });
+    expect(memory.friendships).toEqual([{ userLowId: ALPHA, userHighId: ZEBRA }]);
+  });
+
+  it("serializes simultaneous removals from both sides on the same pair lock", async () => {
+    const serialized = createSerializedStore({
+      friendships: [{ userLowId: ALPHA, userHighId: ZEBRA }],
+    });
+
+    const results = await Promise.all([
+      removeFriend({ viewerId: ALPHA, otherUserId: ZEBRA }, serialized.store),
+      removeFriend({ viewerId: ZEBRA, otherUserId: ALPHA }, serialized.store),
+    ]);
+
+    expect(results).toEqual([
+      { ok: true, outcome: "REMOVED" },
+      { ok: true, outcome: "ALREADY_REMOVED" },
+    ]);
+    expect(serialized.memory.locks).toEqual([pairOf(), pairOf()]);
+    expect(serialized.memory.friendships).toEqual([]);
   });
 });
 

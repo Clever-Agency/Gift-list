@@ -7,7 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
-import { controls, settle } from "@/test/dom";
+import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
@@ -28,6 +28,16 @@ const dimensions = vi.hoisted(() => ({ width: null as number | null }));
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/platform/session-token", () => store);
+// The confirm dialog draws its close cross with `expo-symbols`, which loads a
+// symbol font at runtime; the icon is decorative here.
+vi.mock("expo-symbols", async () => {
+  const React = await import("react");
+  return {
+    SymbolView: function SymbolView() {
+      return React.createElement("span", { "aria-hidden": true });
+    },
+  };
+});
 vi.mock("react-native", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-native")>();
   // Only a test that sets `dimensions.width` changes what the hook returns; every
@@ -179,9 +189,18 @@ function profileReads(): number {
     return (
       value.startsWith("/api/v1/u/") &&
       !value.includes("/invite") &&
-      !value.endsWith("/subscription")
+      !value.endsWith("/subscription") &&
+      !value.endsWith("/friend")
     );
   }).length;
+}
+
+function friendRemoveCalls(): number {
+  return api.apiRequest.mock.calls.filter(
+    ([path, init]) =>
+      String(path).endsWith("/friend") &&
+      (init as { method?: string } | undefined)?.method === "DELETE",
+  ).length;
 }
 
 function subscriptionCalls(method: "POST" | "DELETE"): number {
@@ -224,6 +243,27 @@ async function press(label: string) {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await settle(10);
+}
+
+/** A press on a control of the open layer, matched by its exact visible text. */
+async function pressInDialog(label: string) {
+  const dialog = dialogElement();
+  expect(dialog, "открытый диалог").not.toBeNull();
+  const target = controls(dialog ?? undefined).find(
+    (node) => (node.textContent ?? "").trim() === label,
+  );
+  expect(target, `кнопка «${label}» в диалоге`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
+/** «Удалить из друзей» on the profile, then the confirm it opens. */
+async function openRemoveConfirm() {
+  await press("Удалить из друзей");
+  await settle(60);
+  expect(dialogElement()?.textContent).toContain("Удалить Борис из друзей?");
 }
 
 async function mount() {
@@ -813,6 +853,7 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(button("Принять приглашение")).toBeUndefined();
     expect(button("Подписаться")).toBeUndefined();
     expect(button("Отписаться")).toBeUndefined();
+    expect(button("Удалить из друзей")).toBeUndefined();
     expectNoForeignActions();
   });
 
@@ -948,6 +989,193 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     await mount();
 
     await press("Добавить в друзья");
+
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/u/boris", reason: "session_expired" },
+    });
+  });
+});
+
+/**
+ * Story 4.4: a friend's profile offers «Удалить из друзей» next to the «Друзья»
+ * chip, with the same confirm as the friends list. The optimistic former friend
+ * loses the `FRIENDS` wishes at once; the server then owns the reread.
+ */
+describe("профиль: удаление из друзей (Story 4.4)", () => {
+  function friendAnswer(cards: unknown[], relationship: string) {
+    return giftsAnswer(cards, owner, relationship);
+  }
+
+  it("у друга есть «Удалить из друзей», «Заблокировать» ещё нет; «Отмена» не удаляет", async () => {
+    respond(friendAnswer([], "FRIENDS"));
+    await mount();
+
+    expect(text()).toContain("Друзья");
+    expect(button("Удалить из друзей")).toBeDefined();
+    expect(button("Заблокировать")).toBeUndefined();
+    expect(button("Подписаться")).toBeUndefined();
+
+    await openRemoveConfirm();
+    expect(dialogElement()?.textContent).toContain(
+      "Желания «друзьям» перестанут быть видны друг другу. Брони останутся.",
+    );
+    expect(friendRemoveCalls()).toBe(0);
+
+    await pressInDialog("Отмена");
+
+    expect(friendRemoveCalls()).toBe(0);
+    expect(text()).toContain("Друзья");
+    expect(button("Удалить из друзей")).toBeDefined();
+    expect(text()).not.toContain("удалён из друзей");
+  });
+
+  it("confirm удаляет: FRIENDS-желания скрыты сразу, toast, профиль остаётся открытым", async () => {
+    let removed = false;
+    let resolveRemove: (value: unknown) => void = () => {};
+    const removal = new Promise((resolve) => {
+      resolveRemove = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/friend") {
+        removed = true;
+        return removal;
+      }
+      return Promise.resolve(
+        friendAnswer(
+          removed
+            ? [gift()]
+            : [gift(), gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" })],
+          removed ? "NONE" : "FRIENDS",
+        ),
+      );
+    });
+    await mount();
+
+    expect(text()).toContain("Друзья");
+    expect(text()).toContain("Свитер");
+
+    await openRemoveConfirm();
+    await pressInDialog("Удалить");
+
+    expect(friendRemoveCalls()).toBe(1);
+    expect(text()).toContain("Наушники");
+    expect(text()).not.toContain("Свитер");
+    expect(text()).not.toContain("Друзья");
+    expect(button("Добавить в друзья")).toBeDefined();
+    expect(button("Удалить из друзей")).toBeUndefined();
+
+    await act(async () => resolveRemove({ ok: true, data: { outcome: "REMOVED" } }));
+    await settle(10);
+
+    expect(text()).toContain("Борис удалён из друзей");
+    expect(text()).toContain("Борис");
+    expect(text()).not.toContain("Пользователь не найден");
+    expect(text()).toContain("Наушники");
+    expect(text()).not.toContain("Свитер");
+    expect(text()).not.toContain("Друзья");
+    expect(button("Добавить в друзья")).toBeDefined();
+    expect(button("Удалить из друзей")).toBeUndefined();
+    expect(button("Подписаться")).toBeDefined();
+    expect(button("Заблокировать")).toBeUndefined();
+    // The profile is reread so the list and the relation come from the server.
+    expect(profileReads()).toBe(2);
+  });
+
+  it("ALREADY_REMOVED — тоже успех: тот же toast без ошибки", async () => {
+    let removed = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/friend") {
+        removed = true;
+        return Promise.resolve({ ok: true, data: { outcome: "ALREADY_REMOVED" } });
+      }
+      return Promise.resolve(friendAnswer([], removed ? "NONE" : "FRIENDS"));
+    });
+    await mount();
+
+    await openRemoveConfirm();
+    await pressInDialog("Удалить");
+    await settle(10);
+
+    expect(text()).toContain("Борис удалён из друзей");
+    expect(text()).not.toContain("Не получилось");
+    expect(text()).not.toContain("Нет доступа");
+  });
+
+  it("сеть: chip и желания откатываются, профиль не перечитывается, toast «Нет сети»", async () => {
+    let resolveRemove: (value: unknown) => void = () => {};
+    const removal = new Promise((resolve) => {
+      resolveRemove = resolve;
+    });
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/friend") return removal;
+      return Promise.resolve(
+        friendAnswer(
+          [gift(), gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" })],
+          "FRIENDS",
+        ),
+      );
+    });
+    await mount();
+
+    await openRemoveConfirm();
+    await pressInDialog("Удалить");
+
+    expect(text()).not.toContain("Свитер");
+
+    await act(async () => resolveRemove({ ok: false, network: true }));
+    await settle(10);
+
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).toContain("Друзья");
+    expect(text()).toContain("Свитер");
+    expect(button("Удалить из друзей")).toBeDefined();
+    expect(button("Добавить в друзья")).toBeUndefined();
+    expect(profileReads()).toBe(1);
+  });
+
+  it("FORBIDDEN: toast «Нет доступа», чип и желания откатываются", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/friend") {
+        return Promise.resolve({ ok: false, code: "FORBIDDEN", message: "Forbidden" });
+      }
+      return Promise.resolve(
+        friendAnswer([gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" })], "FRIENDS"),
+      );
+    });
+    await mount();
+
+    await openRemoveConfirm();
+    await pressInDialog("Удалить");
+    await settle(10);
+
+    expect(text()).toContain("Нет доступа.");
+    expect(text()).toContain("Свитер");
+    expect(text()).toContain("Друзья");
+    expect(text()).not.toContain("удалён из друзей");
+    expect(button("Удалить из друзей")).toBeDefined();
+  });
+
+  it("401 при удалении уводит на вход с прежним безопасным next", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/friend") {
+        return Promise.resolve({ ok: false, code: "UNAUTHENTICATED", message: "" });
+      }
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      return Promise.resolve(friendAnswer([], "FRIENDS"));
+    });
+    await mount();
+
+    await openRemoveConfirm();
+    await pressInDialog("Удалить");
+    await settle(10);
 
     expect(navigation.replace).toHaveBeenCalledWith({
       pathname: "/login",

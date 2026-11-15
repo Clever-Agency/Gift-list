@@ -14,6 +14,7 @@ const circle = vi.hoisted(() => ({
   fetchSubscribers: vi.fn(),
   fetchSubscriptions: vi.fn(),
   cancelFriendInvite: vi.fn(),
+  removeFriend: vi.fn(),
   removeSubscriber: vi.fn(),
 }));
 const invites = vi.hoisted(() => ({
@@ -276,6 +277,7 @@ beforeEach(() => {
   subscription.subscribeToNick.mockResolvedValue({ ok: true, outcome: "SUBSCRIBED" });
   subscription.unsubscribeFromNick.mockResolvedValue({ ok: true, outcome: "UNSUBSCRIBED" });
   circle.cancelFriendInvite.mockResolvedValue({ ok: true, outcome: "CANCELLED" });
+  circle.removeFriend.mockResolvedValue({ ok: true, outcome: "REMOVED" });
   circle.removeSubscriber.mockResolvedValue({ ok: true, outcome: "UNSUBSCRIBED" });
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -577,15 +579,17 @@ describe("друзья: запросы", () => {
 });
 
 describe("друзья: меню ⋯", () => {
-  it("в списке друзей нет пунктов Story 4.4 и 4.5", async () => {
+  it("в списке друзей есть destructive «Удалить из друзей», а Story 4.5 ещё нет", async () => {
     signedIn();
     await mount();
 
     await openMenu("Фёдор");
 
-    expect(document.body.textContent).toContain("Открыть профиль");
-    expect(document.body.textContent).not.toContain("Удалить из друзей");
-    expect(document.body.textContent).not.toContain("Заблокировать");
+    const menu = document.body.textContent ?? "";
+    expect(menu).toContain("Открыть профиль");
+    expect(menu).toContain("Удалить из друзей");
+    expect(menu.indexOf("Открыть профиль")).toBeLessThan(menu.indexOf("Удалить из друзей"));
+    expect(menu).not.toContain("Заблокировать");
   });
 
   it("в подписчиках тоже нет «Удалить из друзей» и «Заблокировать»", async () => {
@@ -631,5 +635,136 @@ describe("друзья: меню ⋯", () => {
 
     expect(testId("friends-row-alena")).not.toBeNull();
     expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+  });
+});
+
+describe("друзья: удаление из друзей (Story 4.4)", () => {
+  /**
+   * The item of the row whose menu was opened. Tamagui keeps a closed sheet in
+   * the happy-dom tree, so with several rows the same label exists more than
+   * once; the list order makes the first match the opened row.
+   */
+  function openedMenuItem(label: string): HTMLElement {
+    const nodes = Array.from(
+      document.querySelectorAll<HTMLElement>('button, [role="button"], [role="link"]'),
+    ).filter((node) => (node.textContent ?? "").trim() === label);
+    expect(nodes.length, `пункт «${label}»`).toBeGreaterThan(0);
+    return nodes[0];
+  }
+
+  /** The ⋯ menu of the friends tab, then the destructive item and its confirm. */
+  async function askRemoveFriend(name: string) {
+    await openMenu(name);
+    await press(openedMenuItem("Удалить из друзей"));
+    await settle(300);
+  }
+
+  it("confirm называет имя и последствия, «Отмена» не шлёт запрос и оставляет строку", async () => {
+    signedIn();
+    await mount();
+
+    await askRemoveFriend("Фёдор");
+
+    const dialog = document.querySelector('[role="alertdialog"]');
+    expect(dialog?.textContent).toContain("Удалить Фёдор из друзей?");
+    expect(dialog?.textContent).toContain(
+      "Желания «друзьям» перестанут быть видны друг другу. Брони останутся.",
+    );
+    expect(circle.removeFriend).not.toHaveBeenCalled();
+
+    await press(controlByText("Отмена"));
+    await settle(0);
+
+    expect(circle.removeFriend).not.toHaveBeenCalled();
+    expect(testId("friends-row-fedor")).not.toBeNull();
+  });
+
+  it("confirm удаляет друга, убирает строку, обновляет total и говорит toast", async () => {
+    signedIn();
+    circle.fetchFriends.mockResolvedValue(page([fedor, alena]));
+    await mount();
+    expect(testId("friends-counter")?.textContent).toBe("2 из 2");
+
+    await askRemoveFriend("Фёдор");
+    await press(controlByText("Удалить"));
+    await settle(0);
+
+    expect(circle.removeFriend).toHaveBeenCalledWith("fedor");
+    expect(testId("friends-row-fedor")).toBeNull();
+    expect(testId("friends-row-alena")).not.toBeNull();
+    expect(testId("friends-counter")?.textContent).toBe("1 из 1");
+    expect(testId("friends-all-shown")?.textContent).toBe("Показаны все (1)");
+    expect(text()).toContain("Фёдор удалён из друзей");
+  });
+
+  it.each(["REMOVED", "ALREADY_REMOVED"])(
+    "исход %s — успех: toast без ошибки",
+    async (outcome) => {
+      circle.removeFriend.mockResolvedValue({ ok: true, outcome });
+      signedIn();
+      await mount();
+
+      await askRemoveFriend("Фёдор");
+      await press(controlByText("Удалить"));
+      await settle(0);
+
+      expect(testId("friends-row-fedor")).toBeNull();
+      expect(text()).toContain("Фёдор удалён из друзей");
+      expect(text()).not.toContain("Не получилось");
+      expect(text()).not.toContain("Нет доступа");
+    },
+  );
+
+  it("ошибка сети возвращает строку и оставляет toast «Нет сети»", async () => {
+    circle.removeFriend.mockResolvedValue({ ok: false, network: true });
+    signedIn();
+    await mount();
+
+    await askRemoveFriend("Фёдор");
+    await press(controlByText("Удалить"));
+    await settle(0);
+
+    expect(testId("friends-row-fedor")).not.toBeNull();
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).not.toContain("удалён из друзей");
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it("пока запрос идёт, повторное подтверждение не шлёт второй запрос", async () => {
+    let resolveRemove: (value: unknown) => void = () => {};
+    const removal = new Promise((resolve) => {
+      resolveRemove = resolve;
+    });
+    circle.removeFriend.mockReturnValue(removal);
+    signedIn();
+    await mount();
+
+    await askRemoveFriend("Фёдор");
+    await press(controlByText("Удалить"));
+    await settle(0);
+
+    await press(controlByText("Удалить"));
+    await settle(0);
+
+    expect(circle.removeFriend).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveRemove({ ok: true, outcome: "REMOVED" }));
+    await settle(0);
+  });
+
+  it("подписки человека не меняются: строка остаётся во вкладках подписок", async () => {
+    signedIn();
+    circle.fetchSubscriptions.mockResolvedValue(page([fedor]));
+    await mount();
+
+    await askRemoveFriend("Фёдор");
+    await press(controlByText("Удалить"));
+    await settle(0);
+
+    await openTab("Подписки");
+    await settle(0);
+
+    expect(testId("friends-row-fedor")).not.toBeNull();
+    expect(subscription.unsubscribeFromNick).not.toHaveBeenCalled();
   });
 });

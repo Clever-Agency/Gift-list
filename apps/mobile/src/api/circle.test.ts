@@ -5,6 +5,7 @@ import {
   fetchInvites,
   fetchSubscribers,
   fetchSubscriptions,
+  removeFriend,
   removeSubscriber,
 } from "@/api/circle";
 
@@ -158,6 +159,49 @@ describe("cancelFriendInvite", () => {
     api.apiRequest.mockResolvedValue(answer({ outcome: "REJECTED" }));
 
     await expect(cancelFriendInvite("anya")).resolves.toEqual({ ok: false, invalid: true });
+  });
+});
+
+describe("removeFriend", () => {
+  it("DELETEs the friend segment of the normalized nick without a body", async () => {
+    api.apiRequest.mockResolvedValue(answer({ outcome: "REMOVED" }));
+
+    await expect(removeFriend(" AnyA ")).resolves.toEqual({ ok: true, outcome: "REMOVED" });
+    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/u/anya/friend", {
+      method: "DELETE",
+    });
+  });
+
+  it("keeps the closed outcome set, including the successful repeat", async () => {
+    api.apiRequest.mockResolvedValue(answer({ outcome: "ALREADY_REMOVED" }));
+
+    await expect(removeFriend("anya")).resolves.toEqual({
+      ok: true,
+      outcome: "ALREADY_REMOVED",
+    });
+  });
+
+  it("does not request a malformed segment", async () => {
+    await expect(removeFriend("a/b")).resolves.toEqual({ ok: false, invalid: true });
+    expect(api.apiRequest).not.toHaveBeenCalled();
+  });
+
+  it("passes a transport error and an API refusal through untouched", async () => {
+    api.apiRequest.mockResolvedValueOnce({ ok: false, network: true });
+    await expect(removeFriend("anya")).resolves.toEqual({ ok: false, network: true });
+
+    api.apiRequest.mockResolvedValueOnce({ ok: false, code: "FORBIDDEN", message: "" });
+    await expect(removeFriend("anya")).resolves.toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+      message: "",
+    });
+  });
+
+  it("rejects an answer outside the remove contract", async () => {
+    api.apiRequest.mockResolvedValue(answer({ outcome: "CANCELLED" }));
+
+    await expect(removeFriend("anya")).resolves.toEqual({ ok: false, invalid: true });
   });
 });
 

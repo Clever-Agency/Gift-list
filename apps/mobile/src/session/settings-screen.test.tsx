@@ -23,6 +23,7 @@ const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const me = vi.hoisted(() => ({ updateNick: vi.fn(), updateHideFromSearch: vi.fn() }));
+const blocks = vi.hoisted(() => ({ listBlocked: vi.fn(), unblockUser: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
@@ -35,6 +36,7 @@ const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => me);
+vi.mock("@/api/block", () => blocks);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("react-native", async (importOriginal) => {
@@ -179,6 +181,20 @@ async function press(label: string) {
   });
 }
 
+/** Story 4.5: a press by the accessible name, e.g. «Разблокировать: Аня». */
+async function pressLabel(label: string) {
+  const target = controls(container).find((node) => node.getAttribute("aria-label") === label);
+  expect(target, `кнопка «${label}»`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+/** The name and the @nick of a row, as the reader announces them together. */
+function blockedRow(nick: string): HTMLElement | null {
+  return container.querySelector<HTMLElement>(`[data-testid="blocked-row-${nick}"]`);
+}
+
 /** Story 3.5: the one switch of the screen (`role="switch"`). */
 function hideSwitch(): HTMLElement {
   const node = container.querySelector<HTMLElement>('[role="switch"]');
@@ -219,6 +235,10 @@ beforeEach(() => {
   delete probe.auth;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
+  blocks.listBlocked.mockResolvedValue({
+    ok: true,
+    page: { items: [], nextCursor: null, total: 0 },
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -520,6 +540,156 @@ describe("настройки: скрыть из поиска", () => {
     await mount();
 
     await flipSwitch();
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/settings", reason: "session_expired" },
+    });
+  });
+});
+
+describe("настройки: заблокированные", () => {
+  /** `/me/blocks` answers with these rows; `nextCursor` is the opaque page cursor. */
+  function blockedServer(
+    items: { displayName: string; nick: string }[],
+    nextCursor: string | null = null,
+  ) {
+    blocks.listBlocked.mockResolvedValue({
+      ok: true,
+      page: { items, nextCursor, total: items.length },
+    });
+  }
+
+  it("список: имя, @ник и «Разблокировать», без меню ⋯", async () => {
+    signedIn();
+    blockedServer([
+      { displayName: "Аня", nick: "anya" },
+      { displayName: "Борис", nick: "boris" },
+    ]);
+    await mount();
+
+    const headings = Array.from(container.querySelectorAll("[role='heading']"));
+    const section = headings.find((node) => node.getAttribute("aria-level") === "2");
+    expect(section?.textContent).toBe("Заблокированные");
+    expect(blockedRow("anya")?.textContent).toContain("Аня");
+    expect(blockedRow("anya")?.textContent).toContain("@anya");
+    expect(blockedRow("boris")?.textContent).toContain("@boris");
+    expect(container.querySelector('[aria-label^="Действия"]')).toBeNull();
+    expect(
+      controls(container).filter(
+        (node) => node.getAttribute("aria-label") === "Разблокировать: Аня",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("пусто: «Вы никого не блокировали»", async () => {
+    signedIn();
+    await mount();
+
+    expect(text()).toContain("Вы никого не блокировали");
+    expect(container.querySelector('[data-testid="blocked-row-skeleton"]')).toBeNull();
+  });
+
+  it("разблокировать: строка исчезает сразу и приходит тост", async () => {
+    signedIn();
+    blockedServer([
+      { displayName: "Аня", nick: "anya" },
+      { displayName: "Борис", nick: "boris" },
+    ]);
+    blocks.unblockUser.mockResolvedValue({ ok: true, outcome: "UNBLOCKED" });
+    await mount();
+
+    await pressLabel("Разблокировать: Аня");
+
+    expect(blocks.unblockUser).toHaveBeenCalledWith("anya");
+    expect(blockedRow("anya")).toBeNull();
+    expect(blockedRow("boris")).not.toBeNull();
+    expect(text()).toContain("Аня разблокирован");
+  });
+
+  it("ошибка сети откатывает строку и показывает тост", async () => {
+    signedIn();
+    blockedServer([{ displayName: "Аня", nick: "anya" }]);
+    blocks.unblockUser.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await pressLabel("Разблокировать: Аня");
+
+    expect(blocks.unblockUser).toHaveBeenCalledTimes(1);
+    expect(blockedRow("anya")).not.toBeNull();
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+  });
+
+  it("повторная загрузка берёт список с сервера и не возвращает разблокированного", async () => {
+    signedIn();
+    blockedServer([
+      { displayName: "Аня", nick: "anya" },
+      { displayName: "Борис", nick: "boris" },
+    ]);
+    blocks.unblockUser.mockResolvedValue({ ok: true, outcome: "UNBLOCKED" });
+    await mount();
+
+    await pressLabel("Разблокировать: Аня");
+    expect(blockedRow("anya")).toBeNull();
+
+    // The server no longer lists Аня; a fresh screen reads the list again.
+    blockedServer([{ displayName: "Борис", nick: "boris" }]);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await mount();
+
+    expect(blocks.listBlocked).toHaveBeenCalledTimes(2);
+    expect(blockedRow("anya")).toBeNull();
+    expect(text()).not.toContain("Аня");
+    expect(blockedRow("boris")).not.toBeNull();
+  });
+
+  it("ошибка загрузки: текст и «Повторить» перезагружают список", async () => {
+    signedIn();
+    blocks.listBlocked.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+
+    blockedServer([{ displayName: "Аня", nick: "anya" }]);
+    await press("Повторить");
+
+    expect(blocks.listBlocked).toHaveBeenCalledTimes(2);
+    expect(blockedRow("anya")).not.toBeNull();
+  });
+
+  it("«Показать ещё» добавляет следующую страницу по курсору", async () => {
+    signedIn();
+    blocks.listBlocked.mockResolvedValueOnce({
+      ok: true,
+      page: { items: [{ displayName: "Аня", nick: "anya" }], nextCursor: "c1", total: 2 },
+    });
+    blocks.listBlocked.mockResolvedValueOnce({
+      ok: true,
+      page: { items: [{ displayName: "Борис", nick: "boris" }], nextCursor: null, total: 2 },
+    });
+    await mount();
+
+    await press("Показать ещё");
+
+    expect(blocks.listBlocked).toHaveBeenLastCalledWith("c1");
+    expect(blockedRow("anya")).not.toBeNull();
+    expect(blockedRow("boris")).not.toBeNull();
+    expect(button("Показать ещё")).toBeUndefined();
+  });
+
+  it("401 при разблокировке: сессия закончилась, вход с возвратом в настройки", async () => {
+    signedIn();
+    blockedServer([{ displayName: "Аня", nick: "anya" }]);
+    blocks.unblockUser.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    await mount();
+
+    await pressLabel("Разблокировать: Аня");
 
     expect(store.clearSessionToken).toHaveBeenCalled();
     expect(navigation.replace).toHaveBeenCalledWith({

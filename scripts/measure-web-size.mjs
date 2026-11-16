@@ -20,9 +20,17 @@ import { gzipSync } from "node:zlib";
 // библиотек нет: +963 байта gzip на секцию (строки PersonRow, «Разблокировать»,
 // пусто/ошибка, «Показать ещё») и +44 байта новых строк в общем чанке; запас
 // 550 байт. Чанков по-прежнему 18.
+// 178 КиБ (182 272) — CLE-73 / Story 4.7.2: контракты ссылки-приглашения
+// (`packages/contracts/src/invite-link.ts` + реэкспорт из `index.ts`) подняли
+// прирост с 181 184 до 181 409 (превышение 161 байт). Новых зависимостей и
+// библиотек нет: barrel-файл контрактов попадает в `__common-*.js` целиком, и
+// новый закрытый словарь (`inviteLinkPreviewSchema`, `inviteLinkDataSchema`,
+// `inviteLinkAcceptDataSchema`) добавил ~225 байт gzip. Чанков по-прежнему 18,
+// новых файлов JS нет; клиент приложения (`apps/mobile/src/api/invite-link.ts`)
+// в бандл не попал — экраны его пока не импортируют (4.7.4).
 // В epics.md по-прежнему «150 КБ».
 export const BASE_GZIP_BYTES = 487_792;
-export const BUDGET_GROWTH_BYTES = 181_248;
+export const BUDGET_GROWTH_BYTES = 182_272;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

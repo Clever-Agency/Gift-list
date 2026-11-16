@@ -1,7 +1,8 @@
 import { focusField, Text } from "@gift-list/ui";
 import {
-  NICK_PATTERN,
+  NICK_MAX,
   PASSWORD_MIN,
+  nickIssue,
   registerBodySchema,
   safeNextPath,
   type Me,
@@ -18,6 +19,9 @@ import {
   firstZodField,
   formIssue,
   issueFromError,
+  nickErrorText,
+  nickFieldText,
+  nickIssueText,
   passwordFieldIssue,
   type FormIssue,
 } from "@/session/form-issue";
@@ -39,6 +43,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [nick, setNick] = useState("");
+  const [nickSettled, setNickSettled] = useState(false);
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
   // UI5: submit moves focus to the invalid field and scrolls it into view.
@@ -52,6 +57,10 @@ export default function RegisterScreen() {
       setValue(value);
       setIssue((current) => (current?.field === field ? null : current));
     };
+  }
+
+  function settleNick() {
+    setNickSettled(true);
   }
 
   /** UI5: the field of the current issue takes focus. */
@@ -76,10 +85,13 @@ export default function RegisterScreen() {
     if (auth.state.status === "ready") router.replace(next as "/");
   }, [auth.state.status, next]);
 
-  // AD-13: the same 3–24 `[a-z0-9_]` rule as the server, taken from the contract.
-  const nickPreview = NICK_PATTERN.test(nick.trim().toLowerCase())
-    ? t("form.nickPreview", { nick: nick.trim().toLowerCase() })
-    : undefined;
+  // AD-13: the same rule as the server, taken from the contract. The preview is
+  // the normalized nickname and loses the line to the error of an invalid one.
+  const liveNick = nickIssue(nick);
+  const nickPreview = liveNick
+    ? undefined
+    : t("form.nickPreview", { nick: nick.toLowerCase() });
+  const nickError = fieldError("nick") ?? nickFieldText(liveNick, nickSettled, t);
 
   async function submit() {
     setIssue(null);
@@ -97,6 +109,16 @@ export default function RegisterScreen() {
         focusIssueField(field);
         return;
       }
+      if (field === "nick") {
+        // Length is shown after submit even if the field was never blurred.
+        setNickSettled(true);
+        setIssue({
+          field,
+          text: nickErrorText(nick, t, common("errors.code.VALIDATION")),
+        });
+        focusIssueField(field);
+        return;
+      }
       setIssue(
         issueFromError(
           { ok: false, code: "VALIDATION", message: "Invalid input", ...(field ? { field } : {}) },
@@ -108,6 +130,15 @@ export default function RegisterScreen() {
       focusIssueField(field);
       return;
     }
+    // The schema trims a padded nick, but the field marks the spaces as an error:
+    // submitting one would accept a value the screen just called invalid.
+    const nickProblem = nickIssue(nick);
+    if (nickProblem) {
+      setNickSettled(true);
+      setIssue({ field: "nick", text: nickIssueText(nickProblem, t) });
+      focusIssueField("nick");
+      return;
+    }
     setPending(true);
     const result = await apiRequest<{ user: Me; next: string }>("/api/v1/register", {
       method: "POST",
@@ -116,8 +147,15 @@ export default function RegisterScreen() {
     setPending(false);
     if (!result.ok) {
       const issue = formIssue(result, t, common, "register");
-      const nextIssue =
-        issue.field === "password" ? passwordFieldIssue(password, t, common) : issue;
+      let nextIssue = issue.field === "password" ? passwordFieldIssue(password, t, common) : issue;
+      if (nextIssue.field === "nick" && nextIssue.reason !== "NICK_TAKEN") {
+        // A server-side nick validation names the same reason the client would.
+        setNickSettled(true);
+        nextIssue = {
+          ...nextIssue,
+          text: nickErrorText(nick, t, common("errors.code.VALIDATION")),
+        };
+      }
       setIssue(nextIssue);
       focusIssueField(nextIssue.field);
       return;
@@ -201,13 +239,15 @@ export default function RegisterScreen() {
           label={t("form.nick")}
           value={nick}
           onChangeText={change("nick", setNick)}
-          error={fieldError("nick")}
+          error={nickError}
           hint={nickPreview}
           input={{
             autoCapitalize: "none",
             autoComplete: "nickname",
             autoCorrect: false,
+            maxLength: NICK_MAX,
             textContentType: "nickname",
+            onBlur: settleNick,
             onSubmitEditing: handleSubmit,
           }}
         />

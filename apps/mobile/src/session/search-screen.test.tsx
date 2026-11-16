@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { Me, UserSearchCard } from "@gift-list/contracts";
+import { PRODUCT_NAME, type Me, type UserSearchCard } from "@gift-list/contracts";
 import { act, cloneElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -288,6 +288,16 @@ describe("поиск: до ввода", () => {
 
     expect(text()).toContain("Найдите человека по нику или имени.");
     expect(search.searchUsers).not.toHaveBeenCalled();
+  });
+});
+
+describe("поиск: шапка", () => {
+  it("показывает название бренда, а не сырой ключ app.brandName", async () => {
+    signedIn();
+    await mount();
+
+    expect(text()).toContain(PRODUCT_NAME);
+    expect(text()).not.toContain("brandName");
   });
 });
 

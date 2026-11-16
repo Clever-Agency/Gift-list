@@ -15,6 +15,34 @@ export const NICK_MAX = 24;
 /** AD-13: 3–24 of `[a-z0-9_]`. Callers lowercase and trim before testing. */
 export const NICK_PATTERN = new RegExp(`^[a-z0-9_]{${NICK_MIN},${NICK_MAX}}$`);
 
+/** Why a nick is refused; `char` carries the first offending code point. */
+export type NickIssue =
+  | { code: "cyrillic" | "space" | "short" | "long" }
+  | { code: "char"; char: string };
+
+const NICK_CYRILLIC = /\p{Script=Cyrillic}/u;
+const NICK_CHAR = /^[a-z0-9_]$/;
+
+/**
+ * AD-13: the first reason a nick is refused, in the order the screens show it —
+ * Cyrillic, a space, another character, then the length. Upper case is not a
+ * reason: the nick is lowercased before it is stored. An empty value is `short`,
+ * which the screens show only on blur or submit. Characters are read as code
+ * points, so `char` is a whole emoji, never half of a surrogate pair, and the
+ * length is counted like the Zod schema counts it.
+ */
+export function nickIssue(value: string): NickIssue | null {
+  if (NICK_CYRILLIC.test(value)) return { code: "cyrillic" };
+  if (/\s/.test(value)) return { code: "space" };
+  let length = 0;
+  for (const char of value) {
+    if (!NICK_CHAR.test(char.toLowerCase())) return { code: "char", char };
+    length += 1;
+  }
+  if (length < NICK_MIN) return { code: "short" };
+  return length > NICK_MAX ? { code: "long" } : null;
+}
+
 /** Shown in headings, the person row and the public link page. */
 export const DISPLAY_NAME_MAX = 50;
 

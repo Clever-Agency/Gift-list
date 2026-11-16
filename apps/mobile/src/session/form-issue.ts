@@ -1,9 +1,13 @@
 import {
+  NICK_MAX,
+  NICK_MIN,
   PASSWORD_MAX,
   PASSWORD_MIN,
+  nickIssue,
   type ActionError,
   type ErrorCode,
   type ErrorReason,
+  type NickIssue,
 } from "@gift-list/contracts";
 import type { ClientResult } from "@/api/client";
 
@@ -18,7 +22,7 @@ type Translate = (key: string, values?: Record<string, string | number>) => stri
 /**
  * Maps an API error onto catalog copy.
  * NOTE FOR UX: пустое имя и формат email не имеют отдельных строк в EXPERIENCE — на поле показывается errors.code.VALIDATION.
- * Длины пароля в «Ошибки форм» нет: короткий пароль на регистрации и новом пароле показывает form.passwordRules (passwordFieldIssue), как register.nickRules.
+ * Длины пароля в «Ошибки форм» нет: короткий пароль на регистрации и новом пароле показывает form.passwordRules (passwordFieldIssue).
  */
 export function formIssue(
   result: Exclude<ClientResult<unknown>, { ok: true }>,
@@ -48,9 +52,6 @@ export function issueFromError(
       reason: error.reason,
       text: common(`errors.reason.${error.reason}`),
     };
-  }
-  if (error.code === "VALIDATION" && error.field === "nick") {
-    return { field: "nick", text: t("register.nickRules") };
   }
   if (error.code === "RATE_LIMITED") {
     return { text: common("errors.code.RATE_LIMITED", rateLimitValues(error.params) ?? { unit: "other" }) };
@@ -119,6 +120,42 @@ export function loginPasswordFieldIssue(
   return password.length > PASSWORD_MAX
     ? { field: "password", text: t("form.passwordTooLong", { max: PASSWORD_MAX }) }
     : { field: "password", text: common("errors.code.VALIDATION") };
+}
+
+/** The sentence of a nick reason; the numbers come from the contract. */
+export function nickIssueText(issue: NickIssue, t: Translate): string {
+  switch (issue.code) {
+    case "cyrillic":
+      return t("form.nickCyrillic");
+    case "space":
+      return t("form.nickSpace");
+    case "char":
+      return t("form.nickChar", { char: issue.char });
+    case "short":
+      return t("form.nickShort", { min: NICK_MIN });
+    default:
+      return t("form.nickLong", { max: NICK_MAX });
+  }
+}
+
+/**
+ * The line under a nick field: a character reason appears while typing, a length
+ * one only once the field is settled (blur or submit). `undefined` means the nick
+ * is fine and the `@ник` preview takes the line.
+ */
+export function nickFieldText(
+  issue: NickIssue | null,
+  settled: boolean,
+  t: Translate,
+): string | undefined {
+  if (!issue || (!settled && (issue.code === "short" || issue.code === "long"))) return undefined;
+  return nickIssueText(issue, t);
+}
+
+/** The server refused the nick: name the reason of the value the client would give. */
+export function nickErrorText(value: string, t: Translate, fallback: string): string {
+  const issue = nickIssue(value);
+  return issue ? nickIssueText(issue, t) : fallback;
 }
 
 export function firstZodField(path: readonly PropertyKey[] | undefined): string | undefined {

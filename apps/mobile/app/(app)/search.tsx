@@ -463,7 +463,7 @@ function SearchScreenContent({
                 </Text>
               </Pressable>
               <Text kind="display-sm" tone="primary" textAlign="center">
-                {app("brandName", { brand })}
+                {common("brandName", { brand })}
               </Text>
               <Heading level={1}>{search("title")}</Heading>
               <SearchField

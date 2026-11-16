@@ -142,6 +142,7 @@ describe("требование к паролю", () => {
 
     await fill("Email", "a@b.test");
     await fill("Пароль", "1234567");
+    await fill("Повторите пароль", "1234567");
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
     expect(toneText("hint")).toContain(RULE);
@@ -158,6 +159,7 @@ describe("требование к паролю", () => {
     await mount("register");
     await fill("Email", "a@b.test");
     await fill("Пароль", "x".repeat(129));
+    await fill("Повторите пароль", "x".repeat(129));
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
     expect(toneText("hint")).not.toContain(RULE);
@@ -175,6 +177,7 @@ describe("требование к паролю", () => {
     await mount("register");
     await fill("Email", "a@b.test");
     await fill("Пароль", "🎁".repeat(65));
+    await fill("Повторите пароль", "🎁".repeat(65));
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
 
@@ -190,6 +193,7 @@ describe("требование к паролю", () => {
     });
     const emojiPassword = "🎁".repeat(64);
     await fill("Пароль", emojiPassword);
+    await fill("Повторите пароль", emojiPassword);
     await press("Зарегистрироваться");
 
     expect(api.apiRequest).toHaveBeenCalledWith(
@@ -209,6 +213,7 @@ describe("требование к паролю", () => {
     await mount("register");
     await fill("Email", "a@b.test");
     await fill("Пароль", typed);
+    await fill("Повторите пароль", typed);
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
 
@@ -232,6 +237,7 @@ describe("требование к паролю", () => {
     await mount("register");
     await fill("Email", "a@b.test");
     await fill("Пароль", "12345678");
+    await fill("Повторите пароль", "12345678");
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
     expect(toneText("hint")).not.toContain(RULE);
@@ -249,6 +255,7 @@ describe("требование к паролю", () => {
     expect(describedBy("Пароль")).toBe(RULE);
 
     await fill("Пароль", "1234567");
+    await fill("Повторите пароль", "1234567");
     await press("Сохранить пароль");
     expect(api.apiRequest).not.toHaveBeenCalled();
     expect(toneText("error")).toContain(RULE);
@@ -261,6 +268,7 @@ describe("требование к паролю", () => {
       field: "password",
     });
     await fill("Пароль", "12345678");
+    await fill("Повторите пароль", "12345678");
     expect(toneText("hint")).not.toContain(RULE);
     await press("Сохранить пароль");
     expect(toneText("error")).toContain(GENERIC);
@@ -270,6 +278,7 @@ describe("требование к паролю", () => {
   it("на новом пароле пароль длиннее 128 units называет предел", async () => {
     await mount("reset");
     await fill("Пароль", "x".repeat(129));
+    await fill("Повторите пароль", "x".repeat(129));
 
     await press("Сохранить пароль");
 
@@ -341,6 +350,7 @@ describe("первый невалидный (UI5)", () => {
     await mount("register");
     await fill("Email", "a@b.test");
     await fill("Пароль", "1234567");
+    await fill("Повторите пароль", "1234567");
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
 
@@ -354,6 +364,7 @@ describe("первый невалидный (UI5)", () => {
   it("короткий пароль на сбросе фокусирует поле пароля и прокручивает к нему", async () => {
     await mount("reset");
     await fill("Пароль", "1234567");
+    await fill("Повторите пароль", "1234567");
 
     await press("Сохранить пароль");
 

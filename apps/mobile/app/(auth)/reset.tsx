@@ -8,6 +8,7 @@ import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import {
+  confirmPasswordText,
   firstZodField,
   formIssue,
   issueFromError,
@@ -30,6 +31,8 @@ export default function ResetScreen() {
   const token = paramValue(params.token) ?? "";
   const linkMissing = token.trim().length === 0;
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [confirmSettled, setConfirmSettled] = useState(false);
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -37,12 +40,25 @@ export default function ResetScreen() {
   const flight = useRef(false);
   // UI5: submit moves focus to the invalid field and scrolls it into view.
   const passwordRef = useRef<TextInputInstance | null>(null);
+  const confirmRef = useRef<TextInputInstance | null>(null);
 
   const stale = linkMissing || issue?.reason === "RESET_LINK_STALE";
 
   function change(value: string) {
     setPassword(value);
     setIssue((current) => (current?.field === "password" ? null : current));
+  }
+
+  function changeConfirm(value: string) {
+    setConfirm(value);
+  }
+
+  function settleConfirm() {
+    setConfirmSettled(true);
+  }
+
+  function focusConfirm() {
+    focusField(confirmRef.current);
   }
 
   async function submit() {
@@ -66,6 +82,14 @@ export default function ResetScreen() {
           "reset",
         ),
       );
+      return;
+    }
+    // The confirmation never reaches the contract or the request: only the
+    // screen compares it, and only after the password has passed its rules.
+    if (password !== confirm) {
+      flight.current = false;
+      setConfirmSettled(true);
+      focusConfirm();
       return;
     }
     setPending(true);
@@ -132,6 +156,24 @@ export default function ResetScreen() {
                 autoComplete: "new-password",
                 autoCorrect: false,
                 textContentType: "newPassword",
+                returnKeyType: "next",
+                onSubmitEditing: focusConfirm,
+              }}
+            />
+            <PasswordField
+              inputRef={confirmRef}
+              label={t("form.confirmPassword")}
+              value={confirm}
+              onChangeText={changeConfirm}
+              error={confirmPasswordText(password, confirm, confirmSettled, t)}
+              showLabel={t("form.showPassword")}
+              input={{
+                autoCapitalize: "none",
+                autoComplete: "new-password",
+                autoCorrect: false,
+                textContentType: "newPassword",
+                returnKeyType: "done",
+                onBlur: settleConfirm,
                 onSubmitEditing: handleSubmit,
               }}
             />

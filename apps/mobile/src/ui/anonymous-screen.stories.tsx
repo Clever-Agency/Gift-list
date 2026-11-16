@@ -3,7 +3,7 @@ import { Text, YStack } from "@gift-list/ui";
 import { AnonymousScreen } from "./anonymous-screen";
 import { NavLink } from "./nav-link";
 import { PrimaryButton } from "./primary-button";
-import { TextField } from "./text-field";
+import { PasswordField, TextField } from "./text-field";
 
 /**
  * The frame of the anonymous screens: the brand heading, the footer and the page
@@ -62,6 +62,69 @@ export const LongTitleNarrow: Story = {
     );
   },
   globals: { viewport: { value: "w360" } },
+};
+
+/** Registration with a matching confirmation: the field has no error line. */
+export const RegisterConfirmMatches: Story = {
+  args: { title: "Регистрация" },
+  render: function RegisterConfirmMatchesStory(args) {
+    return (
+      <AnonymousScreen {...args}>
+        <YStack gap="$grid-gap">
+          <TextField label="Email" value="anna@example.com" onChangeText={noop} />
+          <PasswordField
+            label="Пароль"
+            value="wishmoon-demo"
+            onChangeText={noop}
+            showLabel="Показать пароль"
+          />
+          <PasswordField
+            label="Повторите пароль"
+            value="wishmoon-demo"
+            onChangeText={noop}
+            showLabel="Показать пароль"
+          />
+          <TextField label="Имя" value="Анна" onChangeText={noop} />
+          <TextField label="Ник" value="anna" onChangeText={noop} />
+          <PrimaryButton label="Зарегистрироваться" onPress={noop} />
+        </YStack>
+      </AnonymousScreen>
+    );
+  },
+};
+
+/**
+ * The same form once the confirmation was settled and does not match: the error
+ * replaces the hint line under the second password and turns its border
+ * destructive, as every field error does.
+ */
+export const RegisterConfirmMismatch: Story = {
+  args: { title: "Регистрация" },
+  render: function RegisterConfirmMismatchStory(args) {
+    return (
+      <AnonymousScreen {...args}>
+        <YStack gap="$grid-gap">
+          <TextField label="Email" value="anna@example.com" onChangeText={noop} />
+          <PasswordField
+            label="Пароль"
+            value="wishmoon-demo"
+            onChangeText={noop}
+            showLabel="Показать пароль"
+          />
+          <PasswordField
+            label="Повторите пароль"
+            value="wishmoon-demo2"
+            onChangeText={noop}
+            error="Пароли не совпадают."
+            showLabel="Показать пароль"
+          />
+          <TextField label="Имя" value="Анна" onChangeText={noop} />
+          <TextField label="Ник" value="anna" onChangeText={noop} />
+          <PrimaryButton label="Зарегистрироваться" onPress={noop} />
+        </YStack>
+      </AnonymousScreen>
+    );
+  },
 };
 
 /** Two anonymous screens share one frame: the page column keeps `max-form`. */

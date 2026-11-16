@@ -5,6 +5,8 @@
     "name": "Имя",
     "nick": "Ник",
     "showPassword": "Показать пароль",
+    "confirmPassword": "Повторите пароль",
+    "passwordMismatch": "Пароли не совпадают.",
     "submitLogin": "Войти",
     "submitRegister": "Зарегистрироваться",
     "nickPreview": "@{nick}",

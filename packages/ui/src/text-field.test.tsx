@@ -74,8 +74,35 @@ describe("TextField", () => {
     expect(described?.getAttribute("role")).toBeNull();
   });
 
-  it("не отдаёт нативный hint в DOM: подсказка и ошибка остаются в aria-describedby", async () => {
-    const errors = vi.spyOn(console, "error").mockImplementation(noop);
+  it("returnKeyType становится enterKeyHint для браузера, явный enterKeyHint главнее", async () => {
+    const { container, render } = mounted();
+    await render(
+      <TextField
+        label="Ник"
+        value=""
+        onChangeText={noop}
+        input={{ returnKeyType: "next", enterKeyHint: "search" }}
+      />,
+    );
+
+    const input = container.querySelector("input") as HTMLInputElement;
+    // An explicit hint is never overwritten.
+    expect(input.getAttribute("enterkeyhint")).toBe("search");
+
+    await render(
+      <TextField
+        label="Пароль"
+        value=""
+        onChangeText={noop}
+        input={{ returnKeyType: "done" }}
+      />,
+    );
+
+    // The web half of Tamagui's input drops the native name; the field passes it on.
+    expect(input.getAttribute("enterkeyhint")).toBe("done");
+  });
+
+  it("не отдаёт нативный hint в DOM: подсказка и ошибка остаются в aria-describedby", async () => {    const errors = vi.spyOn(console, "error").mockImplementation(noop);
     try {
       const { container, render } = mounted();
       await render(

@@ -135,6 +135,7 @@ describe("почта: 254 только на регистрации", () => {
 
     await fill("Email", MAX_EMAIL);
     await fill("Пароль", "12345678");
+    await fill("Повторите пароль", "12345678");
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
     expect(emailInput().value).toBe(MAX_EMAIL);
@@ -150,6 +151,7 @@ describe("почта: 254 только на регистрации", () => {
     await mount("register");
     await fill("Email", OVER_MAX_EMAIL);
     await fill("Пароль", "12345678");
+    await fill("Повторите пароль", "12345678");
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
 

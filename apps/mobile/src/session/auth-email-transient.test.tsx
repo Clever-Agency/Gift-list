@@ -240,6 +240,7 @@ describe("ссылки экранов входа", () => {
     await mount(RegisterScreen);
     await typeInto(input("Email"), EMAIL);
     await typeInto(input("Пароль"), "12345678");
+    await typeInto(input("Повторите пароль"), "12345678");
     await typeInto(input("Имя"), "Анна");
     await typeInto(input("Ник"), "anna");
     await click(controlByText("Зарегистрироваться", container));
@@ -333,6 +334,7 @@ describe("перенос email между экранами", () => {
     await mount(RegisterScreen);
     await typeInto(input("Email"), EMAIL);
     await typeInto(input("Пароль"), "12345678");
+    await typeInto(input("Повторите пароль"), "12345678");
     await typeInto(input("Имя"), "Анна");
     await typeInto(input("Ник"), "anna");
     await click(controlByText("Зарегистрироваться", container));

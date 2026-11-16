@@ -16,6 +16,7 @@ import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { rememberAuthEmail } from "@/session/auth-navigation";
 import {
+  confirmPasswordText,
   firstZodField,
   formIssue,
   issueFromError,
@@ -41,6 +42,8 @@ export default function RegisterScreen() {
   const auth = useAuth();
   const [email, setEmail] = useCarriedAuthEmail("/register");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [confirmSettled, setConfirmSettled] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [nick, setNick] = useState("");
   const [nickSettled, setNickSettled] = useState(false);
@@ -49,6 +52,7 @@ export default function RegisterScreen() {
   // UI5: submit moves focus to the invalid field and scrolls it into view.
   const emailRef = useRef<TextInputInstance | null>(null);
   const passwordRef = useRef<TextInputInstance | null>(null);
+  const confirmRef = useRef<TextInputInstance | null>(null);
   const nameRef = useRef<TextInputInstance | null>(null);
   const nickRef = useRef<TextInputInstance | null>(null);
 
@@ -63,6 +67,18 @@ export default function RegisterScreen() {
     setNickSettled(true);
   }
 
+  function settleConfirm() {
+    setConfirmSettled(true);
+  }
+
+  function focusConfirm() {
+    focusField(confirmRef.current);
+  }
+
+  function focusName() {
+    focusField(nameRef.current);
+  }
+
   /** UI5: the field of the current issue takes focus. */
   function focusIssueField(field: string | undefined) {
     switch (field) {
@@ -72,8 +88,11 @@ export default function RegisterScreen() {
       case "password":
         focusField(passwordRef.current);
         break;
+      case "confirm":
+        focusConfirm();
+        break;
       case "displayName":
-        focusField(nameRef.current);
+        focusName();
         break;
       case "nick":
         focusField(nickRef.current);
@@ -92,6 +111,7 @@ export default function RegisterScreen() {
     ? undefined
     : t("form.nickPreview", { nick: nick.toLowerCase() });
   const nickError = fieldError("nick") ?? nickFieldText(liveNick, nickSettled, t);
+  const confirmError = confirmPasswordText(password, confirm, confirmSettled, t);
 
   async function submit() {
     setIssue(null);
@@ -102,13 +122,25 @@ export default function RegisterScreen() {
       nick,
       next,
     });
+    const field = parsed.success ? undefined : firstZodField(parsed.error.issues[0]?.path);
+    if (field === "password") {
+      setIssue(passwordFieldIssue(password, t, common));
+      focusIssueField(field);
+      return;
+    }
+    if (field === "email") {
+      setIssue(invalidFieldIssue(field));
+      focusIssueField(field);
+      return;
+    }
+    // The confirmation is the second password: the schema knows nothing of it, so
+    // it is checked here — after email and password, before the fields below it.
+    if (password !== confirm) {
+      setConfirmSettled(true);
+      focusIssueField("confirm");
+      return;
+    }
     if (!parsed.success) {
-      const field = firstZodField(parsed.error.issues[0]?.path);
-      if (field === "password") {
-        setIssue(passwordFieldIssue(password, t, common));
-        focusIssueField(field);
-        return;
-      }
       if (field === "nick") {
         // Length is shown after submit even if the field was never blurred.
         setNickSettled(true);
@@ -119,14 +151,7 @@ export default function RegisterScreen() {
         focusIssueField(field);
         return;
       }
-      setIssue(
-        issueFromError(
-          { ok: false, code: "VALIDATION", message: "Invalid input", ...(field ? { field } : {}) },
-          t,
-          common,
-          "register",
-        ),
-      );
+      setIssue(invalidFieldIssue(field));
       focusIssueField(field);
       return;
     }
@@ -166,6 +191,16 @@ export default function RegisterScreen() {
 
   function handleSubmit() {
     void submit();
+  }
+
+  /** A client-side schema failure of a field without a sentence of its own. */
+  function invalidFieldIssue(field: string | undefined): FormIssue {
+    return issueFromError(
+      { ok: false, code: "VALIDATION", message: "Invalid input", ...(field ? { field } : {}) },
+      t,
+      common,
+      "register",
+    );
   }
 
   function fieldError(name: string) {
@@ -224,6 +259,25 @@ export default function RegisterScreen() {
             autoComplete: "new-password",
             autoCorrect: false,
             textContentType: "newPassword",
+            returnKeyType: "next",
+            onSubmitEditing: focusConfirm,
+          }}
+        />
+        <PasswordField
+          inputRef={confirmRef}
+          label={t("form.confirmPassword")}
+          value={confirm}
+          onChangeText={change("confirm", setConfirm)}
+          error={confirmError}
+          showLabel={t("form.showPassword")}
+          input={{
+            autoCapitalize: "none",
+            autoComplete: "new-password",
+            autoCorrect: false,
+            textContentType: "newPassword",
+            returnKeyType: "next",
+            onBlur: settleConfirm,
+            onSubmitEditing: focusName,
           }}
         />
         <TextField

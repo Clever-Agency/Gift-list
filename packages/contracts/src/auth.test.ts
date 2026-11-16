@@ -8,6 +8,7 @@ import {
   PASSWORD_MAX,
   PASSWORD_MIN,
   loginBodySchema,
+  nickIssue,
   nickUpdateBodySchema,
   hideFromSearchUpdateBodySchema,
   passwordForgotBodySchema,
@@ -89,6 +90,44 @@ describe("nickUpdateBodySchema", () => {
     expect(NICK_PATTERN.test("a".repeat(NICK_MAX))).toBe(true);
     expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(NICK_MIN) }).success).toBe(true);
     expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(NICK_MAX) }).success).toBe(true);
+  });
+});
+
+describe("nickIssue", () => {
+  it("names Cyrillic before anything else, mixed with Latin too", () => {
+    expect(nickIssue("аня")).toEqual({ code: "cyrillic" });
+    expect(nickIssue("anna_аня")).toEqual({ code: "cyrillic" });
+    expect(nickIssue("ан на")).toEqual({ code: "cyrillic" });
+  });
+
+  it("names a space anywhere, including both edges", () => {
+    for (const value of ["an na", " anna", "anna "]) {
+      expect(nickIssue(value)).toEqual({ code: "space" });
+    }
+  });
+
+  it.each(["-", ".", "@"])("names the first forbidden character: %s", (char) => {
+    expect(nickIssue(`an${char}na`)).toEqual({ code: "char", char });
+  });
+
+  it("keeps a whole emoji, not half of a surrogate pair", () => {
+    expect(nickIssue("anna😀")).toEqual({ code: "char", char: "😀" });
+  });
+
+  it("takes upper-case Latin as valid", () => {
+    expect(nickIssue("Anna_1")).toBeNull();
+  });
+
+  it("checks the length after the characters", () => {
+    expect(nickIssue("a".repeat(NICK_MIN - 1))).toEqual({ code: "short" });
+    expect(nickIssue("a".repeat(NICK_MIN))).toBeNull();
+    expect(nickIssue("a".repeat(NICK_MAX))).toBeNull();
+    expect(nickIssue("a".repeat(NICK_MAX + 1))).toEqual({ code: "long" });
+  });
+
+  it("calls an empty value short and a Cyrillic pair Cyrillic, not short", () => {
+    expect(nickIssue("")).toEqual({ code: "short" });
+    expect(nickIssue("ан")).toEqual({ code: "cyrillic" });
   });
 });
 

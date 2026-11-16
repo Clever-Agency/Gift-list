@@ -160,6 +160,13 @@ async function type(label: string, value: string) {
   });
 }
 
+/** React listens to focus through the bubbling `focusout`. */
+async function blur(label: string) {
+  await act(async () => {
+    field(label).dispatchEvent(new Event("focusout", { bubbles: true }));
+  });
+}
+
 function button(label: string): HTMLElement | undefined {
   return controls(container).find((node) => (node.textContent ?? "").includes(label));
 }
@@ -263,7 +270,7 @@ describe("настройки: гейт сессии", () => {
 });
 
 describe("настройки: ник", () => {
-  it("показывает текущий ник и превью, а невалидный ник — правила", async () => {
+  it("показывает текущий ник и превью; длина становится ошибкой после blur", async () => {
     signedIn();
     await mount();
 
@@ -275,10 +282,44 @@ describe("настройки: ник", () => {
     expect(fieldText("Ник")).toContain("@new_nick");
 
     await type("Ник", "ab");
-    expect(fieldText("Ник")).toContain("3–24 символа: латиница, цифры, _");
+    expect(fieldText("Ник")).not.toContain("не короче");
+    await blur("Ник");
+    expect(fieldText("Ник")).toContain("Ник должен быть не короче 3 символов");
   });
 
-  it("ник не по правилам: показывает правила и не шлёт запрос", async () => {
+  it("кириллица во время ввода: причина под полем, превью скрыто", async () => {
+    signedIn();
+    await mount();
+
+    await type("Ник", "аня");
+
+    expect(fieldText("Ник")).toContain("Ник пишется латиницей — без русских букв");
+    expect(fieldText("Ник")).not.toContain("@");
+  });
+
+  it("пробел во время ввода: под полем причина, превью скрыто", async () => {
+    signedIn();
+    await mount();
+
+    await type("Ник", "an na");
+
+    expect(fieldText("Ник")).toContain("В нике не может быть пробелов");
+    expect(fieldText("Ник")).not.toContain("@");
+  });
+
+  it("запрещённый символ во время ввода: назван этот символ", async () => {
+    signedIn();
+    await mount();
+
+    await type("Ник", "an#a");
+
+    expect(fieldText("Ник")).toContain(
+      "Символ «#» нельзя использовать. Подойдут латинские буквы, цифры и _",
+    );
+    expect(fieldText("Ник")).not.toContain("@");
+  });
+
+  it("ник не по правилам: при сохранении показывает причину и не шлёт запрос", async () => {
     signedIn();
     await mount();
 
@@ -286,7 +327,7 @@ describe("настройки: ник", () => {
     await press("Сохранить");
 
     expect(me.updateNick).not.toHaveBeenCalled();
-    expect(fieldText("Ник")).toContain("3–24 символа: латиница, цифры, _");
+    expect(fieldText("Ник")).toContain("Ник должен быть не короче 3 символов");
   });
 
   it("текущий ник: «Это ваш текущий ник.» и запрос не уходит", async () => {

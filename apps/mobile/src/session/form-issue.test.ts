@@ -4,6 +4,7 @@ import {
   issueFromError,
   loginPasswordFieldIssue,
   mutationErrorMessage,
+  nickErrorText,
   passwordFieldIssue,
 } from "./form-issue";
 
@@ -107,10 +108,10 @@ describe("formIssue", () => {
     ).toEqual({ field: "email", reason: "EMAIL_TAKEN", text: "errors.reason.EMAIL_TAKEN" });
   });
 
-  it("VALIDATION on nick", () => {
+  it("VALIDATION on nick is not the rule list; the screen names the reason of the value", () => {
     expect(formIssue(err({ code: "VALIDATION", field: "nick" }), fake, fake, "register")).toEqual({
       field: "nick",
-      text: "register.nickRules",
+      text: "errors.code.VALIDATION",
     });
   });
 
@@ -181,6 +182,20 @@ describe("formIssue", () => {
       field: "x",
       text: "errors.code.CONFLICT",
     });
+  });
+});
+
+describe("nickErrorText", () => {
+  it("names the reason of the value instead of a server rule list", () => {
+    expect(nickErrorText("аня", t, "generic")).toBe("form.nickCyrillic");
+    expect(nickErrorText("an na", t, "generic")).toBe("form.nickSpace");
+    expect(nickErrorText("an#a", t, "generic")).toBe("form.nickChar");
+    expect(nickErrorText("ab", t, "generic")).toBe("form.nickShort");
+    expect(nickErrorText("a".repeat(25), t, "generic")).toBe("form.nickLong");
+  });
+
+  it("keeps the fallback when the client sees nothing wrong", () => {
+    expect(nickErrorText("newnick", t, "generic")).toBe("generic");
   });
 });
 

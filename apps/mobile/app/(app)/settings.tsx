@@ -1,4 +1,4 @@
-import { NICK_PATTERN, type Me } from "@gift-list/contracts";
+import { NICK_MAX, nickIssue, type Me } from "@gift-list/contracts";
 import { Column, focusField, Heading, PageContainer, PageScroll, Pressable, SafeArea, Screen, Switch, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -7,7 +7,7 @@ import { useTranslations } from "use-intl";
 import { updateHideFromSearch, updateNick } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
-import { formIssue } from "@/session/form-issue";
+import { formIssue, nickErrorText, nickFieldText } from "@/session/form-issue";
 import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
@@ -77,6 +77,7 @@ function SettingsForm({
   const nickInput = useRef<TextInputInstance | null>(null);
 
   const [nick, setNick] = useState(user.nick);
+  const [nickSettled, setNickSettled] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [unchanged, setUnchanged] = useState(false);
   const [pending, setPending] = useState(false);
@@ -91,12 +92,14 @@ function SettingsForm({
   const hideInFlight = useRef(false);
 
   const normalized = nick.trim().toLowerCase();
-  const valid = NICK_PATTERN.test(normalized);
+  const liveNick = nickIssue(nick);
+  const valid = liveNick === null;
   const hint = unchanged
     ? t("settings.nickUnchanged")
     : valid
-      ? t("form.nickPreview", { nick: normalized })
-      : t("settings.nickHint");
+      ? t("form.nickPreview", { nick: nick.toLowerCase() })
+      : undefined;
+  const error = fieldError ?? nickFieldText(liveNick, nickSettled, t);
 
   function focusNick() {
     // UI5: the invalid nick is focused and scrolled to the middle of the screen.
@@ -109,6 +112,10 @@ function SettingsForm({
     setUnchanged(false);
   }
 
+  function settleNick() {
+    setNickSettled(true);
+  }
+
   function goBack() {
     // A direct link has no history behind it: fall back to the wishlist.
     if (router.canGoBack()) router.back();
@@ -118,8 +125,9 @@ function SettingsForm({
   function save() {
     if (inFlight.current) return;
     if (!valid) {
-      // The rules stay in the catalog and sit under the field, like on register.
-      setFieldError(t("settings.nickHint"));
+      // The reason sits under the field, like on register; length waits for this press.
+      setNickSettled(true);
+      setFieldError(null);
       setUnchanged(false);
       focusNick();
       return;
@@ -180,7 +188,9 @@ function SettingsForm({
       return;
     }
     if (issue.field === "nick") {
-      setFieldError(t("settings.nickHint"));
+      // A server-side nick validation names the reason of the value, not the rules.
+      setNickSettled(true);
+      setFieldError(nickErrorText(nick, t, common("errors.code.VALIDATION")));
       focusNick();
       return;
     }
@@ -289,7 +299,7 @@ function SettingsForm({
                     label={t("form.nick")}
                     value={nick}
                     onChangeText={changeNick}
-                    error={fieldError ?? undefined}
+                    error={error}
                     hint={hint}
                     inputRef={nickInput}
                     input={{
@@ -297,7 +307,9 @@ function SettingsForm({
                       autoComplete: "nickname",
                       autoCorrect: false,
                       editable: !pending,
+                      maxLength: NICK_MAX,
                       textContentType: "nickname",
+                      onBlur: settleNick,
                       onSubmitEditing: save,
                     }}
                   />

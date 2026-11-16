@@ -296,6 +296,25 @@ export {
 } from "./friendship";
 
 export {
+  BLOCK_OUTCOMES,
+  UNBLOCK_OUTCOMES,
+  blockDataSchema,
+  blockOutcomeSchema,
+  blockedCardSchema,
+  blockedListQuerySchema,
+  blockedPageSchema,
+  unblockDataSchema,
+  unblockOutcomeSchema,
+  type BlockData,
+  type BlockOutcome,
+  type BlockedCard,
+  type BlockedListQuery,
+  type BlockedPage,
+  type UnblockData,
+  type UnblockOutcome,
+} from "./block";
+
+export {
   CIRCLE_PAGE_SIZE,
   circleCardSchema,
   circleInvitesDataSchema,

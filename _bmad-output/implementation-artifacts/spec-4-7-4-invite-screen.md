@@ -2,7 +2,7 @@
 title: '4.7.4: Экран приглашения, регистрация по приглашению и «Скопировать ссылку-приглашение»'
 type: 'feature'
 created: '2026-11-16'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: 'c355b55'
 context: []

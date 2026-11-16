@@ -2,7 +2,7 @@
 title: '4.7.3: Серверная страница Next `/i/[token]`'
 type: 'feature'
 created: '2026-11-16'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '78e0954'
 review_loop_iteration: 0

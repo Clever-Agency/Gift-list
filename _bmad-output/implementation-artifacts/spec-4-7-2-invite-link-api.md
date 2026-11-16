@@ -2,7 +2,7 @@
 title: '4.7.2: Контракты, API и клиент ссылки-приглашения'
 type: 'feature'
 created: '2026-11-16'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '3d33f24903d7ee359256280f0d8f1f6b96e3a3fd'
 review_loop_iteration: 0

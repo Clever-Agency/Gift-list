@@ -62,11 +62,23 @@ const fake = vi.hoisted(() => {
     };
     block: {
       findFirst(args: { where: { OR: Block[] } }): Promise<{ id: string } | null>;
+      findUnique(args: {
+        where: { blockerId_blockedId: Block };
+      }): Promise<{ id: string } | null>;
+      createMany(args: { data: Block[]; skipDuplicates?: boolean }): Promise<{ count: number }>;
+      deleteMany(args: { where: Block }): Promise<{ count: number }>;
     };
     subscription: {
       findUnique(args: {
         where: { subscriberId_targetId: Subscription };
       }): Promise<{ id: string } | null>;
+      createMany(args: {
+        data: Subscription[];
+        skipDuplicates?: boolean;
+      }): Promise<{ count: number }>;
+      deleteMany(args: {
+        where: { OR: Subscription[] } | Subscription;
+      }): Promise<{ count: number }>;
     };
     $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
     $transaction(
@@ -193,6 +205,33 @@ const fake = vi.hoisted(() => {
         );
         return found ? { id: "block_1" } : null;
       },
+      async findUnique(args) {
+        const { blockerId, blockedId } = args.where.blockerId_blockedId;
+        const found = state.blocks.find(
+          (block) => block.blockerId === blockerId && block.blockedId === blockedId,
+        );
+        return found ? { id: "block_1" } : null;
+      },
+      async createMany(args) {
+        let count = 0;
+        for (const row of args.data) {
+          const exists = state.blocks.some(
+            (block) => block.blockerId === row.blockerId && block.blockedId === row.blockedId,
+          );
+          if (exists) continue;
+          state.blocks.push({ ...row });
+          count += 1;
+        }
+        return { count };
+      },
+      async deleteMany(args) {
+        const before = state.blocks.length;
+        state.blocks = state.blocks.filter(
+          (block) =>
+            !(block.blockerId === args.where.blockerId && block.blockedId === args.where.blockedId),
+        );
+        return { count: before - state.blocks.length };
+      },
     },
     subscription: {
       async findUnique(args) {
@@ -201,6 +240,29 @@ const fake = vi.hoisted(() => {
           (edge) => edge.subscriberId === subscriberId && edge.targetId === targetId,
         );
         return found ? { id: "subscription_1" } : null;
+      },
+      async createMany(args) {
+        let count = 0;
+        for (const row of args.data) {
+          const exists = state.subscriptions.some(
+            (edge) => edge.subscriberId === row.subscriberId && edge.targetId === row.targetId,
+          );
+          if (exists) continue;
+          state.subscriptions.push({ ...row });
+          count += 1;
+        }
+        return { count };
+      },
+      async deleteMany(args) {
+        const pairs = "OR" in args.where ? args.where.OR : [args.where];
+        const before = state.subscriptions.length;
+        state.subscriptions = state.subscriptions.filter(
+          (edge) =>
+            !pairs.some(
+              (pair) => pair.subscriberId === edge.subscriberId && pair.targetId === edge.targetId,
+            ),
+        );
+        return { count: before - state.subscriptions.length };
       },
     },
     async $executeRaw(strings, ...values) {
@@ -221,8 +283,15 @@ vi.mock("@/db/client", () => ({ prisma: fake.prisma }));
 
 import { readWishlist } from "@/actions/wishlist-read";
 import type { ListData } from "@gift-list/contracts";
-import { removeFriend, sendFriendInvite } from "@/domain/friendship";
+import { blockUser, unblockUser } from "@/domain/block";
+import {
+  acceptFriendInvite,
+  removeFriend,
+  sendFriendInvite,
+} from "@/domain/friendship";
+import { subscribeToUser } from "@/domain/subscription";
 import { friendshipStore } from "@/lib/friendship-store";
+import { subscriptionStore } from "@/lib/subscription-store";
 
 const OWNER_ID = "owner_1";
 const VIEWER_ID = "viewer_1";
@@ -460,6 +529,141 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
         target: { ownerId: OWNER_ID },
       });
       expect(giftIds(restored)).toEqual(["gift_friends", "gift_public"]);
+    });
+  });
+
+  describe("block protocol (Story 4.5, AD-10 step 4, AD-19)", () => {
+    async function becomeFriendsWithSubscriptions(): Promise<void> {
+      await becomeFriends();
+      await subscriptionStore.createSubscription(VIEWER_ID, OWNER_ID);
+      await subscriptionStore.createSubscription(OWNER_ID, VIEWER_ID);
+      // The anomaly the protocol never leaves behind: a pending row next to the
+      // edge. A block must sweep both directions anyway.
+      fake.state.invites.push(
+        { fromUserId: VIEWER_ID, toUserId: OWNER_ID },
+        { fromUserId: OWNER_ID, toUserId: VIEWER_ID },
+      );
+    }
+
+    it("sweeps the edge, both invites and both subscriptions in the pair lock transaction", async () => {
+      await becomeFriendsWithSubscriptions();
+
+      const result = await blockUser(
+        { viewerId: VIEWER_ID, otherUserId: OWNER_ID },
+        friendshipStore,
+      );
+
+      expect(result).toEqual({ ok: true, outcome: "BLOCKED" });
+      expect(fake.state.friendships).toEqual([]);
+      expect(fake.state.invites).toEqual([]);
+      expect(fake.state.subscriptions).toEqual([]);
+      expect(fake.state.blocks).toEqual([{ blockerId: VIEWER_ID, blockedId: OWNER_ID }]);
+      expect(fake.state.cooldowns).toEqual([]);
+      // Two invite transactions of `becomeFriends` plus the block's own lock.
+      expect(fake.state.lockStatements).toHaveLength(3);
+      expect(fake.state.lockStatements.at(-1)).toBe(
+        "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+      );
+      expect(fake.state.transactionOptions.at(-1)).toEqual({ isolationLevel: "ReadCommitted" });
+    });
+
+    it("hides the profile and the link whichever side blocked", async () => {
+      const directions: [string, string][] = [
+        [VIEWER_ID, OWNER_ID],
+        [OWNER_ID, VIEWER_ID],
+      ];
+
+      for (const [blockerId, blockedId] of directions) {
+        fake.state.blocks = [];
+        const blocked = await blockUser({ viewerId: blockerId, otherUserId: blockedId }, friendshipStore);
+        expect(blocked).toEqual({ ok: true, outcome: "BLOCKED" });
+
+        const profile = await readWishlist({
+          viewer: { id: VIEWER_ID },
+          target: { ownerId: OWNER_ID },
+        });
+        const link = await readWishlist({
+          viewer: { id: VIEWER_ID },
+          target: { publicToken: "token_1" },
+          viaListToken: true,
+        });
+
+        // AD-7 / AD-15 (3): a block in either direction is the same not_found as
+        // an unknown nick or token, and no hidden title travels with it.
+        expect(profile).toEqual({ access: "not_found", gifts: [] });
+        expect(link).toEqual({ access: "not_found", gifts: [] });
+        expect(JSON.stringify([profile, link])).not.toContain("Wish gift_");
+      }
+    });
+
+    it("refuses invite, accept and subscribe after the block", async () => {
+      await blockUser({ viewerId: VIEWER_ID, otherUserId: OWNER_ID }, friendshipStore);
+
+      const invited = await sendFriendInvite(
+        { fromUserId: VIEWER_ID, toUserId: OWNER_ID },
+        friendshipStore,
+      );
+      const accepted = await acceptFriendInvite(
+        { fromUserId: OWNER_ID, viewerId: VIEWER_ID },
+        friendshipStore,
+      );
+      const subscribed = await subscribeToUser(
+        { subscriberId: VIEWER_ID, targetId: OWNER_ID },
+        subscriptionStore,
+      );
+
+      expect(invited).toEqual({ ok: false, code: "FORBIDDEN", reason: "BLOCKED" });
+      expect(accepted).toEqual({ ok: false, code: "FORBIDDEN" });
+      expect(subscribed).toEqual({ ok: false, code: "FORBIDDEN", reason: "BLOCKED" });
+      expect(fake.state.invites).toEqual([]);
+      expect(fake.state.subscriptions).toEqual([]);
+      expect(fake.state.friendships).toEqual([]);
+    });
+
+    it("removes only the viewer's own block and restores nothing", async () => {
+      await becomeFriendsWithSubscriptions();
+      await blockUser({ viewerId: VIEWER_ID, otherUserId: OWNER_ID }, friendshipStore);
+      await blockUser({ viewerId: OWNER_ID, otherUserId: VIEWER_ID }, friendshipStore);
+
+      const removed = await unblockUser(
+        { viewerId: VIEWER_ID, otherUserId: OWNER_ID },
+        friendshipStore,
+      );
+
+      expect(removed).toEqual({ ok: true, outcome: "UNBLOCKED" });
+      expect(fake.state.blocks).toEqual([{ blockerId: OWNER_ID, blockedId: VIEWER_ID }]);
+
+      // The other person's block still hides the pair for the viewer.
+      const hidden = await readWishlist({
+        viewer: { id: VIEWER_ID },
+        target: { ownerId: OWNER_ID },
+      });
+      expect(hidden).toEqual({ access: "not_found", gifts: [] });
+
+      const alsoRemoved = await unblockUser(
+        { viewerId: OWNER_ID, otherUserId: VIEWER_ID },
+        friendshipStore,
+      );
+      expect(alsoRemoved).toEqual({ ok: true, outcome: "UNBLOCKED" });
+      expect(fake.state.blocks).toEqual([]);
+      expect(fake.state.friendships).toEqual([]);
+      expect(fake.state.invites).toEqual([]);
+      expect(fake.state.subscriptions).toEqual([]);
+      expect(fake.state.cooldowns).toEqual([]);
+
+      // Unblock restores nothing: a signed-in stranger again sees no wishes of
+      // the profile, while the link token still opens PUBLIC alone.
+      const profile = await readWishlist({
+        viewer: { id: VIEWER_ID },
+        target: { ownerId: OWNER_ID },
+      });
+      const link = await readWishlist({
+        viewer: { id: VIEWER_ID },
+        target: { publicToken: "token_1" },
+        viaListToken: true,
+      });
+      expect(profile).toEqual({ access: "gifts", gifts: [] });
+      expect(giftIds(link)).toEqual(["gift_public"]);
     });
   });
 });

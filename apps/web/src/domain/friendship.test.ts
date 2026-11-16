@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  BLOCKED_PAGE_SIZE,
+  blockUser,
+  encodeBlockedCursor,
+  readBlockedPage,
+  unblockUser,
+  type BlockedPerson,
+  type BlockedReader,
+} from "@/domain/block";
+import {
   acceptFriendInvite,
   cancelFriendInvite,
   orderFriendPair,
@@ -13,6 +22,7 @@ import {
 
 type Invite = { readonly fromUserId: string; readonly toUserId: string };
 type Block = { readonly blockerId: string; readonly blockedId: string };
+type Subscription = { readonly subscriberId: string; readonly targetId: string };
 type Cooldown = FriendshipPair & {
   rejectedFromUserId: string;
   until: Date;
@@ -22,6 +32,7 @@ type Memory = {
   invites: Invite[];
   friendships: FriendshipPair[];
   blocks: Block[];
+  subscriptions: Subscription[];
   cooldowns: Cooldown[];
   transactions: number;
   writes: string[];
@@ -35,6 +46,7 @@ function createStore(seed: Partial<Memory> = {}) {
     invites: [],
     friendships: [],
     blocks: [],
+    subscriptions: [],
     cooldowns: [],
     transactions: 0,
     writes: [],
@@ -58,6 +70,40 @@ function createStore(seed: Partial<Memory> = {}) {
               (block.blockerId === firstUserId && block.blockedId === secondUserId) ||
               (block.blockerId === secondUserId && block.blockedId === firstUserId),
           );
+        },
+        async findBlock(blockerId, blockedId) {
+          memory.trace.push("own-block");
+          return memory.blocks.some(
+            (block) => block.blockerId === blockerId && block.blockedId === blockedId,
+          );
+        },
+        async insertBlock(blockerId, blockedId) {
+          if (
+            !memory.blocks.some(
+              (block) => block.blockerId === blockerId && block.blockedId === blockedId,
+            )
+          ) {
+            memory.blocks.push({ blockerId, blockedId });
+          }
+          memory.writes.push("block");
+        },
+        async deleteBlock(blockerId, blockedId) {
+          const before = memory.blocks.length;
+          memory.blocks = memory.blocks.filter(
+            (block) => !(block.blockerId === blockerId && block.blockedId === blockedId),
+          );
+          memory.writes.push("delete-block");
+          return memory.blocks.length < before;
+        },
+        async deleteSubscriptionsBetween(firstUserId, secondUserId) {
+          memory.subscriptions = memory.subscriptions.filter(
+            (edge) =>
+              !(
+                (edge.subscriberId === firstUserId && edge.targetId === secondUserId) ||
+                (edge.subscriberId === secondUserId && edge.targetId === firstUserId)
+              ),
+          );
+          memory.writes.push("delete-subscriptions");
         },
         async findFriendship(pair) {
           memory.trace.push("friendship");
@@ -972,6 +1018,300 @@ describe("removeFriend", () => {
     ]);
     expect(serialized.memory.locks).toEqual([pairOf(), pairOf()]);
     expect(serialized.memory.friendships).toEqual([]);
+  });
+});
+
+describe("blockUser (Story 4.5, AD-10 step 4)", () => {
+  let memory: Memory;
+  let store: FriendshipStore;
+
+  beforeEach(() => {
+    ({ memory, store } = createStore());
+  });
+
+  /** Everything a block must sweep: the edge, both invites, both subscriptions. */
+  function seedPair(): void {
+    ({ memory, store } = createStore({
+      friendships: [pairOf()],
+      invites: [
+        { fromUserId: ALPHA, toUserId: ZEBRA },
+        { fromUserId: ZEBRA, toUserId: ALPHA },
+      ],
+      subscriptions: [
+        { subscriberId: ALPHA, targetId: ZEBRA },
+        { subscriberId: ZEBRA, targetId: ALPHA },
+      ],
+      cooldowns: [
+        { ...pairOf(), rejectedFromUserId: ALPHA, until: new Date(NOW.getTime() + DAY_MS) },
+      ],
+    }));
+  }
+
+  function keptCooldown(): Cooldown[] {
+    return [{ ...pairOf(), rejectedFromUserId: ALPHA, until: new Date(NOW.getTime() + DAY_MS) }];
+  }
+
+  it("sweeps the edge, both invites and both subscriptions, then inserts the block", async () => {
+    seedPair();
+
+    const result = await blockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "BLOCKED" });
+    expect(memory.transactions).toBe(1);
+    expect(memory.locks).toEqual([pairOf()]);
+    expect(memory.trace[0]).toBe("lock");
+    expect(memory.friendships).toEqual([]);
+    expect(memory.invites).toEqual([]);
+    expect(memory.subscriptions).toEqual([]);
+    expect(memory.blocks).toEqual([{ blockerId: ALPHA, blockedId: ZEBRA }]);
+    expect(memory.writes).toEqual([
+      "delete-friendship",
+      "delete-invites",
+      "delete-subscriptions",
+      "block",
+    ]);
+  });
+
+  it("never writes or clears the invite cooldown and never reads it", async () => {
+    seedPair();
+
+    await blockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(memory.cooldowns).toEqual(keptCooldown());
+    expect(memory.trace).not.toContain("cooldown-read");
+    expect(memory.writes).not.toContain("cooldown");
+    expect(memory.writes).not.toContain("delete-cooldown");
+  });
+
+  it("is idempotent: a repeat answers ALREADY_BLOCKED, sweeps again and keeps one row", async () => {
+    seedPair();
+    memory.blocks.push({ blockerId: ALPHA, blockedId: ZEBRA });
+
+    const result = await blockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "ALREADY_BLOCKED" });
+    expect(memory.blocks).toEqual([{ blockerId: ALPHA, blockedId: ZEBRA }]);
+    expect(memory.friendships).toEqual([]);
+    expect(memory.invites).toEqual([]);
+    expect(memory.subscriptions).toEqual([]);
+    expect(memory.writes).toEqual([
+      "delete-friendship",
+      "delete-invites",
+      "delete-subscriptions",
+      "block",
+    ]);
+  });
+
+  it("lets both sides block each other without revealing the reverse row", async () => {
+    ({ memory, store } = createStore({
+      blocks: [{ blockerId: ZEBRA, blockedId: ALPHA }],
+    }));
+
+    const result = await blockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "BLOCKED" });
+    expect(memory.blocks).toEqual([
+      { blockerId: ZEBRA, blockedId: ALPHA },
+      { blockerId: ALPHA, blockedId: ZEBRA },
+    ]);
+  });
+
+  it("refuses a self block before touching the store", async () => {
+    const result = await blockUser({ viewerId: ALPHA, otherUserId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(memory.transactions).toBe(0);
+    expect(memory.locks).toEqual([]);
+    expect(memory.writes).toEqual([]);
+  });
+
+  it("makes every write of the pair FORBIDDEN after the block", async () => {
+    await blockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    const invited = await sendFriendInvite({ fromUserId: ALPHA, toUserId: ZEBRA }, store);
+    const accepted = await acceptFriendInvite({ fromUserId: ZEBRA, viewerId: ALPHA }, store);
+    const removed = await removeFriend({ viewerId: ZEBRA, otherUserId: ALPHA }, store);
+
+    expect(invited).toEqual({ ok: false, code: "FORBIDDEN", reason: "BLOCKED" });
+    expect(accepted).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(removed).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(memory.writes).toEqual([
+      "delete-friendship",
+      "delete-invites",
+      "delete-subscriptions",
+      "block",
+    ]);
+  });
+
+  it("serializes simultaneous blocks of the same pair on the pair lock", async () => {
+    const serialized = createSerializedStore();
+
+    const results = await Promise.all([
+      blockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, serialized.store),
+      blockUser({ viewerId: ZEBRA, otherUserId: ALPHA }, serialized.store),
+    ]);
+
+    expect(results).toEqual([
+      { ok: true, outcome: "BLOCKED" },
+      { ok: true, outcome: "BLOCKED" },
+    ]);
+    expect(serialized.memory.locks).toEqual([pairOf(), pairOf()]);
+    expect(serialized.memory.blocks).toEqual([
+      { blockerId: ALPHA, blockedId: ZEBRA },
+      { blockerId: ZEBRA, blockedId: ALPHA },
+    ]);
+  });
+});
+
+describe("unblockUser (Story 4.5, AD-10 step 4)", () => {
+  let memory: Memory;
+  let store: FriendshipStore;
+
+  beforeEach(() => {
+    ({ memory, store } = createStore());
+  });
+
+  it("deletes only the viewer's own row and keeps the reverse block", async () => {
+    ({ memory, store } = createStore({
+      blocks: [
+        { blockerId: ALPHA, blockedId: ZEBRA },
+        { blockerId: ZEBRA, blockedId: ALPHA },
+      ],
+    }));
+
+    const result = await unblockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "UNBLOCKED" });
+    expect(memory.blocks).toEqual([{ blockerId: ZEBRA, blockedId: ALPHA }]);
+    expect(memory.transactions).toBe(1);
+    expect(memory.locks).toEqual([pairOf()]);
+    expect(memory.trace[0]).toBe("lock");
+    expect(memory.writes).toEqual(["delete-block"]);
+  });
+
+  it("answers NOT_BLOCKED for a missing row and writes nothing else", async () => {
+    const result = await unblockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "NOT_BLOCKED" });
+    expect(memory.blocks).toEqual([]);
+    expect(memory.writes).toEqual(["delete-block"]);
+    expect(memory.trace).not.toContain("cooldown-read");
+  });
+
+  it("refuses a self unblock before touching the store", async () => {
+    const result = await unblockUser({ viewerId: ALPHA, otherUserId: ALPHA }, store);
+
+    expect(result).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(memory.transactions).toBe(0);
+    expect(memory.locks).toEqual([]);
+  });
+
+  it("restores nothing and leaves the pair free to invite again at once", async () => {
+    ({ memory, store } = createStore({
+      friendships: [pairOf()],
+      invites: [
+        { fromUserId: ALPHA, toUserId: ZEBRA },
+        { fromUserId: ZEBRA, toUserId: ALPHA },
+      ],
+      subscriptions: [
+        { subscriberId: ALPHA, targetId: ZEBRA },
+        { subscriberId: ZEBRA, targetId: ALPHA },
+      ],
+      cooldowns: [
+        { ...pairOf(), rejectedFromUserId: ALPHA, until: new Date(NOW.getTime() + DAY_MS) },
+      ],
+    }));
+
+    await blockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+    const result = await unblockUser({ viewerId: ALPHA, otherUserId: ZEBRA }, store);
+
+    expect(result).toEqual({ ok: true, outcome: "UNBLOCKED" });
+    expect(memory.blocks).toEqual([]);
+    expect(memory.friendships).toEqual([]);
+    expect(memory.invites).toEqual([]);
+    expect(memory.subscriptions).toEqual([]);
+    expect(memory.cooldowns).toEqual([
+      { ...pairOf(), rejectedFromUserId: ALPHA, until: new Date(NOW.getTime() + DAY_MS) },
+    ]);
+
+    const invited = await sendFriendInvite({ fromUserId: ALPHA, toUserId: ZEBRA }, store);
+    expect(invited).toEqual({ ok: true, outcome: "INVITED" });
+  });
+});
+
+describe("readBlockedPage (Story 4.5.2)", () => {
+  const VIEWER = "viewer_user";
+
+  function person(id: string, at: string): BlockedPerson {
+    return { id, displayName: `Имя ${id}`, nick: id, blockedAt: new Date(at) };
+  }
+
+  function readerOf(people: readonly BlockedPerson[]): BlockedReader {
+    return {
+      async readBlockedPeople() {
+        return people;
+      },
+    };
+  }
+
+  it("orders the viewer's blocks newest first and keeps the whole count", async () => {
+    const people = [
+      person("old", "2026-11-01T10:00:00.000Z"),
+      person("new", "2026-11-10T10:00:00.000Z"),
+      person("mid", "2026-11-05T10:00:00.000Z"),
+    ];
+
+    const page = await readBlockedPage(readerOf(people), { viewerId: VIEWER });
+
+    if (!page.ok) throw new Error("the first page must be valid");
+    expect(page.items.map((item) => item.id)).toEqual(["new", "mid", "old"]);
+    expect(page.total).toBe(3);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it("orders two blocks made in one millisecond by the descending id", async () => {
+    const people = [
+      person("aaa", "2026-11-10T10:00:00.000Z"),
+      person("zzz", "2026-11-10T10:00:00.000Z"),
+    ];
+
+    const page = await readBlockedPage(readerOf(people), { viewerId: VIEWER });
+
+    if (!page.ok) throw new Error("the first page must be valid");
+    expect(page.items.map((item) => item.id)).toEqual(["zzz", "aaa"]);
+  });
+
+  it("cuts one cursor page and resumes after its last row", async () => {
+    const people = Array.from({ length: BLOCKED_PAGE_SIZE + 2 }, function makePerson(_, index) {
+      const id = `id${String(index).padStart(2, "0")}`;
+      return person(id, new Date(Date.UTC(2026, 10, 1, 0, 0, index)).toISOString());
+    });
+
+    const first = await readBlockedPage(readerOf(people), { viewerId: VIEWER });
+    if (!first.ok) throw new Error("the first page must be valid");
+    expect(first.items).toHaveLength(BLOCKED_PAGE_SIZE);
+    expect(first.nextCursor).toBe(encodeBlockedCursor(first.items[first.items.length - 1]));
+
+    const second = await readBlockedPage(readerOf(people), {
+      viewerId: VIEWER,
+      cursor: first.nextCursor,
+    });
+    if (!second.ok) throw new Error("the second page must be valid");
+    expect(second.items.map((item) => item.id)).toEqual(["id01", "id00"]);
+    expect(second.nextCursor).toBeNull();
+    expect(second.total).toBe(BLOCKED_PAGE_SIZE + 2);
+  });
+
+  it("refuses a cursor it did not issue", async () => {
+    const page = await readBlockedPage(readerOf([]), { viewerId: VIEWER, cursor: "nonsense" });
+
+    expect(page).toEqual({ ok: false, code: "VALIDATION", reason: "INVALID_CURSOR" });
+  });
+
+  it("answers an empty page for a viewer who blocked nobody", async () => {
+    const page = await readBlockedPage(readerOf([]), { viewerId: VIEWER });
+
+    expect(page).toEqual({ ok: true, items: [], nextCursor: null, total: 0 });
   });
 });
 

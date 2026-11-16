@@ -11,9 +11,13 @@ import { gzipSync } from "node:zlib";
 // в CI PR #73). 165 КиБ (168 960) держался до CLE-72: экран /friends поднял
 // прирост до 174 206 (превышение 5 246 байт в CI PR #77). 175 КиБ (179 200)
 // закрывает этот замер с запасом около 5 КиБ.
+// 176 КиБ (180 224) — CLE-75 / Story 4.5.3: «Заблокировать» в строках людей и
+// профиле поднял прирост до 179 693 (превышение 493 байта). Новых зависимостей
+// и целых библиотек нет: +1 558 байт gzip на пункт меню, общий confirm (он же
+// в поиске) и оптимистичный откат строк; запас 531 байт.
 // В epics.md по-прежнему «150 КБ».
 export const BASE_GZIP_BYTES = 487_792;
-export const BUDGET_GROWTH_BYTES = 179_200;
+export const BUDGET_GROWTH_BYTES = 180_224;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

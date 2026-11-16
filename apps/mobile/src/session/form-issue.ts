@@ -108,6 +108,23 @@ export function passwordFieldIssue(password: string, t: Translate, common: Trans
 }
 
 /**
+ * The confirmation field of register and reset. Only the client compares the
+ * two values: the confirmation never reaches the contract or the request body.
+ * The line is silent until the field is settled (blur or submit), then updates
+ * live: a match clears it, editing the password brings it back.
+ * NOTE FOR UX: подтверждения пароля нет в EXPERIENCE «Ошибки форм» — form.confirmPassword / form.passwordMismatch (CLE-91).
+ */
+export function confirmPasswordText(
+  password: string,
+  confirm: string,
+  settled: boolean,
+  t: Translate,
+): string | undefined {
+  if (!settled) return undefined;
+  return password === confirm ? undefined : t("form.passwordMismatch");
+}
+
+/**
  * Sign-in keeps the stored lower bound at 1 (a legacy short password must pass
  * the length check), so only the upper bound has its own sentence. Everything
  * else stays the generic text of the screen.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  confirmPasswordText,
   formIssue,
   issueFromError,
   loginPasswordFieldIssue,
@@ -182,6 +183,28 @@ describe("formIssue", () => {
       field: "x",
       text: "errors.code.CONFLICT",
     });
+  });
+});
+
+describe("confirmPasswordText", () => {
+  it("is silent until the field is settled", () => {
+    expect(confirmPasswordText("password1", "password2", false, t)).toBeUndefined();
+    expect(confirmPasswordText("password1", "", false, t)).toBeUndefined();
+  });
+
+  it("names the mismatch once settled, an empty confirmation included", () => {
+    expect(confirmPasswordText("password1", "password2", true, t)).toBe("form.passwordMismatch");
+    expect(confirmPasswordText("password1", "", true, t)).toBe("form.passwordMismatch");
+  });
+
+  it("clears the line for equal values, after settling too", () => {
+    expect(confirmPasswordText("password1", "password1", true, t)).toBeUndefined();
+    expect(confirmPasswordText("", "", true, t)).toBeUndefined();
+  });
+
+  it("compares the values as typed: no trim, no normalisation", () => {
+    expect(confirmPasswordText("password1", " password1", true, t)).toBe("form.passwordMismatch");
+    expect(confirmPasswordText("Пароль", "пароль", true, t)).toBe("form.passwordMismatch");
   });
 });
 

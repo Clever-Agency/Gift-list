@@ -70,6 +70,28 @@ export type TextFieldProps = {
 
 export type FieldInputRef = ComponentRef<typeof InputFrame>;
 
+/**
+ * React Native names the keyboard's action key `returnKeyType`; a browser reads
+ * the same hint as `enterKeyHint`. The web half of Tamagui's input drops the
+ * native name, so the field passes the browser spelling next to it — the phone
+ * half maps `enterKeyHint` back when `returnKeyType` is absent.
+ */
+const ENTER_KEY_HINTS = {
+  done: "done",
+  enter: "enter",
+  go: "go",
+  next: "next",
+  previous: "previous",
+  search: "search",
+  send: "send",
+} as const;
+
+function withEnterKeyHint(input: TextFieldInputProps | undefined): TextFieldInputProps | undefined {
+  if (!input || input.enterKeyHint !== undefined || !input.returnKeyType) return input;
+  const hint = ENTER_KEY_HINTS[input.returnKeyType as keyof typeof ENTER_KEY_HINTS];
+  return hint ? { ...input, enterKeyHint: hint } : input;
+}
+
 type FieldShellProps = {
   id: string;
   label: string;
@@ -121,7 +143,7 @@ export const TextField = forwardRef<FieldInputRef, TextFieldProps>(function Text
   return (
     <FieldShell id={id} label={label} error={error} hint={hint}>
       <Control
-        {...(input as object)}
+        {...(withEnterKeyHint(input) as object)}
         ref={ref as never}
         id={id}
         value={value}
@@ -177,7 +199,7 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
       <FieldShell id={id} label={label} error={error} hint={hint}>
         <YStack position="relative" justifyContent="center">
           <InputFrame
-            {...(input as object)}
+            {...(withEnterKeyHint(input) as object)}
             ref={ref as never}
             id={id}
             width="100%"

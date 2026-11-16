@@ -26,6 +26,7 @@ const subscription = vi.hoisted(() => ({
   subscribeToNick: vi.fn(),
   unsubscribeFromNick: vi.fn(),
 }));
+const block = vi.hoisted(() => ({ blockUser: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
@@ -39,6 +40,7 @@ vi.mock("@/api/client", () => api);
 vi.mock("@/api/circle", () => circle);
 vi.mock("@/api/friend-invite", () => invites);
 vi.mock("@/api/subscription", () => subscription);
+vi.mock("@/api/block", () => block);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 // The confirm dialog draws its close cross with `expo-symbols`, which loads a
@@ -279,6 +281,7 @@ beforeEach(() => {
   circle.cancelFriendInvite.mockResolvedValue({ ok: true, outcome: "CANCELLED" });
   circle.removeFriend.mockResolvedValue({ ok: true, outcome: "REMOVED" });
   circle.removeSubscriber.mockResolvedValue({ ok: true, outcome: "UNSUBSCRIBED" });
+  block.blockUser.mockResolvedValue({ ok: true, outcome: "BLOCKED" });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -589,7 +592,7 @@ describe("друзья: запросы", () => {
 });
 
 describe("друзья: меню ⋯", () => {
-  it("в списке друзей есть destructive «Удалить из друзей», а Story 4.5 ещё нет", async () => {
+  it("в списке друзей destructive «Удалить из друзей», затем «Заблокировать»", async () => {
     signedIn();
     await mount();
 
@@ -598,11 +601,12 @@ describe("друзья: меню ⋯", () => {
     const menu = document.body.textContent ?? "";
     expect(menu).toContain("Открыть профиль");
     expect(menu).toContain("Удалить из друзей");
+    expect(menu).toContain("Заблокировать");
     expect(menu.indexOf("Открыть профиль")).toBeLessThan(menu.indexOf("Удалить из друзей"));
-    expect(menu).not.toContain("Заблокировать");
+    expect(menu.indexOf("Удалить из друзей")).toBeLessThan(menu.indexOf("Заблокировать"));
   });
 
-  it("в подписчиках тоже нет «Удалить из друзей» и «Заблокировать»", async () => {
+  it("в подписчиках есть «Убрать подписчика» и «Заблокировать», но нет «Удалить из друзей»", async () => {
     signedIn();
     circle.fetchSubscribers.mockResolvedValue(page([alena]));
     await mount();
@@ -613,8 +617,8 @@ describe("друзья: меню ⋯", () => {
     await openMenu("Алёна");
 
     expect(document.body.textContent).toContain("Убрать подписчика");
+    expect(document.body.textContent).toContain("Заблокировать");
     expect(document.body.textContent).not.toContain("Удалить из друзей");
-    expect(document.body.textContent).not.toContain("Заблокировать");
   });
 
   it("«Добавить в друзья» отправляет приглашение и оставляет строку", async () => {
@@ -776,5 +780,136 @@ describe("друзья: удаление из друзей (Story 4.4)", () => {
 
     expect(testId("friends-row-fedor")).not.toBeNull();
     expect(subscription.unsubscribeFromNick).not.toHaveBeenCalled();
+  });
+});
+
+describe("друзья: блокировка (Story 4.5)", () => {
+  /** The first row of that label: Tamagui keeps closed sheets in the tree. */
+  function menuItem(label: string): HTMLElement {
+    const nodes = Array.from(
+      document.querySelectorAll<HTMLElement>('button, [role="button"], [role="link"]'),
+    ).filter((node) => (node.textContent ?? "").trim() === label);
+    expect(nodes.length, `пункт «${label}»`).toBeGreaterThan(0);
+    return nodes[0];
+  }
+
+  function confirmButton(label: string): HTMLElement {
+    const dialog = document.querySelector('[role="alertdialog"]');
+    const target = Array.from(
+      dialog?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).find((node) => (node.textContent ?? "").trim() === label);
+    expect(target, `кнопка «${label}» в confirm`).not.toBeUndefined();
+    return target as HTMLElement;
+  }
+
+  /** The friends row's ⋯, then its last item and the confirm it opens. */
+  async function askBlock(name: string) {
+    await openMenu(name);
+    await press(menuItem("Заблокировать"));
+    await settle(300);
+  }
+
+  it("confirm называет имя и последствия; «Отмена» не блокирует и оставляет строку", async () => {
+    signedIn();
+    await mount();
+
+    await askBlock("Фёдор");
+
+    const dialog = document.querySelector('[role="alertdialog"]');
+    expect(dialog?.textContent).toContain("Заблокировать Фёдор?");
+    expect(dialog?.textContent).toContain(
+      "Вы перестанете видеть друг друга, дружба и подписки удалятся. Его бронь ваших желаний останется.",
+    );
+    expect(dialog?.textContent).toContain("Заблокировать");
+    expect(dialog?.textContent).toContain("Отмена");
+    expect(block.blockUser).not.toHaveBeenCalled();
+
+    await press(confirmButton("Отмена"));
+    await settle(0);
+
+    expect(block.blockUser).not.toHaveBeenCalled();
+    expect(testId("friends-row-fedor")).not.toBeNull();
+  });
+
+  it("блок убирает строку, обновляет total и говорит toast", async () => {
+    signedIn();
+    circle.fetchFriends.mockResolvedValue(page([fedor, alena]));
+    await mount();
+    expect(testId("friends-counter")?.textContent).toBe("2 из 2");
+
+    await askBlock("Фёдор");
+    await press(confirmButton("Заблокировать"));
+    await settle(0);
+
+    expect(block.blockUser).toHaveBeenCalledWith("fedor");
+    expect(testId("friends-row-fedor")).toBeNull();
+    expect(testId("friends-row-alena")).not.toBeNull();
+    expect(testId("friends-counter")?.textContent).toBe("1 из 1");
+    expect(text()).toContain("Фёдор заблокирован");
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it.each(["BLOCKED", "ALREADY_BLOCKED"])("исход %s — успех: toast без ошибки", async (outcome) => {
+    block.blockUser.mockResolvedValue({ ok: true, outcome });
+    signedIn();
+    await mount();
+
+    await askBlock("Фёдор");
+    await press(confirmButton("Заблокировать"));
+    await settle(0);
+
+    expect(testId("friends-row-fedor")).toBeNull();
+    expect(text()).toContain("Фёдор заблокирован");
+    expect(text()).not.toContain("Нет доступа");
+  });
+
+  it("ошибка сети возвращает строку и оставляет toast «Нет сети»", async () => {
+    block.blockUser.mockResolvedValue({ ok: false, network: true });
+    signedIn();
+    await mount();
+
+    await askBlock("Фёдор");
+    await press(confirmButton("Заблокировать"));
+    await settle(0);
+
+    expect(testId("friends-row-fedor")).not.toBeNull();
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).not.toContain("заблокирован");
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
+  it("в «Я подписан» тот же confirm убирает строку подписки", async () => {
+    signedIn();
+    circle.fetchSubscriptions.mockResolvedValue(page([alena]));
+    await mount();
+    await openTab("Подписки");
+
+    await askBlock("Алёна");
+    await press(confirmButton("Заблокировать"));
+    await settle(0);
+
+    expect(block.blockUser).toHaveBeenCalledWith("alena");
+    expect(testId("friends-row-alena")).toBeNull();
+    expect(text()).toContain("Алёна заблокирован");
+  });
+
+  it("в запросах «Заблокировать» стоит рядом с принять/отклонить и убирает строку", async () => {
+    circle.fetchInvites.mockResolvedValue(invitesAnswer([gleb], []));
+    signedIn();
+    await mount();
+    await openTab("Запросы, 1");
+
+    await press(control("Заблокировать: Глеб"));
+    await settle(300);
+
+    const dialog = document.querySelector('[role="alertdialog"]');
+    expect(dialog?.textContent).toContain("Заблокировать Глеб?");
+    await press(confirmButton("Заблокировать"));
+    await settle(0);
+
+    expect(block.blockUser).toHaveBeenCalledWith("gleb");
+    expect(testId("friends-row-gleb")).toBeNull();
+    expect(text()).toContain("Глеб заблокирован");
+    expect(invites.acceptFriendInvite).not.toHaveBeenCalled();
   });
 });

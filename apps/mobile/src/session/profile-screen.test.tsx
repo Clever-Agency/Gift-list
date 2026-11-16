@@ -18,6 +18,8 @@ const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const navigation = vi.hoisted(() => ({
   replace: vi.fn(),
   push: vi.fn(),
+  back: vi.fn(),
+  canGoBack: vi.fn(),
   setParams: vi.fn(),
 }));
 const search = vi.hoisted(() => ({
@@ -190,7 +192,8 @@ function profileReads(): number {
       value.startsWith("/api/v1/u/") &&
       !value.includes("/invite") &&
       !value.endsWith("/subscription") &&
-      !value.endsWith("/friend")
+      !value.endsWith("/friend") &&
+      !value.endsWith("/block")
     );
   }).length;
 }
@@ -200,6 +203,15 @@ function friendRemoveCalls(): number {
     ([path, init]) =>
       String(path).endsWith("/friend") &&
       (init as { method?: string } | undefined)?.method === "DELETE",
+  ).length;
+}
+
+/** Story 4.5: the block request of the profile, `POST` on the nick's route. */
+function blockCalls(): number {
+  return api.apiRequest.mock.calls.filter(
+    ([path, init]) =>
+      String(path).endsWith("/block") &&
+      (init as { method?: string } | undefined)?.method === "POST",
   ).length;
 }
 
@@ -439,7 +451,7 @@ describe("профиль: карточка и желания", () => {
     expect(text()).not.toContain("Секретный подарок");
   });
 
-  it("при «нет связи» рисует «Добавить в друзья» и «Подписаться», без блока и прочих", async () => {
+  it("при «нет связи» рисует «Добавить в друзья», «Подписаться» и «Заблокировать»", async () => {
     respond(giftsAnswer([]));
     await mount();
 
@@ -447,7 +459,7 @@ describe("профиль: карточка и желания", () => {
     expect(button("Принять приглашение")).toBeUndefined();
     expect(button("Подписаться")).toBeDefined();
     expect(button("Отписаться")).toBeUndefined();
-    expect(button("Заблокировать")).toBeUndefined();
+    expect(button("Заблокировать")).toBeDefined();
     expect(button("Отменить приглашение")).toBeUndefined();
     expect(button("Отклонить")).toBeUndefined();
     expect(text()).not.toContain("Друзья");
@@ -545,7 +557,7 @@ describe("профиль: карточка и желания", () => {
 });
 
 describe("профиль: принятие и отказ (Story 4.2.3)", () => {
-  it("входящий pending: рядом «Принять приглашение», «Отклонить» и «Подписаться», без блока", async () => {
+  it("входящий pending: рядом «Принять приглашение», «Отклонить», «Подписаться» и блок", async () => {
     respond(giftsAnswer([], owner, "INCOMING_PENDING"));
     await mount();
 
@@ -555,7 +567,7 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(button("Подписаться")).toBeDefined();
     expect(button("Отписаться")).toBeUndefined();
-    expect(button("Заблокировать")).toBeUndefined();
+    expect(button("Заблокировать")).toBeDefined();
     expect(button("Отменить приглашение")).toBeUndefined();
   });
 
@@ -640,7 +652,7 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
     expect(button("Отклонить")).toBeUndefined();
   });
 
-  it("свой профиль: ни принятия, ни отказа, ни cooldown", async () => {
+  it("свой профиль: ни принятия, ни отказа, ни cooldown, ни блока", async () => {
     search.params = { nick: "anya" };
     respond(
       giftsAnswer([], { displayName: "Аня", nick: "anya" }, "NONE", {
@@ -654,6 +666,7 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
     expect(button("Принять приглашение")).toBeUndefined();
     expect(button("Отклонить")).toBeUndefined();
     expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Заблокировать")).toBeUndefined();
     expect(text()).not.toContain("Можно снова через");
   });
 
@@ -739,7 +752,6 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
 
 describe("профиль: приглашение в друзья (Story 4.1.3)", () => {
   function expectNoForeignActions() {
-    expect(button("Заблокировать")).toBeUndefined();
     expect(button("Отменить приглашение")).toBeUndefined();
     expect(button("Отклонить")).toBeUndefined();
   }
@@ -831,7 +843,7 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expectNoForeignActions();
   });
 
-  it("уже друзья: только chip «Друзья» и никаких действий", async () => {
+  it("уже друзья: chip «Друзья», «Удалить из друзей» и «Заблокировать», без прочих действий", async () => {
     respond(giftsAnswer([], owner, "FRIENDS"));
     await mount();
 
@@ -840,6 +852,8 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(button("Принять приглашение")).toBeUndefined();
     expect(button("Подписаться")).toBeUndefined();
     expect(button("Отписаться")).toBeUndefined();
+    expect(button("Удалить из друзей")).toBeDefined();
+    expect(button("Заблокировать")).toBeDefined();
     expectNoForeignActions();
   });
 
@@ -854,6 +868,7 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
     expect(button("Подписаться")).toBeUndefined();
     expect(button("Отписаться")).toBeUndefined();
     expect(button("Удалить из друзей")).toBeUndefined();
+    expect(button("Заблокировать")).toBeUndefined();
     expectNoForeignActions();
   });
 
@@ -863,6 +878,7 @@ describe("профиль: приглашение в друзья (Story 4.1.3)",
 
     expect(text()).toContain("Пользователь не найден.");
     expect(button("Добавить в друзья")).toBeUndefined();
+    expect(button("Заблокировать")).toBeUndefined();
     expect(button("Принять приглашение")).toBeUndefined();
   });
 
@@ -1007,13 +1023,13 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
     return giftsAnswer(cards, owner, relationship);
   }
 
-  it("у друга есть «Удалить из друзей», «Заблокировать» ещё нет; «Отмена» не удаляет", async () => {
+  it("у друга есть «Удалить из друзей» и «Заблокировать»; «Отмена» не удаляет", async () => {
     respond(friendAnswer([], "FRIENDS"));
     await mount();
 
     expect(text()).toContain("Друзья");
     expect(button("Удалить из друзей")).toBeDefined();
-    expect(button("Заблокировать")).toBeUndefined();
+    expect(button("Заблокировать")).toBeDefined();
     expect(button("Подписаться")).toBeUndefined();
 
     await openRemoveConfirm();
@@ -1078,7 +1094,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
     expect(button("Добавить в друзья")).toBeDefined();
     expect(button("Удалить из друзей")).toBeUndefined();
     expect(button("Подписаться")).toBeDefined();
-    expect(button("Заблокировать")).toBeUndefined();
+    expect(button("Заблокировать")).toBeDefined();
     // The profile is reread so the list and the relation come from the server.
     expect(profileReads()).toBe(2);
   });
@@ -1175,6 +1191,137 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
 
     await openRemoveConfirm();
     await pressInDialog("Удалить");
+    await settle(10);
+
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/u/boris", reason: "session_expired" },
+    });
+  });
+});
+
+describe("профиль: блокировка (Story 4.5)", () => {
+  /** The toast's close cross carries the catalogue label «Закрыть». */
+  async function closeToast() {
+    const close = document.querySelector<HTMLElement>('[aria-label="Закрыть"]');
+    expect(close, "крестик тоста").not.toBeNull();
+    await act(async () => {
+      close?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    // The fade of `TOAST_FADE_MS` (160 мс) ends with `onDismiss`.
+    await settle(300);
+  }
+
+  async function openBlockConfirm() {
+    await press("Заблокировать");
+    await settle(60);
+    expect(dialogElement()?.textContent).toContain("Заблокировать Борис?");
+  }
+
+  it("confirm называет имя и последствия; «Отмена» не блокирует и оставляет профиль", async () => {
+    respond(giftsAnswer([], owner, "FRIENDS"));
+    await mount();
+
+    await openBlockConfirm();
+
+    const dialog = dialogElement();
+    expect(dialog?.textContent).toContain(
+      "Вы перестанете видеть друг друга, дружба и подписки удалятся. Его бронь ваших желаний останется.",
+    );
+    expect(dialog?.querySelectorAll("button")).toHaveLength(2);
+
+    await pressInDialog("Отмена");
+    await settle(10);
+
+    expect(blockCalls()).toBe(0);
+    expect(text()).not.toContain("заблокирован");
+    expect(button("Заблокировать")).toBeDefined();
+  });
+
+  it("успех: toast, затем уход назад с тем же toast", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/block") {
+        return Promise.resolve({ ok: true, data: { outcome: "BLOCKED" } });
+      }
+      return Promise.resolve(giftsAnswer([], owner, "FRIENDS"));
+    });
+    navigation.canGoBack.mockReturnValue(true);
+    await mount();
+
+    await openBlockConfirm();
+    await pressInDialog("Заблокировать");
+    await settle(10);
+
+    expect(blockCalls()).toBe(1);
+    expect(text()).toContain("Борис заблокирован");
+    expect(dialogElement()).toBeNull();
+    // The toast is still on screen: the leaving waits for it.
+    expect(navigation.back).not.toHaveBeenCalled();
+
+    await closeToast();
+
+    expect(navigation.back).toHaveBeenCalledTimes(1);
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("прямая ссылка без истории уходит на /friends", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/block") {
+        return Promise.resolve({ ok: true, data: { outcome: "ALREADY_BLOCKED" } });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    navigation.canGoBack.mockReturnValue(false);
+    await mount();
+
+    await openBlockConfirm();
+    await pressInDialog("Заблокировать");
+    await settle(10);
+    await closeToast();
+
+    expect(navigation.replace).toHaveBeenCalledWith("/friends");
+    expect(navigation.back).not.toHaveBeenCalled();
+  });
+
+  it("сеть: профиль остаётся, toast «Нет сети», уход не заказан", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/block") {
+        return Promise.resolve({ ok: false, network: true });
+      }
+      return Promise.resolve(giftsAnswer([], owner, "FRIENDS"));
+    });
+    navigation.canGoBack.mockReturnValue(true);
+    await mount();
+
+    await openBlockConfirm();
+    await pressInDialog("Заблокировать");
+    await settle(10);
+
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).not.toContain("заблокирован");
+    expect(container.querySelector('[data-testid="profile-owner"]')).not.toBeNull();
+    expect(button("Заблокировать")).toBeDefined();
+    expect(navigation.back).not.toHaveBeenCalled();
+  });
+
+  it("401 при блоке уводит на вход с прежним безопасным next", async () => {
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/block") {
+        return Promise.resolve({ ok: false, code: "UNAUTHENTICATED", message: "" });
+      }
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      return Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+
+    await openBlockConfirm();
+    await pressInDialog("Заблокировать");
     await settle(10);
 
     expect(navigation.replace).toHaveBeenCalledWith({

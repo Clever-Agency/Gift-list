@@ -208,6 +208,7 @@ export type ListData = z.infer<typeof listDataSchema>;
 export {
   DISPLAY_NAME_MAX,
   EMAIL_MAX,
+  INVITE_TOKEN_MAX,
   NICK_MAX,
   NICK_MIN,
   NICK_PATTERN,

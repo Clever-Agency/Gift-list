@@ -1012,7 +1012,7 @@ function FriendsContent({
                 </Text>
               </Pressable>
               <Text kind="display-sm" tone="primary" textAlign="center">
-                {app("brandName", { brand })}
+                {common("brandName", { brand })}
               </Text>
               <View ref={headingNode as never} tabIndex={-1} alignSelf="flex-start" outlineWidth={0}>
                 <Heading level={1}>{friends("title")}</Heading>

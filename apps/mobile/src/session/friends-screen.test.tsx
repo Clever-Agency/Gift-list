@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { CircleCard, Me } from "@gift-list/contracts";
+import { PRODUCT_NAME, type CircleCard, type Me } from "@gift-list/contracts";
 import { act, cloneElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -317,6 +317,16 @@ describe("друзья: гейт сессии", () => {
 
     expect(testId("session-error")).not.toBeNull();
     expect(navigation.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("друзья: шапка", () => {
+  it("показывает название бренда, а не сырой ключ app.brandName", async () => {
+    signedIn();
+    await mount();
+
+    expect(text()).toContain(PRODUCT_NAME);
+    expect(text()).not.toContain("brandName");
   });
 });
 

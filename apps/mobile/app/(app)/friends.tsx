@@ -45,6 +45,8 @@ import {
   type SubscriptionView,
 } from "@/friends/subscription-view.types";
 import { readSubscriptionView, writeSubscriptionView } from "@/friends/subscription-view";
+import { requestBlock } from "@/profile/block-action";
+import { BlockConfirm } from "@/profile/block-confirm";
 import { profileRoute } from "@/profile/profile-route";
 import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
@@ -88,6 +90,12 @@ type InvitesState =
       outgoingCursor: string | null;
       loadingMore: boolean;
     };
+
+/**
+ * Story 4.5: the person a block confirm would take away and the rows around them
+ * in the list the press came from, so focus lands on the neighbour's ⋯.
+ */
+type BlockTarget = { card: CircleCard; rows: readonly CircleCard[] };
 
 /** One constant for the whole screen; the documents name no other value. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -182,6 +190,9 @@ function FriendsContent({
   // Story 4.4: «Удалить из друзей» has its own confirm, next to the subscriber one.
   const [friendConfirm, setFriendConfirm] = useState<CircleCard | null>(null);
   const [friendConfirmBusy, setFriendConfirmBusy] = useState(false);
+  // Story 4.5: the block confirm and its in-flight state.
+  const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
 
   // Focus: the ⋯ of each row, so an action can put focus back; the page title is
   // the last resort of «Куда уходит фокус».
@@ -711,6 +722,100 @@ function FriendsContent({
     await reportFailure(result);
   }
 
+  /** A ready list without one person; every other state is left as it is. */
+  function withoutRow(state: PageState, nick: string): PageState {
+    if (state.status !== "ready") return state;
+    return {
+      ...state,
+      items: state.items.filter((item) => item.nick !== nick),
+      total: Math.max(0, state.total - 1),
+    };
+  }
+
+  /** Both request halves without the pair's rows; the badge counts the incoming ones. */
+  function withoutInvites(state: InvitesState, nick: string): InvitesState {
+    if (state.status !== "ready") return state;
+    const incoming = state.incoming.filter((item) => item.nick !== nick);
+    return {
+      ...state,
+      incoming,
+      outgoing: state.outgoing.filter((item) => item.nick !== nick),
+      incomingCount: state.incomingCount - (state.incoming.length - incoming.length),
+    };
+  }
+
+  function readyRows(state: PageState): CircleCard[] {
+    return state.status === "ready" ? state.items : [];
+  }
+
+  /** The ⋯ item of every person row: «Заблокировать» last, after the divider. */
+  function blockItem(card: CircleCard, rows: readonly CircleCard[]): OverflowMenuItem {
+    return {
+      key: "block",
+      label: friends("menu.block"),
+      destructive: true,
+      onPress: function askBlockViaMenu() {
+        askBlock(card, rows);
+      },
+    };
+  }
+
+  function askBlock(card: CircleCard, rows: readonly CircleCard[]) {
+    setToast(null);
+    setBlockTarget({ card, rows });
+  }
+
+  /**
+   * Story 4.5 (A-14, AD-10 step 4): a block cuts the friendship, both
+   * subscriptions and the pending invites of the pair, so the person leaves
+   * every list at once — a row left in an unopened tab would be a lie. The
+   * server keeps the reservations of the viewer's wishes. Every failure puts
+   * all four lists back, like the unfriend rollback of Story 4.4.
+   */
+  async function blockRow(target: BlockTarget) {
+    const { card } = target;
+    if (!startAction(card)) return;
+    const snapshot = {
+      friends: friendsList,
+      subscribed: subscribedList,
+      subscribers: subscribersList,
+      invites: invites,
+    };
+    setFriendsList((current) => withoutRow(current, card.nick));
+    setSubscribedList((current) => withoutRow(current, card.nick));
+    setSubscribersList((current) => withoutRow(current, card.nick));
+    setInvites((current) => withoutInvites(current, card.nick));
+
+    const result = await requestBlock(card.nick, { profile, common }).finally(function release() {
+      finishAction(card);
+    });
+
+    if (result.status === "blocked") {
+      // `BLOCKED` and the idempotent `ALREADY_BLOCKED` are both successes.
+      setBlockTarget(null);
+      setToast({
+        message: friends("toast.blocked", { name: card.displayName }),
+        tone: "info",
+      });
+      focusAfterRemoval(target.rows, card.nick);
+      return;
+    }
+    setFriendsList(snapshot.friends);
+    setSubscribedList(snapshot.subscribed);
+    setSubscribersList(snapshot.subscribers);
+    setInvites(snapshot.invites);
+    setBlockTarget(null);
+    if (result.status === "expired") {
+      await expireSession();
+      return;
+    }
+    if (result.status === "missing") {
+      setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error" });
+  }
+
   async function subscribeRow(card: CircleCard) {
     if (!startAction(card)) return;
     const state = subscribersList;
@@ -898,8 +1003,8 @@ function FriendsContent({
 
   /**
    * The ⋯ of «Друзья» (`EXPERIENCE.md` → Отношение → статус и меню): «Открыть
-   * профиль», then the destructive «Удалить из друзей» with its confirm. Story
-   * 4.5 adds «Заблокировать» after it.
+   * профиль», then the destructive «Удалить из друзей» and «Заблокировать» with
+   * their confirms.
    */
   function profileItems(card: CircleCard): OverflowMenuItem[] {
     return [
@@ -913,10 +1018,11 @@ function FriendsContent({
           setFriendConfirm(card);
         },
       },
+      blockItem(card, readyRows(friendsList)),
     ];
   }
 
-  /** The ⋯ of «Я подписан»: the table minus «Удалить из друзей» and «Заблокировать». */
+  /** The ⋯ of «Я подписан»: the table minus «Удалить из друзей». */
   function subscribedItems(card: CircleCard): OverflowMenuItem[] {
     const items = [openProfileItem(card)];
     if (card.relationship === "NONE") {
@@ -935,6 +1041,7 @@ function FriendsContent({
         void unsubscribeRow(card, "subscribed");
       },
     });
+    items.push(blockItem(card, readyRows(subscribedList)));
     return items;
   }
 
@@ -974,6 +1081,7 @@ function FriendsContent({
         setSubscriberConfirm(card);
       },
     });
+    items.push(blockItem(card, readyRows(subscribersList)));
     return items;
   }
 
@@ -1076,6 +1184,7 @@ function FriendsContent({
                     onAccept={acceptInvite}
                     onReject={rejectInvite}
                     onCancel={cancelInvite}
+                    onBlock={askBlock}
                     pendingNick={pendingNick}
                     onRowNode={registerMenuNode}
                   />
@@ -1131,6 +1240,24 @@ function FriendsContent({
           }}
           onClosed={function friendConfirmClosed() {
             setFriendConfirmBusy(false);
+          }}
+        />
+        <BlockConfirm
+          name={blockTarget?.card.displayName ?? null}
+          busy={blockBusy}
+          onConfirm={function confirmBlock() {
+            if (blockTarget === null) return;
+            setBlockBusy(true);
+            void blockRow(blockTarget).finally(function release() {
+              setBlockBusy(false);
+            });
+          }}
+          onCancel={function cancelBlock() {
+            if (blockBusy) return;
+            setBlockTarget(null);
+          }}
+          onClosed={function blockClosed() {
+            setBlockBusy(false);
           }}
         />
         {toast ? <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} /> : null}
@@ -1428,6 +1555,8 @@ type RequestsPanelProps = {
   onAccept: (card: CircleCard) => void;
   onReject: (card: CircleCard) => void;
   onCancel: (card: CircleCard) => void;
+  /** Story 4.5: «Заблокировать» of a request row, with the rows for the focus rule. */
+  onBlock: (card: CircleCard, rows: readonly CircleCard[]) => void;
   pendingNick: string | null;
   /** Stores the row's main action, so the next row can take focus after a removal. */
   onRowNode: (nick: string, node: FocusTarget | null) => void;
@@ -1440,13 +1569,23 @@ function RequestsPanel({
   onAccept,
   onReject,
   onCancel,
+  onBlock,
   pendingNick,
   onRowNode,
 }: RequestsPanelProps) {
   const friends = useTranslations("app.friends");
   const profile = useTranslations("app.profile");
 
+  /** The whole half-pair as one list: the focus rule walks it in reading order. */
+  function allRows(): CircleCard[] {
+    return invites.status === "ready" ? [...invites.incoming, ...invites.outgoing] : [];
+  }
+
   function incomingRow(card: CircleCard) {
+    function blockThisRow() {
+      onBlock(card, allRows());
+    }
+
     return (
       <YStack role="listitem" key={card.nick} gap="$2">
         <PersonRow
@@ -1487,6 +1626,13 @@ function RequestsPanel({
                 }}
                 testID={`friends-reject-${card.nick}`}
               />
+              <Button
+                label={friends("menu.block")}
+                ariaLabel={`${friends("menu.block")}: ${card.displayName}`}
+                variant="ghost"
+                onPress={blockThisRow}
+                testID={`friends-block-${card.nick}`}
+              />
             </XStack>
           }
           testID={`friends-row-${card.nick}`}
@@ -1496,6 +1642,10 @@ function RequestsPanel({
   }
 
   function outgoingRow(card: CircleCard) {
+    function blockThisRow() {
+      onBlock(card, allRows());
+    }
+
     return (
       <YStack role="listitem" key={card.nick} gap="$2">
         <PersonRow
@@ -1508,19 +1658,28 @@ function RequestsPanel({
           })}
           chip={<RelationshipChip label={profile("relationship.chips.OUTGOING_PENDING")} />}
           actions={
-            <Button
-              ref={function setActionNode(node) {
-                onRowNode(card.nick, node);
-              }}
-              label={friends("actions.cancel")}
-              ariaLabel={`${friends("actions.cancel")}: ${card.displayName}`}
-              variant="ghost"
-              busy={pendingNick === card.nick}
-              onPress={function cancel() {
-                onCancel(card);
-              }}
-              testID={`friends-cancel-${card.nick}`}
-            />
+            <XStack gap="$2" flexWrap="wrap">
+              <Button
+                ref={function setActionNode(node) {
+                  onRowNode(card.nick, node);
+                }}
+                label={friends("actions.cancel")}
+                ariaLabel={`${friends("actions.cancel")}: ${card.displayName}`}
+                variant="ghost"
+                busy={pendingNick === card.nick}
+                onPress={function cancel() {
+                  onCancel(card);
+                }}
+                testID={`friends-cancel-${card.nick}`}
+              />
+              <Button
+                label={friends("menu.block")}
+                ariaLabel={`${friends("menu.block")}: ${card.displayName}`}
+                variant="ghost"
+                onPress={blockThisRow}
+                testID={`friends-block-${card.nick}`}
+              />
+            </XStack>
           }
           testID={`friends-row-${card.nick}`}
         />

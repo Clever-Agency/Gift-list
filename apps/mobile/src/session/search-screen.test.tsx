@@ -8,6 +8,7 @@ import SearchScreen from "../../app/(app)/search";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const search = vi.hoisted(() => ({ searchUsers: vi.fn() }));
+const block = vi.hoisted(() => ({ blockUser: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
@@ -24,8 +25,19 @@ const links = vi.hoisted(function createLinks() {
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/search", () => search);
+vi.mock("@/api/block", () => block);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+// The confirm dialog draws its close cross with `expo-symbols`, which loads a
+// symbol font at runtime; the icon is decorative here.
+vi.mock("expo-symbols", async () => {
+  const React = await import("react");
+  return {
+    SymbolView: function SymbolView() {
+      return React.createElement("span", { "aria-hidden": true });
+    },
+  };
+});
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
   const { dirname, join } = await import("node:path");
@@ -225,6 +237,7 @@ beforeEach(() => {
   route.params = {};
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
+  block.blockUser.mockResolvedValue({ ok: true, outcome: "BLOCKED" });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -914,5 +927,88 @@ describe("поиск: подписка (Story 4.6, CLE-70 F1)", () => {
     expect(button("Подписаться")).toBeDefined();
     expect(button("Отписаться")).toBeUndefined();
     expect(text()).not.toContain("Вы подписались");
+  });
+});
+
+describe("поиск: блокировка (Story 4.5)", () => {
+  function confirmButton(label: string): HTMLElement {
+    const dialog = document.querySelector('[role="alertdialog"]');
+    const target = Array.from(
+      dialog?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).find((node) => (node.textContent ?? "").trim() === label);
+    expect(target, `кнопка «${label}» в confirm`).not.toBeUndefined();
+    return target as HTMLElement;
+  }
+
+  async function openBlockConfirm(card: UserSearchCard, query: string): Promise<void> {
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [card] });
+    await mount();
+    await type(query);
+    await settle();
+    await pressLabel("Заблокировать");
+    await settle();
+  }
+
+  it("у чужой строки есть «Заблокировать», у своей — нет", async () => {
+    signedIn();
+    search.searchUsers.mockResolvedValue({ ok: true, users: [alena, ownCard] });
+    await mount();
+
+    await type("ал");
+    await settle();
+
+    expect(testId("search-block")).not.toBeNull();
+    expect(button("Заблокировать")).toBeDefined();
+    expect(testId("search-relationship-chip")?.textContent).toBe("Это вы");
+    // Одна кнопка блока на две строки: у своей карточки её нет.
+    expect(container.querySelectorAll('[data-testid="search-block"]')).toHaveLength(1);
+  });
+
+  it("confirm называет имя и последствия; «Отмена» не блокирует и оставляет строку", async () => {
+    await openBlockConfirm(alena, "ал");
+
+    const dialog = document.querySelector('[role="alertdialog"]');
+    expect(dialog?.textContent).toContain("Заблокировать Алёна?");
+    expect(dialog?.textContent).toContain(
+      "Вы перестанете видеть друг друга, дружба и подписки удалятся. Его бронь ваших желаний останется.",
+    );
+    expect(block.blockUser).not.toHaveBeenCalled();
+
+    await act(async () => {
+      confirmButton("Отмена").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(block.blockUser).not.toHaveBeenCalled();
+    expect(text()).toContain("Алёна");
+  });
+
+  it("блок убирает строку и говорит toast", async () => {
+    await openBlockConfirm(alena, "ал");
+
+    await act(async () => {
+      confirmButton("Заблокировать").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(block.blockUser).toHaveBeenCalledWith("alena");
+    expect(testId("search-block")).toBeNull();
+    expect(text()).toContain("Никого не нашли");
+    expect(text()).toContain("Алёна заблокирован");
+  });
+
+  it("ошибка сети возвращает строку и оставляет toast «Нет сети»", async () => {
+    block.blockUser.mockResolvedValue({ ok: false, network: true });
+    await openBlockConfirm(alena, "ал");
+
+    await act(async () => {
+      confirmButton("Заблокировать").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(testId("search-block")).not.toBeNull();
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+    expect(text()).not.toContain("заблокирован");
   });
 });

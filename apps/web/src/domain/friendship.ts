@@ -171,6 +171,11 @@ export interface FriendshipTransaction {
   lockPair(pair: FriendshipPair): Promise<void>;
   /** A `Block` row between the two users in either direction (AD-10 step 4). */
   hasBlockBetween(firstUserId: string, secondUserId: string): Promise<boolean>;
+  /**
+   * A `Block` row in exactly this direction. The reverse row is not reported:
+   * the block protocol of Story 4.5 owns each row separately.
+   */
+  findBlock(blockerId: string, blockedId: string): Promise<boolean>;
   /** Whether the canonical pair already has an accepted edge. */
   findFriendship(pair: FriendshipPair): Promise<boolean>;
   /** Whether `fromUserId` already has a pending invite to `toUserId`. */
@@ -184,6 +189,15 @@ export interface FriendshipTransaction {
   deleteFriendship(pair: FriendshipPair): Promise<void>;
   /** Removes every invite between the two users, in both directions (AD-10 step 2). */
   deleteInvitesBetween(firstUserId: string, secondUserId: string): Promise<void>;
+  /**
+   * Inserts `Block(blockerId → blockedId)`; an existing row is left unchanged,
+   * so the UNIQUE index can never surface as an error (Story 4.5).
+   */
+  insertBlock(blockerId: string, blockedId: string): Promise<void>;
+  /** Removes exactly one directed `Block` row and answers whether it existed. */
+  deleteBlock(blockerId: string, blockedId: string): Promise<boolean>;
+  /** Removes both directed `Subscription` rows of the pair (block protocol, AD-19). */
+  deleteSubscriptionsBetween(firstUserId: string, secondUserId: string): Promise<void>;
   /** The pair's rejection cooldown row, or `null` when none was ever written. */
   findInviteCooldown(pair: FriendshipPair): Promise<InviteCooldownRecord | null>;
   /** Upserts one row per pair; a repeated rejection refreshes `until`. */

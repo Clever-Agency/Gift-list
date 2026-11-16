@@ -19,6 +19,12 @@ export type RelationshipActionsProps = {
    */
   onRemoveFriend?: () => void;
   /**
+   * Story 4.5: «Заблокировать» stands next to the other buttons on the profile
+   * and the search row; a circle list keeps it in its ⋯ menu instead. The own
+   * card passes nothing: «Это вы» has no menu and no action.
+   */
+  onBlock?: () => void;
+  /**
    * The id namespace: `profile` keeps the profile ids, and a list row passes its
    * own prefix so two rows never share `data-testid`.
    */
@@ -38,6 +44,9 @@ export type RelationshipActionsProps = {
  *
  * Story 4.4: `onRemoveFriend` adds «Удалить из друзей» next to the «Друзья»
  * chip. Only the profile passes it; a search row keeps the chip alone.
+ *
+ * Story 4.5: `onBlock` adds the ghost «Заблокировать» — the profile and the
+ * search row pass it, a circle list keeps the action in its ⋯ menu.
  */
 export function RelationshipActions({
   relationship,
@@ -46,9 +55,11 @@ export function RelationshipActions({
   busy,
   onAction,
   onRemoveFriend,
+  onBlock,
   testIDPrefix = "profile",
 }: RelationshipActionsProps) {
   const profile = useTranslations("app.profile");
+  const friends = useTranslations("app.friends");
 
   function acceptInvite() {
     onAction("accept");
@@ -64,6 +75,10 @@ export function RelationshipActions({
 
   function removeFriend() {
     if (onRemoveFriend !== undefined) onRemoveFriend();
+  }
+
+  function block() {
+    if (onBlock !== undefined) onBlock();
   }
 
   return (
@@ -140,6 +155,14 @@ export function RelationshipActions({
           onPress={addFriend}
           busy={busy}
           testID={`${testIDPrefix}-add-friend`}
+        />
+      )}
+      {onBlock === undefined ? null : (
+        <Button
+          label={friends("menu.block")}
+          variant="ghost"
+          onPress={block}
+          testID={`${testIDPrefix}-block`}
         />
       )}
     </XStack>

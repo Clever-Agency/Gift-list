@@ -21,6 +21,8 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
+import { requestBlock } from "@/profile/block-action";
+import { BlockConfirm } from "@/profile/block-confirm";
 import {
   optimisticRelation,
   requestFriendRemoval,
@@ -108,6 +110,10 @@ type ToastState = { message: string; tone: "info" | "error"; nick: string };
  * confirm as the friends list. The optimistically former friend loses the
  * `FRIENDS` wishes at once; a success rereads the profile and leaves the route
  * open, because the person still exists and keeps their `PUBLIC` wishes.
+ *
+ * Story 4.5 adds «Заблокировать» next to the other buttons. The confirm names
+ * the person, and a success leaves the route once its toast has been read: after
+ * a block the profile is `not_found` for both sides (AD-7).
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
@@ -150,6 +156,11 @@ export default function ProfileScreen() {
   // Story 4.4: the confirm of «Удалить из друзей» and its in-flight state.
   const [friendConfirmOpen, setFriendConfirmOpen] = useState(false);
   const [friendConfirmBusy, setFriendConfirmBusy] = useState(false);
+  // Story 4.5: the confirm of «Заблокировать»; a success leaves this route.
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+  const [blockConfirmBusy, setBlockConfirmBusy] = useState(false);
+  const blockInFlight = useRef<string | null>(null);
+  const [leaveAfterBlock, setLeaveAfterBlock] = useState(false);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -272,6 +283,13 @@ export default function ProfileScreen() {
 
   function dismissToast() {
     setToast(null);
+    // Story 4.5: a block notice cannot outlive this route — the app has no
+    // global toast host — so the leaving waits for the toast instead of
+    // dropping it. Any other toast just closes.
+    if (!leaveAfterBlock) return;
+    setLeaveAfterBlock(false);
+    if (router.canGoBack()) router.back();
+    else router.replace("/friends");
   }
 
   const ownProfile =
@@ -615,6 +633,72 @@ export default function ProfileScreen() {
     setFriendConfirmOpen(true);
   }
 
+  /**
+   * Story 4.5 (FR-24, AD-10 step 4): a block cuts the friendship and both
+   * subscriptions of the pair and hides each of them from the other (AD-7), so
+   * the profile stops existing for this viewer: after the toast it leaves back
+   * (or to `/friends` when the route was opened directly). There is no
+   * optimistic state to roll back — nothing on this screen survives the press.
+   */
+  async function blockAction() {
+    if (nick === null || blockInFlight.current === nick) return;
+    const requestedView = view;
+    if (requestedView.status !== "ready") return;
+
+    const requestedNick = nick;
+    blockInFlight.current = requestedNick;
+    setToast(null);
+
+    const result = await requestBlock(requestedNick, { profile, common });
+    if (blockInFlight.current === requestedNick) blockInFlight.current = null;
+
+    setBlockConfirmOpen(false);
+    if (result.status === "blocked") {
+      // `BLOCKED` and the idempotent `ALREADY_BLOCKED` are both successes.
+      setToast({
+        message: friends("toast.blocked", { name: requestedView.owner.displayName }),
+        tone: "info",
+        nick: requestedNick,
+      });
+      setLeaveAfterBlock(true);
+      return;
+    }
+    if (result.status === "expired") {
+      const signedOut = await expireSession();
+      if (!signedOut) {
+        setToast({
+          message: profile("relationship.network"),
+          tone: "error",
+          nick: requestedNick,
+        });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setState({ status: "missing" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error", nick: requestedNick });
+  }
+
+  function confirmBlock() {
+    if (blockConfirmBusy) return;
+    setBlockConfirmBusy(true);
+    void blockAction().finally(function release() {
+      setBlockConfirmBusy(false);
+    });
+  }
+
+  function cancelBlock() {
+    if (blockConfirmBusy) return;
+    setBlockConfirmOpen(false);
+  }
+
+  function askBlock() {
+    setToast(null);
+    setBlockConfirmOpen(true);
+  }
+
   return (
     <Screen>
       <SafeArea>
@@ -682,6 +766,7 @@ export default function ProfileScreen() {
                           void relationshipAction(kind);
                         }}
                         onRemoveFriend={ownProfile ? undefined : askRemoveFriend}
+                        onBlock={ownProfile ? undefined : askBlock}
                       />
                       {/*
                         Story 4.6: a subscription is independent of the friend
@@ -739,6 +824,17 @@ export default function ProfileScreen() {
           onCancel={cancelFriendRemoval}
           onClosed={function friendConfirmClosed() {
             setFriendConfirmBusy(false);
+          }}
+        />
+        <BlockConfirm
+          name={
+            blockConfirmOpen && view.status === "ready" ? view.owner.displayName : null
+          }
+          busy={blockConfirmBusy}
+          onConfirm={confirmBlock}
+          onCancel={cancelBlock}
+          onClosed={function blockClosed() {
+            setBlockConfirmBusy(false);
           }}
         />
       </SafeArea>

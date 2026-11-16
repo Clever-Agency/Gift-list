@@ -83,7 +83,17 @@
     "hideFromSearch": "Не показывать в поиске",
     "hideFromSearchHint": "Прямые ссылки на профиль и вишлист по-прежнему работают.",
     "hideFromSearchSaved": "Настройка сохранена.",
-    "loadError": "Не получилось загрузить. Проверьте сеть."
+    "loadError": "Не получилось загрузить. Проверьте сеть.",
+    "blocked": {
+      "title": "Заблокированные",
+      "empty": "Вы никого не блокировали",
+      "unblock": "Разблокировать",
+      "unblockLabel": "Разблокировать: {name}",
+      "unblocked": "{name} разблокирован",
+      "showMore": "Показать ещё",
+      "retry": "Повторить",
+      "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз."
+    }
   },
   "search": {
     "title": "Поиск",
@@ -159,7 +169,8 @@
       "openProfile": "Открыть профиль",
       "cancelInvite": "Отменить приглашение",
       "removeSubscriber": "Убрать подписчика",
-      "removeFriend": "Удалить из друзей"
+      "removeFriend": "Удалить из друзей",
+      "block": "Заблокировать"
     },
     "cooldown": "Можно снова через {hours} ч",
     "removeSubscriber": {
@@ -174,10 +185,17 @@
       "confirm": "Удалить",
       "cancel": "Отмена"
     },
+    "block": {
+      "title": "Заблокировать {name}?",
+      "body": "Вы перестанете видеть друг друга, дружба и подписки удалятся. Его бронь ваших желаний останется.",
+      "confirm": "Заблокировать",
+      "cancel": "Отмена"
+    },
     "toast": {
       "inviteCancelled": "Приглашение отменено",
       "subscriberRemoved": "{name} больше не подписан",
-      "friendRemoved": "{name} удалён из друзей"
+      "friendRemoved": "{name} удалён из друзей",
+      "blocked": "{name} заблокирован"
     }
   },
   "newGift": {

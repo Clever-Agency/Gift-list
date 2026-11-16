@@ -16,7 +16,8 @@ import { RelationshipActions } from "./relationship-actions";
  * `testIDPrefix` only namespaces the `data-testid`s, so two search rows never
  * share ids; the default `profile` is what the stories below use. Story 4.4
  * adds `onRemoveFriend`: the profile passes it next to the «Друзья» chip, the
- * search row does not.
+ * search row does not. Story 4.5 adds `onBlock`: the profile and the search row
+ * pass it, a circle list keeps «Заблокировать» in its ⋯ menu instead.
  */
 const meta = {
   title: "App/RelationshipActions",
@@ -55,12 +56,17 @@ export const Friends: Story = {
 };
 
 /**
- * The profile of a friend (Story 4.4): the chip plus the ghost «Удалить из
- * друзей», which opens the shared confirm. A search row passes no
- * `onRemoveFriend`, so it keeps the chip alone.
+ * The profile of a friend (Story 4.4/4.5): the chip, the ghost «Удалить из
+ * друзей» and the ghost «Заблокировать»; each opens its own shared confirm. A
+ * search row passes no `onRemoveFriend`, so it keeps the chip alone.
  */
 export const FriendOnProfile: Story = {
-  args: { relationship: "FRIENDS", onRemoveFriend: noop },
+  args: { relationship: "FRIENDS", onRemoveFriend: noop, onBlock: noop },
+};
+
+/** No edge (Story 4.5): «Добавить в друзья» plus the ghost «Заблокировать». */
+export const BlockAvailable: Story = {
+  args: { onBlock: noop },
 };
 
 /** The unfriend press is in flight: the button is busy and takes no second press. */
@@ -68,9 +74,9 @@ export const BusyRemoveFriend: Story = {
   args: { relationship: "FRIENDS", onRemoveFriend: noop, busy: true },
 };
 
-/** The friend row at 360 px: the chip and «Удалить из друзей» wrap inside the gutter. */
+/** The friend row at 360 px: the chip, «Удалить из друзей» and «Заблокировать» wrap inside the gutter. */
 export const FriendOnProfileNarrow: Story = {
-  args: { relationship: "FRIENDS", onRemoveFriend: noop },
+  args: { relationship: "FRIENDS", onRemoveFriend: noop, onBlock: noop },
   render: function FriendOnProfileNarrowStory(args) {
     return (
       <YStack width={328}>

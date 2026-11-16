@@ -25,6 +25,8 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { searchUsers } from "@/api/search";
 import { getBrandName } from "@/config/env";
+import { requestBlock } from "@/profile/block-action";
+import { BlockConfirm } from "@/profile/block-confirm";
 import {
   optimisticRelation,
   requestRelationshipAction,
@@ -136,6 +138,7 @@ function SearchScreenContent({
   const app = useTranslations("app");
   const search = useTranslations("app.search");
   const profile = useTranslations("app.profile");
+  const friends = useTranslations("app.friends");
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
@@ -159,6 +162,10 @@ function SearchScreenContent({
   // friend invite that is still on the wire (Story 4.6).
   const [subscriptionNick, setSubscriptionNick] = useState<string | null>(null);
   const subscriptionInFlight = useRef<string | null>(null);
+  // Story 4.5: the block confirm, its busy state and its own in-flight slot.
+  const [blockTarget, setBlockTarget] = useState<UserSearchCard | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
+  const blockInFlight = useRef<string | null>(null);
   // Only the newest answer may touch the list: a slow earlier request cannot
   // overwrite a newer one, and a cleared field cancels whatever was in flight.
   const latest = useRef(0);
@@ -415,6 +422,61 @@ function SearchScreenContent({
     setToast({ message: result.message, tone: "error" });
   }
 
+  function askBlock(user: UserSearchCard) {
+    setToast(null);
+    setBlockTarget(user);
+  }
+
+  /**
+   * Story 4.5 (FR-24): one block press on a search row. The row leaves the
+   * answer at once — after the block the person is hidden from search in both
+   * directions (AD-7) — and every failure puts the whole previous answer back.
+   * The block has its own in-flight slot, so it never cancels an invite or a
+   * subscription that is still on the wire.
+   */
+  async function blockAction(user: UserSearchCard) {
+    if (blockInFlight.current !== null) return;
+    const requestedNick = user.nick;
+    const snapshot = answer;
+    blockInFlight.current = requestedNick;
+    setAnswer(function dropRow(current) {
+      if (current === null || current.status !== "ready") return current;
+      return {
+        ...current,
+        users: current.users.filter((card) => card.nick !== requestedNick),
+      };
+    });
+
+    const result = await requestBlock(requestedNick, { profile, common });
+    if (blockInFlight.current === requestedNick) blockInFlight.current = null;
+
+    if (result.status === "blocked") {
+      // `BLOCKED` and the idempotent `ALREADY_BLOCKED` are both successes.
+      setBlockTarget(null);
+      setToast({ message: friends("toast.blocked", { name: user.displayName }), tone: "info" });
+      return;
+    }
+
+    setAnswer(snapshot);
+    setBlockTarget(null);
+    if (result.status === "expired") {
+      // Same as the other `(app)` screens: clear the dead session and let the
+      // guard open login with the reason and a return to the search.
+      onSessionExpired(true);
+      const signedOut = await auth.signOut();
+      if (!signedOut.ok) {
+        onSessionExpired(false);
+        setToast({ message: profile("relationship.network"), tone: "error" });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error" });
+  }
+
   // `null` until the first answer. An answer for another query belongs to the
   // previous text, so the current one is still loading.
   const current = answer?.query === prepared ? answer : null;
@@ -552,6 +614,13 @@ function SearchScreenContent({
                               onAction={function actOnRelation(kind) {
                                 void relationshipAction(user, kind);
                               }}
+                              onBlock={
+                                ownProfile
+                                  ? undefined
+                                  : function askBlockRow() {
+                                      askBlock(user);
+                                    }
+                              }
                               testIDPrefix="search"
                             />
                             {!ownProfile && user.relationship !== "FRIENDS" ? (
@@ -578,6 +647,24 @@ function SearchScreenContent({
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}
+        <BlockConfirm
+          name={blockTarget?.displayName ?? null}
+          busy={blockBusy}
+          onConfirm={function confirmBlock() {
+            if (blockTarget === null) return;
+            setBlockBusy(true);
+            void blockAction(blockTarget).finally(function release() {
+              setBlockBusy(false);
+            });
+          }}
+          onCancel={function cancelBlock() {
+            if (blockBusy) return;
+            setBlockTarget(null);
+          }}
+          onClosed={function blockClosed() {
+            setBlockBusy(false);
+          }}
+        />
       </SafeArea>
     </Screen>
   );

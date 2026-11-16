@@ -21,6 +21,12 @@ const nextConfig: NextConfig = {
         source: "/l/:path*",
         headers: [...LINK_PAGE_HEADERS],
       },
+      {
+        // Story 4.7: the invite preview has the same two inputs (session,
+        // `Accept-Language`) as `/l`, so it gets the same private caching rules.
+        source: "/i/:path*",
+        headers: [...LINK_PAGE_HEADERS],
+      },
     ];
   },
   async rewrites() {

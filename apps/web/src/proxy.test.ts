@@ -8,16 +8,28 @@ function forwardedLocale(request: NextRequest): string | null {
   return response.headers.get(`x-middleware-request-${PUBLIC_LOCALE_HEADER}`);
 }
 
-describe("proxy locale for the public link page", () => {
-  it("marks only /l requests with the negotiated language", () => {
+describe("proxy locale for the public link and invite pages", () => {
+  it("marks /l and /i requests with the negotiated language", () => {
+    for (const path of ["/l/tok-1", "/l", "/i/tok-1", "/i"]) {
+      expect(
+        forwardedLocale(
+          new NextRequest(`https://gift.example${path}`, {
+            headers: { "accept-language": "ru-RU,ru;q=0.9,en;q=0.8" },
+          }),
+        ),
+        path,
+      ).toBe("ru");
+    }
+  });
+
+  it("does not mark the SPA app route /invite", () => {
     expect(
       forwardedLocale(
-        new NextRequest("https://gift.example/l/tok-1", {
-          headers: { "accept-language": "ru-RU,ru;q=0.9,en;q=0.8" },
+        new NextRequest("https://gift.example/invite/tok-1", {
+          headers: { "accept-language": "ru" },
         }),
       ),
-    ).toBe("ru");
-    expect(forwardedLocale(new NextRequest("https://gift.example/l"))).toBe("ru");
+    ).toBeNull();
   });
 
   it("does not forward a language to API or other pages", () => {

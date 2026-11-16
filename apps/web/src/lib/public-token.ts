@@ -39,3 +39,15 @@ export function wishlistPathForToken(token: string): string | null {
   if (UNSAFE_TARGET_CHARACTERS.test(token)) return null;
   return `/wishlist/${token}`;
 }
+
+/**
+ * Redirect target and return path of an invite (`/i/:token` → `/invite/:token`,
+ * Story 4.7). Built from the validated segment only, with the same gate as
+ * {@link wishlistPathForToken}: `/i` is served by Next.js, so the app screen has
+ * its own `/invite/:token` address (AD-26).
+ */
+export function invitePathForToken(token: string): string | null {
+  if (!isPublicTokenSegment(token)) return null;
+  if (UNSAFE_TARGET_CHARACTERS.test(token)) return null;
+  return `/invite/${token}`;
+}

@@ -7,12 +7,18 @@ import { PUBLIC_LOCALE_HEADER, requestLocale } from "@/lib/request-locale";
 /**
  * Story 3.3 / AD-27: the language of a public link document is negotiated from
  * `Accept-Language` and forwarded to the root layout through an internal request
- * header. Only `/l/*` is marked, so every other page keeps the default `ru` and
- * its own caching behaviour. The header is not exposed to the client.
+ * header. Only `/l/*` and `/i/*` are marked, so every other page keeps the
+ * default `ru` and its own caching behaviour. The header is not exposed to the
+ * client.
  */
 function publicPageRequest(request: NextRequest): NextResponse | null {
   const { pathname } = request.nextUrl;
-  if (pathname !== "/l" && !pathname.startsWith("/l/")) return null;
+  const isPublicPage =
+    pathname === "/l" ||
+    pathname.startsWith("/l/") ||
+    pathname === "/i" ||
+    pathname.startsWith("/i/");
+  if (!isPublicPage) return null;
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(
@@ -50,5 +56,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/v1/:path*", "/l/:path*"],
+  matcher: ["/api/v1/:path*", "/l/:path*", "/i/:path*"],
 };

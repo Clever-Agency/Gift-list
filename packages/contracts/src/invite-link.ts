@@ -5,7 +5,7 @@ import { z } from "zod";
  * The values are the domain protocol's own vocabulary (`apps/web/src/domain/invite-link.ts`),
  * so a client never translates a second one: `self` is the viewer's own link,
  * `friends` an existing edge, `can_accept` the confirmation
- * «Добавить {имя} в друзья?».
+ * «Добавить пользователя «{имя}» в друзья?».
  *
  * An anonymous preview carries no `state` at all: the three values are facts
  * about the viewer, and a guest has none of them.

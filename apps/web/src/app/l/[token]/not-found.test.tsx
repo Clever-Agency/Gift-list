@@ -3,11 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTHOR_MAILTO, getMessages } from "@gift-list/contracts";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 
-const { headers } = vi.hoisted(() => ({ headers: vi.fn() }));
+const { headers, buildLinkMetadata, getBrandName } = vi.hoisted(() => ({
+  headers: vi.fn(),
+  buildLinkMetadata: vi.fn(),
+  getBrandName: vi.fn(() => "WishMoon"),
+}));
 
 vi.mock("next/headers", () => ({ headers }));
+vi.mock("@/lib/env", () => ({ getBrandName }));
+vi.mock("./link-page", () => ({ buildLinkMetadata }));
 
-import WishlistNotFound from "./not-found";
+import WishlistNotFound, { generateMetadata } from "./not-found";
 
 const config = createGiftListConfig({
   body: "var(--font-sans)",
@@ -21,7 +27,12 @@ async function render(): Promise<string> {
 
 beforeEach(() => {
   headers.mockReset();
+  buildLinkMetadata.mockReset();
   headers.mockResolvedValue(new Headers({ "accept-language": "ru-RU,ru;q=0.9" }));
+  buildLinkMetadata.mockReturnValue({
+    title: "Список не найден — WishMoon",
+    description: "Сервис вишлистов",
+  });
 });
 
 describe("app/l/[token]/not-found.tsx", () => {
@@ -39,5 +50,28 @@ describe("app/l/[token]/not-found.tsx", () => {
     // Nothing of a found list or of an invite page reaches the 404.
     expect(html).not.toContain("Пока нет открытых желаний");
     expect(html).not.toContain("Приглашение не найдено.");
+  });
+
+  it("gives the 404 document its own head from the closed not-found metadata", async () => {
+    const metadata = await generateMetadata();
+
+    // Next builds the 404 document's <head> from this boundary, not from the
+    // page, so the closed not-found metadata has to be produced here as well.
+    expect(buildLinkMetadata).toHaveBeenCalledTimes(1);
+    expect(buildLinkMetadata).toHaveBeenCalledWith({ locale: "ru", view: { kind: "not_found" } }, "WishMoon");
+    expect(metadata.title).toBe("Список не найден — WishMoon");
+  });
+
+  it("negotiates the boundary locale from Accept-Language like the page", async () => {
+    headers.mockResolvedValue(new Headers({ "accept-language": "en-US,en;q=0.9" }));
+
+    await generateMetadata();
+
+    // `ru` is the only published catalog today, so an unsupported language
+    // falls back to it exactly as the page's own loader does.
+    expect(buildLinkMetadata).toHaveBeenCalledWith(
+      { locale: "ru", view: { kind: "not_found" } },
+      "WishMoon",
+    );
   });
 });

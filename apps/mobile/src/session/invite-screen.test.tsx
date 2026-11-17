@@ -202,12 +202,12 @@ describe("приглашение: превью", () => {
     expect(invites.acceptInvite).not.toHaveBeenCalled();
   });
 
-  it("can_accept: «Добавить Сергея в друзья?», Avatar, «Добавить» и «Отмена»", async () => {
+  it("can_accept: «Добавить пользователя «Сергей» в друзья?», Avatar, «Добавить» и «Отмена»", async () => {
     readySession();
     await mount();
 
     // AD-24: the name is the literal display name, never a declined form.
-    expect(text()).toContain("Добавить Сергей в друзья?");
+    expect(text()).toContain("Добавить пользователя «Сергей» в друзья?");
     expect(container.querySelector('[data-testid="invite-avatar"]')?.textContent).toBe("С");
     expect(control("Добавить")).not.toBeNull();
     expect(control("Отмена")).not.toBeNull();

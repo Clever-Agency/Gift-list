@@ -88,6 +88,33 @@ const visibilityFieldSchema = z.enum(VISIBILITIES);
 const quantityFieldSchema = z.enum(QUANTITIES);
 
 /**
+ * Story 2.6: an optional calendar day (`YYYY-MM-DD`). Empty form text means
+ * "no date". Impossible days (`2026-02-31`) are rejected here; "before today"
+ * is the use-case's job, because it depends on the owner's time zone.
+ */
+const expiresOnFieldSchema = z.preprocess(
+  blankToNull,
+  z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine(function isRealCalendarDay(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (!match) return false;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const date = new Date(Date.UTC(year, month - 1, day));
+      return (
+        date.getUTCFullYear() === year &&
+        date.getUTCMonth() === month - 1 &&
+        date.getUTCDate() === day
+      );
+    }, { message: "expiresOn must be a calendar day" })
+    .nullable()
+    .optional(),
+);
+
+/**
  * Story 2.5/D-25: a new gift is `SINGLE` unless the owner chooses otherwise.
  * The client imports this constant instead of repeating `"SINGLE"`, so the
  * default lives in the contract only once.
@@ -178,6 +205,7 @@ export const giftInputSchema = z
     linkUrl: linkUrlFieldSchema,
     visibility: visibilityFieldSchema.default("PUBLIC"),
     quantity: quantityFieldSchema.default(DEFAULT_QUANTITY),
+    expiresOn: expiresOnFieldSchema,
     tags: giftTagListSchema.optional(),
   })
   .transform(function toGiftInput(value) {
@@ -190,6 +218,7 @@ export const giftInputSchema = z
       linkUrl: value.linkUrl ?? null,
       visibility: value.visibility,
       quantity: value.quantity,
+      expiresOn: value.expiresOn ?? null,
       tags: value.tags ?? [],
     };
   });
@@ -213,6 +242,8 @@ export type GiftUpdate = {
   linkUrl?: string | null;
   visibility?: (typeof VISIBILITIES)[number];
   quantity?: (typeof QUANTITIES)[number];
+  /** A calendar day, or `null` to clear. Absent keeps the stored date (Story 2.6). */
+  expiresOn?: string | null;
   /**
    * Full replacement of the tag set. Absent keeps the stored tags; an explicit
    * empty array clears them. Anything else replaces all rows in one transaction.
@@ -271,6 +302,7 @@ export const giftUpdateSchema = z
     linkUrl: linkUrlFieldSchema,
     visibility: visibilityFieldSchema.optional(),
     quantity: quantityFieldSchema.optional(),
+    expiresOn: expiresOnFieldSchema,
     tags: giftTagListSchema.optional(),
   })
   .refine(function hasAnyGiftUpdateField(value) {
@@ -296,6 +328,7 @@ export const giftUpdateSchema = z
     if (value.linkUrl !== undefined) update.linkUrl = value.linkUrl;
     if (value.visibility !== undefined) update.visibility = value.visibility;
     if (value.quantity !== undefined) update.quantity = value.quantity;
+    if (value.expiresOn !== undefined) update.expiresOn = value.expiresOn;
     if (value.tags !== undefined) update.tags = value.tags;
 
     if (value.priceAmount !== undefined) {
@@ -316,3 +349,17 @@ export const giftUpdateSchema = z
 
     return update;
   });
+
+/**
+ * Story 2.6: the owner puts an archived wish back. An absent or empty date
+ * clears `expiresOn`. "Before today" is checked by `restoreFromArchive`.
+ */
+export const giftRestoreSchema = z
+  .strictObject({
+    expiresOn: expiresOnFieldSchema,
+  })
+  .transform(function toGiftRestore(value) {
+    return { expiresOn: value.expiresOn ?? null };
+  });
+
+export type GiftRestore = z.infer<typeof giftRestoreSchema>;

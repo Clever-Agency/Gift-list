@@ -28,6 +28,7 @@ export { Switch, type SwitchProps } from "./switch";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
 export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";
+export { DateField, type DateFieldProps } from "./date-field";
 export {
   PasswordField,
   SearchField,

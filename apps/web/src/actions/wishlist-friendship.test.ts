@@ -30,7 +30,12 @@ const fake = vi.hoisted(() => {
     list: { findUnique(args: { where: { ownerId?: string; publicToken?: string } }): Promise<ListRow | null> };
     gift: {
       findMany(args: {
-        where: { listId: string; archivedAt: null; visibility?: { in: string[] } };
+        where: {
+          listId: string;
+          archivedAt?: null;
+          NOT?: { archivedAt: null };
+          visibility?: { in: string[] };
+        };
       }): Promise<GiftRow[]>;
     };
     friendshipInvite: {
@@ -116,7 +121,8 @@ const fake = vi.hoisted(() => {
         const { where } = args;
         return state.gifts.filter((gift) => {
           if (gift.listId !== where.listId) return false;
-          if (gift.archivedAt !== null) return false;
+          const archived = where.NOT?.archivedAt === null;
+          if ((gift.archivedAt !== null) !== archived) return false;
           const allowed = where.visibility?.in;
           return allowed === undefined || allowed.includes(gift.visibility as string);
         });

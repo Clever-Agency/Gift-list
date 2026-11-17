@@ -86,15 +86,17 @@ const rows: Row[] = [
 
 type GiftWhere = {
   listId: string;
-  archivedAt: null;
+  archivedAt?: null;
+  NOT?: { archivedAt: null };
   visibility?: { in: readonly Row["visibility"][] };
 };
 
 /** Applies the SQL filters to the fixture, so a widened read leaks a title here. */
 function query(where: GiftWhere): Row[] {
   if (where.listId !== "l1") return [];
+  const archived = where.NOT?.archivedAt === null;
   return rows.filter((row) => {
-    if (where.archivedAt === null && row.archivedAt !== null) return false;
+    if ((row.archivedAt !== null) !== archived) return false;
     return where.visibility === undefined || where.visibility.in.includes(row.visibility);
   });
 }

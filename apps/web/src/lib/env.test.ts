@@ -25,6 +25,7 @@ function setRequiredEnv() {
   process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
   process.env.BETTER_AUTH_SECRET = "01234567890123456789012345678901";
   process.env.BETTER_AUTH_URL = "http://127.0.0.1:3000";
+  process.env.CRON_SECRET = "01234567890123456789012345678901";
   process.env.RESEND_API_KEY = "re_test_key";
   process.env.EMAIL_FROM = "noreply@example.com";
 }
@@ -102,6 +103,7 @@ describe("AUTH_DEV_TRUSTED_ORIGINS", () => {
     process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
     process.env.BETTER_AUTH_SECRET = "01234567890123456789012345678901";
     process.env.BETTER_AUTH_URL = "http://127.0.0.1:3000";
+    process.env.CRON_SECRET = "01234567890123456789012345678901";
     vi.resetModules();
     const { getEnv } = await import("./env");
     return getEnv();
@@ -238,5 +240,31 @@ describe("AUTH_RATE_LIMIT_*", () => {
     vi.resetModules();
     const { getEnv } = await import("./env");
     expect(() => getEnv()).toThrow(/AUTH_RATE_LIMIT_MAX/);
+  });
+});
+
+describe("CRON_SECRET", () => {
+  async function loadEnv() {
+    setRequiredEnv();
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    return getEnv();
+  }
+
+  it("accepts a secret of at least 32 characters", async () => {
+    expect((await loadEnv()).CRON_SECRET).toHaveLength(32);
+  });
+
+  it("rejects a missing or short secret", async () => {
+    setRequiredEnv();
+    delete process.env.CRON_SECRET;
+    vi.resetModules();
+    const { getEnv } = await import("./env");
+    expect(() => getEnv()).toThrow(/CRON_SECRET/);
+
+    process.env.CRON_SECRET = "too-short";
+    vi.resetModules();
+    const { getEnv: getEnvShort } = await import("./env");
+    expect(() => getEnvShort()).toThrow(/CRON_SECRET/);
   });
 });

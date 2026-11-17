@@ -75,6 +75,9 @@ const envSchema = z.object({
   // Registration, sign-in (by IP and by e-mail) and password reset share one pair.
   AUTH_RATE_LIMIT_MAX: positiveIntEnv(DEFAULT_AUTH_RATE_LIMIT.max),
   AUTH_RATE_LIMIT_WINDOW_SECONDS: positiveIntEnv(DEFAULT_AUTH_RATE_LIMIT.windowSeconds),
+  // Story 2.6 / AD-16: the external scheduler calls `api/cron/*` with this secret.
+  // Required so a deploy without it fails closed instead of accepting an empty bearer.
+  CRON_SECRET: z.string().min(32),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -46,6 +46,8 @@ export type WishCardProps = {
   pressLabel?: string;
   /** Card width in px, or a CSS size. Defaults to the full width of the parent. */
   width?: number | string;
+  /** Owner menu, a sibling of the card button (Story 2.6 archive). */
+  menu?: ReactNode;
   testID?: string;
 };
 
@@ -68,11 +70,12 @@ export function WishCard({
   onPress,
   pressLabel,
   width,
+  menu,
   testID,
 }: WishCardProps) {
   const content = (
     <>
-      <YStack gap="$2">
+      <YStack gap="$2" paddingRight={menu ? "$touch-target" : undefined}>
         <Text kind="body-strong" tone={closed ? "muted" : "default"} numberOfLines={2}>
           {title}
         </Text>
@@ -109,6 +112,11 @@ export function WishCard({
       ) : (
         <View padding="$card-padding">{content}</View>
       )}
+      {menu ? (
+        <View position="absolute" top="$card-padding" right="$card-padding" zIndex="$base">
+          {menu}
+        </View>
+      ) : null}
       {chip ? (
         <View
           position="absolute"

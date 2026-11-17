@@ -1,11 +1,10 @@
 // AD-8 / AD-9 — `GiftStatusService`. Rules only: no Prisma, no React/Next.js
-// here (AD-1). The Prisma adapter in `lib/gift-status-store.ts` owns the write
-// and runs inside the caller's transaction.
+// here (AD-1). The Prisma adapter in `lib/gift-status-store.ts` owns the write.
 //
-// First slice of the service (CLE-82/S23.2): the owner's `RESERVED → OPEN`
-// transition, which is also the silent release when a narrowed visibility takes
-// the holder's access away. Create, close, undo, archive, cron and account
-// deletion stay in their own stories.
+// CLE-82/S23.2: the owner's `RESERVED → OPEN` release, including the silent
+// release when a narrowed visibility takes the holder's access away.
+// Story 2.6: archiving an expired open wish and restoring it are writes in that
+// same adapter. Whether a day is already past is `isBeforeLocalToday`.
 
 import {
   VisibilityPolicy,

@@ -131,10 +131,6 @@ export default function PublicWishlistScreen() {
         setToast({ message: common("errors.generic"), tone: "error" });
         return;
       }
-      if ("code" in answer && answer.code === "NOT_FOUND") {
-        setState({ status: "missing" });
-        return;
-      }
       const network = "network" in answer;
       setState({ status: "error", kind: network ? "network" : "generic" });
       setToast({

@@ -1,4 +1,4 @@
-import type { InviteLinkInviter, InviteLinkState } from "@gift-list/contracts";
+import { isNotFound, type InviteLinkInviter, type InviteLinkState } from "@gift-list/contracts";
 import {
   Button,
   Column,
@@ -100,7 +100,7 @@ export default function InviteScreen() {
         });
         return;
       }
-      if ("invalid" in result || ("code" in result && result.code === "NOT_FOUND")) {
+      if ("invalid" in result || isNotFound(result)) {
         setState({ status: "missing" });
         return;
       }
@@ -201,7 +201,7 @@ export default function InviteScreen() {
       setLeaveNick(requested.inviter.nick);
       return;
     }
-    if ("invalid" in result || ("code" in result && result.code === "NOT_FOUND")) {
+    if ("invalid" in result || isNotFound(result)) {
       setState({ status: "missing" });
       return;
     }

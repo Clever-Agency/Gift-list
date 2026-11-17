@@ -148,13 +148,15 @@ flowchart TB
 ### AD-7 — Видимость желания (единый gate) `[ADOPTED D-23, D-29, D-30]`
 
 - **Binds:** FR-7, FR-8, FR-11, FR-27, FR-31, D-13, D-23, D-29, D-30, D-31, A-11, A-12, A-14, NFR privacy
-- **Prevents:** утечка FRIENDS/SECRET; счётчик скрытых желаний; 404 как маскировка Block; второй read-owner
-- **Rule:** Единственная `VisibilityPolicy.canSee(viewer, gift)` решает каждое желание. Ответ списка — `{ access: "gifts" | "not_found", gifts: [...] }`. Отдельных `friends_only_gate` и `anon_gate` нет.
+- **Prevents:** утечка FRIENDS/SECRET; счётчик скрытых желаний; различимый ответ на скрытую причину (Block, скрытый список, неизвестный токен) — единый 404 обязателен; второй read-owner
+- **Rule:** Единственная `VisibilityPolicy.canSee(viewer, gift)` решает каждое желание. Ответ найденного списка — `{ access: "gifts", gifts: [...] }`; «не найдено» — HTTP 404 `NOT_FOUND` конвертом AD-12, без полей списка. Отдельных `friends_only_gate` и `anon_gate` нет.
 
   **Порядок на список и профиль:**
-  1. Список/token или профиль не найден → `not_found`.
-  2. `Block` в любую сторону → `not_found` (и для `/l/:token`, и для `/u/:nick`).
+  1. Список/token или профиль не найден → HTTP 404 `NOT_FOUND` (AD-12).
+  2. `Block` в любую сторону → тот же HTTP 404 `NOT_FOUND` (и для `/l/:token`, и для `/u/:nick`): статус, тело и заголовки совпадают с неизвестным token/ником, кроме неизбежных.
   3. Иначе `access=gifts`, а в `gifts` только желания, прошедшие фильтр ниже. Пустой набор — пустое состояние «нет открытых желаний». **Запрещено** отдавать число, названия и факт существования отфильтрованных желаний.
+
+  **Единый 404 публичных чтений (ред. 2026-11-17, `sprint-change-proposal-2026-11-17-not-found-404.md`, approved by Сергей 2026-11-17 (via Евгений t434u)).** `GET /api/v1/l/:token`, `GET /api/v1/i/:token` и `GET /api/v1/u/:nick` на «не найдено» отвечают HTTP 404 и одним конвертом AD-12 `{ ok: false, code: "NOT_FOUND", message }` — без `reason`, `field` и `params`. Неизвестный или битый token/ник, скрытый либо недоступный список и `Block` в любую сторону дают неразличимый ответ: одинаковые статус, тело и заголовки (кроме неизбежных, например `Date`). Причина не подсказывается: anti-enumeration важнее диагностики (как приватный репозиторий на GitHub). `access: "not_found"` с `ok: true` больше нет — успех приходит только для найденного списка или профиля.
 
   **Фильтр желания (`Gift.visibility`):**
   | Значение | Кто видит |
@@ -172,7 +174,7 @@ flowchart TB
   |----------|------|
   | желание прошло фильтр | Полная gift card (AD-12) |
   | Viewer = `reservedById` и `status=RESERVED` (A-14 / FR-25) | **Только reservation card:** `giftId`, `titleSnapshot`, `status`, `ownerNick`, CTA снять. Без остальных желаний владельца |
-  | not_found | Нет gift-полей |
+  | «не найдено» (HTTP 404 `NOT_FOUND`) | Нет полей списка и gift-полей |
   | Owner | Все свои желания, включая `SECRET` |
 
   **Поля брони по роли зрителя (D-13):**
@@ -272,10 +274,13 @@ flowchart TB
 ### AD-12 — Wire-контракт мутаций и карточек
 
 - **Binds:** all write/read DTOs, D-13, FR-31, UJ-2
-- **Prevents:** разнобой shapes; FO gate как NOT_FOUND; утечка имени держателя владельцу
-- **Rule:** Action result: `{ ok: true, data } | { ok: false, code, message, reason?, field?, params? }`. `reason` — закрытый zod-enum в `packages/contracts` (например `EMAIL_TAKEN`, `NICK_TAKEN`, `DUE_OUT_OF_RANGE`, `DATES_LIMIT`); `field` — имя поля формы; `params` — только примитивы и ISO-строки. Текст пользователю — по AD-27. Коды **закрытый** набор: `UNAUTHENTICATED | FORBIDDEN | NOT_FOUND | CONFLICT | VALIDATION | RATE_LIMITED`. Gate-ответы — `ok: true` с `access`.
+- **Prevents:** разнобой shapes; различимый ответ на скрытую причину («не найдено» — единый 404); утечка имени держателя владельцу
+- **Rule:** Action result: `{ ok: true, data } | { ok: false, code, message, reason?, field?, params? }`. `reason` — закрытый zod-enum в `packages/contracts` (например `EMAIL_TAKEN`, `NICK_TAKEN`, `DUE_OUT_OF_RANGE`, `DATES_LIMIT`); `field` — имя поля формы; `params` — только примитивы и ISO-строки. Текст пользователю — по AD-27. Коды **закрытый** набор: `UNAUTHENTICATED | FORBIDDEN | NOT_FOUND | CONFLICT | VALIDATION | RATE_LIMITED`. «Не найдено» — не успешный ответ: HTTP 404 и конверт `{ ok: false, code: "NOT_FOUND", message }`.
 
-  Ответ списка: `{ ok: true, data: { access: "gifts"|"not_found", gifts } }`. Иного конверта нет.
+  Ответ найденного списка: `{ ok: true, data: { access: "gifts", gifts } }` — только найденный. Ветки `not_found` в успешной схеме нет. Иного конверта нет: «не найдено» приходит ошибкой `NOT_FOUND`, а не `ok: true` с `access`.
+
+  **Единый 404 публичных чтений (ред. 2026-11-17, `sprint-change-proposal-2026-11-17-not-found-404.md`, approved by Сергей 2026-11-17 (via Евгений t434u)).** `GET /api/v1/l/:token`, `GET /api/v1/i/:token` и `GET /api/v1/u/:nick` на «не найдено» отвечают HTTP 404 и **одним** конвертом ошибки `{ ok: false, code: "NOT_FOUND", message }`, без `reason`, `field` и `params`. Неизвестный или битый token/ник, скрытый или недоступный список и `Block` в любую сторону дают неразличимый ответ — одинаковые статус, тело и заголовки, кроме неизбежных (`Date`). Причина не подсказывается. `GET /api/v1/me/gifts` — владельческое чтение: список создаётся при регистрации (AD-6), а его отсутствие у владельца остаётся `NOT_FOUND`. Next-страницы `/l/:token` и `/i/:token` при «не найдено» вызывают `notFound()`: реальный HTTP 404, общий not-found UI каркаса (тот же текст из i18n и тот же общий футер), `noindex`; метаданные документа не меняются.
+
   Gift card — закрытый набор, один и тот же для веба и Expo (`packages/contracts`):
   `{ id, title, description, priceAmount: number|null, priceCurrency: "USD"|"EUR"|"CNY"|"BYN"|"RUB"|null, linkUrl, visibility: "PUBLIC"|"FRIENDS"|"SECRET", quantity: "SINGLE"|"UNLIMITED", expiresOn: string|null, archivedAt: string|null, tags: { catalogId: string|null, label: string }[], status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservationLabel: null | "BOUGHT" | "GIVEN", ownerAction: null | "CONFIRM_GIVEN" | "EXPIRED_NO_REPLY" }`.
   `reservedBy` — по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. `reservationLabel` — только не-владельцу; `ownerAction` — только владельцу. Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOwner, holderVisibleToOthers }`. Пустая цена — оба поля `null`. Непустая цена без выбранной валюты сохраняется как `USD`. `visibility` чужое желание не раскрывает: в выдаче только те карточки, которые фильтр уже пропустил.
@@ -301,7 +306,7 @@ flowchart TB
 
 - **Binds:** AD-7, AD-9, AD-14, SM-2, FR-31
 - **Prevents:** «забытые» гонки и privacy в epics
-- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → `not_found`; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец при `holderVisibleToOwner=false` не получает идентичность держателя ни в gift card, ни в Notification, ни в письме; `bought` владельцу не отдаётся; (6) cron не переводит в OPEN брони с `bought=true` и в фазе GIVEN; (7) гонка cron-таймера и действия держателя/владельца → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера. Остальной test pyramid — на epics.
+- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → HTTP 404 `NOT_FOUND`, статус, тело и заголовки идентичны неизвестному токену; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец при `holderVisibleToOwner=false` не получает идентичность держателя ни в gift card, ни в Notification, ни в письме; `bought` владельцу не отдаётся; (6) cron не переводит в OPEN брони с `bought=true` и в фазе GIVEN; (7) гонка cron-таймера и действия держателя/владельца → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера. Остальной test pyramid — на epics.
 
 ### AD-16 — Переносимость `[ADOPTED D-16]`
 
@@ -331,7 +336,7 @@ flowchart TB
 
 - **Binds:** FR-51, D-33, Q-3
 - **Prevents:** релиз в App Store с удалением только письмом автору; разное удаление на вебе и в Expo
-- **Rule:** Единственная команда `deleteAccount(userId)`. Её вызывают веб и Expo. Better Auth не отдаёт отдельный delete наружу: сессии cookie и bearer гасятся внутри этой команды. Порядок: активные брони этого пользователя снимаются через `GiftStatusService` (CAS) с событием другой стороне и `titleSnapshotOnReserve`; затем удаляются строки, которые создал сервис, включая `phoneE164` и `phoneHmac`; ссылка `/l/:token` становится `not_found`. Прямой `deleteUser` Better Auth и SQL `onDelete` мимо сервиса запрещены. Срок хранения — Q-3; до ответа исключения пустые. Кнопка в настройках, с подтверждением. Кнопка входит в первую сборку Google Play. Перед отправкой в App Store отдельно проверяется формулировка Apple 5.1.1(v).
+- **Rule:** Единственная команда `deleteAccount(userId)`. Её вызывают веб и Expo. Better Auth не отдаёт отдельный delete наружу: сессии cookie и bearer гасятся внутри этой команды. Порядок: активные брони этого пользователя снимаются через `GiftStatusService` (CAS) с событием другой стороне и `titleSnapshotOnReserve`; затем удаляются строки, которые создал сервис, включая `phoneE164` и `phoneHmac`; ссылка `/l/:token` становится HTTP 404 `NOT_FOUND`. Прямой `deleteUser` Better Auth и SQL `onDelete` мимо сервиса запрещены. Срок хранения — Q-3; до ответа исключения пустые. Кнопка в настройках, с подтверждением. Кнопка входит в первую сборку Google Play. Перед отправкой в App Store отдельно проверяется формулировка Apple 5.1.1(v).
 
 ### AD-21 — Приглашение и ссылка на вишлист `[ADOPTED D-29]`
 

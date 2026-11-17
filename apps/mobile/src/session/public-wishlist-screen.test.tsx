@@ -146,7 +146,7 @@ function giftsAnswer(cards: unknown[], ownerBlock: unknown = owner) {
 }
 
 function notFoundAnswer() {
-  return { ok: true, data: { access: "not_found", gifts: [] } };
+  return { ok: false, code: "NOT_FOUND", message: "Not found" };
 }
 
 /** `/api/v1/me` answers with the session; every other path answers with the link. */
@@ -406,8 +406,8 @@ describe("вишлист по ссылке: список", () => {
     expect(container.querySelectorAll('[role="heading"][aria-level="1"]')).toHaveLength(1);
   });
 
-  it("NOT_FOUND и not_found дают один и тот же нейтральный экран без данных", async () => {
-    respond({ ok: false, code: "NOT_FOUND", message: "" });
+  it("NOT_FOUND и найденный ответ без владельца дают один и тот же нейтральный экран без данных", async () => {
+    respond({ ok: false, code: "NOT_FOUND", message: "Not found" });
     await mount();
 
     expect(text()).toContain("Вишлист недоступен");

@@ -57,19 +57,4 @@ describe("InvitePreviewView: anonymous invite HTML", () => {
     expect(html).toContain("<style");
     expect(html).toContain("--c-primary:#2F5D3A");
   });
-
-  it("renders one not-found phrase without the inviter, the nick or the actions", () => {
-    const html = render({ kind: "not_found" });
-
-    expect(levelOneHeadings(html)).toBe(1);
-    expect(html).toContain("Приглашение не найдено");
-    expect(html).not.toContain("Сергей");
-    expect(html).not.toContain("@sergey");
-    expect(html).not.toContain("Принять приглашение");
-    expect(html).not.toContain("У меня уже есть аккаунт");
-    expect(html).not.toContain("/register");
-    // The anonymous shell keeps the one way in.
-    expect(html).toContain('href="/login"');
-    expect(html).toContain("Сделано с любовью командой cleverAgency");
-  });
 });

@@ -76,6 +76,33 @@ export type ActionError = z.infer<typeof actionErrorSchema>;
 
 export type ActionResult<T> = { ok: true; data: T } | ActionError;
 
+/**
+ * The one "not found" refusal of a public read (AD-7, AD-12, ред. 2026-11-17):
+ * `GET /api/v1/l/:token`, `GET /api/v1/i/:token` and `GET /api/v1/u/:nick`
+ * answer HTTP 404 with exactly these three fields. No `reason`, `field` or
+ * `params`, so an unknown or malformed token/nick, a hidden or unavailable list
+ * and a `Block` stay byte-identical and the cause never leaks.
+ */
+export const notFoundErrorSchema = actionErrorSchema
+  .pick({ ok: true, code: true, message: true })
+  .extend({ code: z.literal("NOT_FOUND") });
+
+export type NotFoundError = z.infer<typeof notFoundErrorSchema>;
+
+/** The single body of every hidden cause; `message` is diagnostic, not for screens. */
+export function notFoundError(): NotFoundError {
+  return { ok: false, code: "NOT_FOUND", message: "Not found" };
+}
+
+/**
+ * The one way a client reads "not found": the closed `NOT_FOUND` refusal, never a
+ * success envelope with `access`. Accepts the mobile `ClientResult` too, whose
+ * network failure carries no `code`.
+ */
+export function isNotFound(result: { readonly ok: boolean; readonly code?: ErrorCode }): boolean {
+  return !result.ok && result.code === "NOT_FOUND";
+}
+
 /** Envelope for every mutation and read result: `{ ok: true, data } | { ok: false, code, message, reason?, field?, params? }`. */
 export function actionResultSchema<T extends z.ZodType>(data: T) {
   return z.discriminatedUnion("ok", [
@@ -154,8 +181,8 @@ export type GiftCard = z.infer<typeof giftCardSchema>;
  * Whose list a link or nick read describes (Story 3.3, 3.4.1): the owner's
  * public display name and nick, the heading of `/l/:publicToken` or `/u/:nick`.
  * Only those reads carry it, because only there the visitor does not already
- * know whose list they opened. A closed gate answers `not_found` without this
- * block, so a hidden list never names anybody.
+ * know whose list they opened. A closed gate is the HTTP 404 `NOT_FOUND`
+ * refusal without any list body, so a hidden list never names anybody.
  */
 const listOwnerSchema = z.strictObject({
   displayName: z.string(),
@@ -163,8 +190,9 @@ const listOwnerSchema = z.strictObject({
 });
 
 /**
- * List read: gates answer `ok: true` with `access`, never NOT_FOUND; a closed gate
- * carries no gifts.
+ * List read of a found list (AD-7, AD-12 ред. 2026-11-17): only `access: "gifts"`.
+ * "Not found" is no longer a success branch: it is the HTTP 404 `NOT_FOUND`
+ * refusal (see `notFoundErrorSchema`), so no list body, count or name travels.
  *
  * `publicToken` is the list's immutable share token (AD-6) and is present only in
  * the owner's answer: the owner client builds `https://{domain}/l/{publicToken}`
@@ -178,30 +206,27 @@ const listOwnerSchema = z.strictObject({
  * 4.1.2). It is optional because the same schema serves `/l/:token` and `/me`,
  * which must never carry it; only the `/u/:nick` use-case adds the field.
  */
-export const listDataSchema = z.discriminatedUnion("access", [
-  z.strictObject({
-    access: z.literal("gifts"),
-    gifts: z.array(giftCardSchema),
-    publicToken: z.string().optional(),
-    owner: listOwnerSchema.optional(),
-    relationship: z.enum(PROFILE_RELATIONSHIPS).optional(),
-    /**
-     * Story 4.2.2 (AD-10 step 3, A-16): the viewer's live rejection cooldown with
-     * this profile owner. Only `/u/:nick` adds it, so `/l/:token` and `/me` keep
-     * their answer unchanged. Absence means no live cooldown.
-     */
-    inviteCooldown: profileInviteCooldownSchema.optional(),
-    /**
-     * Story 4.6 (FR-46, AD-19): `true` when the viewer has a directed
-     * `Subscription(viewerId → ownerId)`. Only `/u/:nick` adds it, so `/l/:token`
-     * and `/me` stay unchanged; absence reads as "not subscribed". The flag is
-     * one fact and never a relation: a subscriber is not a friend, and no id,
-     * email or wish field rides along.
-     */
-    subscribed: z.boolean().optional(),
-  }),
-  z.strictObject({ access: z.literal("not_found"), gifts: z.tuple([]) }),
-]);
+export const listDataSchema = z.strictObject({
+  access: z.literal("gifts"),
+  gifts: z.array(giftCardSchema),
+  publicToken: z.string().optional(),
+  owner: listOwnerSchema.optional(),
+  relationship: z.enum(PROFILE_RELATIONSHIPS).optional(),
+  /**
+   * Story 4.2.2 (AD-10 step 3, A-16): the viewer's live rejection cooldown with
+   * this profile owner. Only `/u/:nick` adds it, so `/l/:token` and `/me` keep
+   * their answer unchanged. Absence means no live cooldown.
+   */
+  inviteCooldown: profileInviteCooldownSchema.optional(),
+  /**
+   * Story 4.6 (FR-46, AD-19): `true` when the viewer has a directed
+   * `Subscription(viewerId → ownerId)`. Only `/u/:nick` adds it, so `/l/:token`
+   * and `/me` stay unchanged; absence reads as "not subscribed". The flag is
+   * one fact and never a relation: a subscriber is not a friend, and no id,
+   * email or wish field rides along.
+   */
+  subscribed: z.boolean().optional(),
+});
 
 export type ListData = z.infer<typeof listDataSchema>;
 

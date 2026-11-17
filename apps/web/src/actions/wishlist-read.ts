@@ -32,9 +32,6 @@ export type ReadWishlistInput = {
 /** Ports the read depends on; tests hand over a scripted reader. */
 export type ReadWishlistDeps = { readonly reader: RelationshipReader };
 
-/** Closed `not_found` answer; it never explains itself (AD-7 / AD-12). */
-const notFound: ListData = { access: "not_found", gifts: [] };
-
 /** Fields both card mappers need; `ownerId` is not a `Gift` column, see below. */
 const giftSelect = {
   id: true,
@@ -66,12 +63,15 @@ const giftSelect = {
  * `api/v1` adapter goes through it, so the gate is never bypassed and hidden
  * gifts are not even read: the SQL `where` narrows the rows, then
  * `VisibilityPolicy.resolve` decides again and picks the owner or viewer card.
- * The answer is a closed `{ access, gifts }` — no counts, no hidden titles.
+ * A found list is a closed `{ access, gifts }` — no counts, no hidden titles.
+ * `null` is the closed gate: an unknown or malformed token/nick, a missing list
+ * and a `Block` are one internal "not found", mapped by the caller to the HTTP
+ * 404 `NOT_FOUND` refusal (AD-12 ред. 2026-11-17), never to a success body.
  */
 export async function readWishlist(
   input: ReadWishlistInput,
   deps: ReadWishlistDeps = { reader: relationshipReader },
-): Promise<ListData> {
+): Promise<ListData | null> {
   const { viewer, target } = input;
 
   const list = await prisma.list.findUnique({
@@ -86,9 +86,9 @@ export async function readWishlist(
       owner: { select: { name: true, nick: true } },
     },
   });
-  // A missing list answers `not_found` before any gift is read, so neither a
+  // A missing list is the closed gate before any gift is read, so neither a
   // wrong nick nor a wrong token reveals that a list exists (AD-7).
-  if (list === null) return listDataSchema.parse(notFound);
+  if (list === null) return null;
 
   // Story 3.3: only a read by the link token names the owner; the owner's own
   // `/me` read already knows it and keeps its answer unchanged.
@@ -112,7 +112,7 @@ export async function readWishlist(
       };
 
   // A block hides the whole list, and it must look exactly like a missing list.
-  if (!owner && relations.blocked) return listDataSchema.parse(notFound);
+  if (!owner && relations.blocked) return null;
 
   const allowed = VisibilityPolicy.allowedVisibilities(viewer, relations, list.ownerId);
   // Nothing is visible to this viewer: answer an empty list without a gift query.
@@ -138,7 +138,7 @@ export async function readWishlist(
   // Always resolve, even though the `where` already narrowed the rows: the policy
   // is the second gate AD-7 promises, and its role picks the card mapper.
   const resolved = VisibilityPolicy.resolve(viewer, relations, list, gated);
-  if (resolved.access === "not_found") return listDataSchema.parse(notFound);
+  if (resolved.access === "not_found") return null;
 
   const role = resolved.role;
   const locale = input.locale ?? DEFAULT_LOCALE;

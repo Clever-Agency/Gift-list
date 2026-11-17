@@ -15,9 +15,10 @@ export type InviteOwner = { displayName: string; nick: string };
 
 /**
  * What the page may render, after the one gate has run. `not_found` covers an
- * unknown token, a malformed segment and a `Block`: the HTML and the metadata are
- * the same for all three. `invite.to` is the one-segment app address built from
- * the validated segment (`/invite/{token}`), never the request pathname.
+ * unknown token, a malformed segment and a `Block`: the page maps it to the real
+ * HTTP 404 (`notFound()`), and the HTML and the metadata are the same for all
+ * three. `invite.to` is the one-segment app address built from the validated
+ * segment (`/invite/{token}`), never the request pathname.
  */
 export type InviteView =
   | { kind: "redirect"; to: string }
@@ -67,7 +68,8 @@ export const getInvitePage = cache(loadInvitePage);
  * Story 4.7: preview metadata names only the inviter and the product (the same
  * shape as `/l`). The token, the nick and the viewer's relation never reach it,
  * so a `not_found` metadata is indistinguishable for unknown, malformed and
- * blocked tokens.
+ * blocked tokens. Next applies this page metadata on the 404 response and
+ * injects `noindex` itself, so the title stays `Приглашение не найдено — {brand}`.
  */
 export function buildInviteMetadata(page: InvitePage, brand: string): Metadata {
   const messages = getMessages(page.locale);

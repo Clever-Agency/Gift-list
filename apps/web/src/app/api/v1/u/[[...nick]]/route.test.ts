@@ -124,6 +124,20 @@ async function callRoute(segments: string[], headers: Record<string, string> = {
   return { res, body: await res.json() };
 }
 
+/**
+ * The whole answer of a closed cause: status, byte body and every header but
+ * `Date`, which the platform always varies (AD-15 test (3)).
+ */
+async function closedAnswer(segments: string[]) {
+  const { GET } = await import("./route");
+  const path = segments.map((segment) => encodeURIComponent(segment)).join("/");
+  const res = await GET(new Request(`http://x/api/v1/u/${path}`), {
+    params: Promise.resolve({ nick: segments }),
+  });
+  const headers = [...res.headers].filter(([name]) => name !== "date");
+  return { status: res.status, text: await res.text(), headers };
+}
+
 function signIn(id = "u9") {
   getSession.mockResolvedValue({ user: { id }, session: {} });
 }
@@ -184,13 +198,13 @@ describe("GET /api/v1/u/:nick", () => {
     expect(readProfileRelationship).not.toHaveBeenCalled();
   });
 
-  it("answers an unknown nick with the closed not_found body, without a name or a list read", async () => {
+  it("answers an unknown nick with the closed NOT_FOUND body, without a name or a list read", async () => {
     signIn();
 
     const { res, body } = await callRoute(["no-such-nick"]);
 
-    expect(res.status).toBe(200);
-    expect(body).toEqual({ ok: true, data: { access: "not_found", gifts: [] } });
+    expect(res.status).toBe(404);
+    expect(body).toEqual({ ok: false, code: "NOT_FOUND", message: "Not found" });
     expect(JSON.stringify(body)).not.toContain("Анна");
     expect(JSON.stringify(body)).not.toContain("anna@example.com");
     expect(findList).not.toHaveBeenCalled();
@@ -352,23 +366,28 @@ describe("GET /api/v1/u/:nick", () => {
     expect(relationsBetween).not.toHaveBeenCalled();
   });
 
-  it("answers a Block with the same body as an unknown nick and reads no gifts", async () => {
+  it("answers a Block, an unknown nick and a malformed nick with one byte-identical 404", async () => {
     signIn();
     relationsBetween.mockResolvedValue(relations({ blocked: true }));
     // Even a stale FRIENDS fact must be discarded with the whole profile.
     readProfileRelationship.mockResolvedValue("FRIENDS");
+    const blocked = await closedAnswer(["Anna"]);
 
-    const blocked = await callRoute(["Anna"]);
     findUser.mockResolvedValue(null);
-    const unknown = await callRoute(["no-such-nick"]);
+    const unknown = await closedAnswer(["no-such-nick"]);
+    const malformed = await closedAnswer(["a/b"]);
 
-    expect(blocked.res.status).toBe(unknown.res.status);
-    expect(blocked.body).toEqual(unknown.body);
-    expect(blocked.body).toEqual({ ok: true, data: { access: "not_found", gifts: [] } });
-    expect(blocked.body.data).not.toHaveProperty("relationship");
+    // AD-15 test (3): status, body and headers match for every hidden cause.
+    expect(blocked).toEqual(unknown);
+    expect(malformed).toEqual(unknown);
+    expect(unknown.status).toBe(404);
+    expect(unknown.text).toBe(
+      JSON.stringify({ ok: false, code: "NOT_FOUND", message: "Not found" }),
+    );
+    expect(unknown.headers).toContainEqual(["cache-control", "private, no-store"]);
+    expect(unknown.text).not.toContain("Анна");
+    expect(unknown.text).not.toContain("Секрет");
     expect(findManyGifts).not.toHaveBeenCalled();
-    expect(JSON.stringify(blocked.body)).not.toContain("Анна");
-    expect(JSON.stringify(blocked.body)).not.toContain("Секрет");
   });
 
   it("passes the request headers to getSession", async () => {
@@ -433,9 +452,10 @@ describe("GET /api/v1/u/:nick", () => {
       relationsBetween.mockResolvedValue(relations({ blocked: true }));
       readProfileInviteCooldown.mockResolvedValue({ hours: 5, rejected: true });
 
-      const { body } = await callRoute(["Anna"]);
+      const { res, body } = await callRoute(["Anna"]);
 
-      expect(body).toEqual({ ok: true, data: { access: "not_found", gifts: [] } });
+      expect(res.status).toBe(404);
+      expect(body).toEqual({ ok: false, code: "NOT_FOUND", message: "Not found" });
       expect(JSON.stringify(body)).not.toContain("inviteCooldown");
       expect(JSON.stringify(body)).not.toContain("hours");
     });

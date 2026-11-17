@@ -175,7 +175,7 @@ function subscriptionAnswer(outcome: string) {
 }
 
 function notFoundAnswer() {
-  return { ok: true, data: { access: "not_found", gifts: [] } };
+  return { ok: false, code: "NOT_FOUND", message: "Not found" };
 }
 
 /** `/api/v1/me` answers with the session; every other path answers with the profile. */

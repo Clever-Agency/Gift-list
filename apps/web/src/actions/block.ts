@@ -62,7 +62,7 @@ const invalidCursor = {
  * not read, so an arbitrary user id can never select another person.
  *
  * The nick is resolved directly by `findUserIdByNick`, not through the profile
- * gate: after a block the profile answers `not_found` in both directions, and
+ * gate: after a block the profile answers `NOT_FOUND` 404 in both directions, and
  * the blocked side still has to reach the unblock. An unknown, renamed or
  * malformed nick is one closed `NOT_FOUND`; a self pair is `FORBIDDEN` without
  * a reason. Both success outcomes (`BLOCKED`, `ALREADY_BLOCKED`) are 200, and a
@@ -94,7 +94,7 @@ export async function blockUserByNick(
  * stays and nothing is restored — no friendship, invite or subscription.
  *
  * The nick is resolved the same direct way as in {@link blockUserByNick}: the
- * profile of a blocked person is `not_found`, so the unblock cannot depend on
+ * profile of a blocked person is `NOT_FOUND` 404, so the unblock cannot depend on
  * that gate. A row that is already gone is the successful no-op `NOT_BLOCKED`,
  * never an error; a self pair is `FORBIDDEN` without a reason.
  */

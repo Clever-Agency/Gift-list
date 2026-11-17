@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { PRODUCT_NAME } from "@gift-list/contracts";
+import { getMessages, PRODUCT_NAME } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -103,17 +103,19 @@ async function mount() {
 describe("UI6: страница 404", () => {
   it("показывает бренд, заголовок, объяснение и ссылку на главную", async () => {
     await mount();
+    // CLE-102: the copy comes from the catalog, not from literals of the screen.
+    const notFound = getMessages("ru").common.notFound;
 
     expect(container.textContent).toContain(PRODUCT_NAME);
-    expect(container.textContent).toContain("Страница не найдена");
-    expect(container.textContent).toContain("Такой страницы нет. Проверьте ссылку.");
-    expect(container.textContent).toContain("На главную");
+    expect(container.textContent).toContain(notFound.title);
+    expect(container.textContent).toContain(notFound.body);
+    expect(container.textContent).toContain(notFound.toHome);
 
     const page = container.querySelector('[data-testid="not-found-page"]');
     expect(page).not.toBeNull();
     expect(page?.getAttribute("role")).toBeNull();
     expect(container.querySelectorAll('[role="heading"]')).toHaveLength(1);
-    expect(container.querySelector('[role="link"]')?.textContent).toBe("На главную");
+    expect(container.querySelector('[role="link"]')?.textContent).toBe(notFound.toHome);
 
     const footer = container.querySelector<HTMLElement>('[data-testid="page-footer"]');
     expect(footer).not.toBeNull();
@@ -214,7 +216,7 @@ describe("W12.13: страница 404 на медиа-пропсах и с за
     await mount();
     const element = heading();
 
-    expect(element.textContent).toBe("Страница не найдена");
+    expect(element.textContent).toBe(getMessages("ru").common.notFound.title);
     expect(element.getAttribute("aria-level")).toBe("1");
     expect(paintedValue(element, "text-align", 360)).toBe("center");
     expect(paintedValue(element, "text-align", 1280)).toBe("center");

@@ -16,7 +16,8 @@ async function call(token: string) {
     }),
     { params: Promise.resolve({ token }) },
   );
-  return { res, body: await res.json() };
+  const text = await res.text();
+  return { res, text, body: text === "" ? null : JSON.parse(text) };
 }
 
 beforeEach(() => {
@@ -42,7 +43,8 @@ describe("GET /api/v1/i/:token", () => {
     expect(headers.get("authorization")).toBe("Bearer t");
   });
 
-  it("maps not found to a 404 with one body for an unknown token and a block", async () => {
+  it("maps unknown, malformed and blocked tokens to one byte-identical 404", async () => {
+    const envelope = { ok: false, code: "NOT_FOUND", message: "Not found" };
     getInvitePreview.mockResolvedValue(envelope);
 
     const first = await call("cu2token");
@@ -52,6 +54,11 @@ describe("GET /api/v1/i/:token", () => {
     expect(second.res.status).toBe(404);
     expect(first.body).toEqual(envelope);
     expect(second.body).toEqual(envelope);
+    expect(first.text).toBe(JSON.stringify(envelope));
+    expect(second.text).toBe(first.text);
+    // AD-15 test (3): every header but Date matches.
+    const headersOf = (res: Response) => [...res.headers].filter(([name]) => name !== "date");
+    expect(headersOf(second.res)).toEqual(headersOf(first.res));
   });
 
   it("keeps unsupported methods out of the action", async () => {

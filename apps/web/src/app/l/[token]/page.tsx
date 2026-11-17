@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getBrandName } from "@/lib/env";
 import { wishlistPathForToken } from "@/lib/public-token";
 import { buildLinkMetadata, getLinkPage } from "./link-page";
@@ -11,6 +11,10 @@ import { PublicWishlistView } from "./public-wishlist-view";
  * sees this page: it is handed to the SPA route `/wishlist/{token}`, built from
  * the validated segment only. A forged or expired cookie is no session, so the
  * anonymous page stays instead of an open redirect.
+ *
+ * An unknown or malformed token and a `Block` render the segment `not-found.tsx`
+ * through `notFound()`: a real HTTP 404 before streaming starts, one page for
+ * every hidden cause (CLE-103).
  */
 export async function generateMetadata({
   params,
@@ -24,6 +28,7 @@ export default async function PublicWishlistPage({ params }: PageProps<"/l/[toke
   const { token } = await params;
   const page = await getLinkPage(token);
   if (page.view.kind === "redirect") redirect(page.view.to);
+  if (page.view.kind === "not_found") notFound();
 
   return (
     <PublicWishlistView

@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const clipboard = vi.hoisted(() => ({ copyText: vi.fn() }));
+const copier = vi.hoisted(() => ({ copyMyInviteLink: vi.fn() }));
 const navigation = vi.hoisted(() => ({
   replace: vi.fn(),
   push: vi.fn(),
@@ -56,6 +57,7 @@ const focusStore = vi.hoisted(() => {
 vi.mock("@/api/client", () => api);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/platform/clipboard", () => clipboard);
+vi.mock("@/invite/copy-link", () => copier);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
 // The visibility chip draws its icon with `expo-symbols`, which loads a symbol font
@@ -369,6 +371,8 @@ beforeEach(() => {
   measuredLayout = observeContentWidth();
   // Story 2.4: the clipboard write succeeds unless a test says otherwise.
   clipboard.copyText.mockResolvedValue(true);
+  // Story 4.7: the own invite link is copied unless a test says otherwise.
+  copier.copyMyInviteLink.mockResolvedValue("copied");
   focusStore.reset();
   search.params = {};
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
@@ -717,7 +721,7 @@ describe("мой вишлист: список", () => {
    * empty wishlist, so the empty-state texts and the composer CTA must not appear.
    */
   it("закрытый гейт списка: «Список не найден», а не пустой вишлист", async () => {
-    respond({ ok: true, data: { access: "not_found", gifts: [] } });
+    respond({ ok: false, code: "NOT_FOUND", message: "Wishlist not found" });
     await mount();
 
     expect(text()).toContain("Список не найден.");
@@ -727,17 +731,19 @@ describe("мой вишлист: список", () => {
     expect(button("Повторить")).toBeDefined();
   });
 
-  it("ошибка NOT_FOUND тоже даёт «Список не найден», а не пустой вишлист", async () => {
-    respond({ ok: false, code: "NOT_FOUND", message: "" });
+  it("старый успешный конверт not_found больше не принимается: ни пустого вишлиста, ни «Список не найден»", async () => {
+    respond({ ok: true, data: { access: "not_found", gifts: [] } });
     await mount();
 
-    expect(text()).toContain("Список не найден.");
+    expect(text()).not.toContain("Список не найден.");
     expect(text()).not.toContain("Пока пусто");
-    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).not.toContain("Добавьте первое желание");
+    expect(text()).toContain("Не получилось загрузить. Попробуйте ещё раз.");
+    expect(button("Повторить")).toBeDefined();
   });
 
   it("«Повторить» из «Список не найден» перезагружает список", async () => {
-    respond({ ok: true, data: { access: "not_found", gifts: [] } });
+    respond({ ok: false, code: "NOT_FOUND", message: "Wishlist not found" });
     await mount();
 
     respond(giftsAnswer([gift()]));
@@ -1209,6 +1215,50 @@ describe("мой вишлист: копирование ссылки", () => {
     expect(clipboard.copyText).toHaveBeenCalledTimes(2);
     expect(clipboard.copyText).toHaveBeenLastCalledWith("https://gift.example/l/tok-1");
     expect(text()).toContain("Ссылка скопирована");
+  });
+});
+
+/**
+ * Story 4.7 (AD-21, EXPERIENCE → IA «Мой вишлист»): «Скопировать
+ * ссылку-приглашение» sits next to «Скопировать ссылку» and does not depend on
+ * what the public list shows — an empty list still has an invite link.
+ */
+describe("мой вишлист: ссылка-приглашение", () => {
+  it("копирует ссылку-приглашение и показывает «Ссылка-приглашение скопирована»", async () => {
+    respond(giftsAnswer([gift()], "tok-1"));
+    await mount();
+
+    await press("Скопировать ссылку-приглашение");
+
+    expect(copier.copyMyInviteLink).toHaveBeenCalledTimes(1);
+    expect(text()).toContain("Ссылка-приглашение скопирована");
+    expect(clipboard.copyText).not.toHaveBeenCalled();
+  });
+
+  it("в пустом вишлисте ссылка-приглашение остаётся доступной", async () => {
+    respond(giftsAnswer([], "tok-1"));
+    await mount();
+
+    const invite = button("Скопировать ссылку-приглашение");
+    expect(invite).toBeDefined();
+    expect(invite?.getAttribute("aria-disabled")).toBe("false");
+    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("true");
+
+    await press("Скопировать ссылку-приглашение");
+
+    expect(copier.copyMyInviteLink).toHaveBeenCalledTimes(1);
+    expect(text()).toContain("Ссылка-приглашение скопирована");
+  });
+
+  it("отказ копирования даёт ошибку, а не успех", async () => {
+    copier.copyMyInviteLink.mockResolvedValue("failed");
+    respond(giftsAnswer([], "tok-1"));
+    await mount();
+
+    await press("Скопировать ссылку-приглашение");
+
+    expect(text()).toContain("Не получилось скопировать ссылку. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Ссылка-приглашение скопирована");
   });
 });
 

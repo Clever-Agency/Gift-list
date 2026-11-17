@@ -79,8 +79,9 @@ export const relationshipReader: RelationshipReader = { relationsBetween };
  * A friendship always wins over a pending invite; the protocol 4.1.1 R1 leaves
  * at most one pending direction per pair. The owner and an anonymous viewer have
  * no relation and cost no query. A block is deliberately not part of this
- * answer: `readWishlist` turns it into the same closed `not_found` as an unknown
- * nick, so a blocked profile never exposes even the fact that a relation exists.
+ * answer: `readWishlist` turns it into the same closed `NOT_FOUND` 404 as an
+ * unknown nick, so a blocked profile never exposes even the fact that a relation
+ * exists.
  */
 export async function readProfileRelationship(
   viewerId: string | null,

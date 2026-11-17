@@ -37,11 +37,11 @@ export async function getMyGifts(headers: Headers): Promise<ActionResult<ListDat
   // an empty wishlist. Repair it once and re-read: the owner must receive the
   // immutable share token for historical or inconsistent rows. A token that
   // already exists is never regenerated (`ensureOwnerList` only inserts).
-  if (data.access === "not_found") {
+  if (data === null) {
     await ensureOwnerList(ownerId);
     console.warn("Missing List row repaired for owner", ownerId);
     data = await readWishlist({ viewer: { id: ownerId }, target: { ownerId }, locale });
-    if (data.access === "not_found") {
+    if (data === null) {
       return { ok: false, code: "NOT_FOUND", message: "Wishlist not found" };
     }
   }

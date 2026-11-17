@@ -65,7 +65,7 @@ describe("profile relationship", () => {
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [] }).success).toBe(true);
   });
 
-  it("is absent from a closed gate", () => {
+  it("is absent from the retired not_found success branch", () => {
     expect(
       listDataSchema.safeParse({ access: "not_found", gifts: [], relationship: "NONE" }).success,
     ).toBe(false);
@@ -153,7 +153,7 @@ describe("profile invite cooldown (Story 4.2.2)", () => {
     expect(profileInviteCooldownSchema.safeParse({ hours: 3 }).success).toBe(false);
   });
 
-  it("rides only on an open profile answer, never on a closed gate", () => {
+  it("rides only on a found profile answer, never on the retired not_found branch", () => {
     const inviteCooldown = { hours: 3, rejected: false };
     expect(
       listDataSchema.safeParse({ access: "gifts", gifts: [], inviteCooldown }).success,

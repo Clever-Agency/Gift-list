@@ -7,7 +7,6 @@ import {
   EmptyState,
   Heading,
   LinkText,
-  PageFooter,
   Screen,
   StatusPill,
   TagChipList,
@@ -16,9 +15,10 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
+import { PublicPageFooter } from "@/components/public-page-footer";
 import type { LinkView } from "./link-page";
 
-export type PublicWishlistData = Exclude<LinkView, { kind: "redirect" }>;
+export type PublicWishlistData = Extract<LinkView, { kind: "gifts" }>;
 
 /** The wire status is upper-case; the visual pill takes the lower-case tone. */
 const STATUS_PILL = {
@@ -41,25 +41,14 @@ export type PublicWishlistViewProps = {
  * a relative link to the SPA route (AD-26), only for a single open wish; the
  * booking and friendship confirm flows belong to Epic 5 and AD-21 forbids
  * creating a friendship from `/l`.
+ *
+ * Only a found list reaches this view: an unknown token, a malformed segment and
+ * a `Block` are the real 404 of `not-found.tsx` (CLE-103), so the page never
+ * renders the closed gate inside a 200 response.
  */
 export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlistViewProps) {
   const messages = getMessages(locale);
   const t = createTranslator({ locale, messages, namespace: "web.wishlist" });
-
-  if (view.kind === "not_found") {
-    return (
-      <Screen>
-        <YStack flexGrow={1} role="main">
-          <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
-            <Heading level={1} kind="display-sm" textAlign="center">
-              {t("notFound")}
-            </Heading>
-          </Column>
-        </YStack>
-        <PageFooter tagline={messages.common.footerTagline} />
-      </Screen>
-    );
-  }
 
   const tGift = createTranslator({ locale, messages, namespace: "app.gift" });
   const tWishlist = createTranslator({ locale, messages, namespace: "app.myWishlist" });
@@ -155,7 +144,7 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
           )}
         </Column>
       </YStack>
-      <PageFooter tagline={messages.common.footerTagline} />
+      <PublicPageFooter locale={locale} />
     </Screen>
   );
 }

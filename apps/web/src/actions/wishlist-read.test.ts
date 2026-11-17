@@ -107,8 +107,8 @@ function reader(relations: Partial<Omit<ViewerRelations, "viaListToken">> = {}) 
   return { relationsBetween, deps };
 }
 
-function giftsOf(result: ListData) {
-  if (result.access !== "gifts") throw new Error(`unexpected access: ${result.access}`);
+function giftsOf(result: ListData | null) {
+  if (result === null) throw new Error("unexpected closed gate");
   return result.gifts;
 }
 
@@ -193,9 +193,9 @@ describe("readWishlist", () => {
       expect(JSON.stringify(answer)).not.toContain("tok-1");
     }
     // A link read names the owner (Story 3.3); an ownerId read has no use for it.
-    expect(Object.keys(friend).sort()).toEqual(["access", "gifts"]);
+    expect(Object.keys(friend ?? {}).sort()).toEqual(["access", "gifts"]);
     for (const answer of [anonymous, signedInLinkVisitor]) {
-      expect(Object.keys(answer).sort()).toEqual(["access", "gifts", "owner"]);
+      expect(Object.keys(answer ?? {}).sort()).toEqual(["access", "gifts", "owner"]);
     }
   });
 
@@ -215,7 +215,7 @@ describe("readWishlist", () => {
 
     expect(relationsBetween).toHaveBeenCalledWith("u9", "u1");
     expect(result).toEqual({ access: "gifts", gifts: [] });
-    expect(Object.keys(result).sort()).toEqual(["access", "gifts"]);
+    expect(Object.keys(result ?? {}).sort()).toEqual(["access", "gifts"]);
 
     const body = JSON.stringify(result);
     expect(body).not.toContain("Для друзей");
@@ -251,7 +251,7 @@ describe("readWishlist", () => {
         access: "gifts",
         owner: { displayName: "Анна", nick: "anna" },
       });
-      expect(Object.keys(answer)).not.toContain("publicToken");
+      expect(Object.keys(answer ?? {})).not.toContain("publicToken");
     }
     expect(giftsOf(empty)).toEqual([]);
   });
@@ -298,7 +298,7 @@ describe("readWishlist", () => {
     expect(result).not.toHaveProperty("archived");
   });
 
-  it("hides a blocked list behind not_found without reading gifts", async () => {
+  it("hides a blocked list behind the closed gate without reading gifts", async () => {
     const { deps } = reader({ blocked: true });
 
     const result = await readWishlist(
@@ -306,11 +306,11 @@ describe("readWishlist", () => {
       deps,
     );
 
-    expect(result).toEqual({ access: "not_found", gifts: [] });
+    expect(result).toBeNull();
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it("answers not_found for an unknown token without reading gifts", async () => {
+  it("answers the same closed gate for an unknown token without reading gifts", async () => {
     findUnique.mockResolvedValue(null);
 
     const result = await readWishlist(
@@ -318,7 +318,7 @@ describe("readWishlist", () => {
       reader().deps,
     );
 
-    expect(result).toEqual({ access: "not_found", gifts: [] });
+    expect(result).toBeNull();
     expect(findMany).not.toHaveBeenCalled();
   });
 });

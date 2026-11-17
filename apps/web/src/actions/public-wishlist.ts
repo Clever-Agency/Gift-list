@@ -1,7 +1,7 @@
 import "server-only";
 
 import {
-  listDataSchema,
+  notFoundError,
   type ActionResult,
   type ListData,
   type SupportedLocale,
@@ -12,9 +12,6 @@ import { isPublicTokenSegment } from "@/lib/public-token";
 import { requestLocale } from "@/lib/request-locale";
 import type { VisibilityViewer } from "@/domain/visibility";
 
-/** The closed answer for every gate: unknown, malformed or blocked token. */
-const notFound: ListData = { access: "not_found", gifts: [] };
-
 /**
  * AD-7 / AD-26: one list read behind both `GET /api/v1/l/:token` and the `/l`
  * page. It goes through `readWishlist` only — the single gate — and marks the
@@ -23,16 +20,16 @@ const notFound: ListData = { access: "not_found", gifts: [] };
  * friendship, and `SECRET` stays owner-only, because the policy decides and not
  * this action.
  *
- * A malformed token is the same closed `not_found` before the database, so an
- * unknown token, a block and a bad segment stay indistinguishable. The token is
- * never logged.
+ * `null` is the closed gate: a malformed token is answered before the database,
+ * and an unknown token, a hidden list and a `Block` come back as the same one.
+ * The token is never logged.
  */
 export async function readPublicWishlist(
   token: string,
   viewer: VisibilityViewer,
   locale: SupportedLocale,
-): Promise<ListData> {
-  if (!isPublicTokenSegment(token)) return listDataSchema.parse(notFound);
+): Promise<ListData | null> {
+  if (!isPublicTokenSegment(token)) return null;
 
   return readWishlist({
     viewer,
@@ -48,15 +45,15 @@ export async function readPublicWishlist(
  * so the answer is the anonymous one. AD-27: the request language is negotiated
  * once here, so fixed tag labels match the page.
  *
- * A closed gate keeps the AD-12 success envelope (`ok: true`, `access:
- * "not_found"`): a gate never explains itself, and a block is indistinguishable
- * from an unknown token in body and status.
+ * A closed gate is HTTP 404 with the one AD-12 `NOT_FOUND` refusal (AD-12 ред.
+ * 2026-11-17): a gate never explains itself, and an unknown token, a malformed
+ * segment, a hidden list and a block are indistinguishable in body and status.
  */
 export async function getWishlistByToken(
   token: string,
   headers: Headers,
 ): Promise<ActionResult<ListData>> {
-  if (!isPublicTokenSegment(token)) return { ok: true, data: listDataSchema.parse(notFound) };
+  if (!isPublicTokenSegment(token)) return notFoundError();
 
   const session = await auth.api.getSession({ headers });
   const locale = requestLocale(headers.get("accept-language"));
@@ -66,6 +63,7 @@ export async function getWishlistByToken(
     session ? { id: session.user.id } : null,
     locale,
   );
+  if (data === null) return notFoundError();
 
   return { ok: true, data };
 }

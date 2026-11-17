@@ -1,6 +1,11 @@
 import "server-only";
 
-import { listDataSchema, type ActionResult, type ListData } from "@gift-list/contracts";
+import {
+  listDataSchema,
+  notFoundError,
+  type ActionResult,
+  type ListData,
+} from "@gift-list/contracts";
 import { readWishlist } from "@/actions/wishlist-read";
 import { prisma } from "@/db/client";
 import { isValidNick, normalizeNick } from "@/domain/nick";
@@ -19,16 +24,14 @@ const unauthenticated = {
   message: "Authentication required",
 };
 
-/** The closed answer for every gate: unknown, old, malformed or blocked nick. */
-const notFound: ListData = { access: "not_found", gifts: [] };
-
 /**
  * Story 3.4.1 (AD-7, AD-13): a signed-in user opens somebody's profile by nick.
  *
  * The nick is compared only in its canonical `nickNormalized` form, so case does
  * not matter and a nick left behind by a rename simply does not resolve. Every
  * miss — unknown, old, malformed, a path with a slash or a Block — answers the
- * same closed `not_found` without a name, an email or any gift.
+ * same HTTP 404 `NOT_FOUND` refusal (AD-12 ред. 2026-11-17) without a name, an
+ * email or any gift.
  *
  * The gifts are read only through `readWishlist` with `target: { ownerId }` and
  * without `viaListToken`, so `PUBLIC` follows the relation facts and never
@@ -44,7 +47,7 @@ const notFound: ListData = { access: "not_found", gifts: [] };
  * `OUTGOING_PENDING`, `INCOMING_PENDING`, `FRIENDS`) only to this answer. A
  * pending invite does not open FRIENDS wishes; `readWishlist` still decides that
  * from the accepted `Friendship` edge alone. A Block keeps the same closed
- * `not_found` body as an unknown nick, so no relationship, card or name leaks.
+ * `NOT_FOUND` body as an unknown nick, so no relationship, card or name leaks.
  *
  * Story 4.2.2 adds the profile-only live rejection cooldown. While the window is
  * open the relationship is forced to `NONE`: a rejection leaves no edge and no
@@ -64,13 +67,13 @@ export async function getProfileByNick(
   if (!session) return unauthenticated;
 
   const nickNormalized = normalizeNick(nick);
-  if (!isValidNick(nickNormalized)) return { ok: true, data: listDataSchema.parse(notFound) };
+  if (!isValidNick(nickNormalized)) return notFoundError();
 
   const owner = await prisma.user.findUnique({
     where: { nickNormalized },
     select: { id: true, name: true, nick: true },
   });
-  if (owner === null) return { ok: true, data: listDataSchema.parse(notFound) };
+  if (owner === null) return notFoundError();
 
   const [relationship, inviteCooldown, subscribed, data] = await Promise.all([
     readProfileRelationship(session.user.id, owner.id),
@@ -86,7 +89,7 @@ export async function getProfileByNick(
   ]);
   // A Block hides the whole profile and must look exactly like a missing nick;
   // the relationship and the cooldown are discarded with the rest of the profile.
-  if (data.access === "not_found") return { ok: true, data };
+  if (data === null) return notFoundError();
 
   return {
     ok: true,

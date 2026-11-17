@@ -7,7 +7,7 @@ import { notFoundResponse, toResponse } from "@/lib/api-v1";
  * The nick is exactly one path segment, so an optional catch-all is used on
  * purpose: a bare `/api/v1/u`, a trailing slash, extra segments or an encoded
  * slash all reach this handler instead of the generic API 404. Every one of
- * them is not a nick and gets the same closed `not_found` as an unknown nick.
+ * them is not a nick and gets the same closed `NOT_FOUND` 404 as an unknown nick.
  *
  * The route is a thin AD-12 adapter; `getProfileByNick` owns the session, the
  * nick normalization, the locale and the single `readWishlist` gate.

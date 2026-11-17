@@ -232,10 +232,6 @@ export default function ProfileScreen() {
         }
         return;
       }
-      if ("code" in result && result.code === "NOT_FOUND") {
-        setState({ status: "missing" });
-        return;
-      }
       const network = "network" in result;
       setState({ status: "error", kind: network ? "network" : "generic" });
       setToast({

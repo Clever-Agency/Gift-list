@@ -92,6 +92,20 @@ async function callRoute(segments: string[], headers: Record<string, string> = {
   return { res, body: await res.json() };
 }
 
+/**
+ * The whole answer of a closed cause: status, byte body and every header but
+ * `Date`, which the platform always varies (AD-15 test (3)).
+ */
+async function closedAnswer(segments: string[]) {
+  const { GET } = await import("./route");
+  const path = segments.map((segment) => encodeURIComponent(segment)).join("/");
+  const res = await GET(new Request(`http://x/api/v1/l/${path}`), {
+    params: Promise.resolve({ token: segments }),
+  });
+  const headers = [...res.headers].filter(([name]) => name !== "date");
+  return { status: res.status, text: await res.text(), headers };
+}
+
 beforeEach(() => {
   getSession.mockReset();
   findUnique.mockReset();
@@ -201,27 +215,34 @@ describe("GET /api/v1/l/:token", () => {
     expect(body.data.owner).toEqual({ displayName: "Анна", nick: "anna" });
   });
 
-  it("answers a block with the same safe body as an unknown token", async () => {
+  it("answers a block, an unknown token and a malformed token with one byte-identical 404", async () => {
     relationsBetween.mockResolvedValue({
       blocked: true,
       friend: false,
       subscriber: false,
       contactMatch: false,
     });
-    const blocked = await callRoute(["tok-1"]);
+    const blocked = await closedAnswer(["tok-1"]);
     findUnique.mockResolvedValue(null);
-    const unknown = await callRoute(["no-such-token"]);
+    const unknown = await closedAnswer(["no-such-token"]);
+    const malformed = await closedAnswer(["a/b"]);
 
-    expect(blocked.res.status).toBe(unknown.res.status);
-    expect(blocked.body).toEqual(unknown.body);
-    expect(blocked.body).toEqual({ ok: true, data: { access: "not_found", gifts: [] } });
-    expect(JSON.stringify(blocked.body)).not.toContain("Анна");
-    expect(JSON.stringify(blocked.body)).not.toContain("Секрет");
+    // AD-15 test (3): status, body and headers match for every hidden cause.
+    expect(blocked).toEqual(unknown);
+    expect(malformed).toEqual(unknown);
+    expect(unknown.status).toBe(404);
+    expect(unknown.text).toBe(
+      JSON.stringify({ ok: false, code: "NOT_FOUND", message: "Not found" }),
+    );
+    expect(unknown.headers).toContainEqual(["cache-control", "private, no-store"]);
+    expect(unknown.text).not.toContain("Анна");
+    expect(unknown.text).not.toContain("Секрет");
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it("treats a malformed token like an unknown one without touching the database", async () => {
     findUnique.mockResolvedValue(null);
-    const unknown = await callRoute(["no-such-token"]);
+    const unknown = await closedAnswer(["no-such-token"]);
     findUnique.mockClear();
     getSession.mockClear();
     const malformed = [
@@ -236,10 +257,10 @@ describe("GET /api/v1/l/:token", () => {
     ];
 
     for (const segments of malformed) {
-      const { res, body } = await callRoute(segments);
-      expect(res.status).toBe(unknown.res.status);
-      expect(body).toEqual(unknown.body);
-      expect(res.headers.get("cache-control")).toBe("private, no-store");
+      const answer = await closedAnswer(segments);
+      expect(answer.status).toBe(unknown.status);
+      expect(answer.text).toBe(unknown.text);
+      expect(answer.headers).toEqual(unknown.headers);
     }
     expect(findUnique).not.toHaveBeenCalled();
     expect(getSession).not.toHaveBeenCalled();

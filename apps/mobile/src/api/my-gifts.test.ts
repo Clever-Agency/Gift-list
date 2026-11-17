@@ -96,8 +96,12 @@ describe("fetchMyGifts", () => {
     await expect(fetchMyGifts()).resolves.toEqual({ ok: false, invalid: true });
   });
 
-  it("reports a closed gate as a missing list, not an empty wishlist", async () => {
-    api.apiRequest.mockResolvedValue({ ok: true, data: { access: "not_found", gifts: [] } });
+  it("reports the anomaly NOT_FOUND as a missing list, not an empty wishlist", async () => {
+    api.apiRequest.mockResolvedValue({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Wishlist not found",
+    });
 
     await expect(fetchMyGifts()).resolves.toEqual({ ok: true, access: "not_found" });
   });
@@ -116,6 +120,12 @@ describe("fetchMyGifts", () => {
       archived: [archived],
       publicToken: "tok-1",
     });
+  });
+
+  it("treats the retired not_found success body as outside the contract", async () => {
+    api.apiRequest.mockResolvedValue({ ok: true, data: { access: "not_found", gifts: [] } });
+
+    await expect(fetchMyGifts()).resolves.toEqual({ ok: false, invalid: true });
   });
 
   it("keeps an open gate with no gifts as an empty list", async () => {

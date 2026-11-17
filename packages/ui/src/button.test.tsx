@@ -48,6 +48,29 @@ describe("Button", () => {
     expect(button?.getAttribute("type")).toBe("button");
   });
 
+  it("href: на вебе это настоящая ссылка <a> с подписью и role=link", async () => {
+    const { container, render } = mounted();
+    await render(<Button label="Принять приглашение" href="/register?next=/invite/tok-1" />);
+
+    const link = container.querySelector("a");
+    expect(container.querySelector("button")).toBeNull();
+    expect(link?.getAttribute("href")).toBe("/register?next=/invite/tok-1");
+    expect(link?.getAttribute("role")).toBe("link");
+    expect(link?.getAttribute("aria-label")).toBe("Принять приглашение");
+    expect(link?.textContent).toBe("Принять приглашение");
+    expect(link?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("href у заблокированной кнопки не делается ссылкой", async () => {
+    const { container, render } = mounted();
+    await render(<Button label="Принять приглашение" href="/register" disabled />);
+
+    expect(container.querySelector("a")).toBeNull();
+    const button = container.querySelector("button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+  });
+
   it("нажатие вызывает onPress", async () => {
     const onPress = vi.fn();
     const { container, render } = mounted();

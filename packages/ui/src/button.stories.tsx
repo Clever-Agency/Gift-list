@@ -39,6 +39,7 @@ The shared button of the app and the Next pages. On the web it is a real \`<butt
 - \`disabled\` is a native disabled button and leaves the Tab order (\`tabIndex=-1\`). \`focusableWhenDisabled\` keeps it in the Tab order and uses \`aria-disabled\` instead; it still takes no press.
 - Height follows the variant, not a prop: \`primary\`, \`reserve\`, \`secondary\` and \`destructive\` are at least 48 px tall (\`$control-height\`); \`ghost\` is at least 44 × 44 px (\`$touch-target\`). There is no \`size\` prop.
 - \`fullWidth\` stretches the button to its parent; the row stays centred.
+- \`href\` makes the web root a real \`<a href>\` with the same look (a page action that only navigates: registration, login, a public page). A blocked button stays a \`<button>\` and ignores the target; a phone has no anchor and hands the navigation to the router.
 - Hover, press and focus are CSS states (media queries), not props.
 
 | \`disabled\` | \`busy\` | \`focusableWhenDisabled\` | Result |
@@ -128,6 +129,12 @@ The shared button of the app and the Next pages. On the web it is a real \`<butt
         "Stretches the button to its parent's width; the label stays centred and the busy spinner sits centred over it.",
       type: "boolean",
       defaultValue: "false",
+    }),
+    href: propDoc({
+      description:
+        "A navigation target: the web root becomes a real `<a href>` with the same look; a blocked button stays a `<button>` and ignores it. A phone hands navigation to the router.",
+      type: "string",
+      control: "text",
     }),
     testID: propDoc({
       description: "A stable handle for tests; reaches the web DOM as `data-testid`.",
@@ -251,6 +258,31 @@ export const FocusableWhenDisabled: Story = {
 export const PrimaryFullWidth: Story = {
   name: "Full width",
   args: { variant: "primary", fullWidth: true },
+};
+
+/**
+ * `href` turns the web root into a real `<a href>` with the same look, so a page
+ * action that only opens another page keeps the browser's own click, the new tab
+ * and the context menu. The primary variant is a registration link, the ghost one
+ * is login: both keep their 48 px and 44 px heights. Hover and press are CSS
+ * states, as on a button. A phone has no anchor and hands navigation to the
+ * router (`href` alone does not navigate in the app).
+ */
+export const AsLink: Story = {
+  name: "As a link",
+  render: function AsLinkStory() {
+    return (
+      <YStack gap="$3" alignItems="flex-start">
+        <Button label="Принять приглашение" href="/register?next=/invite/tok-1" />
+        <Button
+          label="У меня уже есть аккаунт"
+          variant="ghost"
+          href="/login?next=/invite/tok-1"
+        />
+      </YStack>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
 };
 
 /**

@@ -158,6 +158,8 @@ model Gift {
   /// Reservation timer cron scans (AD-9).
   @@index([status, reservationPhase, reservationDueAt])
   @@index([status, reservationPhase, reservationPhaseAt])
+  /// Wish-expiry cron scans open wishes that still have a date (Story 2.6, AD-9).
+  @@index([status, expiresOn])
 }
 
 // Fixed tag catalog (AD-22, AD-27). Rows are data, not JSON catalogs: `slug` is

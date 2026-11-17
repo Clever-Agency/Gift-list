@@ -124,7 +124,7 @@ export async function readWishlist(
     // The owner is allowed every visibility value, so an `in` filter would only
     // repeat the whole column domain; everybody else narrows the read in SQL so
     // hidden rows never leave the database (NFR-3). Archived gifts stay out of
-    // the active list until the archive section lands (AD-8, Story 2.6).
+    // the active list (AD-8); the owner gets them in `archived` below.
     where: owner
       ? { listId: list.id, archivedAt: null }
       : { listId: list.id, archivedAt: null, visibility: { in: allowed } },
@@ -148,12 +148,26 @@ export async function readWishlist(
       : toViewerGiftCard(gift, viewerId, locale);
   });
 
+  // Story 2.6: only the owner sees the archive. Viewers never get the key, so a
+  // shared schema stays closed and an archived title cannot leak.
+  const archived = owner
+    ? (
+        await prisma.gift.findMany({
+          where: { listId: list.id, NOT: { archivedAt: null } },
+          orderBy: [{ archivedAt: "desc" }, { id: "desc" }],
+          select: giftSelect,
+        })
+      ).map(function toArchivedCard(row) {
+        return toOwnerGiftCard(row, locale);
+      })
+    : undefined;
+
   return listDataSchema.parse({
     access: "gifts",
     gifts,
     ...ownerFields,
     // Story 2.4 (AD-6, A-26): only the owner gets the immutable share token; the
     // link `/l/{publicToken}` is what the owner shares, nobody else.
-    ...(owner ? { publicToken: list.publicToken } : {}),
+    ...(owner ? { publicToken: list.publicToken, archived } : {}),
   });
 }

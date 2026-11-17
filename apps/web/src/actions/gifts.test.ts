@@ -55,6 +55,7 @@ vi.mock("@/db/client", () => ({
 vi.mock("@/db/generated/client", () => ({ Prisma: { PrismaClientKnownRequestError } }));
 
 import { giftCardSchema } from "@gift-list/contracts";
+import { localCalendarDay } from "@/domain/calendar-day";
 
 import { createGift, deleteGift, getGift, updateGift } from "./gifts";
 
@@ -75,7 +76,7 @@ type Row = {
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
   holderVisibleToOwner: boolean;
   reservedBy: { id: string; nick: string; name: string } | null;
-  list: { ownerId: string };
+  list: { ownerId: string; owner?: { timeZone: string | null } };
   tags: { tagId: string | null; customText: string | null; tag: { slug: string; labels: unknown } | null }[];
 };
 
@@ -301,6 +302,7 @@ describe("createGift", () => {
         visibility: "PUBLIC",
         quantity: "SINGLE",
         status: "OPEN",
+        expiresOn: null,
       },
       select: expect.any(Object),
     });
@@ -343,7 +345,7 @@ describe("createGift", () => {
 
     expect(findUnique).toHaveBeenCalledWith({
       where: { ownerId: "u2" },
-      select: { id: true },
+      select: { id: true, owner: { select: { timeZone: true } } },
     });
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ listId: "l2" }) }),
@@ -480,7 +482,14 @@ describe("updateGift", () => {
 
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
-      select: { priceAmount: true, status: true, visibility: true, quantity: true },
+      select: {
+        priceAmount: true,
+        status: true,
+        visibility: true,
+        quantity: true,
+        expiresOn: true,
+        list: { select: { owner: { select: { timeZone: true } } } },
+      },
     });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { priceCurrency: "EUR" } }),
@@ -1272,5 +1281,75 @@ describe("deleteGift", () => {
       ok: false,
       code: "NOT_FOUND",
     });
+  });
+});
+
+function shiftDay(day: string, delta: number): string {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+describe("expiresOn", () => {
+  const today = localCalendarDay(new Date(), "UTC");
+
+  it("stores the owner's today and rejects a new earlier day", async () => {
+    findUnique.mockResolvedValue({ id: "l1", owner: { timeZone: "UTC" } });
+
+    await createGift(headers, { title: "Книга", expiresOn: today });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          expiresOn: new Date(`${today}T00:00:00.000Z`),
+        }),
+      }),
+    );
+
+    create.mockClear();
+    expect(await createGift(headers, { title: "Книга", expiresOn: shiftDay(today, -1) })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "expiresOn",
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("does not recheck a resent date and rejects a different past day", async () => {
+    const storedDay = shiftDay(today, -3);
+    findFirst.mockResolvedValue(
+      giftRow({
+        expiresOn: new Date(`${storedDay}T00:00:00.000Z`),
+        list: { ownerId: "u1", owner: { timeZone: "UTC" } },
+      }),
+    );
+
+    expect(await updateGift(headers, "g1", { title: "Новое", expiresOn: storedDay })).toMatchObject({
+      ok: true,
+    });
+    expect(update.mock.calls[0]?.[0].data).not.toHaveProperty("expiresOn");
+    expect(update.mock.calls[0]?.[0].data.title).toBe("Новое");
+
+    update.mockClear();
+    expect(await updateGift(headers, "g1", { expiresOn: shiftDay(today, -1) })).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "expiresOn",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("clears the date", async () => {
+    findFirst.mockResolvedValue(
+      giftRow({
+        expiresOn: new Date(`${today}T00:00:00.000Z`),
+        list: { ownerId: "u1", owner: { timeZone: "UTC" } },
+      }),
+    );
+
+    expect(await updateGift(headers, "g1", { expiresOn: null })).toMatchObject({ ok: true });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ expiresOn: null }) }),
+    );
   });
 });

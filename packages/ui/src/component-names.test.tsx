@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  * `name` and are skipped.
  */
 
-const modules = import.meta.glob(["./*.tsx", "!./*.test.tsx", "!./test-utils.tsx"], {
+const modules = import.meta.glob(["./*.tsx", "!./*.test.tsx", "!./*.native.tsx", "!./test-utils.tsx"], {
   eager: true,
 }) as Record<string, Record<string, unknown>>;
 

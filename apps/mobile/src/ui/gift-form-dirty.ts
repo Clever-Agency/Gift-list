@@ -15,6 +15,8 @@ export type GiftFormDirtyValues = {
   quantity: string;
   /** Selected tags as an order-independent key; fixed labels are not part of it. */
   tags: string;
+  /** `YYYY-MM-DD`, or `""` when the wish has no archive date (Story 2.6). */
+  expiresOn: string;
   /** The custom tag field as typed but not added yet. */
   customTag: string;
 };
@@ -28,6 +30,7 @@ const FIELDS = [
   "visibility",
   "quantity",
   "tags",
+  "expiresOn",
   "customTag",
 ] as const;
 

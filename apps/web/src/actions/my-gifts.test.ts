@@ -78,6 +78,27 @@ function giftsOf(result: Awaited<ReturnType<typeof getMyGifts>>) {
   return result.data.gifts;
 }
 
+type GiftWhere = {
+  listId?: string;
+  archivedAt?: null;
+  NOT?: { archivedAt: null };
+};
+
+function isArchivedQuery(where: GiftWhere): boolean {
+  return where.NOT?.archivedAt === null;
+}
+
+/** Owner reads query twice: active rows, then archived. Honour both filters. */
+function seedGifts(rows: Row[]) {
+  findMany.mockImplementation(function filterRows({ where }: { where: GiftWhere }) {
+    return Promise.resolve(
+      rows.filter(function matchArchive(row) {
+        return (row.archivedAt !== null) === isArchivedQuery(where);
+      }),
+    );
+  });
+}
+
 beforeEach(() => {
   getSession.mockReset();
   findUnique.mockReset();
@@ -85,7 +106,7 @@ beforeEach(() => {
   ensureOwnerList.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1", ownerId: "u1", publicToken: "tok-1" });
-  findMany.mockResolvedValue([]);
+  seedGifts([]);
   ensureOwnerList.mockResolvedValue(undefined);
 });
 
@@ -150,10 +171,10 @@ describe("getMyGifts", () => {
     expect(warn).toHaveBeenCalledWith("Missing List row repaired for owner", "u1");
     expect(result).toEqual({
       ok: true,
-      data: { access: "gifts", gifts: [], publicToken: "tok-new" },
+      data: { access: "gifts", gifts: [], archived: [], publicToken: "tok-new" },
     });
     expect(findUnique).toHaveBeenCalledTimes(2);
-    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledTimes(2);
   });
 
   it("answers an explicit error when the missing list could not be repaired", async () => {
@@ -183,7 +204,7 @@ describe("getMyGifts", () => {
   });
 
   it("returns every own gift, including SECRET", async () => {
-    findMany.mockResolvedValue([
+    seedGifts([
       gift({ id: "g1", visibility: "SECRET" }),
       gift({ id: "g2", visibility: "FRIENDS" }),
       gift({ id: "g3", visibility: "PUBLIC" }),
@@ -210,7 +231,7 @@ describe("getMyGifts", () => {
   });
 
   it("maps an owner card to the AD-12 contract", async () => {
-    findMany.mockResolvedValue([
+    seedGifts([
       gift({
         id: "g1",
         title: "Наушники",
@@ -249,7 +270,7 @@ describe("getMyGifts", () => {
   });
 
   it("keeps the holder hidden until they allow the owner to see them", async () => {
-    findMany.mockResolvedValue([
+    seedGifts([
       gift({
         status: "RESERVED",
         reservationPhase: "ACTIVE",
@@ -264,7 +285,7 @@ describe("getMyGifts", () => {
   });
 
   it("asks the owner to answer an expired reservation", async () => {
-    findMany.mockResolvedValue([
+    seedGifts([
       gift({ status: "RESERVED", reservationPhase: "AWAITING_OWNER" }),
     ]);
 
@@ -280,7 +301,7 @@ describe("getMyGifts", () => {
   it.each(["ACTIVE", "AWAITING_GIVER"] as const)(
     "shows the shared holder but no owner action in the %s phase",
     async (phase) => {
-      findMany.mockResolvedValue([
+      seedGifts([
         gift({
           status: "RESERVED",
           reservationPhase: phase,
@@ -296,7 +317,7 @@ describe("getMyGifts", () => {
   );
 
   it("offers no owner action and no holder on an open gift", async () => {
-    findMany.mockResolvedValue([gift({ id: "g1", status: "OPEN" })]);
+    seedGifts([gift({ id: "g1", status: "OPEN" })]);
 
     const [card] = giftsOf(await getMyGifts(headers));
     expect(card?.ownerAction).toBeNull();
@@ -304,7 +325,7 @@ describe("getMyGifts", () => {
   });
 
   it("keeps the holder on a closed gift when they allowed the owner to see them", async () => {
-    findMany.mockResolvedValue([
+    seedGifts([
       gift({
         status: "CLOSED",
         reservationPhase: "GIVEN",
@@ -318,8 +339,28 @@ describe("getMyGifts", () => {
     expect(card?.ownerAction).toBeNull();
   });
 
+  it("gives the owner archived wishes separately from the active list", async () => {
+    seedGifts([
+      gift({ id: "g1", title: "Активное" }),
+      gift({
+        id: "g-arch",
+        title: "Архивное",
+        archivedAt: new Date("2026-01-01T00:00:00.000Z"),
+      }),
+    ]);
+
+    const result = await getMyGifts(headers);
+    expect(giftsOf(result).map((card) => card.id)).toEqual(["g1"]);
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        archived: [expect.objectContaining({ id: "g-arch", title: "Архивное" })],
+      },
+    });
+  });
+
   it("still hides the holder on a closed gift when the toggle is off", async () => {
-    findMany.mockResolvedValue([
+    seedGifts([
       gift({
         status: "CLOSED",
         reservationPhase: "GIVEN",

@@ -562,6 +562,7 @@ function toFormValues(gift: GiftCard): GiftFormValues {
     visibility: gift.visibility,
     quantity: gift.quantity,
     tags: gift.tags.map(giftTagFromCard),
+    expiresOn: gift.expiresOn,
   };
 }
 
@@ -585,6 +586,7 @@ function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
     priceAmount: values.priceAmount,
     priceCurrency: values.priceCurrency,
     linkUrl: values.link,
+    ...(values.expiresOn !== gift.expiresOn ? { expiresOn: values.expiresOn } : {}),
     ...(tagsChanged ? { tags: giftTagInputs(values.tags) } : {}),
   };
   return gift.status === "OPEN"

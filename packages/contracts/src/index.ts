@@ -162,6 +162,11 @@ export const listDataSchema = z.discriminatedUnion("access", [
      * their answer unchanged. Absence means no live cooldown.
      */
     inviteCooldown: profileInviteCooldownSchema.optional(),
+    /**
+     * Story 2.6: the owner's archived wishes. Only the owner read adds the key;
+     * a viewer answer omits it, and archived rows never appear in `gifts`.
+     */
+    archived: z.array(giftCardSchema).optional(),
   }),
   z.strictObject({ access: z.literal("not_found"), gifts: z.tuple([]) }),
 ]);
@@ -214,10 +219,12 @@ export {
   DEFAULT_QUANTITY,
   GIFT_TAG_TEXT_MAX,
   giftInputSchema,
+  giftRestoreSchema,
   giftTagInputSchema,
   giftUpdateSchema,
   type GiftInput,
   type GiftInputDraft,
+  type GiftRestore,
   type GiftTagInput,
   type GiftUpdate,
 } from "./gift";

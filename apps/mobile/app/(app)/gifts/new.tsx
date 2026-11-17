@@ -285,6 +285,7 @@ function toGiftInput(values: GiftFormValues): GiftInputDraft {
     linkUrl: values.link,
     visibility: values.visibility,
     quantity: values.quantity,
+    expiresOn: values.expiresOn,
     ...(values.tags.length > 0 ? { tags: giftTagInputs(values.tags) } : {}),
   };
 }

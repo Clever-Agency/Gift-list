@@ -24,6 +24,7 @@ export { Pressable, focusRing, type PressableProps } from "./pressable";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
 export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";
+export { DateField, type DateFieldProps } from "./date-field";
 export {
   PasswordField,
   TextField,

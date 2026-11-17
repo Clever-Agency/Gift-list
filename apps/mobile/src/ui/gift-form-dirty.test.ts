@@ -11,6 +11,7 @@ const initial: GiftFormDirtyValues = {
   visibility: "FRIENDS",
   quantity: "UNLIMITED",
   tags: "catalog:tag_dream\ncustom:своё",
+  expiresOn: "",
   customTag: "",
 };
 
@@ -47,6 +48,7 @@ describe("isGiftFormDirty: чистая форма", () => {
       visibility: "PUBLIC",
       quantity: "SINGLE",
       tags: "",
+      expiresOn: "",
       customTag: "",
     };
     expect(isGiftFormDirty(empty, changed({ ...empty, title: "   " }))).toBe(false);
@@ -63,6 +65,7 @@ describe("isGiftFormDirty: правка любого поля", () => {
     { field: "visibility", value: "PUBLIC" },
     { field: "quantity", value: "SINGLE" },
     { field: "tags", value: "catalog:tag_dream" },
+    { field: "expiresOn", value: "2026-12-31" },
     { field: "customTag", value: "новый" },
   ] as const)("поле $field делает форму грязной", ({ field, value }) => {
     const overrides: Partial<GiftFormDirtyValues> = { [field]: value };

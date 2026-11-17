@@ -77,7 +77,8 @@ const rows: Row[] = [
 
 type GiftWhere = {
   listId: string;
-  archivedAt: null;
+  archivedAt?: null;
+  NOT?: { archivedAt: null };
   visibility?: { in: readonly Row["visibility"][] };
 };
 
@@ -87,8 +88,9 @@ type GiftWhere = {
  */
 function query(where: GiftWhere): Row[] {
   if (where.listId !== "l1") return [];
+  const archived = where.NOT?.archivedAt === null;
   return rows.filter((row) => {
-    if (where.archivedAt === null && row.archivedAt !== null) return false;
+    if ((row.archivedAt !== null) !== archived) return false;
     return where.visibility === undefined || where.visibility.in.includes(row.visibility);
   });
 }
@@ -137,6 +139,9 @@ describe("readWishlist", () => {
     ]);
     expect(giftsOf(result).find((card) => card.id === "g-secret")?.visibility).toBe("SECRET");
     expect(giftsOf(result).some((card) => card.id === "g-archived")).toBe(false);
+    expect(result).toMatchObject({
+      archived: [expect.objectContaining({ id: "g-archived", archivedAt: expect.any(String) })],
+    });
   });
 
   /** Story 2.4 (AD-6, A-26): the owner builds the share link from this token. */
@@ -166,7 +171,7 @@ describe("readWishlist", () => {
       reader().deps,
     );
 
-    expect(result).toEqual({ access: "gifts", gifts: [], publicToken: "tok-1" });
+    expect(result).toEqual({ access: "gifts", gifts: [], archived: [], publicToken: "tok-1" });
   });
 
   /** The share token is the owner's: a friend or link visitor must not receive it. */
@@ -290,6 +295,7 @@ describe("readWishlist", () => {
       "g-friends",
       "g-reserved",
     ]);
+    expect(result).not.toHaveProperty("archived");
   });
 
   it("hides a blocked list behind not_found without reading gifts", async () => {

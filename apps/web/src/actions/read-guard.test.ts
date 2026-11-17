@@ -3,8 +3,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/** AD-7: the only place that may read `Gift` rows is the gated read. */
+/**
+ * AD-7: a viewer-facing `Gift` read belongs in the gated wishlist read.
+ * Story 2.6 adds a second `findMany` there for the owner's archive, and
+ * `GiftStatusService` scans expiry candidates by status. Neither path is a
+ * visibility bypass: the archive stays inside `readWishlist`, and the scan
+ * writes `archivedAt` through the CAS, not a card.
+ */
 const WISHLIST_READ = path.resolve(fileURLToPath(new URL("./wishlist-read.ts", import.meta.url)));
+const STATUS_SERVICE = path.resolve(
+  fileURLToPath(new URL("../domain/gift-status.ts", import.meta.url)),
+);
 const SRC = path.resolve(path.dirname(WISHLIST_READ), "..");
 
 const SKIP_DIRS = new Set(["node_modules", ".next"]);
@@ -83,7 +92,8 @@ function rawGiftQueries(text: string): string[] {
 async function findViolations(): Promise<Violation[]> {
   const violations: Violation[] = [];
   for await (const { file, relative } of sources()) {
-    if (path.resolve(file) === WISHLIST_READ) continue;
+    const resolved = path.resolve(file);
+    if (resolved === WISHLIST_READ || resolved === STATUS_SERVICE) continue;
     const text = await readFile(file, "utf8");
     for (const call of GIFT_READS) {
       if (call.test(text)) violations.push({ file: relative, call: String(call) });
@@ -104,12 +114,12 @@ describe("gift read guard (AD-7)", () => {
     expect(violations, `Прямое чтение Gift вне readWishlist:\n${report}`).toEqual([]);
   });
 
-  it("keeps exactly one gated findMany in wishlist-read.ts", async () => {
+  it("keeps the active list and the owner archive inside wishlist-read.ts", async () => {
     const text = await readFile(WISHLIST_READ, "utf8");
 
     expect(
       countFindMany(text),
-      `${WISHLIST_READ}: ожидался ровно один gift.findMany — ${ADVICE}`,
-    ).toBe(1);
+      `${WISHLIST_READ}: ожидались два gift.findMany — активные желания и архив владельца`,
+    ).toBe(2);
   });
 });

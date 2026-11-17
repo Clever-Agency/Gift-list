@@ -13,6 +13,7 @@ import {
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
+import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
 import { firstIssueField } from "@/lib/api-v1";
@@ -31,7 +32,7 @@ const notFound = {
 };
 
 /** Columns the owner card reads; the same shape the list read selects (AD-12). */
-const ownerGiftSelect = {
+export const ownerGiftSelect = {
   id: true,
   title: true,
   description: true,
@@ -66,6 +67,16 @@ function validation(field?: string): ActionResult<GiftCard> {
     code: "VALIDATION",
     message: "Invalid input",
     ...(field ? { field } : {}),
+  };
+}
+
+/** The wire day is a string; the column is a date. An unchanged field is absent. */
+function toStoredGiftFields<T extends { expiresOn?: string | null }>(fields: T) {
+  if (fields.expiresOn === undefined) return fields;
+  const { expiresOn, ...rest } = fields;
+  return {
+    ...rest,
+    expiresOn: expiresOn === null ? null : calendarDayToDate(expiresOn),
   };
 }
 
@@ -271,9 +282,18 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   // creating a gift in an unexpected list.
   const list = await prisma.list.findUnique({
     where: { ownerId: session.user.id },
-    select: { id: true },
+    select: { id: true, owner: { select: { timeZone: true } } },
   });
   if (!list) return { ok: false, code: "NOT_FOUND", message: "Wishlist not found" };
+
+  // Story 2.6: a new date before the owner's local today is rejected. Today is
+  // allowed. An omitted date stays unset and is not checked.
+  if (
+    parsed.data.expiresOn !== null &&
+    isBeforeLocalToday(parsed.data.expiresOn, new Date(), list.owner?.timeZone ?? null)
+  ) {
+    return validation("expiresOn");
+  }
 
   const tags = parsed.data.tags;
   if (!(await fixedTagsExist(prisma, tags))) return validation("tags");
@@ -290,6 +310,8 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
         linkUrl: parsed.data.linkUrl,
         visibility: parsed.data.visibility,
         quantity: parsed.data.quantity,
+        expiresOn:
+          parsed.data.expiresOn === null ? null : calendarDayToDate(parsed.data.expiresOn),
         status: "OPEN",
         // An absent key keeps the create identical to a body without tags.
         ...(tagRows.length > 0 ? { tags: { create: tagRows } } : {}),
@@ -355,16 +377,25 @@ export async function updateGift(
 
   const changesVisibility = fields.visibility !== undefined;
   const changesQuantity = fields.quantity !== undefined;
+  const changesExpiresOn = fields.expiresOn !== undefined;
   const needsStoredPrice = fields.priceCurrency !== undefined && fields.priceAmount === undefined;
 
   // One read serves both gates: AD-25 needs the stored amount, Story 2.3 needs
-  // the stored status and visibility, Story 2.5 needs the stored quantity. The
-  // update below still carries the ownership gate, so this read is only for the
-  // mix-in and the editability rules.
-  if (changesVisibility || changesQuantity || needsStoredPrice) {
+  // the stored status and visibility, Story 2.5 needs the stored quantity,
+  // Story 2.6 needs the stored date and the owner's zone. The update below
+  // still carries the ownership gate, so this read is only for the mix-in and
+  // the editability rules.
+  if (changesVisibility || changesQuantity || changesExpiresOn || needsStoredPrice) {
     const stored = await prisma.gift.findFirst({
       where: ownedGift,
-      select: { priceAmount: true, status: true, visibility: true, quantity: true },
+      select: {
+        priceAmount: true,
+        status: true,
+        visibility: true,
+        quantity: true,
+        expiresOn: true,
+        list: { select: { owner: { select: { timeZone: true } } } },
+      },
     });
     if (!stored) return notFound;
 
@@ -392,7 +423,23 @@ export async function updateGift(
         return validation("quantity");
       }
     }
+
+    if (changesExpiresOn) {
+      const next = fields.expiresOn ?? null;
+      // Story 2.6: resending the stored day is not a new date, even when that
+      // day is already in the past. Only a different day is checked.
+      if (next === calendarDay(stored.expiresOn)) {
+        delete fields.expiresOn;
+      } else if (
+        next !== null &&
+        isBeforeLocalToday(next, new Date(), stored.list.owner.timeZone)
+      ) {
+        return validation("expiresOn");
+      }
+    }
   }
+
+  const data = toStoredGiftFields(fields);
 
   // Story 2.3/2.5/AD-8: a real visibility or quantity change writes only while
   // the gift is OPEN, so a reservation between the read above and this write
@@ -406,7 +453,7 @@ export async function updateGift(
       // same rule, so the tag path is not limited to OPEN wishes either.
       const row = await prisma.gift.update({
         where,
-        data: fields,
+        data,
         select: ownerGiftSelect,
       });
       return {
@@ -423,7 +470,7 @@ export async function updateGift(
 
       const updated = await tx.gift.update({
         where,
-        data: fields,
+        data,
         select: { id: true },
       });
 

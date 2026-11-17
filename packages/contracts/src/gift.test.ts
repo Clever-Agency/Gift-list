@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
-import { GIFT_TAG_TEXT_MAX, giftInputSchema, giftUpdateSchema } from "./gift";
+import { GIFT_TAG_TEXT_MAX, giftInputSchema, giftRestoreSchema, giftUpdateSchema } from "./gift";
 
 describe("giftInputSchema", () => {
   it("fills an empty body with nulls and PUBLIC visibility", () => {
@@ -12,6 +12,7 @@ describe("giftInputSchema", () => {
       linkUrl: null,
       visibility: "PUBLIC",
       quantity: "SINGLE",
+      expiresOn: null,
       tags: [],
     });
   });
@@ -105,6 +106,23 @@ describe("giftInputSchema", () => {
 
   it("rejects keys outside the body", () => {
     expect(giftInputSchema.safeParse({ title: "Книга", bought: true }).success).toBe(false);
+  });
+
+  it("keeps an optional calendar day and treats a blank as no date", () => {
+    expect(giftInputSchema.parse({ title: "Книга", expiresOn: "2026-12-31" }).expiresOn).toBe(
+      "2026-12-31",
+    );
+    expect(giftInputSchema.parse({ title: "Книга", expiresOn: "" }).expiresOn).toBe(null);
+    expect(giftInputSchema.parse({ title: "Книга", expiresOn: null }).expiresOn).toBe(null);
+  });
+
+  it("rejects a day that is not on the calendar", () => {
+    expect(giftInputSchema.safeParse({ title: "Книга", expiresOn: "2026-02-31" }).success).toBe(
+      false,
+    );
+    expect(giftInputSchema.safeParse({ title: "Книга", expiresOn: "31.12.2026" }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -342,5 +360,26 @@ describe("giftUpdateSchema", () => {
   it("rejects keys outside the body", () => {
     expect(giftUpdateSchema.safeParse({ description: "Заметка", bought: true }).success).toBe(false);
     expect(giftUpdateSchema.safeParse({ bought: true }).success).toBe(false);
+  });
+
+  it("sets or clears expiresOn without touching the other fields", () => {
+    expect(giftUpdateSchema.parse({ expiresOn: "2026-12-31" })).toEqual({ expiresOn: "2026-12-31" });
+    expect(giftUpdateSchema.parse({ expiresOn: null })).toEqual({ expiresOn: null });
+    expect(giftUpdateSchema.parse({ title: "Книга" })).not.toHaveProperty("expiresOn");
+  });
+});
+
+describe("giftRestoreSchema", () => {
+  it("clears the date when the body omits it or sends a blank", () => {
+    expect(giftRestoreSchema.parse({})).toEqual({ expiresOn: null });
+    expect(giftRestoreSchema.parse({ expiresOn: "" })).toEqual({ expiresOn: null });
+    expect(giftRestoreSchema.parse({ expiresOn: "2026-12-31" })).toEqual({
+      expiresOn: "2026-12-31",
+    });
+  });
+
+  it("rejects a non-day and any extra key", () => {
+    expect(giftRestoreSchema.safeParse({ expiresOn: "2026-02-31" }).success).toBe(false);
+    expect(giftRestoreSchema.safeParse({ expiresOn: null, title: "Книга" }).success).toBe(false);
   });
 });

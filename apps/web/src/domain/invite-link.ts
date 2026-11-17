@@ -30,8 +30,9 @@ export type InviteLinkOwner = {
 /**
  * Closed preview states of `/i/:token` (Story 4.7.1). `self` is the viewer's own
  * link, `friends` an existing edge, `can_accept` the confirmation of
- * «Добавить {имя} в друзья?», and `not_found` both an unknown token and a
- * `Block` in either direction — the two are deliberately indistinguishable.
+ * «Добавить пользователя «{имя}» в друзья?», and `not_found` both an unknown
+ * token and a `Block` in either direction — the two are deliberately
+ * indistinguishable.
  */
 export const INVITE_LINK_STATES = ["self", "friends", "can_accept", "not_found"] as const;
 

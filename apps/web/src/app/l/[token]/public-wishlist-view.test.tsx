@@ -1,7 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
-import type { GiftCard } from "@gift-list/contracts";
+import { getMessages, type GiftCard } from "@gift-list/contracts";
 import { PublicWishlistView, type PublicWishlistData } from "./public-wishlist-view";
 
 const config = createGiftListConfig({
@@ -99,14 +99,17 @@ describe("PublicWishlistView: link page HTML", () => {
 
     expect(html).toContain("Пока нет открытых желаний");
     expect(html).not.toContain("закрыт");
-    expect(html).not.toContain("Список не найден");
+    expect(html).not.toContain("не найден");
   });
 
   it("renders one not-found phrase without an owner or wishes", () => {
     const html = render({ kind: "not_found" }, null);
+    // CLE-102: the phrase is the catalog sentence, not a literal of the view.
+    const notFound = getMessages("ru").web.wishlist.notFound;
 
+    expect(notFound).toBe("Список не найден.");
     expect(levelOneHeadings(html)).toBe(1);
-    expect(html).toContain("Список не найден");
+    expect(html).toContain(notFound);
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
     expect(html).not.toContain("Анна");

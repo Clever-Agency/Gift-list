@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getBrandName } from "@/lib/env";
 import { buildInviteMetadata, getInvitePage } from "./invite-page";
 import { InvitePreviewView } from "./invite-preview-view";
@@ -10,6 +10,10 @@ import { InvitePreviewView } from "./invite-preview-view";
  * sees this page: it is handed to the SPA route `/invite/{token}`, built from the
  * validated segment only, where the own link, existing friends and the
  * confirmation are shown. The page reads only: a preview never creates an edge.
+ *
+ * An unknown or malformed token and a `Block` render the segment `not-found.tsx`
+ * through `notFound()`: a real HTTP 404 before streaming starts, one page for
+ * every hidden cause (CLE-103).
  */
 export async function generateMetadata({
   params,
@@ -23,6 +27,7 @@ export default async function InvitePreviewPage({ params }: PageProps<"/i/[token
   const { token } = await params;
   const page = await getInvitePage(token);
   if (page.view.kind === "redirect") redirect(page.view.to);
+  if (page.view.kind === "not_found") notFound();
 
   return (
     <InvitePreviewView view={page.view} locale={page.locale} brand={getBrandName()} />

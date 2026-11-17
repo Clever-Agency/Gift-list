@@ -4,6 +4,7 @@ import {
   inviteLinkAcceptDataSchema,
   inviteLinkDataSchema,
   inviteLinkPreviewSchema,
+  notFoundError,
   type ActionResult,
   type InviteLinkAcceptData,
   type InviteLinkData,
@@ -22,15 +23,10 @@ const unauthenticated = {
 };
 
 /**
- * Unknown token, malformed segment and a `Block` in either direction: the same
- * closed answer without a name, so the preview never reveals that somebody
- * blocked the viewer.
+ * Unknown token, malformed segment and a `Block` in either direction: the one
+ * shared `NOT_FOUND` refusal (AD-12 ред. 2026-11-17), so the preview never
+ * reveals that somebody blocked the viewer and the body matches `/l` and `/u`.
  */
-const notFound = {
-  ok: false as const,
-  code: "NOT_FOUND" as const,
-  message: "Not found",
-};
 
 /** The viewer's own link is the closed `FORBIDDEN` refusal, like a self pair elsewhere. */
 const forbidden = {
@@ -67,7 +63,7 @@ export async function getMyInviteLink(headers: Headers): Promise<ActionResult<In
  *
  * A guest gets the inviter fields of `/l` and no `state`; a signed-in viewer
  * additionally gets their closed relation (`self`, `friends`, `can_accept`). A
- * malformed segment is the same `not_found` before any read, so an unknown
+ * malformed segment is the same `NOT_FOUND` 404 before any read, so an unknown
  * token, a bad segment and a `Block` stay indistinguishable — the token is never
  * logged.
  */
@@ -75,12 +71,12 @@ export async function getInvitePreview(
   token: string,
   headers: Headers,
 ): Promise<ActionResult<InviteLinkPreview>> {
-  if (!isPublicTokenSegment(token)) return notFound;
+  if (!isPublicTokenSegment(token)) return notFoundError();
 
   const session = await auth.api.getSession({ headers });
   if (!session) {
     const owner = await inviteLinkStore.findOwnerByToken(token);
-    if (owner === null) return notFound;
+    if (owner === null) return notFoundError();
     return { ok: true, data: inviteLinkPreviewSchema.parse({ inviter: toInviter(owner) }) };
   }
 
@@ -88,7 +84,7 @@ export async function getInvitePreview(
     viewerId: session.user.id,
     token,
   });
-  if (preview.state === "not_found") return notFound;
+  if (preview.state === "not_found") return notFoundError();
 
   return {
     ok: true,
@@ -118,13 +114,13 @@ export async function acceptInviteByToken(
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
-  if (!isPublicTokenSegment(token)) return notFound;
+  if (!isPublicTokenSegment(token)) return notFoundError();
 
   const result = await acceptInviteLink(
     { viewerId: session.user.id, token },
     inviteLinkStore,
   );
-  if (!result.ok) return result.code === "FORBIDDEN" ? forbidden : notFound;
+  if (!result.ok) return result.code === "FORBIDDEN" ? forbidden : notFoundError();
 
   return { ok: true, data: inviteLinkAcceptDataSchema.parse({ outcome: result.outcome }) };
 }

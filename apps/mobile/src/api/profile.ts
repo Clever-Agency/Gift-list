@@ -1,4 +1,5 @@
 import {
+  isNotFound,
   listDataSchema,
   type GiftCard,
   type ProfileInviteCooldown,
@@ -43,8 +44,9 @@ export type ProfileResult =
  * Story 3.4 / AD-7, AD-12: `GET /api/v1/u/:nick` through the shared
  * `apiRequest` transport (cookie on the web, bearer on the phone). The server
  * applies `VisibilityPolicy`; the client only checks the AD-12 envelope and
- * never filters wishes by visibility on its own. A malformed segment is the
- * same `not_found` before a request, matching the server route.
+ * never filters wishes by visibility on its own. The one `NOT_FOUND` refusal is
+ * the closed `access: "not_found"` state of the screen; a malformed segment is
+ * the same state before a request, matching the server route.
  *
  * Story 4.1.3 reads the closed `relationship` from this same answer and never
  * derives it from the cards it received.
@@ -60,12 +62,12 @@ export async function fetchProfile(nick: string): Promise<ProfileResult> {
   if (route === null) return { ok: true, access: "not_found" };
 
   const result = await apiRequest<unknown>(`/api/v1/u/${encodeURIComponent(route.nick)}`);
+  if (isNotFound(result)) return { ok: true, access: "not_found" };
   if (!result.ok) return result;
 
   const parsed = listDataSchema.safeParse(result.data);
   if (!parsed.success) return { ok: false, invalid: true };
 
-  if (parsed.data.access === "not_found") return { ok: true, access: "not_found" };
   if (parsed.data.owner === undefined) return { ok: true, access: "not_found" };
 
   return {

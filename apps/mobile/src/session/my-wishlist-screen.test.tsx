@@ -721,7 +721,7 @@ describe("мой вишлист: список", () => {
    * empty wishlist, so the empty-state texts and the composer CTA must not appear.
    */
   it("закрытый гейт списка: «Список не найден», а не пустой вишлист", async () => {
-    respond({ ok: true, data: { access: "not_found", gifts: [] } });
+    respond({ ok: false, code: "NOT_FOUND", message: "Wishlist not found" });
     await mount();
 
     expect(text()).toContain("Список не найден.");
@@ -731,17 +731,19 @@ describe("мой вишлист: список", () => {
     expect(button("Повторить")).toBeDefined();
   });
 
-  it("ошибка NOT_FOUND тоже даёт «Список не найден», а не пустой вишлист", async () => {
-    respond({ ok: false, code: "NOT_FOUND", message: "" });
+  it("старый успешный конверт not_found больше не принимается: ни пустого вишлиста, ни «Список не найден»", async () => {
+    respond({ ok: true, data: { access: "not_found", gifts: [] } });
     await mount();
 
-    expect(text()).toContain("Список не найден.");
+    expect(text()).not.toContain("Список не найден.");
     expect(text()).not.toContain("Пока пусто");
-    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+    expect(text()).not.toContain("Добавьте первое желание");
+    expect(text()).toContain("Не получилось загрузить. Попробуйте ещё раз.");
+    expect(button("Повторить")).toBeDefined();
   });
 
   it("«Повторить» из «Список не найден» перезагружает список", async () => {
-    respond({ ok: true, data: { access: "not_found", gifts: [] } });
+    respond({ ok: false, code: "NOT_FOUND", message: "Wishlist not found" });
     await mount();
 
     respond(giftsAnswer([gift()]));

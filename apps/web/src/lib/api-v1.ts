@@ -1,4 +1,4 @@
-import type { ActionResult, ErrorCode } from "@gift-list/contracts";
+import { notFoundError, type ActionResult, type ErrorCode } from "@gift-list/contracts";
 import type { z } from "zod";
 
 const STATUS: Record<ErrorCode, number> = {
@@ -46,7 +46,7 @@ export function infrastructureErrorResponse(): Response {
 export function notFoundResponse(request?: Request): Response {
   // The matched route is already unknown; the request only keeps the handler signature.
   void request;
-  return toResponse({ ok: false, code: "NOT_FOUND", message: "Not found" });
+  return toResponse(notFoundError());
 }
 
 /** First issue path joined with ".", or undefined when empty. */

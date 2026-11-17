@@ -6,7 +6,7 @@ import { Button, Column, Heading, Screen, Text, XStack, YStack } from "@gift-lis
 import { PublicPageFooter } from "@/components/public-page-footer";
 import type { InviteView } from "./invite-page";
 
-export type InvitePreviewData = Exclude<InviteView, { kind: "redirect" }>;
+export type InvitePreviewData = Extract<InviteView, { kind: "invite" }>;
 
 export type InvitePreviewViewProps = {
   view: InvitePreviewData;
@@ -36,13 +36,15 @@ function initials(displayName: string): string {
  * the one `h1`; the two page actions are real links into the app: registration
  * carries the token in `next`, login returns to the app invite screen, where the
  * friendship is confirmed (AD-21 — the page itself writes nothing).
+ *
+ * Only a live invite reaches this view: an unknown token, a malformed segment and
+ * a `Block` are the real 404 of `not-found.tsx` (CLE-103).
  */
 export function InvitePreviewView({ view, locale, brand }: InvitePreviewViewProps) {
   const messages = getMessages(locale);
   const t = createTranslator({ locale, messages, namespace: "web.invite" });
 
-  const appPath = view.kind === "invite" ? view.to : null;
-  const signInHref = appPath === null ? "/login" : `/login?next=${appPath}`;
+  const signInHref = `/login?next=${view.to}`;
 
   const header = (
     <XStack
@@ -63,22 +65,6 @@ export function InvitePreviewView({ view, locale, brand }: InvitePreviewViewProp
   );
 
   const footer = <PublicPageFooter locale={locale} />;
-
-  if (view.kind === "not_found") {
-    return (
-      <Screen>
-        {header}
-        <YStack flexGrow={1} role="main">
-          <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
-            <Heading level={1} kind="display-sm" textAlign="center">
-              {t("notFound")}
-            </Heading>
-          </Column>
-        </YStack>
-        {footer}
-      </Screen>
-    );
-  }
 
   return (
     <Screen>

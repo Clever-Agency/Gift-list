@@ -661,9 +661,10 @@ async function runBlockScenario(accounts) {
     [f, e, "blocked F→E"],
   ]) {
     const view = await profile(viewer, owner);
-    checkEqual(`${label} profile: HTTP 200`, view.status, 200);
-    checkEqual(`${label} profile: closed not_found`, view.json?.data?.access, "not_found");
-    check(`${label} profile: no owner, relationship or cooldown`, !view.json?.data?.owner && !view.json?.data?.relationship && !view.json?.data?.inviteCooldown);
+    checkEqual(`${label} profile: HTTP 404`, view.status, 404);
+    checkEqual(`${label} profile: closed NOT_FOUND`, view.json?.code, "NOT_FOUND");
+    checkEqual(`${label} profile: one body for every hidden cause`, view.text, JSON.stringify({ ok: false, code: "NOT_FOUND", message: "Not found" }));
+    check(`${label} profile: no owner, relationship or cooldown`, !Object.prototype.hasOwnProperty.call(view.json ?? {}, "data"));
     check(`${label} profile cache is private, no-store`, view.cacheControl === "private, no-store");
   }
 
@@ -686,12 +687,16 @@ async function runBlockScenario(accounts) {
 
   const tokenE = await publicTokenOf(e);
   const blockedLink = await request(`/api/v1/l/${tokenE}`, { user: f });
-  checkEqual("Block: blocked viewer /l is closed not_found", blockedLink.json?.data?.access, "not_found");
+  checkEqual("Block: blocked viewer /l is HTTP 404", blockedLink.status, 404);
+  checkEqual("Block: blocked viewer /l is closed NOT_FOUND", blockedLink.json?.code, "NOT_FOUND");
+  checkEqual(
+    "Block: blocked /l is the one body of an unknown token",
+    blockedLink.text,
+    JSON.stringify({ ok: false, code: "NOT_FOUND", message: "Not found" }),
+  );
   check(
-    "Block: blocked /l carries no gifts or owner",
-    Array.isArray(blockedLink.json?.data?.gifts) &&
-      blockedLink.json.data.gifts.length === 0 &&
-      !Object.prototype.hasOwnProperty.call(blockedLink.json?.data ?? {}, "owner"),
+    "Block: blocked /l carries no list body",
+    !Object.prototype.hasOwnProperty.call(blockedLink.json ?? {}, "data"),
   );
 }
 

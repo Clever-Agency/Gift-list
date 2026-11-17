@@ -1,6 +1,6 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AUTHOR_MAILTO, getMessages } from "@gift-list/contracts";
+import { AUTHOR_MAILTO } from "@gift-list/contracts";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { InvitePreviewView, type InvitePreviewData } from "./invite-preview-view";
 
@@ -56,26 +56,5 @@ describe("InvitePreviewView: anonymous invite HTML", () => {
     expect(html).toContain('role="main"');
     expect(html).toContain("<style");
     expect(html).toContain("--c-primary:#2F5D3A");
-  });
-
-  it("renders one not-found phrase without the inviter, the nick or the actions", () => {
-    const html = render({ kind: "not_found" });
-    // CLE-102: the phrase is the catalog sentence, not a literal of the view.
-    const notFound = getMessages("ru").web.invite.notFound;
-
-    expect(notFound).toBe("Приглашение не найдено.");
-    expect(levelOneHeadings(html)).toBe(1);
-    expect(html).toContain(notFound);
-    expect(html).not.toContain("Сергей");
-    expect(html).not.toContain("@sergey");
-    expect(html).not.toContain("Принять приглашение");
-    expect(html).not.toContain("У меня уже есть аккаунт");
-    expect(html).not.toContain("/register");
-    // The anonymous shell keeps the one way in and the full footer.
-    expect(html).toContain('href="/login"');
-    expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
-    expect(html).toContain("Сделано с любовью командой cleverAgency");
-    expect(html).toContain('role="contentinfo"');
   });
 });

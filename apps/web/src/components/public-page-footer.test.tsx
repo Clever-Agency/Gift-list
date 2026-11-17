@@ -5,6 +5,7 @@ import { AUTHOR_MAILTO, getMessages, type GiftCard } from "@gift-list/contracts"
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { InvitePreviewView } from "@/app/i/[token]/invite-preview-view";
 import { PublicWishlistView } from "@/app/l/[token]/public-wishlist-view";
+import { PublicNotFound } from "./public-not-found";
 import { PublicPageFooter } from "./public-page-footer";
 
 const config = createGiftListConfig({
@@ -87,27 +88,14 @@ describe("PublicPageFooter", () => {
     expect(html.match(/<a /g)?.length).toBe(1);
   });
 
-  it("is the same full footer on /i and /l in every page state", () => {
+  it("is the same full footer on /i and /l in every page state, including both 404 pages", () => {
+    const messages = getMessages("ru");
     const pages = [
       page(<InvitePreviewView view={invite} locale="ru" brand="WishMoon" />),
-      page(<InvitePreviewView view={{ kind: "not_found" }} locale="ru" brand="WishMoon" />),
-      page(
-        <PublicWishlistView
-          view={{ kind: "gifts", owner, gifts: [card()] }}
-          locale="ru"
-          wishlistPath="/wishlist/tok-1"
-        />,
-      ),
-      page(
-        <PublicWishlistView
-          view={{ kind: "gifts", owner, gifts: [] }}
-          locale="ru"
-          wishlistPath="/wishlist/tok-1"
-        />,
-      ),
-      page(
-        <PublicWishlistView view={{ kind: "not_found" }} locale="ru" wishlistPath={null} />,
-      ),
+      page(<PublicWishlistView view={{ kind: "gifts", owner, gifts: [card()] }} locale="ru" wishlistPath="/wishlist/tok-1" />),
+      page(<PublicWishlistView view={{ kind: "gifts", owner, gifts: [] }} locale="ru" wishlistPath="/wishlist/tok-1" />),
+      page(<PublicNotFound locale="ru" message={messages.web.invite.notFound} />),
+      page(<PublicNotFound locale="ru" message={messages.web.wishlist.notFound} />),
     ];
 
     const footers = pages.map(footerOf);

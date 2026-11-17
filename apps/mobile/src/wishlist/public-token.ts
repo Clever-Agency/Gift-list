@@ -12,7 +12,7 @@ import { safeNextPath } from "@gift-list/contracts";
  *
  * The length ceiling mirrors the server's link gate (Story 3.3.1). Existence is
  * not checked here: the server answers every unknown token with the same
- * `not_found` as a block.
+ * `NOT_FOUND` 404 as a block.
  */
 export const PUBLIC_WISHLIST_TOKEN_MAX_LENGTH = 128;
 

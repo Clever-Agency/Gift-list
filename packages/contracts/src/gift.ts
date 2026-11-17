@@ -1,23 +1,35 @@
 import { z } from "zod";
 import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
+import { textLength } from "./text";
 
 /**
  * Create/edit body of a gift (Story 2.2, FR-10). The spec fixes no lengths, so
  * these caps only keep a card readable: a title is shown on two lines, a
  * description is a note, not an article.
+ *
+ * Units: Zod 4 measures `max()` in Unicode code points, while the `maxLength`
+ * attribute of both clients measures UTF-16 units. Text outside the BMP (an
+ * emoji) is therefore one code point for the schema and two units for the field,
+ * so a `maxLength` would cut a value this schema accepts — the form does not use
+ * one and reports the length itself, in this same unit, via {@link textLength}.
+ *
+ * Exported because the gift form repeats the same numbers in its own checks and
+ * counters; it must import them from here instead of declaring its own copies.
+ * The custom tag text has its own rule and unit — see {@link GIFT_TAG_TEXT_MAX}.
  */
-const TITLE_MAX = 120;
-const DESCRIPTION_MAX = 2000;
+export const GIFT_TITLE_MAX = 120;
+export const GIFT_DESCRIPTION_MAX = 2000;
 /** Prisma `Int` is signed 32-bit; the amount is minor units (AD-25). */
-const PRICE_AMOUNT_MAX = 2_147_483_647;
+export const GIFT_PRICE_AMOUNT_MAX = 2_147_483_647;
 /** Same ceiling as `safeNextPath`; links are free-form `text` in the DB. */
-const LINK_URL_MAX = 2048;
+export const GIFT_LINK_URL_MAX = 2048;
 
 /**
- * Story 2.5 / AD-22: custom tag text is at most 30 characters. Counted in
- * Unicode code points, not UTF-16 units, because PostgreSQL `VARCHAR(30)` counts
- * characters the same way: an emoji outside the BMP is one character there but
- * two JS units, and `z.string().max(30)` would reject text the database accepts.
+ * Story 2.5 / AD-22: custom tag text is at most 30 characters, counted in
+ * Unicode code points — the unit of PostgreSQL `VARCHAR(30)` and of
+ * {@link textLength}, where an emoji outside the BMP is one character but two JS
+ * units. The cap is checked by an explicit `refine` below, so the unit stays
+ * written down here and does not depend on how the library measures a string.
  */
 export const GIFT_TAG_TEXT_MAX = 30;
 
@@ -28,18 +40,49 @@ function blankToNull(value: unknown): unknown {
   return typeof value === "string" && value.trim() === "" ? null : value;
 }
 
+/**
+ * PostgreSQL cannot store `U+0000` in `text`/`varchar`, so a body carrying it
+ * would pass the length rules and fail only on insert — as a database error and
+ * a 500 instead of a VALIDATION answer (epic-2 QA report, D1). Every text of the
+ * gift body goes through this one predicate, so a field cannot be forgotten:
+ * the title, the description, the link and a fixed tag id.
+ */
+function hasNoNul(value: string): boolean {
+  return !value.includes("\u0000");
+}
+
+const NUL_MESSAGE = "Text cannot contain NUL";
+
 // Per-field rules shared by the create and the edit bodies, so an edit cannot
 // drift from what creation accepts. The optionality is applied per body.
-const titleFieldSchema = z.string().trim().min(1).max(TITLE_MAX);
+const titleFieldSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(GIFT_TITLE_MAX)
+  .refine(hasNoNul, { message: NUL_MESSAGE });
 const descriptionFieldSchema = z.preprocess(
   blankToNull,
-  z.string().trim().max(DESCRIPTION_MAX).nullable().optional(),
+  z
+    .string()
+    .trim()
+    .max(GIFT_DESCRIPTION_MAX)
+    .refine(hasNoNul, { message: NUL_MESSAGE })
+    .nullable()
+    .optional(),
 );
-const priceAmountFieldSchema = z.number().int().min(0).max(PRICE_AMOUNT_MAX).nullable().optional();
+const priceAmountFieldSchema = z.number().int().min(0).max(GIFT_PRICE_AMOUNT_MAX).nullable().optional();
 const priceCurrencyFieldSchema = z.enum(CURRENCIES).nullable().optional();
 const linkUrlFieldSchema = z.preprocess(
   blankToNull,
-  z.string().trim().max(LINK_URL_MAX).pipe(httpUrlSchema).nullable().optional(),
+  z
+    .string()
+    .trim()
+    .max(GIFT_LINK_URL_MAX)
+    .refine(hasNoNul, { message: NUL_MESSAGE })
+    .pipe(httpUrlSchema)
+    .nullable()
+    .optional(),
 );
 const visibilityFieldSchema = z.enum(VISIBILITIES);
 const quantityFieldSchema = z.enum(QUANTITIES);
@@ -91,13 +134,11 @@ const tagTextFieldSchema = z
   .string()
   .trim()
   .min(1)
-  .refine(function hasNoNul(value) {
-    return !value.includes("\u0000");
-  }, {
+  .refine(hasNoNul, {
     message: "A custom tag cannot contain NUL",
   })
   .refine(function fitsTagText(value) {
-    return [...value].length <= GIFT_TAG_TEXT_MAX;
+    return textLength(value) <= GIFT_TAG_TEXT_MAX;
   }, {
     message: `A custom tag is at most ${GIFT_TAG_TEXT_MAX} characters`,
   });
@@ -112,7 +153,13 @@ const tagTextFieldSchema = z
  * ones stay out until ADMIN approval (Story 10.2).
  */
 export const giftTagInputSchema = z.union([
-  z.strictObject({ catalogId: z.string().trim().min(1) }),
+  z.strictObject({
+    catalogId: z
+      .string()
+      .trim()
+      .min(1)
+      .refine(hasNoNul, { message: NUL_MESSAGE }),
+  }),
   z.strictObject({ text: tagTextFieldSchema }),
 ]);
 
@@ -208,14 +255,44 @@ export type GiftUpdate = {
  * AD-1: the edit reaches the same use-case as the create, so the per-field
  * rules are identical. The body is a partial: an absent field keeps the stored
  * value, `null` clears description, link and price. The output carries only the
- * keys that came in (plus the currency implied by a given amount), so the
- * use-case never overwrites a field the owner did not touch — in particular
- * `visibility` gets no default here.
+ * keys that came in, so the use-case never overwrites a field the owner did not
+ * touch — in particular `visibility` gets no default here.
+ *
+ * AD-25 on an edit: an amount and its currency are a pair. Clearing the amount
+ * clears both; a set amount with an explicit `null` currency is rejected, since
+ * a price never exists without a currency (epic-2 QA report, D2). An amount
+ * sent without the currency key leaves the currency to `updateGift`, which
+ * keeps the stored one and falls back to `USD` only when the wish had no price
+ * (epic-2 QA report, Н1) — this schema must not invent `USD` here.
  *
  * Story 2.5: `quantity` is a closed enum with no `null` form; the use-case
  * writes a changed value only while the gift is `OPEN`, exactly like
  * `visibility`.
  */
+/**
+ * Preflight of a visibility change on the owner's wish (CLE-82/S23.2, FR-10 ред.
+ * 2026-11-11). The query names the value the owner wants to pick:
+ * `GET /api/v1/me/gifts/:id/visibility?visibility=FRIENDS`.
+ */
+export const giftVisibilityPreviewQuerySchema = z.strictObject({
+  visibility: z.enum(VISIBILITIES),
+});
+
+export type GiftVisibilityPreviewQuery = z.infer<typeof giftVisibilityPreviewQuerySchema>;
+
+/**
+ * The preflight answer: `true` exactly when the wish is `RESERVED` and the new
+ * value would take the holder's access away by AD-7, so the write would release
+ * the reservation. The client shows the confirm «Бронирующий потеряет доступ,
+ * бронь снимется» only on `true`; the preflight writes nothing and the write
+ * repeats the same rule on its own, so a stale `true` or `false` is harmless.
+ */
+export const giftVisibilityPreviewSchema = z.strictObject({
+  wouldCancelReservation: z.boolean(),
+});
+
+export type GiftVisibilityPreview = z.infer<typeof giftVisibilityPreviewSchema>;
+
 export const giftUpdateSchema = z
   .strictObject({
     title: titleFieldSchema.optional(),
@@ -233,6 +310,16 @@ export const giftUpdateSchema = z
   }, {
     message: "At least one field is required",
   })
+  .refine(function keepsAmountWithCurrency(value) {
+    // A set amount carries a currency: `null` here would store an amount that
+    // no card can show. An absent key is the use-case's business (stored
+    // currency or `USD`), so only an explicit `null` is rejected.
+    if (value.priceAmount === undefined || value.priceAmount === null) return true;
+    return value.priceCurrency !== null;
+  }, {
+    message: "An amount requires a currency",
+    path: ["priceCurrency"],
+  })
   .transform(function toGiftUpdate(value): GiftUpdate {
     const update: GiftUpdate = {};
 
@@ -246,8 +333,15 @@ export const giftUpdateSchema = z
 
     if (value.priceAmount !== undefined) {
       update.priceAmount = value.priceAmount;
-      // AD-25: a set amount always carries a currency, a cleared amount clears both.
-      update.priceCurrency = value.priceAmount === null ? null : (value.priceCurrency ?? "USD");
+      if (value.priceAmount === null) {
+        // AD-25: no amount means no price, so the currency is cleared with it.
+        update.priceCurrency = null;
+      } else if (value.priceCurrency !== undefined) {
+        // The refine above guarantees the explicit currency is not `null`.
+        update.priceCurrency = value.priceCurrency;
+      }
+      // Without the key the use-case pairs the amount with the stored currency,
+      // or with `USD` when the wish had none (AD-25, Н1).
     } else if (value.priceCurrency !== undefined) {
       // No amount in the body: the use-case combines this currency with the stored amount.
       update.priceCurrency = value.priceCurrency;
@@ -258,7 +352,7 @@ export const giftUpdateSchema = z
 
 /**
  * Story 2.6: the owner puts an archived wish back. An absent or empty date
- * clears `expiresOn`. "Before today" is checked by `GiftStatusService`.
+ * clears `expiresOn`. "Before today" is checked by `restoreFromArchive`.
  */
 export const giftRestoreSchema = z
   .strictObject({

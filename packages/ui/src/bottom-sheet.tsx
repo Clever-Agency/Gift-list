@@ -4,9 +4,11 @@ import { useId, useRef, type ReactNode, type RefObject } from "react";
 import { Sheet } from "tamagui/sheet";
 import { focusInLayer, type FocusTarget } from "./focus";
 import { useBackClose, useNativeFocusOnOpen, useNativeLayerClosed } from "./layer";
+import { layerFade, sheetMotion } from "./motion";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 import { SCRIM_OPACITY } from "./tokens";
+import { useReduceMotion } from "./use-reduce";
 
 export type BottomSheetProps = {
   open: boolean;
@@ -34,6 +36,10 @@ export type BottomSheetProps = {
  * `scrim` at 40%, as high as its content. Closes with Esc and a scrim press in the
  * browser and with the system «назад» on Android (only while open). The browser keeps
  * focus inside the sheet while it is open.
+ *
+ * `DESIGN.md` → Движение: the sheet rises and the scrim fades with `quick` (160 ms)
+ * on both runtimes. With «уменьшить движение» the position jumps (`instant`) and the
+ * scrim only fades, for 100 ms.
  */
 export function BottomSheet({
   open,
@@ -48,6 +54,8 @@ export function BottomSheet({
 }: BottomSheetProps) {
   const titleId = useId();
   const titleRef = useRef<FocusTarget>(null);
+  const reduce = useReduceMotion();
+  const scrimMotion = layerFade(reduce);
 
   useBackClose(open, onClose);
   useNativeLayerClosed(open, onClosed);
@@ -82,12 +90,13 @@ export function BottomSheet({
       dismissOnSnapToBottom
       dismissOnOverlayPress
       aria-labelledby={titleId}
-      transition={isWeb ? "medium" : undefined}
+      transition={sheetMotion(reduce)}
     >
       <Sheet.Overlay
         testID={testID ? `${testID}-scrim` : undefined}
         backgroundColor="$scrim"
-        opacity={SCRIM_OPACITY}
+        opacity={{ default: SCRIM_OPACITY, enter: 0, exit: 0 }}
+        transition={scrimMotion}
       />
       <Sheet.Handle backgroundColor="$border-strong" />
       <Sheet.Container testID={testID}>

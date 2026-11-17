@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@gift-list/contracts/brand";
 import type { ExpoConfig } from "expo/config";
 
 /** Host of the public API origin. Empty or non-http(s) values claim no paths. */
@@ -43,16 +44,18 @@ export function linkData(host: { hostname: string; port?: string }) {
 const linkHost = appLinkHost(process.env.EXPO_PUBLIC_API_BASE_URL ?? "");
 
 const config: ExpoConfig = {
-  name: "Gift List",
+  name: PRODUCT_NAME,
   slug: "gift-list",
   scheme: "giftlist",
   version: "0.1.0",
+  icon: "./assets/icon.png",
   orientation: "default",
   userInterfaceStyle: "light",
   web: {
     output: "single",
     bundler: "metro",
     lang: "ru",
+    favicon: "./assets/favicon.png",
   },
   plugins: ["expo-router"],
   ios: {
@@ -68,6 +71,12 @@ const config: ExpoConfig = {
   },
   android: {
     package: "app.giftlist.mobile",
+    // The generated foreground already keeps the moon inside the adaptive safe
+    // zone (`scripts/generate-brand-icons.mjs`); the background is plain white.
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#FFFFFF",
+    },
     ...(linkHost
       ? {
           intentFilters: [

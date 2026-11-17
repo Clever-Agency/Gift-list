@@ -177,3 +177,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-2-cooldown-toast-recovery.md`
   summary: (after Review, low) Общий `RATE_LIMITED` на экране профиля не передаёт `unit`/`count`, поэтому минутный лимит говорит «Попробуйте позже» вместо точного времени.
   evidence: `form-issue.ts` уже умеет `rateLimitValues`, а `relationshipAction` зовёт `common("errors.code.RATE_LIMITED")` без params. Осознанно не менялось: задача требовала сохранить прочие лимиты.
+
+## Deferred from: W1b.2 — бренд WishMoon и контакт автора (2026-11-11)
+
+- source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-10-wishmoon-brand.md` (§8)
+  summary: Ссылка «Написать автору» на Next-страницах `/l`, `/i`, `/unsubscribe` не реализована. Требование `DESIGN.md:520` (в §8 proposal — `:504`, а также `:443,448,449` по нумерации того же документа) остаётся открытым: по решению координатора (план t301, решение 6) и §8 proposal ссылка в W1b не добавляется. Linear-задача не заводилась.
+  evidence: В `apps/web/src/app/l/**`, `i/**` и `unsubscribe/**` футера со ссылкой нет, `AuthorLink` там не рендерится; в приложении ссылка уже есть (`apps/mobile/src/ui/site-footer.tsx`, `mailto:` на `AUTHOR_EMAIL`). Добавление ссылки на Next-страницы — отдельная задача.
+
+## Deferred from: S23.1 — видимость забронированного желания (CLE-82, 2026-11-11)
+
+- source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-11-reserved-visibility.md` (§1, §7)
+  summary: Уведомление держателю, когда владелец сузил видимость и бронь снята (in-app + email), не отправляется — инфраструктуры уведомлений ещё нет. Снятие тихое; в коде его нельзя обещать как работающее. Тот же долг — подсказка «Желание забронировано — бронировавший получит уведомление» при правке других полей: уведомление появится с Epic 5–6.
+  evidence: В `apps/web/src` нет ни одного упоминания Notification; правила снятия брони по видимости внесены в AD-7/AD-8 и FR-10 (S23.1), код — S23.2–S23.3. Когда появятся Notification и Resend, снятие по сужению видимости должно слать событие как удаление/правка `RESERVED` (AD-14, FR-26).
+
+## Deferred from: ссылка сброса на loopback (2026-11-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-password-reset-loopback-http.md`
+  summary: Документ деплоя и замороженная Story 1.7 по-прежнему говорят, что ссылка сброса всегда `https`.
+  evidence: `docs/deployment-environments.md` пишет «Ссылка сброса всегда имеет вид `https://<хост из BETTER_AUTH_URL>/reset?token=…`». Замороженный блок `spec-1-7-сброс-пароля-по-email.md` требует `https://{origin}/reset?token=`, а его журнал ревью отклоняет сохранение локального `http`. Для прод, staging и preview код по-прежнему ставит `https`; расхождение только у loopback. Эти файлы вне разрешённого diff, замороженный блок Story 1.7 не меняется.

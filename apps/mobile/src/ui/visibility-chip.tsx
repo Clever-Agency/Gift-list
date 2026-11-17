@@ -20,11 +20,11 @@ export type VisibilityChipRef = Ref<ComponentRef<typeof UiVisibilityChip>>;
  * (`UX-A15` names `lucide-react-native`, which is not installed here).
  * The icon is decorative — screen readers get the word alone.
  *
- * `DESIGN.md` → VisibilityChip: on an `OPEN` wish the chip is a button that opens
- * the visibility picker (`aria-haspopup="dialog"`); on `RESERVED` / `CLOSED` it
- * only shows the value, so without `onPress` it is not a control. The chip itself is
- * `VisibilityChip` of `@gift-list/ui`; this wrapper supplies the catalogue texts and
- * the icon.
+ * `DESIGN.md` → VisibilityChip: on an `OPEN` or `RESERVED` wish the chip is a
+ * button that opens the visibility picker (`aria-haspopup="dialog"`); on `CLOSED`
+ * and on an archived wish it only shows the value, so without `onPress` it is not
+ * a control. The chip itself is `VisibilityChip` of `@gift-list/ui`; this wrapper
+ * supplies the catalogue texts and the icon.
  */
 export function VisibilityChip({
   visibility,

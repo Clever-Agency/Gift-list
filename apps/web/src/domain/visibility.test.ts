@@ -132,6 +132,38 @@ describe("VisibilityPolicy.canSee — AD-7 read matrix", () => {
   });
 });
 
+describe("AD-15-10 — a subscriber sees PUBLIC only (AD-7, D-30, D-31)", () => {
+  const subscriber = { id: VISITOR_ID };
+  const subscriberRelations = relations({ subscriber: true });
+  const list = { ownerId: OWNER_ID };
+
+  it("opens PUBLIC but never FRIENDS or SECRET", () => {
+    expect(VisibilityPolicy.canSee(subscriber, subscriberRelations, gift("PUBLIC"))).toBe(true);
+    expect(VisibilityPolicy.canSee(subscriber, subscriberRelations, gift("FRIENDS"))).toBe(false);
+    expect(VisibilityPolicy.canSee(subscriber, subscriberRelations, gift("SECRET"))).toBe(false);
+  });
+
+  it("keeps only PUBLIC in a whole list read and grants no friendship", () => {
+    const publicGift = gift("PUBLIC");
+
+    const result = VisibilityPolicy.resolve(subscriber, subscriberRelations, list, [
+      gift("FRIENDS"),
+      gift("SECRET"),
+      publicGift,
+    ]);
+
+    expect(result).toEqual({ access: "gifts", gifts: [publicGift], role: "viewer" });
+    // AD-19 / D-31: a subscription is not a friendship and never sets the fact.
+    expect(subscriberRelations.friend).toBe(false);
+  });
+
+  it("narrows the database filter to PUBLIC", () => {
+    expect(
+      VisibilityPolicy.allowedVisibilities(subscriber, subscriberRelations, OWNER_ID),
+    ).toEqual(["PUBLIC"]);
+  });
+});
+
 describe("VisibilityPolicy.resolve — AD-7 list read", () => {
   const list = { ownerId: OWNER_ID };
 

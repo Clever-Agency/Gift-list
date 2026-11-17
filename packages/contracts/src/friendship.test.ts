@@ -3,10 +3,12 @@ import {
   FRIEND_ACCEPT_OUTCOMES,
   FRIEND_INVITE_OUTCOMES,
   FRIEND_REJECT_OUTCOMES,
+  FRIEND_REMOVE_OUTCOMES,
   PROFILE_RELATIONSHIPS,
   friendAcceptDataSchema,
   friendInviteDataSchema,
   friendRejectDataSchema,
+  friendRemoveDataSchema,
   listDataSchema,
   profileInviteCooldownSchema,
   profileRelationshipSchema,
@@ -99,6 +101,35 @@ describe("friend accept/reject data (Story 4.2.2)", () => {
     expect(friendRejectDataSchema.safeParse({ outcome: "INVITED" }).success).toBe(false);
     expect(
       friendRejectDataSchema.safeParse({ outcome: "REJECTED", message: "rejected" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("friend remove data (Story 4.4)", () => {
+  it("carries exactly the two closed remove outcomes of the domain", () => {
+    expect(FRIEND_REMOVE_OUTCOMES).toEqual(["REMOVED", "ALREADY_REMOVED"]);
+    for (const outcome of FRIEND_REMOVE_OUTCOMES) {
+      expect(friendRemoveDataSchema.parse({ outcome })).toEqual({ outcome });
+    }
+  });
+
+  it("rejects the outcomes of the neighbouring mutations", () => {
+    for (const outcome of ["CANCELLED", "ALREADY_FRIENDS", "REJECTED", "INVITED", "removed"]) {
+      expect(friendRemoveDataSchema.safeParse({ outcome }).success, outcome).toBe(false);
+    }
+  });
+
+  it("rejects extra fields, so no user id, name or token can ride along", () => {
+    expect(
+      friendRemoveDataSchema.safeParse({
+        outcome: "REMOVED",
+        userId: "u1",
+        nick: "anna",
+        publicToken: "tok",
+      }).success,
+    ).toBe(false);
+    expect(
+      friendRemoveDataSchema.safeParse({ outcome: "REMOVED", reason: "FRIENDSHIP_REMOVED" }).success,
     ).toBe(false);
   });
 });

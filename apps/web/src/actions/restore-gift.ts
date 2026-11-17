@@ -9,7 +9,7 @@ import {
   type GiftCard,
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
-import { GiftStatusService } from "@/domain/gift-status";
+import { restoreFromArchive } from "@/lib/gift-status-store";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import { firstIssueField } from "@/lib/api-v1";
 import { auth } from "@/lib/auth";
@@ -58,7 +58,7 @@ export async function restoreGift(
   });
   if (!owner) return unauthenticated;
 
-  const outcome = await new GiftStatusService().restoreFromArchive({
+  const outcome = await restoreFromArchive({
     giftId,
     ownerId: session.user.id,
     expiresOn: parsed.data.expiresOn,

@@ -55,3 +55,7 @@ dist-*/
 # SPA published by apps/web (expo export, AD-26)
 apps/web/public/
 apps/web/public.staging/
+
+# Storybook (dev-only visual catalog, Story 1.10)
+storybook-static/
+*storybook.log

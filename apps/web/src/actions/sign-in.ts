@@ -33,7 +33,14 @@ export async function signInUser(input: LoginBody, headers: Headers): Promise<Au
 
   const row = await prisma.user.findUnique({
     where: { email: input.email },
-    select: { id: true, email: true, name: true, nick: true, timeZone: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      nick: true,
+      timeZone: true,
+      hideFromSearch: true,
+    },
   });
   if (!row) return { result: invalidLogin };
 
@@ -47,6 +54,7 @@ export async function signInUser(input: LoginBody, headers: Headers): Promise<Au
           name: row.name,
           nick: row.nick,
           timeZone: storedTimeZone(row.timeZone),
+          hideFromSearch: row.hideFromSearch,
         },
         next: safeNextPath(input.next),
       },

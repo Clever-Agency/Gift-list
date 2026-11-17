@@ -406,8 +406,9 @@ describe("WishCard: нажатие", () => {
 
 /**
  * Story 2.3 (`DESIGN.md` -> VisibilityChip, `EXPERIENCE.md` -> Visibility chip):
- * the chip is a button of its own only on an `OPEN` wish. CLE-65 draws it over the
- * card's reserved footer from a sibling layer, never from inside the card button.
+ * the chip is a button of its own on an `OPEN` or `RESERVED` wish, and a plain value
+ * on a `CLOSED` or archived one (CLE-82/S23.3). CLE-65 draws it over the card's
+ * reserved footer from a sibling layer, never from inside the card button.
  */
 describe("WishCard: чип видимости", () => {
   it("OPEN + onVisibilityPress: чип — соседняя кнопка, зовёт обработчик и не открывает правку", async () => {
@@ -481,40 +482,56 @@ describe("WishCard: чип видимости", () => {
     expect(onPress).not.toHaveBeenCalled();
   });
 
-  it("RESERVED + onPress: чип не кнопка, слой пропускает нажатие в карточку", async () => {
+  /**
+   * CLE-82/S23.3: a reserved wish may still change its visibility, so its chip is a
+   * button. The press goes to the picker, never to the edit route.
+   */
+  it("RESERVED + onVisibilityPress: чип — кнопка рядом с карточкой и зовёт обработчик", async () => {
     const onPress = vi.fn();
-    await render(gift({ status: "RESERVED", visibility: "FRIENDS" }), onPress, vi.fn());
-
-    // Only the card is a button.
-    const buttons = Array.from(container.querySelectorAll('[role="button"]'));
-    expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.getAttribute("aria-label")).toBe(
-      cardLabel(gift({ status: "RESERVED", visibility: "FRIENDS" })),
+    const onVisibilityPress = vi.fn();
+    await render(
+      gift({
+        status: "RESERVED",
+        visibility: "FRIENDS",
+        reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+      }),
+      onPress,
+      onVisibilityPress,
     );
-    expect(container.querySelector(`[aria-label="${chipLabel("FRIENDS")}"]`)).toBeNull();
 
-    const label = Array.from(container.querySelectorAll("span")).find(
-      (node) => node.textContent === "Друзьям",
-    );
-    // The chip box is the label's parent, the layer above it lets every press through.
-    const layer = label?.parentElement?.parentElement ?? null;
-    expect(layer).not.toBeNull();
-    expect(getComputedStyle(layer as Element).pointerEvents).toBe("none");
+    const item = container.querySelector('[role="listitem"]');
+    const chip = item?.querySelector(`[role="button"][aria-label="${chipLabel("FRIENDS")}"]`);
+    expect(chip).not.toBeNull();
+    expect(chip?.getAttribute("aria-haspopup")).toBe("dialog");
+
+    await click(chip);
+    expect(onVisibilityPress).toHaveBeenCalledTimes(1);
+    expect(onPress).not.toHaveBeenCalled();
     expect(textOf()).toContain("Забронирован");
   });
 
+  /**
+   * A closed wish and an archived one are read-only as a whole (product
+   * clarification t351u), so the handler passed by the list changes nothing: the
+   * chip only shows the stored value.
+   */
   it.each([
-    { status: "RESERVED" as const, pill: "Забронирован" },
-    { status: "CLOSED" as const, pill: "Получен" },
-  ])("$status: чип не кнопка, статус и видимость на месте", async ({ status, pill }) => {
+    { surface: "CLOSED", card: { status: "CLOSED" as const }, pill: "Получен" },
+    {
+      surface: "архив",
+      card: { status: "OPEN" as const, archivedAt: "2026-10-01T00:00:00.000Z" },
+      pill: "Открыт",
+    },
+  ])("$surface: чип не кнопка, статус и видимость на месте", async ({ card, pill }) => {
     const onVisibilityPress = vi.fn();
-    await render(gift({ status, visibility: "FRIENDS" }), undefined, onVisibilityPress);
+    await render(gift({ ...card, visibility: "FRIENDS" }), undefined, onVisibilityPress);
 
     // No button at all: neither the card (no onPress) nor the chip.
     expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
     expect(container.querySelector(`[aria-label="${chipLabel("FRIENDS")}"]`)).toBeNull();
     expect(textOf()).toContain(pill);
     expect(textOf()).toContain("Друзьям");
+    expect(onVisibilityPress).not.toHaveBeenCalled();
   });
 });
 

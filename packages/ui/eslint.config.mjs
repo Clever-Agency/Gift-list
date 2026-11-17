@@ -10,6 +10,14 @@ export default tseslint.config(
   })),
   {
     files: ["src/**/*.{ts,tsx}"],
+    languageOptions: {
+      parserOptions: {
+        // Monorepo: several eslint.config.* register candidates; set the root
+        // explicitly so the editor parser does not fail
+        // (https://tseslint.com/parser-tsconfigrootdir).
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     plugins: { react, "react-hooks": reactHooks },
     settings: { react: { version: "detect" } },
     rules: {

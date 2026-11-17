@@ -39,7 +39,7 @@ function withReadOnly(input: FieldProps["input"]): TextFieldProps["input"] {
   return editable === false ? { ...rest, readOnly: true } : rest;
 }
 
-/** The password field with its «Показать» toggle (`showLabel` is the catalogue text). */
+/** The password field with its icon-only reveal toggle (`showLabel` is the catalogue text). */
 export function PasswordField({
   input,
   inputRef,

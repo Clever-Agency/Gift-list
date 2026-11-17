@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-import { GiftStatusService } from "@/domain/gift-status";
+import { processWishExpiry } from "@/lib/gift-status-store";
 import { notFoundResponse, toResponse } from "@/lib/api-v1";
 import { getEnv } from "@/lib/env";
 
@@ -25,7 +25,7 @@ export async function POST(request: Request): Promise<Response> {
       message: "Authentication required",
     });
   }
-  const archived = await new GiftStatusService().processWishExpiry();
+  const archived = await processWishExpiry();
   return toResponse({ ok: true, data: archived });
 }
 

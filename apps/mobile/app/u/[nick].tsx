@@ -4,13 +4,12 @@ import type {
   ProfileRelationship,
 } from "@gift-list/contracts";
 import {
-  Button,
   Column,
   Heading,
   LoadingCards,
   PageContainer,
   PageScroll,
-  RelationshipChip,
+  SafeArea,
   Screen,
   spacing,
   Text,
@@ -19,20 +18,27 @@ import {
 } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { useWindowDimensions } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
-import {
-  acceptFriendInvite,
-  rejectFriendInvite,
-  sendFriendInvite,
-} from "@/api/friend-invite";
 import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
+import { requestBlock } from "@/profile/block-action";
+import { BlockConfirm } from "@/profile/block-confirm";
+import {
+  optimisticRelation,
+  requestFriendRemoval,
+  requestRelationshipAction,
+  type RelationshipAction,
+} from "@/profile/relationship-action";
+import { RelationshipActions } from "@/profile/relationship-actions";
 import { profileRoute } from "@/profile/profile-route";
+import {
+  requestSubscriptionAction,
+  type SubscriptionAction,
+} from "@/profile/subscription-action";
+import { SubscriptionActions } from "@/profile/subscription-actions";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
@@ -41,6 +47,7 @@ import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
+import { useCardGrid } from "@/ui/use-card-grid";
 
 /**
  * A failed profile read offers the retry view; `not_found` is its own state, the
@@ -64,13 +71,16 @@ type ScreenState =
        * server did not send the field, which means no cooldown is active.
        */
       inviteCooldown: ProfileInviteCooldown | null;
+      /**
+       * Story 4.6: the viewer's own directed subscription to this owner. A
+       * `false` body without the field means there is no edge.
+       */
+      subscribed: boolean;
     }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
 
 type ToastState = { message: string; tone: "info" | "error"; nick: string };
-
-type RelationshipAction = "add" | "accept" | "reject";
 
 /**
  * Story 3.4 / AD-13: the app screen behind `/u/:nick`. An anonymous visitor
@@ -90,19 +100,41 @@ type RelationshipAction = "add" | "accept" | "reject";
  * opened the window: that answer shows the catalogue hours and rereads the
  * profile, so the screen lands on the server's cooldown state. The screen never
  * filters wishes by visibility; the server decides.
+ *
+ * Story 4.6 adds the one-way subscription switch from the same profile answer:
+ * «Подписаться» while `subscribed` is false and «Отписаться» once it is true.
+ * The own profile and a friend show no switch; a subscription only opens
+ * `PUBLIC`, which the server already filtered.
+ *
+ * Story 4.4 adds «Удалить из друзей» next to the «Друзья» chip with the same
+ * confirm as the friends list. The optimistically former friend loses the
+ * `FRIENDS` wishes at once; a success rereads the profile and leaves the route
+ * open, because the person still exists and keeps their `PUBLIC` wishes.
+ *
+ * Story 4.5 adds «Заблокировать» next to the other buttons. The confirm names
+ * the person, and a success leaves the route once its toast has been read: after
+ * a block the profile is `not_found` for both sides (AD-7).
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
   const profile = useTranslations("app.profile");
+  const friends = useTranslations("app.friends");
   const wishlist = useTranslations("app.wishlist");
   const myWishlist = useTranslations("app.myWishlist");
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
-  const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const grid = cardGrid(width, insets);
-  const gutter = pageGutter(width);
+  // W12.20: the page gutter is the Tamagui media clause
+  // `$page-gutter medium:$page-gutter-lg`, so the browser lays it out with a CSS
+  // media query and the phone reads the same theme key.
+  // W12.23: the column count and the card width (`DESIGN.md` → Layout → columns) are
+  // grid math, so on the web they follow the measured content area, not the window:
+  // a classic scrollbar makes the window wider than this section by its own width.
+  // The profile skeleton and the wish cards share the one measurement, and until it
+  // lands the hook keeps the phone's `cardGrid(windowWidth, insets)` numbers.
+  // Destructured: React's `refs` lint rule treats an object that holds a ref callback
+  // as a ref, and a member read of it during render is an error.
+  const { cardWidth, attachContainer } = useCardGrid();
   const params = useLocalSearchParams<{ nick?: string }>();
   const route = profileRoute(paramValue(params.nick));
   const nick = route?.nick ?? null;
@@ -114,9 +146,21 @@ export default function ProfileScreen() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [pendingNick, setPendingNick] = useState<string | null>(null);
+  const [subscriptionNick, setSubscriptionNick] = useState<string | null>(null);
   const requestSeq = useRef(0);
   const inviteInFlight = useRef<string | null>(null);
+  const subscriptionInFlight = useRef<string | null>(null);
+  const removalInFlight = useRef<string | null>(null);
+  const subscriptionSeq = useRef(0);
   const nickRef = useRef(nick);
+  // Story 4.4: the confirm of «Удалить из друзей» and its in-flight state.
+  const [friendConfirmOpen, setFriendConfirmOpen] = useState(false);
+  const [friendConfirmBusy, setFriendConfirmBusy] = useState(false);
+  // Story 4.5: the confirm of «Заблокировать»; a success leaves this route.
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+  const [blockConfirmBusy, setBlockConfirmBusy] = useState(false);
+  const blockInFlight = useRef<string | null>(null);
+  const [leaveAfterBlock, setLeaveAfterBlock] = useState(false);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -150,6 +194,9 @@ export default function ProfileScreen() {
   useEffect(function rememberRouteNick() {
     nickRef.current = nick;
     requestSeq.current += 1;
+    // A subscription answer belongs to the nick it was asked for; the new route
+    // must never receive it as its own state.
+    subscriptionSeq.current += 1;
   }, [nick]);
 
   useEffect(function loadProfile() {
@@ -171,6 +218,7 @@ export default function ProfileScreen() {
                 owner: result.owner,
                 relationship: result.relationship,
                 inviteCooldown: result.inviteCooldown ?? null,
+                subscribed: result.subscribed ?? false,
               },
         );
         return;
@@ -235,12 +283,20 @@ export default function ProfileScreen() {
 
   function dismissToast() {
     setToast(null);
+    // Story 4.5: a block notice cannot outlive this route — the app has no
+    // global toast host — so the leaving waits for the toast instead of
+    // dropping it. Any other toast just closes.
+    if (!leaveAfterBlock) return;
+    setLeaveAfterBlock(false);
+    if (router.canGoBack()) router.back();
+    else router.replace("/friends");
   }
 
   const ownProfile =
     view.status === "ready" &&
     view.owner.nick.toLowerCase() === viewer.nick.toLowerCase();
   const sending = pendingNick === nick;
+  const sendingSubscription = subscriptionNick === nick;
 
   /**
    * Story 4.1.3 / 4.2.3: one action path for a first invite, an explicit
@@ -264,24 +320,23 @@ export default function ProfileScreen() {
     setPendingNick(requestedNick);
     setToast(null);
 
-    const optimistic: ProfileRelationship =
-      kind === "accept" ? "FRIENDS" : kind === "reject" ? "NONE" : "OUTGOING_PENDING";
-    // Reject writes the 24-hour window in the same transaction (AD-10 step 3).
-    // The refetch below replaces this estimate with the server's whole hours.
-    const optimisticCooldown: ProfileInviteCooldown | null =
-      kind === "reject" ? { hours: 24, rejected: false } : null;
+    const optimistic = optimisticRelation(kind);
     setState(function applyOptimistic(current) {
       return current.status === "ready" && current.nick === requestedNick
-        ? { ...current, relationship: optimistic, inviteCooldown: optimisticCooldown }
+        ? {
+            ...current,
+            relationship: optimistic.relationship,
+            inviteCooldown: optimistic.inviteCooldown,
+          }
         : current;
     });
 
-    const result =
-      kind === "reject"
-        ? await rejectFriendInvite(requestedNick)
-        : kind === "accept"
-          ? await acceptFriendInvite(requestedNick)
-          : await sendFriendInvite(requestedNick);
+    // One shared answer for the profile and the search row: outcomes and error
+    // codes are read in `requestRelationshipAction`, never in the screen.
+    const result = await requestRelationshipAction(kind, requestedNick, {
+      relationship: profile,
+      common,
+    });
     if (seq !== requestSeq.current || nickRef.current !== requestedNick) {
       // The route moved on: drop this answer and release only its own slot.
       if (inviteInFlight.current === requestedNick) inviteInFlight.current = null;
@@ -299,36 +354,36 @@ export default function ProfileScreen() {
       return current.status === "ready" && current.nick === requestedNick;
     }
 
-    if (result.ok) {
-      if (kind === "reject") {
-        setState(function applyRejection(current) {
-          return stillThisProfile(current)
-            ? { ...current, relationship: "NONE", inviteCooldown: optimisticCooldown }
-            : current;
-        });
-        // The cooldown hours come only from the server's profile answer.
-        setAttempt((value) => value + 1);
-        return;
-      }
+    if (result.status === "rejected") {
+      setState(function applyRejection(current) {
+        return stillThisProfile(current)
+          ? { ...current, relationship: "NONE", inviteCooldown: result.inviteCooldown }
+          : current;
+      });
+      // The cooldown hours come only from the server's profile answer.
+      setAttempt((value) => value + 1);
+      return;
+    }
 
-      if (result.outcome === "FRIENDS_CREATED" || result.outcome === "ALREADY_FRIENDS") {
-        setState(function applyFriendship(current) {
-          return stillThisProfile(current)
-            ? { ...current, relationship: "FRIENDS", inviteCooldown: null }
-            : current;
-        });
-        setToast({
-          message: profile("relationship.toast.friends", {
-            name: requestedView.owner.displayName,
-          }),
-          tone: "info",
-          nick: requestedNick,
-        });
-        // FRIENDS wishes only appear when the server says the edge exists.
-        setAttempt((value) => value + 1);
-        return;
-      }
+    if (result.status === "friends") {
+      setState(function applyFriendship(current) {
+        return stillThisProfile(current)
+          ? { ...current, relationship: "FRIENDS", inviteCooldown: null }
+          : current;
+      });
+      setToast({
+        message: profile("relationship.toast.friends", {
+          name: requestedView.owner.displayName,
+        }),
+        tone: "info",
+        nick: requestedNick,
+      });
+      // FRIENDS wishes only appear when the server says the edge exists.
+      setAttempt((value) => value + 1);
+      return;
+    }
 
+    if (result.status === "pending") {
       setState(function applyPending(current) {
         return stillThisProfile(current)
           ? { ...current, relationship: "OUTGOING_PENDING", inviteCooldown: null }
@@ -352,23 +407,7 @@ export default function ProfileScreen() {
         : current;
     });
 
-    if ("network" in result) {
-      setToast({
-        message: profile("relationship.network"),
-        tone: "error",
-        nick: requestedNick,
-      });
-      return;
-    }
-    if ("invalid" in result) {
-      setToast({
-        message: common("errors.generic"),
-        tone: "error",
-        nick: requestedNick,
-      });
-      return;
-    }
-    if (result.code === "UNAUTHENTICATED") {
+    if (result.status === "expired") {
       const signedOut = await expireSession();
       if (!signedOut) {
         setToast({
@@ -379,57 +418,313 @@ export default function ProfileScreen() {
       }
       return;
     }
-    if (result.code === "NOT_FOUND") {
+    if (result.status === "missing") {
       setState({ status: "missing" });
       return;
     }
-    // A stale screen can still offer the button while the server already holds
-    // the rejection window. The closed reason carries the remaining hours, so
-    // the toast uses the catalogue phrase instead of the generic rate-limit
-    // text, and the profile is reread so the rolled-back relationship and the
-    // stale cooldown are replaced by the server's answer (hours and `rejected`).
-    // A malformed `hours` still rereads: the reason alone proves the window.
-    if (result.code === "RATE_LIMITED" && result.reason === "INVITE_COOLDOWN") {
-      const hours = result.params?.hours;
-      const message =
-        typeof hours === "number" && Number.isInteger(hours) && hours >= 1
-          ? common("errors.reason.INVITE_COOLDOWN", { hours })
-          : common("errors.code.RATE_LIMITED");
-      setToast({ message, tone: "error", nick: requestedNick });
+    if (result.status === "cooldown") {
+      // The reason alone proves the window even when the hours are malformed;
+      // the profile is reread so the rolled-back relationship and the stale
+      // cooldown are replaced by the server's answer (hours and `rejected`).
+      setToast({ message: result.message, tone: "error", nick: requestedNick });
       setAttempt((value) => value + 1);
       return;
     }
-    setToast({
-      message: common(`errors.code.${result.code}`),
-      tone: "error",
-      nick: requestedNick,
+    setToast({ message: result.message, tone: "error", nick: requestedNick });
+  }
+
+  /**
+   * Story 4.6: one subscription press. The optimistic flag is the requested
+   * state; every failure rolls it back, and an answer that belongs to a
+   * previous nick or an older press is ignored. The subscription has its own
+   * in-flight slot and sequence, so it never cancels a friend action that is
+   * still on the wire. The wishlist is not reread: a subscription opens only
+   * `PUBLIC`, which the server has already filtered, and the screen must never
+   * add `FRIENDS` or `SECRET` wishes on its own.
+   */
+  async function subscriptionAction(kind: SubscriptionAction) {
+    if (nick === null || subscriptionInFlight.current === nick) return;
+    const requestedView = view;
+    if (requestedView.status !== "ready") return;
+
+    const requestedNick = nick;
+    const previous = requestedView.subscribed;
+    const desired = kind === "subscribe";
+    if (previous === desired) return;
+
+    const seq = subscriptionSeq.current + 1;
+    subscriptionSeq.current = seq;
+    subscriptionInFlight.current = requestedNick;
+    setSubscriptionNick(requestedNick);
+    setToast(null);
+
+    setState(function applyOptimisticSubscription(current) {
+      return current.status === "ready" && current.nick === requestedNick
+        ? { ...current, subscribed: desired }
+        : current;
     });
+
+    const result = await requestSubscriptionAction(kind, requestedNick, {
+      profile,
+      common,
+    });
+    if (seq !== subscriptionSeq.current || nickRef.current !== requestedNick) {
+      // The route moved on: drop this answer and release only its own slot.
+      if (subscriptionInFlight.current === requestedNick) subscriptionInFlight.current = null;
+      setSubscriptionNick(function clearStaleSubscription(current) {
+        return current === requestedNick ? null : current;
+      });
+      return;
+    }
+    if (subscriptionInFlight.current === requestedNick) subscriptionInFlight.current = null;
+    setSubscriptionNick(function clearSubscription(current) {
+      return current === requestedNick ? null : current;
+    });
+
+    function stillThisProfile(current: ScreenState): boolean {
+      return current.status === "ready" && current.nick === requestedNick;
+    }
+
+    if (result.status === "subscribed" || result.status === "unsubscribed") {
+      const subscribed = result.status === "subscribed";
+      setState(function applySubscriptionAnswer(current) {
+        return stillThisProfile(current) ? { ...current, subscribed } : current;
+      });
+      setToast({
+        message: profile(
+          result.status === "subscribed"
+            ? "subscription.toast.subscribed"
+            : "subscription.toast.unsubscribed",
+        ),
+        tone: "info",
+        nick: requestedNick,
+      });
+      return;
+    }
+
+    setState(function rollbackSubscription(current) {
+      return stillThisProfile(current) ? { ...current, subscribed: previous } : current;
+    });
+
+    if (result.status === "expired") {
+      const signedOut = await expireSession();
+      if (!signedOut) {
+        setToast({
+          message: profile("subscription.network"),
+          tone: "error",
+          nick: requestedNick,
+        });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setState({ status: "missing" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error", nick: requestedNick });
+  }
+
+  /**
+   * Story 4.4: the confirm of «Удалить из друзей» on the profile. The optimistic
+   * relation is `NONE`, so the «Друзья» chip becomes the actions of a former
+   * friend, and the wishes only a friend sees leave at once (`EXPERIENCE.md` →
+   * «Друзья»); the subscription edge is untouched. A success rereads the profile
+   * so the wishlist and the relation come from the server, and every failure
+   * rolls the optimistic state back. The route stays open in both cases.
+   */
+  async function removeFriendAction() {
+    if (nick === null || removalInFlight.current === nick) return;
+    const requestedView = view;
+    if (requestedView.status !== "ready" || requestedView.relationship !== "FRIENDS") return;
+
+    const requestedNick = nick;
+    const previous = {
+      relationship: requestedView.relationship,
+      inviteCooldown: requestedView.inviteCooldown,
+      gifts: requestedView.gifts,
+    };
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
+    removalInFlight.current = requestedNick;
+    setToast(null);
+
+    setState(function applyOptimisticRemoval(current) {
+      return current.status === "ready" && current.nick === requestedNick
+        ? {
+            ...current,
+            relationship: "NONE",
+            inviteCooldown: null,
+            // A friend may see `FRIENDS`; `SECRET` never arrives from the server,
+            // but the rule stays closed: only `PUBLIC` survives the removal.
+            gifts: current.gifts.filter((gift) => gift.visibility === "PUBLIC"),
+          }
+        : current;
+    });
+
+    const result = await requestFriendRemoval(requestedNick, { relationship: profile, common });
+    if (seq !== requestSeq.current || nickRef.current !== requestedNick) {
+      // The route moved on: drop this answer and release only its own slot.
+      if (removalInFlight.current === requestedNick) removalInFlight.current = null;
+      return;
+    }
+    if (removalInFlight.current === requestedNick) removalInFlight.current = null;
+
+    function stillThisProfile(current: ScreenState): boolean {
+      return current.status === "ready" && current.nick === requestedNick;
+    }
+
+    if (result.status === "removed") {
+      setFriendConfirmOpen(false);
+      setToast({
+        message: friends("toast.friendRemoved", { name: requestedView.owner.displayName }),
+        tone: "info",
+        nick: requestedNick,
+      });
+      // The server owns the wishlist and the relation: read them back.
+      setAttempt((value) => value + 1);
+      return;
+    }
+
+    setState(function rollbackRemoval(current) {
+      return stillThisProfile(current)
+        ? {
+            ...current,
+            relationship: previous.relationship,
+            inviteCooldown: previous.inviteCooldown,
+            gifts: previous.gifts,
+          }
+        : current;
+    });
+    setFriendConfirmOpen(false);
+
+    if (result.status === "expired") {
+      const signedOut = await expireSession();
+      if (!signedOut) {
+        setToast({
+          message: profile("relationship.network"),
+          tone: "error",
+          nick: requestedNick,
+        });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setState({ status: "missing" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error", nick: requestedNick });
+  }
+
+  function confirmFriendRemoval() {
+    if (friendConfirmBusy) return;
+    setFriendConfirmBusy(true);
+    void removeFriendAction().finally(function release() {
+      setFriendConfirmBusy(false);
+    });
+  }
+
+  function cancelFriendRemoval() {
+    if (friendConfirmBusy) return;
+    setFriendConfirmOpen(false);
+  }
+
+  function askRemoveFriend() {
+    setToast(null);
+    setFriendConfirmOpen(true);
+  }
+
+  /**
+   * Story 4.5 (FR-24, AD-10 step 4): a block cuts the friendship and both
+   * subscriptions of the pair and hides each of them from the other (AD-7), so
+   * the profile stops existing for this viewer: after the toast it leaves back
+   * (or to `/friends` when the route was opened directly). There is no
+   * optimistic state to roll back — nothing on this screen survives the press.
+   */
+  async function blockAction() {
+    if (nick === null || blockInFlight.current === nick) return;
+    const requestedView = view;
+    if (requestedView.status !== "ready") return;
+
+    const requestedNick = nick;
+    blockInFlight.current = requestedNick;
+    setToast(null);
+
+    const result = await requestBlock(requestedNick, { profile, common });
+    if (blockInFlight.current === requestedNick) blockInFlight.current = null;
+
+    setBlockConfirmOpen(false);
+    if (result.status === "blocked") {
+      // `BLOCKED` and the idempotent `ALREADY_BLOCKED` are both successes.
+      setToast({
+        message: friends("toast.blocked", { name: requestedView.owner.displayName }),
+        tone: "info",
+        nick: requestedNick,
+      });
+      setLeaveAfterBlock(true);
+      return;
+    }
+    if (result.status === "expired") {
+      const signedOut = await expireSession();
+      if (!signedOut) {
+        setToast({
+          message: profile("relationship.network"),
+          tone: "error",
+          nick: requestedNick,
+        });
+      }
+      return;
+    }
+    if (result.status === "missing") {
+      setState({ status: "missing" });
+      return;
+    }
+    setToast({ message: result.message, tone: "error", nick: requestedNick });
+  }
+
+  function confirmBlock() {
+    if (blockConfirmBusy) return;
+    setBlockConfirmBusy(true);
+    void blockAction().finally(function release() {
+      setBlockConfirmBusy(false);
+    });
+  }
+
+  function cancelBlock() {
+    if (blockConfirmBusy) return;
+    setBlockConfirmOpen(false);
+  }
+
+  function askBlock() {
+    setToast(null);
+    setBlockConfirmOpen(true);
   }
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <Stack.Screen options={{ title: profile("pageTitle", { brand }) }} />
         <PageScroll testID="profile-page">
           <PageContainer>
             <Column
               size="wide"
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >
               <YStack
+                testID="profile-content"
+                ref={attachContainer}
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
-                gap={spacing["grid-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
+                gap="$grid-gap"
               >
                 {view.status === "loading" ? (
                   <LoadingCards
                     testID="profile-loading"
                     label={profile("loading")}
-                    width={grid.cardWidth}
+                    width={cardWidth}
                   />
                 ) : view.status === "error" ? (
                   <RetryView
@@ -445,7 +740,7 @@ export default function ProfileScreen() {
                   <YStack
                     testID="profile-not-found"
                     width="100%"
-                    paddingVertical={spacing["section-gap"]}
+                    paddingVertical="$section-gap"
                   >
                     <Heading level={1} kind="display-sm" textAlign="center">
                       {profile("notFound")}
@@ -461,83 +756,33 @@ export default function ProfileScreen() {
                         {t("form.nickPreview", { nick: view.owner.nick })}
                       </Text>
                     </YStack>
-                    <XStack
-                      testID="profile-relationship"
-                      alignItems="center"
-                      flexWrap="wrap"
-                      gap="$2"
-                    >
-                      {ownProfile ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.SELF")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.inviteCooldown !== null ? (
-                        view.inviteCooldown.rejected ? (
-                          <RelationshipChip
-                            label={profile("relationship.chips.REJECTED")}
-                            testID="profile-relationship-chip"
-                          />
-                        ) : (
-                          <>
-                            <Button
-                              label={profile("relationship.addFriend")}
-                              disabled
-                              focusableWhenDisabled
-                              testID="profile-add-friend"
-                            />
-                            <Text kind="caption" tone="muted" testID="profile-invite-cooldown">
-                              {profile("relationship.cooldown", {
-                                hours: view.inviteCooldown.hours,
-                              })}
-                            </Text>
-                          </>
-                        )
-                      ) : view.relationship === "FRIENDS" ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.FRIENDS")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.relationship === "OUTGOING_PENDING" ? (
-                        <RelationshipChip
-                          label={profile("relationship.chips.OUTGOING_PENDING")}
-                          testID="profile-relationship-chip"
-                        />
-                      ) : view.relationship === "INCOMING_PENDING" ? (
-                        <>
-                          <RelationshipChip
-                            label={profile("relationship.chips.INCOMING_PENDING")}
-                            emphasis
-                            testID="profile-relationship-chip"
-                          />
-                          <Button
-                            label={profile("relationship.acceptInvite")}
-                            onPress={function acceptInvite() {
-                              void relationshipAction("accept");
-                            }}
-                            busy={sending}
-                            testID="profile-accept-invite"
-                          />
-                          <Button
-                            label={profile("relationship.rejectInvite")}
-                            variant="ghost"
-                            onPress={function rejectInvite() {
-                              void relationshipAction("reject");
-                            }}
-                            busy={sending}
-                            testID="profile-reject-invite"
-                          />
-                        </>
-                      ) : (
-                        <Button
-                          label={profile("relationship.addFriend")}
-                          onPress={function addFriend() {
-                            void relationshipAction("add");
+                    <XStack flexWrap="wrap" alignItems="center" gap="$2">
+                      <RelationshipActions
+                        relationship={view.relationship}
+                        inviteCooldown={view.inviteCooldown}
+                        ownProfile={ownProfile}
+                        busy={sending}
+                        onAction={function actOnRelation(kind) {
+                          void relationshipAction(kind);
+                        }}
+                        onRemoveFriend={ownProfile ? undefined : askRemoveFriend}
+                        onBlock={ownProfile ? undefined : askBlock}
+                      />
+                      {/*
+                        Story 4.6: a subscription is independent of the friend
+                        action and sits next to it. The own profile and a
+                        friendship have no subscription switch: EXPERIENCE says
+                        a friend sees more than a subscriber already.
+                      */}
+                      {!ownProfile && view.relationship !== "FRIENDS" ? (
+                        <SubscriptionActions
+                          subscribed={view.subscribed}
+                          busy={sendingSubscription}
+                          onAction={function actOnSubscription(kind) {
+                            void subscriptionAction(kind);
                           }}
-                          busy={sending}
-                          testID="profile-add-friend"
                         />
-                      )}
+                      ) : null}
                     </XStack>
                     {view.gifts.length === 0 ? (
                       <EmptyState title={wishlist("emptyTitle")} />
@@ -545,7 +790,7 @@ export default function ProfileScreen() {
                       <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
                         {view.gifts.map(function renderGift(gift) {
                           return (
-                            <PublicGiftCard key={gift.id} gift={gift} width={grid.cardWidth} />
+                            <PublicGiftCard key={gift.id} gift={gift} width={cardWidth} />
                           );
                         })}
                       </XStack>
@@ -565,7 +810,34 @@ export default function ProfileScreen() {
             offsetBottom={spacing["page-gutter"]}
           />
         ) : null}
-      </SafeAreaView>
+        <ConfirmDialog
+          variant="confirm"
+          visible={friendConfirmOpen}
+          title={friends("removeFriend.title", {
+            name: view.status === "ready" ? view.owner.displayName : "",
+          })}
+          body={friends("removeFriend.body")}
+          confirmLabel={friends("removeFriend.confirm")}
+          cancelLabel={friends("removeFriend.cancel")}
+          busy={friendConfirmBusy}
+          onConfirm={confirmFriendRemoval}
+          onCancel={cancelFriendRemoval}
+          onClosed={function friendConfirmClosed() {
+            setFriendConfirmBusy(false);
+          }}
+        />
+        <BlockConfirm
+          name={
+            blockConfirmOpen && view.status === "ready" ? view.owner.displayName : null
+          }
+          busy={blockConfirmBusy}
+          onConfirm={confirmBlock}
+          onCancel={cancelBlock}
+          onClosed={function blockClosed() {
+            setBlockConfirmBusy(false);
+          }}
+        />
+      </SafeArea>
     </Screen>
   );
 }
@@ -579,7 +851,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       width="100%"
       maxWidth="$max-form"
       alignSelf="center"
-      paddingVertical={spacing["section-gap"] / 2}
+      paddingVertical="$4"
       gap="$grid-gap"
     >
       <Text tone="muted" textAlign="center">

@@ -21,7 +21,7 @@ export async function getCurrentUser(headers: Headers): Promise<ActionResult<Me>
   if (!session) return unauthenticated;
   const row = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, name: true, nick: true, timeZone: true },
+    select: { id: true, email: true, name: true, nick: true, timeZone: true, hideFromSearch: true },
   });
   if (!row) return unauthenticated;
   return {
@@ -32,6 +32,7 @@ export async function getCurrentUser(headers: Headers): Promise<ActionResult<Me>
       name: row.name,
       nick: row.nick,
       timeZone: storedTimeZone(row.timeZone),
+      hideFromSearch: row.hideFromSearch,
     }),
   };
 }

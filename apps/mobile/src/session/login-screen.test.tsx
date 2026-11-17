@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
-import { click, controlByText } from "@/test/dom";
+import { click, controlByText, settle } from "@/test/dom";
 import LoginScreen from "../../app/(auth)/login";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -150,6 +150,8 @@ describe("вход: сообщение об истёкшей сессии", () =
     const dismiss = controlByText("Закрыть", container);
     expect(dismiss).toBeDefined();
     await click(dismiss);
+    // Тост уходит с fade (160 мс), экран убирает его после анимации.
+    await settle(300);
 
     expect(text()).not.toContain(expiredText);
   });

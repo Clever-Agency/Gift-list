@@ -1,5 +1,12 @@
 // @vitest-environment happy-dom
-import { CURRENCIES, QUANTITIES, VISIBILITIES } from "@gift-list/contracts";
+import {
+  CURRENCIES,
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_TITLE_MAX,
+  QUANTITIES,
+  VISIBILITIES,
+} from "@gift-list/contracts";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +33,6 @@ type AppCatalog = {
       linkPlaceholder: string;
       visibility: string;
       visibilityHint: Record<string, string>;
-      visibilityLocked: string;
       quantity: string;
       quantityHint: Record<string, string>;
       quantityLocked: string;
@@ -54,6 +60,7 @@ type AppCatalog = {
       descriptionTooLong: string;
       priceInvalid: string;
       linkInvalid: string;
+      linkTooLong: string;
       quantityLocked: string;
       tags: string;
       tagEmpty: string;
@@ -84,6 +91,18 @@ const app = JSON.parse(
 const form = app.giftForm;
 const visibilityLabel = app.gift.visibility;
 const quantityLabel = app.gift.quantity;
+
+/** The shared sentences, e.g. the read-only caption of a closed or archived wish. */
+const commonCatalog = JSON.parse(
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../..",
+      "packages/contracts/src/i18n/ru/common.json",
+    ),
+    "utf8",
+  ),
+) as { errors: { reason: Record<string, string> } };
 
 /** The fixed catalogue the form receives; labels stay verbatim from the server. */
 const catalog = {
@@ -457,39 +476,58 @@ describe("GiftForm: отправка", () => {
   });
 
   /**
-   * Story 2.3: a wish that is no longer open shows its stored visibility, but the
-   * rows are disabled and the hint says why. The form still sends the stored value.
+   * CLE-82/S23.3 (product clarification t351u): a `CLOSED` or archived wish is one
+   * read-only form. The fields keep their stored values but take no input, the
+   * choices and the tags are not controls, there is no save button, and the single
+   * caption is the same sentence for both states.
    */
-  it("visibilityLocked: радио показывают текущее значение, не меняются и подсказка видна", async () => {
+  it("readOnly: поля не редактируются, выбор и теги недоступны, сохранения нет", async () => {
     const onSubmit = await mount({
-      initialValues: { title: "Свитер", visibility: "SECRET" },
-      visibilityLocked: true,
+      initialValues: {
+        title: "Свитер",
+        visibility: "SECRET",
+        quantity: "UNLIMITED",
+        tags: [
+          { catalogId: "tag_dream", label: "мечта" },
+          { text: "своё" },
+        ],
+      },
+      readOnly: true,
+      quantityLocked: true,
+      tagCatalog: catalog,
     });
 
-    expect(text()).toContain(form.field.visibilityLocked);
-    const group = container.querySelector(
-      `[role="radiogroup"][aria-label="${form.field.visibility}"]`,
-    );
-    const described = document.getElementById(group?.getAttribute("aria-describedby") ?? "");
-    expect(described?.textContent).toBe(form.field.visibilityLocked);
-    expect(described?.getAttribute("role")).toBeNull();
-    expect(group?.getAttribute("aria-invalid")).toBeNull();
-    for (const code of VISIBILITIES) {
-      const option = radio(visibilityLabel[code]);
-      expect(option, visibilityLabel[code]).toBeDefined();
-      expect(option?.getAttribute("aria-disabled")).toBe("true");
+    expect(text()).toContain(commonCatalog.errors.reason.GIFT_ARCHIVED);
+    expect(container.querySelector('[data-testid="gift-form-read-only"]')).not.toBeNull();
+    for (const label of [
+      form.field.title,
+      form.field.description,
+      form.field.link,
+      form.field.price,
+    ]) {
+      expect(field(label).readOnly, label).toBe(true);
+    }
+    // The stored values stay readable.
+    expect(field(form.field.title).value).toBe("Свитер");
+
+    for (const label of [
+      ...VISIBILITIES.map((code) => visibilityLabel[code]),
+      ...QUANTITIES.map((code) => quantityLabel[code]),
+    ]) {
+      expect(radio(label)?.getAttribute("aria-disabled"), label).toBe("true");
     }
     expect(isChecked(visibilityLabel.SECRET)).toBe(true);
+    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
 
-    await press(visibilityLabel.PUBLIC);
+    // Tags are plain labels here: no «Свой тег» trigger and no checkable chips.
+    expect(container.querySelector('[data-testid="custom-tag-trigger"]')).toBeNull();
+    expect(container.querySelector('[role="checkbox"]')).toBeNull();
+    expect(text()).toContain("мечта");
+    expect(text()).toContain("своё");
 
-    expect(isChecked(visibilityLabel.SECRET)).toBe(true);
-    expect(isChecked(visibilityLabel.PUBLIC)).toBe(false);
-
-    await submit();
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ visibility: "SECRET" }),
-    );
+    // Nothing to save: the submit button is not rendered at all.
+    expect(submitButton()).toBeUndefined();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   /**
@@ -638,6 +676,139 @@ describe("GiftForm: отправка", () => {
     await press(form.action.create);
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GiftForm: лимиты полей", () => {
+  /** The catalogue sentence with its `{max}` filled in, as the form shows it. */
+  function copy(key: string, max: number): string {
+    return key.replace("{max}", String(max));
+  }
+
+  /**
+   * No `maxLength`: it counts UTF-16 units and silently cuts both an emoji the
+   * schema accepts and a legacy stored value the owner opens. The cap is checked
+   * on submit, in code points, and shows under the field.
+   */
+  it("у названия, описания и ссылки нет maxLength", async () => {
+    await mount();
+
+    for (const label of [form.field.title, form.field.description, form.field.link]) {
+      expect(field(label).hasAttribute("maxlength"), label).toBe(false);
+    }
+  });
+
+  it("название длиннее предела не обрезается, а показывается ошибкой при отправке", async () => {
+    const onSubmit = await mount();
+    const tooLong = "я".repeat(GIFT_TITLE_MAX + 1);
+
+    await type(form.field.title, tooLong);
+
+    expect(field(form.field.title).value).toBe(tooLong);
+    expect(field(form.field.title).value.length).toBe(GIFT_TITLE_MAX + 1);
+
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.title)).toContain(
+      copy(form.error.titleTooLong, GIFT_TITLE_MAX),
+    );
+
+    await type(form.field.title, "я".repeat(GIFT_TITLE_MAX));
+    expect(fieldText(form.field.title)).not.toContain(
+      copy(form.error.titleTooLong, GIFT_TITLE_MAX),
+    );
+    await submit();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("120 эмодзи (240 UTF-16 units) в названии отправляются целиком", async () => {
+    const onSubmit = await mount();
+    const title = "🎁".repeat(GIFT_TITLE_MAX);
+
+    await type(form.field.title, title);
+    expect(field(form.field.title).value).toBe(title);
+    expect(field(form.field.title).value.length).toBe(GIFT_TITLE_MAX * 2);
+
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const submitted = onSubmit.mock.calls[0]?.[0];
+    expect(submitted?.title).toBe(title);
+    expect(Array.from(submitted?.title ?? "")).toHaveLength(GIFT_TITLE_MAX);
+  });
+
+  it("описание длиннее предела показывается своей ошибкой и не отправляется", async () => {
+    const onSubmit = await mount();
+    const tooLong = "я".repeat(GIFT_DESCRIPTION_MAX + 1);
+
+    await type(form.field.title, "Свитер");
+    await type(form.field.description, tooLong);
+
+    expect(field(form.field.description).value).toBe(tooLong);
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.description)).toContain(
+      copy(form.error.descriptionTooLong, GIFT_DESCRIPTION_MAX),
+    );
+
+    // The error goes as soon as the field is edited (EXPERIENCE → Ошибки форм).
+    await type(form.field.description, "Короткая заметка");
+    expect(fieldText(form.field.description)).not.toContain(
+      copy(form.error.descriptionTooLong, GIFT_DESCRIPTION_MAX),
+    );
+    await submit();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("ссылка длиннее предела называется «слишком длинной», а не «неверной»", async () => {
+    const onSubmit = await mount();
+    const tooLong = `https://example.com/${"a".repeat(GIFT_LINK_URL_MAX)}`;
+
+    await type(form.field.title, "Свитер");
+    await type(form.field.link, tooLong);
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.link)).toContain(copy(form.error.linkTooLong, GIFT_LINK_URL_MAX));
+    expect(fieldText(form.field.link)).not.toContain(form.error.linkInvalid);
+  });
+
+  /**
+   * Legacy: a stored value longer than the current cap (only possible outside the
+   * API, whose schema always capped it). It must open intact and must not block
+   * saving another field; a change to it is validated like any other value.
+   */
+  it("сохранённое название длиннее предела открывается целиком и не блокирует сохранение", async () => {
+    const legacy = "я".repeat(GIFT_TITLE_MAX + 40);
+    const onSubmit = await mount({
+      initialValues: { title: legacy, description: "Заметка" },
+    });
+
+    expect(field(form.field.title).value).toBe(legacy);
+
+    await type(form.field.description, "Другая заметка");
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({
+      title: legacy,
+      description: "Другая заметка",
+    });
+  });
+
+  it("изменённое сохранённое название длиннее предела показывается ошибкой", async () => {
+    const legacy = "я".repeat(GIFT_TITLE_MAX + 40);
+    const onSubmit = await mount({ initialValues: { title: legacy } });
+
+    await type(form.field.title, `${legacy}я`);
+    await submit();
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fieldText(form.field.title)).toContain(
+      copy(form.error.titleTooLong, GIFT_TITLE_MAX),
+    );
   });
 });
 
@@ -1509,5 +1680,33 @@ describe("GiftForm: отмена", () => {
     expect(cancel?.tabIndex).toBe(0);
     await press(form.action.cancel);
     expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("без onCancel нет и строки действий: форма как раньше", async () => {
+    await mount();
+
+    expect(container.querySelector('[data-testid="gift-form-actions"]')).toBeNull();
+    expect(submitButton()).toBeDefined();
+  });
+
+  it("secondaryAction в одной строке с «Отмена» и «Сохранить», первым по порядку", async () => {
+    await mount({
+      onCancel: vi.fn(),
+      secondaryAction: (
+        <span role="button" aria-label="Удалить желание">
+          Удалить желание
+        </span>
+      ),
+    });
+
+    const row = container.querySelector('[data-testid="gift-form-actions"]');
+    expect(row).not.toBeNull();
+    const names = Array.from(
+      row?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).map((node) => node.getAttribute("aria-label") ?? node.textContent?.trim());
+    // Reading order of the row: the screen's own action, then cancel, then save.
+    expect(names).toEqual(["Удалить желание", form.action.cancel, form.action.save]);
+    // The cancel/save pair is one group inside the same row, not a sibling of it.
+    expect(row?.lastElementChild?.querySelectorAll("button")).toHaveLength(2);
   });
 });

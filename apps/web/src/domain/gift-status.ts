@@ -1,78 +1,111 @@
-// GiftStatusService (AD-8, AD-9). Story 2.6 owns expiry and restore only.
-// Reservation transitions stay with Story 5.1, which extends this class.
+// AD-8 / AD-9 — `GiftStatusService`. Rules only: no Prisma, no React/Next.js
+// here (AD-1). The Prisma adapter in `lib/gift-status-store.ts` owns the write.
+//
+// CLE-82/S23.2: the owner's `RESERVED → OPEN` release, including the silent
+// release when a narrowed visibility takes the holder's access away.
+// Story 2.6: archiving an expired open wish and restoring it are writes in that
+// same adapter. Whether a day is already past is `isBeforeLocalToday`.
 
-import type { PrismaClient } from "@/db/generated/client";
-import { prisma } from "@/db/client";
-import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
-
-type StatusDb = Pick<PrismaClient, "gift">;
+import {
+  VisibilityPolicy,
+  type GiftVisibility,
+  type ViewerRelations,
+} from "./visibility";
 
 /**
- * The only writer of `archivedAt` (AD-8). Each transition is one CAS update:
- * `count !== 1` means a concurrent change won, and this call changes nothing.
+ * The columns a `RESERVED → OPEN` transition writes (AD-9): `status` becomes
+ * `OPEN`, and every reservation column is cleared. `closedAt` and
+ * `closedFromStatus` are not touched: closing keeps `reserved*` for audit and is
+ * a different transition, so this release never rewrites closure data.
  */
-export class GiftStatusService {
-  constructor(private readonly db: StatusDb = prisma) {}
+export const RESERVATION_RELEASE_DATA = {
+  status: "OPEN",
+  reservedById: null,
+  reservedAt: null,
+  reservationDueAt: null,
+  reservationTimeZone: null,
+  reservationPhase: null,
+  reservationPhaseAt: null,
+  reservationBought: false,
+  holderVisibleToOwner: false,
+  holderVisibleToOthers: true,
+  titleSnapshotOnReserve: null,
+} as const;
 
+/** The gift fields this slice of the service reads. */
+export type GiftStatusRow = {
+  readonly status: "OPEN" | "RESERVED" | "CLOSED";
+};
+
+/** Only a live reservation is released; an OPEN or CLOSED row has nothing to clear. */
+export function hasActiveReservation(row: GiftStatusRow): boolean {
+  return row.status === "RESERVED";
+}
+
+/**
+ * One `RESERVED → OPEN` write (AD-9). The adapter implements it with Prisma; the
+ * caller supplies the transaction so the release shares it with the field write,
+ * which keeps a failed visibility update from releasing the reservation.
+ */
+export interface GiftStatusTransaction {
   /**
-   * Archive `OPEN` wishes whose owner's local date is later than `expiresOn`.
-   * `RESERVED` and `CLOSED` are not candidates (Story 6.6). A second run finds
-   * nothing left to archive.
+   * Clears the reservation columns of a `RESERVED` row (AD-9). Touching a row
+   * that is no longer `RESERVED` writes nothing and answers `false`.
    */
-  async processWishExpiry(now: Date = new Date()): Promise<{ archived: number }> {
-    const rows = await this.db.gift.findMany({
-      where: { status: "OPEN", archivedAt: null, expiresOn: { not: null } },
-      select: {
-        id: true,
-        expiresOn: true,
-        list: { select: { owner: { select: { timeZone: true } } } },
-      },
-    });
+  releaseReservation(giftId: string): Promise<boolean>;
+}
 
-    let archived = 0;
-    for (const row of rows) {
-      const day = calendarDay(row.expiresOn);
-      if (day === null || !isBeforeLocalToday(day, now, row.list.owner.timeZone)) continue;
-      const result = await this.db.gift.updateMany({
-        where: { id: row.id, status: "OPEN", archivedAt: null },
-        data: { archivedAt: now },
-      });
-      archived += result.count;
-    }
-    return { archived };
+export type HolderAccessInput = {
+  /** Current status; only `RESERVED` can lose a reservation. */
+  readonly status: GiftStatusRow["status"];
+  /** Owner of the list (and of the wish); the viewer relation is read against them. */
+  readonly ownerId: string;
+  /** `Gift.reservedById`; a reserved row always carries one. */
+  readonly holderId: string;
+  readonly previousVisibility: GiftVisibility;
+  readonly nextVisibility: GiftVisibility;
+  /**
+   * Relation facts of the holder to the owner, from the `RelationshipReader`
+   * port. The list link is added here: it exists for every list, so the holder
+   * who reserved through `/l/:token` keeps that route when the owner narrows the
+   * wish. A friendship, subscription, contact match or block still comes from
+   * the reader.
+   */
+  readonly relations: Omit<ViewerRelations, "viaListToken">;
+};
+
+/**
+ * Does the visibility change take the holder's access away? (AD-7, FR-10 ред.
+ * 2026-11-11.)
+ *
+ * The owner and the write path share this one function, so the confirm preflight
+ * and the actual release can never disagree. The evaluation is the ordinary
+ * AD-7 gift filter, **without** the A-14 reservation-card exception: otherwise
+ * `SECRET` would never release a reservation. A release happens only when the
+ * holder could see the wish before the change and cannot see it after it:
+ *
+ * - `PUBLIC → FRIENDS` for an accepted friend keeps the reservation;
+ * - `PUBLIC → FRIENDS` for a link visitor, subscriber or contact match releases it;
+ * - any `→ SECRET` releases it when the holder had access before;
+ * - a block, or a narrowing while the holder already had no access, releases
+ *   nothing — that is A-14: a lost relation alone does not cancel a reservation;
+ * - the same value is no change and releases nothing.
+ */
+export function visibilityChangeDropsReservation(input: HolderAccessInput): boolean {
+  if (input.status !== "RESERVED") return false;
+
+  // AD-7: the owner's shared link exists for every list, so a holder who
+  // reserved through it is not cut off by the owner's own request context.
+  const relations: ViewerRelations = { ...input.relations, viaListToken: true };
+  const viewer = { id: input.holderId };
+
+  function holderCanSee(visibility: GiftVisibility): boolean {
+    return VisibilityPolicy.canSee(viewer, relations, {
+      ownerId: input.ownerId,
+      visibility,
+      archivedAt: null,
+    });
   }
 
-  /**
-   * Owner puts an archived `OPEN` wish back. The date is replaced in the same
-   * update that clears `archivedAt`. A past day is refused before the write.
-   */
-  async restoreFromArchive(input: {
-    giftId: string;
-    ownerId: string;
-    expiresOn: string | null;
-    timeZone: string | null;
-    now?: Date;
-  }): Promise<"ok" | "missing" | "past"> {
-    const now = input.now ?? new Date();
-    if (
-      input.expiresOn !== null &&
-      isBeforeLocalToday(input.expiresOn, now, input.timeZone)
-    ) {
-      return "past";
-    }
-
-    const result = await this.db.gift.updateMany({
-      where: {
-        id: input.giftId,
-        status: "OPEN",
-        NOT: { archivedAt: null },
-        list: { ownerId: input.ownerId },
-      },
-      data: {
-        archivedAt: null,
-        expiresOn: input.expiresOn === null ? null : calendarDayToDate(input.expiresOn),
-      },
-    });
-    return result.count === 1 ? "ok" : "missing";
-  }
+  return holderCanSee(input.previousVisibility) && !holderCanSee(input.nextVisibility);
 }

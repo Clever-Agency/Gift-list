@@ -1,5 +1,7 @@
+import { PRODUCT_NAME } from "@gift-list/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  getBrandName,
   getPublicWebOrigin,
   normalizeWebOrigin,
   resolvePublicWebOrigin,
@@ -8,6 +10,20 @@ import {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+});
+
+describe("getBrandName", () => {
+  it("falls back to PRODUCT_NAME when EXPO_PUBLIC_BRAND_NAME is unset or blank", () => {
+    vi.stubEnv("EXPO_PUBLIC_BRAND_NAME", "");
+    expect(getBrandName()).toBe(PRODUCT_NAME);
+    vi.stubEnv("EXPO_PUBLIC_BRAND_NAME", "   ");
+    expect(getBrandName()).toBe(PRODUCT_NAME);
+  });
+
+  it("reads EXPO_PUBLIC_BRAND_NAME when it is set", () => {
+    vi.stubEnv("EXPO_PUBLIC_BRAND_NAME", " Paper ");
+    expect(getBrandName()).toBe("Paper");
+  });
 });
 
 describe("normalizeWebOrigin", () => {

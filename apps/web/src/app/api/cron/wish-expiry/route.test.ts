@@ -4,10 +4,8 @@ vi.mock("server-only", () => ({}));
 
 const { processWishExpiry } = vi.hoisted(() => ({ processWishExpiry: vi.fn() }));
 
-vi.mock("@/domain/gift-status", () => ({
-  GiftStatusService: class {
-    processWishExpiry = processWishExpiry;
-  },
+vi.mock("@/lib/gift-status-store", () => ({
+  processWishExpiry,
 }));
 
 import { GET, POST } from "./route";

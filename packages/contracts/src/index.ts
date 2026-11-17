@@ -29,6 +29,29 @@ export const ERROR_REASONS = [
    * the generic `RATE_LIMITED` text: the client shows "Можно снова через {hours} ч".
    */
   "INVITE_COOLDOWN",
+  /**
+   * The owner's own wish is archived (`archivedAt != null`), so it is read-only
+   * (AD-8, FR-10 ред. 2026-11-11; CLE-82/S23.2). Always rides with
+   * `code: "VALIDATION"`; the client shows the archived hint
+   * «Архивное желание можно только просматривать». A foreign archived wish stays
+   * `NOT_FOUND`, so this reason never reveals that somebody else's wish exists.
+   */
+  "GIFT_ARCHIVED",
+  /**
+   * The wish is `CLOSED`, which is read-only for the owner (AD-8, FR-10 ред.
+   * 2026-11-11). Always rides with `code: "VALIDATION"`. The catalog sentence is
+   * the same as `GIFT_ARCHIVED` on purpose (product clarification t351u,
+   * CLE-82/S23.3): a closed wish and an archived one are one read-only form with
+   * one caption «Архивное желание можно только просматривать».
+   */
+  "GIFT_CLOSED",
+  /**
+   * A request body exceeded the transport byte budget and was refused before
+   * parsing, hashing or the database (W6). Always rides with
+   * `code: "VALIDATION"` and HTTP 413; the client shows
+   * `errors.reason.PAYLOAD_TOO_LARGE`.
+   */
+  "PAYLOAD_TOO_LARGE",
 ] as const;
 
 /** Closed set of machine-readable causes; the client maps them to `errors.reason.<REASON>`. */
@@ -69,6 +92,12 @@ export const meSchema = z.strictObject({
   nick: z.string(),
   /** `null` until the client reports an IANA zone (Story 1.8). */
   timeZone: z.string().nullable(),
+  /**
+   * Story 3.5 (FR-8, AD-13, AD-27): the settings screen shows the switch and the
+   * search hides this person from its buckets. `/u/:nick` and `/l/:token` ignore
+   * the flag (AD-7).
+   */
+  hideFromSearch: z.boolean(),
 });
 
 export type Me = z.infer<typeof meSchema>;
@@ -167,6 +196,14 @@ export const listDataSchema = z.discriminatedUnion("access", [
      * a viewer answer omits it, and archived rows never appear in `gifts`.
      */
     archived: z.array(giftCardSchema).optional(),
+    /**
+     * Story 4.6 (FR-46, AD-19): `true` when the viewer has a directed
+     * `Subscription(viewerId → ownerId)`. Only `/u/:nick` adds it, so `/l/:token`
+     * and `/me` stay unchanged; absence reads as "not subscribed". The flag is
+     * one fact and never a relation: a subscriber is not a friend, and no id,
+     * email or wish field rides along.
+     */
+    subscribed: z.boolean().optional(),
   }),
   z.strictObject({ access: z.literal("not_found"), gifts: z.tuple([]) }),
 ]);
@@ -174,15 +211,25 @@ export const listDataSchema = z.discriminatedUnion("access", [
 export type ListData = z.infer<typeof listDataSchema>;
 
 export {
+  DISPLAY_NAME_MAX,
+  EMAIL_MAX,
+  NICK_MAX,
+  NICK_MIN,
   NICK_PATTERN,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  hideFromSearchUpdateBodySchema,
   loginBodySchema,
+  nickIssue,
   nickUpdateBodySchema,
   passwordForgotBodySchema,
   passwordResetBodySchema,
   registerBodySchema,
   safeNextPath,
   timeZoneBodySchema,
+  type HideFromSearchUpdateBody,
   type LoginBody,
+  type NickIssue,
   type NickUpdateBody,
   type PasswordForgotBody,
   type PasswordResetBody,
@@ -193,40 +240,119 @@ export {
 export { rateLimitedError, rateLimitedParams } from "./rate-limit";
 
 export {
+  USER_SEARCH_LIMIT,
+  USER_SEARCH_QUERY_MAX,
+  userSearchCardSchema,
+  userSearchDataSchema,
+  userSearchQuerySchema,
+  type UserSearchCard,
+  type UserSearchData,
+  type UserSearchQuery,
+} from "./search";
+
+export { AUTHOR_EMAIL, AUTHOR_MAILTO, PRODUCT_NAME, authorMailto } from "./brand";
+
+export { textLength } from "./text";
+
+export {
+  SUBSCRIBE_OUTCOMES,
+  SUBSCRIPTION_REMOVAL_OUTCOMES,
+  subscribeDataSchema,
+  subscribeOutcomeSchema,
+  subscriptionRemovalDataSchema,
+  subscriptionRemovalOutcomeSchema,
+  type SubscribeData,
+  type SubscribeOutcome,
+  type SubscriptionRemovalData,
+  type SubscriptionRemovalOutcome,
+} from "./subscription";
+
+export {
   FRIEND_ACCEPT_OUTCOMES,
+  FRIEND_CANCEL_OUTCOMES,
   FRIEND_INVITE_OUTCOMES,
   FRIEND_REJECT_OUTCOMES,
+  FRIEND_REMOVE_OUTCOMES,
   PROFILE_RELATIONSHIPS,
   friendAcceptDataSchema,
   friendAcceptOutcomeSchema,
+  friendCancelDataSchema,
+  friendCancelOutcomeSchema,
   friendInviteDataSchema,
   friendInviteOutcomeSchema,
   friendRejectDataSchema,
   friendRejectOutcomeSchema,
+  friendRemoveDataSchema,
+  friendRemoveOutcomeSchema,
   profileInviteCooldownSchema,
   profileRelationshipSchema,
   type FriendAcceptData,
   type FriendAcceptOutcome,
+  type FriendCancelData,
+  type FriendCancelOutcome,
   type FriendInviteData,
   type FriendInviteOutcome,
   type FriendRejectData,
   type FriendRejectOutcome,
+  type FriendRemoveData,
+  type FriendRemoveOutcome,
   type ProfileInviteCooldown,
   type ProfileRelationship,
 } from "./friendship";
 
 export {
+  BLOCK_OUTCOMES,
+  UNBLOCK_OUTCOMES,
+  blockDataSchema,
+  blockOutcomeSchema,
+  blockedCardSchema,
+  blockedListQuerySchema,
+  blockedPageSchema,
+  unblockDataSchema,
+  unblockOutcomeSchema,
+  type BlockData,
+  type BlockOutcome,
+  type BlockedCard,
+  type BlockedListQuery,
+  type BlockedPage,
+  type UnblockData,
+  type UnblockOutcome,
+} from "./block";
+
+export {
+  CIRCLE_PAGE_SIZE,
+  circleCardSchema,
+  circleInvitesDataSchema,
+  circleInvitesQuerySchema,
+  circleListQuerySchema,
+  circlePageSchema,
+  type CircleCard,
+  type CircleInvitesData,
+  type CircleInvitesQuery,
+  type CircleListQuery,
+  type CirclePage,
+} from "./circle";
+
+export {
   DEFAULT_QUANTITY,
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_PRICE_AMOUNT_MAX,
   GIFT_TAG_TEXT_MAX,
+  GIFT_TITLE_MAX,
   giftInputSchema,
   giftRestoreSchema,
   giftTagInputSchema,
   giftUpdateSchema,
+  giftVisibilityPreviewQuerySchema,
+  giftVisibilityPreviewSchema,
   type GiftInput,
   type GiftInputDraft,
   type GiftRestore,
   type GiftTagInput,
   type GiftUpdate,
+  type GiftVisibilityPreview,
+  type GiftVisibilityPreviewQuery,
 } from "./gift";
 
 export {

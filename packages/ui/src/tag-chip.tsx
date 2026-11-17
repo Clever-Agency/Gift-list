@@ -1,6 +1,7 @@
 import { useTheme } from "@tamagui/core";
 import { XStack } from "@tamagui/stacks";
 import { forwardRef, type ComponentRef, type ReactNode } from "react";
+import { a11yHintProps } from "./a11y-hint";
 import { Star } from "./icons";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
@@ -61,8 +62,9 @@ export type TagChipProps = {
   accessibilityLabel?: string;
   /**
    * An item-specific validation error from the screen: the chip control is
-   * marked invalid and described by the message rendered once by the caller.
-   * Ignored by a static card chip.
+   * outlined in `$destructive` (DESIGN.md → Tag picker: a visible frame, ARIA
+   * in addition to it), marked invalid and described by the message rendered
+   * once by the caller. Ignored by a static card chip.
    */
   error?: TagChipError;
   testID?: string;
@@ -156,7 +158,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
         gap="$1"
         maxWidth="100%"
         borderWidth={1}
-        borderColor={custom ? "$accent" : "$border"}
+        borderColor={error ? "$destructive" : custom ? "$accent" : "$border"}
         borderRadius="$sm"
         backgroundColor={custom ? "$surface" : "$background"}
         paddingLeft="$2"
@@ -166,8 +168,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
             role="button"
             aria-label={editLabel ?? label}
             aria-invalid={error ? true : undefined}
-            aria-describedby={error?.id}
-            accessibilityHint={error?.message}
+            {...a11yHintProps({ hint: error?.message, describedBy: error?.id })}
             onPress={onPress}
             flexDirection="row"
             alignItems="center"
@@ -193,8 +194,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
           role="button"
           aria-label={removeLabel ?? label}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error?.id}
-          accessibilityHint={error?.message}
+          {...a11yHintProps({ hint: error?.message, describedBy: error?.id })}
           onPress={onRemove}
           minHeight="$touch-target"
           minWidth="$touch-target"
@@ -220,8 +220,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
       aria-expanded={isButton ? expanded : undefined}
       aria-controls={isButton ? controls : undefined}
       aria-invalid={error ? true : undefined}
-      aria-describedby={error?.id}
-      accessibilityHint={error?.message}
+      {...a11yHintProps({ hint: error?.message, describedBy: error?.id })}
       onPress={onPress}
       minHeight="$touch-target"
       minWidth="$touch-target"
@@ -230,7 +229,9 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
       gap="$1"
       maxWidth="100%"
       borderWidth={1}
-      borderColor={custom ? "$accent" : selected ? "$border-strong" : "$border"}
+      borderColor={
+        error ? "$destructive" : custom ? "$accent" : selected ? "$border-strong" : "$border"
+      }
       borderRadius="$sm"
       backgroundColor={custom ? "$surface" : selected ? "$muted" : "$background"}
       paddingHorizontal="$2"

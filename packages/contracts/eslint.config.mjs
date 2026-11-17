@@ -6,4 +6,15 @@ export default tseslint.config(
     ...config,
     files: ["src/**/*.ts"],
   })),
+  {
+    files: ["src/**/*.ts"],
+    languageOptions: {
+      parserOptions: {
+        // Monorepo: several eslint.config.* register candidates; set the root
+        // explicitly so the editor parser does not fail
+        // (https://tseslint.com/parser-tsconfigrootdir).
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
 );

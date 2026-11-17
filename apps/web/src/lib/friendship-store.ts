@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
+import type { BlockedReader } from "@/domain/block";
 import type {
   FriendshipPair,
   FriendshipStore,
@@ -47,6 +48,63 @@ async function hasBlockBetween(
   return row !== null;
 }
 
+/**
+ * One direction only (Story 4.5): the block protocol reports whether the
+ * viewer's own row already existed, and a reverse block must never be mistaken
+ * for it.
+ */
+async function findBlock(
+  tx: TransactionClient,
+  blockerId: string,
+  blockedId: string,
+): Promise<boolean> {
+  const row = await tx.block.findUnique({
+    where: { blockerId_blockedId: { blockerId, blockedId } },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+/**
+ * The directed UNIQUE index is the last guard, exactly like
+ * `createSubscription`: a repeated block leaves one row and no constraint
+ * error. The domain picks `ALREADY_BLOCKED` from its own directed read; this
+ * insert only keeps a race from turning into a `P2002`.
+ */
+async function insertBlock(
+  tx: TransactionClient,
+  blockerId: string,
+  blockedId: string,
+): Promise<void> {
+  await tx.block.createMany({ data: [{ blockerId, blockedId }], skipDuplicates: true });
+}
+
+/** `deleteMany` keeps an unblock idempotent; the count tells which answer it is. */
+async function deleteBlock(
+  tx: TransactionClient,
+  blockerId: string,
+  blockedId: string,
+): Promise<boolean> {
+  const { count } = await tx.block.deleteMany({ where: { blockerId, blockedId } });
+  return count > 0;
+}
+
+/** AD-19: a block deletes the subscription rows in both directions of the pair. */
+async function deleteSubscriptionsBetween(
+  tx: TransactionClient,
+  firstUserId: string,
+  secondUserId: string,
+): Promise<void> {
+  await tx.subscription.deleteMany({
+    where: {
+      OR: [
+        { subscriberId: firstUserId, targetId: secondUserId },
+        { subscriberId: secondUserId, targetId: firstUserId },
+      ],
+    },
+  });
+}
+
 async function findFriendship(
   tx: TransactionClient,
   pair: FriendshipPair,
@@ -84,6 +142,21 @@ async function createFriendship(
 ): Promise<void> {
   await tx.friendship.create({
     data: { userLowId: pair.userLowId, userHighId: pair.userHighId },
+  });
+}
+
+/**
+ * Unfriend (Story 4.4, AD-10 step 4). `deleteMany` keeps the removal idempotent:
+ * a pair without an edge is a no-op instead of a `P2025`, which is what the
+ * domain's `ALREADY_REMOVED` answer relies on. Only the edge is removed here;
+ * subscriptions and any block row are left to their own stories.
+ */
+async function deleteFriendship(
+  tx: TransactionClient,
+  pair: FriendshipPair,
+): Promise<void> {
+  await tx.friendship.deleteMany({
+    where: { userLowId: pair.userLowId, userHighId: pair.userHighId },
   });
 }
 
@@ -156,6 +229,9 @@ function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
     hasBlockBetween(firstUserId, secondUserId) {
       return hasBlockBetween(tx, firstUserId, secondUserId);
     },
+    findBlock(blockerId, blockedId) {
+      return findBlock(tx, blockerId, blockedId);
+    },
     findFriendship(pair) {
       return findFriendship(tx, pair);
     },
@@ -168,8 +244,20 @@ function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
     createFriendship(pair) {
       return createFriendship(tx, pair);
     },
+    deleteFriendship(pair) {
+      return deleteFriendship(tx, pair);
+    },
     deleteInvitesBetween(firstUserId, secondUserId) {
       return deleteInvitesBetween(tx, firstUserId, secondUserId);
+    },
+    insertBlock(blockerId, blockedId) {
+      return insertBlock(tx, blockerId, blockedId);
+    },
+    deleteBlock(blockerId, blockedId) {
+      return deleteBlock(tx, blockerId, blockedId);
+    },
+    deleteSubscriptionsBetween(firstUserId, secondUserId) {
+      return deleteSubscriptionsBetween(tx, firstUserId, secondUserId);
     },
     deleteInvite(fromUserId, toUserId) {
       return deleteInvite(tx, fromUserId, toUserId);
@@ -206,5 +294,35 @@ export const friendshipStore: FriendshipStore = {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
+  },
+};
+
+/**
+ * «Заблокированные» of Story 4.5.2: only the rows the viewer made
+ * (`blockerId = viewerId`), so a person who blocked the viewer is never revealed
+ * by this list. Newest first, then the descending CUID2 id, which is exactly the
+ * order `readBlockedPage` cuts its cursor page in. A row carries the three
+ * fields of the person plus the block time the cursor needs; avatar, wishes and
+ * email never load.
+ */
+export const blockedPeopleReader: BlockedReader = {
+  async readBlockedPeople(viewerId) {
+    const rows = await prisma.block.findMany({
+      where: { blockerId: viewerId },
+      select: {
+        createdAt: true,
+        blocked: { select: { id: true, name: true, nick: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+
+    return rows.map(function toBlockedPerson(row) {
+      return {
+        id: row.blocked.id,
+        displayName: row.blocked.name,
+        nick: row.blocked.nick,
+        blockedAt: row.createdAt,
+      };
+    });
   },
 };

@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
-import { GIFT_TAG_TEXT_MAX, giftInputSchema, giftRestoreSchema, giftUpdateSchema } from "./gift";
+import {
+  GIFT_DESCRIPTION_MAX,
+  GIFT_LINK_URL_MAX,
+  GIFT_TAG_TEXT_MAX,
+  GIFT_TITLE_MAX,
+  giftInputSchema,
+  giftRestoreSchema,
+  giftUpdateSchema,
+  giftVisibilityPreviewQuerySchema,
+  giftVisibilityPreviewSchema,
+} from "./gift";
 
 describe("giftInputSchema", () => {
   it("fills an empty body with nulls and PUBLIC visibility", () => {
@@ -30,8 +40,8 @@ describe("giftInputSchema", () => {
   });
 
   it("rejects a title over the cap", () => {
-    expect(giftInputSchema.safeParse({ title: "x".repeat(120) }).success).toBe(true);
-    expect(giftInputSchema.safeParse({ title: "x".repeat(121) }).success).toBe(false);
+    expect(giftInputSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
   });
 
   it("defaults the currency to USD when only the amount is set", () => {
@@ -263,12 +273,12 @@ describe("giftUpdateSchema", () => {
   });
 
   it("rejects a null or over-long title", () => {
-    for (const title of [null, "x".repeat(121)]) {
+    for (const title of [null, "x".repeat(GIFT_TITLE_MAX + 1)]) {
       const parsed = giftUpdateSchema.safeParse({ title });
       expect(parsed.success).toBe(false);
       if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["title"]);
     }
-    expect(giftUpdateSchema.safeParse({ title: "x".repeat(120) }).success).toBe(true);
+    expect(giftUpdateSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX) }).success).toBe(true);
   });
 
   it.each([
@@ -295,11 +305,23 @@ describe("giftUpdateSchema", () => {
     },
   );
 
-  it("defaults the currency to USD when the amount is set without one", () => {
-    expect(giftUpdateSchema.parse({ priceAmount: 12_50 })).toEqual({
-      priceAmount: 12_50,
-      priceCurrency: "USD",
-    });
+  it("leaves the currency to the use-case when the amount comes without one", () => {
+    // AD-25/Н1: a PATCH of the amount alone keeps the stored currency; only the
+    // use-case knows whether there is one. The schema must not invent `USD`.
+    expect(giftUpdateSchema.parse({ priceAmount: 12_50 })).toEqual({ priceAmount: 12_50 });
+  });
+
+  it("rejects a set amount with an explicit null currency", () => {
+    // AD-25/D2: the amount and the currency are one price; `null` would store an
+    // amount that no card can show. The field is named for the client.
+    for (const body of [
+      { priceAmount: 1000, priceCurrency: null },
+      { priceAmount: 0, priceCurrency: null },
+    ]) {
+      const parsed = giftUpdateSchema.safeParse(body);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["priceCurrency"]);
+    }
   });
 
   it.each(CURRENCIES)("keeps the %s currency with an amount", (currency) => {
@@ -383,3 +405,177 @@ describe("giftRestoreSchema", () => {
     expect(giftRestoreSchema.safeParse({ expiresOn: null, title: "Книга" }).success).toBe(false);
   });
 });
+
+/**
+ * PostgreSQL cannot store `U+0000` in `text`/`varchar`, so a body carrying it
+ * must fail validation with the field named — not as a database error and a 500
+ * (epic-2 QA report, D1). The custom tag text keeps its own rule above.
+ */
+describe("NUL in the gift text fields", () => {
+  type Path = (string | number)[];
+
+  const createBodies: [string, Record<string, unknown>, Path][] = [
+    ["title", { title: "a\u0000b" }, ["title"]],
+    ["description", { title: "Книга", description: "a\u0000b" }, ["description"]],
+    ["linkUrl", { title: "Книга", linkUrl: "https://example.com/a\u0000b" }, ["linkUrl"]],
+    [
+      "tags[].catalogId",
+      { title: "Книга", tags: [{ catalogId: "tag\u00001" }] },
+      ["tags", 0, "catalogId"],
+    ],
+  ];
+
+  const updateBodies: [string, Record<string, unknown>, Path][] = [
+    ["title", { title: "a\u0000b" }, ["title"]],
+    ["description", { description: "a\u0000b" }, ["description"]],
+    ["linkUrl", { linkUrl: "https://example.com/a\u0000b" }, ["linkUrl"]],
+    ["tags[].catalogId", { tags: [{ catalogId: "tag\u00001" }] }, ["tags", 0, "catalogId"]],
+  ];
+
+  it.each(createBodies)("rejects NUL in %s of a create body", (_label, body, path) => {
+    const parsed = giftInputSchema.safeParse(body);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(path);
+  });
+
+  it.each(updateBodies)("rejects NUL in %s of an edit body", (_label, body, path) => {
+    const parsed = giftUpdateSchema.safeParse(body);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(path);
+  });
+
+  it("keeps the same bodies without NUL valid", () => {
+    expect(
+      giftInputSchema.parse({
+        title: "Книга",
+        description: "Заметка",
+        linkUrl: "https://example.com/item",
+        tags: [{ catalogId: "tag_1" }],
+      }),
+    ).toMatchObject({ title: "Книга", description: "Заметка" });
+    expect(
+      giftUpdateSchema.parse({
+        title: "Книга",
+        description: "Заметка",
+        linkUrl: "https://example.com/item",
+        tags: [{ catalogId: "tag_1" }],
+      }),
+    ).toMatchObject({ title: "Книга" });
+  });
+});
+
+/**
+ * The caps are the contract's single source. Zod 4 counts them in Unicode code
+ * points (the unit of `textLength`, which both clients use), while a `maxLength`
+ * attribute would count UTF-16 units; these tests pin both measures down so the
+ * form, the schema and Better Auth cannot drift silently.
+ */
+describe("gift text caps", () => {
+  function linkOfLength(length: number): string {
+    const prefix = "https://example.com/";
+    return `${prefix}${"a".repeat(length - prefix.length)}`;
+  }
+
+  it("accepts exactly the title, description and link caps and rejects one more", () => {
+    expect(giftInputSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: "x".repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
+
+    expect(
+      giftInputSchema.safeParse({ title: "Книга", description: "x".repeat(GIFT_DESCRIPTION_MAX) })
+        .success,
+    ).toBe(true);
+    const longDescription = giftInputSchema.safeParse({
+      title: "Книга",
+      description: "x".repeat(GIFT_DESCRIPTION_MAX + 1),
+    });
+    expect(longDescription.success).toBe(false);
+    if (!longDescription.success) {
+      expect(longDescription.error.issues[0]?.path).toEqual(["description"]);
+    }
+
+    const atCap = linkOfLength(GIFT_LINK_URL_MAX);
+    expect(atCap).toHaveLength(GIFT_LINK_URL_MAX);
+    expect(giftInputSchema.safeParse({ title: "Книга", linkUrl: atCap }).success).toBe(true);
+    const longLink = giftInputSchema.safeParse({ title: "Книга", linkUrl: linkOfLength(GIFT_LINK_URL_MAX + 1) });
+    expect(longLink.success).toBe(false);
+    if (!longLink.success) expect(longLink.error.issues[0]?.path).toEqual(["linkUrl"]);
+  });
+
+  it("counts an emoji as one code point, as the clients' textLength does", () => {
+    const emoji = "😀";
+    expect(emoji).toHaveLength(2);
+    expect([...emoji]).toHaveLength(1);
+    // The schema cap is in code points: 120 emoji fit, 121 do not. The same text
+    // is 240 UTF-16 units, so a `maxLength` of 120 would have cut it at 60 — the
+    // form sets none and checks the schema unit instead.
+    expect(giftInputSchema.safeParse({ title: emoji.repeat(GIFT_TITLE_MAX) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: emoji.repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
+    expect(emoji.repeat(GIFT_TITLE_MAX).length).toBe(GIFT_TITLE_MAX * 2);
+
+    expect(
+      giftInputSchema.safeParse({
+        title: "Книга",
+        description: emoji.repeat(GIFT_DESCRIPTION_MAX + 1),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("counts Cyrillic and combining marks one per code point", () => {
+    expect(giftInputSchema.safeParse({ title: "я".repeat(GIFT_TITLE_MAX) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: "я".repeat(GIFT_TITLE_MAX + 1) }).success).toBe(false);
+
+    // "е" followed by U+0301 is two code points (and two units), so half as many signed fit.
+    const combining = "е\u0301";
+    expect([...combining]).toHaveLength(2);
+    expect(giftInputSchema.safeParse({ title: combining.repeat(GIFT_TITLE_MAX / 2) }).success).toBe(true);
+    expect(giftInputSchema.safeParse({ title: combining.repeat(GIFT_TITLE_MAX / 2 + 1) }).success).toBe(false);
+  });
+
+  it("trims before applying the cap", () => {
+    const padded = `  ${"x".repeat(GIFT_TITLE_MAX)}  `;
+    expect(padded.length).toBeGreaterThan(GIFT_TITLE_MAX);
+    expect(giftInputSchema.parse({ title: padded }).title).toHaveLength(GIFT_TITLE_MAX);
+  });
+
+  it("checks only the fields an edit carries, so a stored over-long value cannot block another edit", () => {
+    // A row written before the cap (or outside the API) may hold a longer title;
+    // an edit body that does not send that field never puts it through the cap.
+    expect(giftUpdateSchema.parse({ visibility: "SECRET" })).toEqual({ visibility: "SECRET" });
+    expect(giftUpdateSchema.parse({ description: "Заметка", tags: [] })).toEqual({
+      description: "Заметка",
+      tags: [],
+    });
+  });
+});
+
+/** CLE-82/S23.2 (FR-10): the confirm of a narrowing visibility change is a server preflight. */
+describe("giftVisibilityPreview", () => {
+  it.each(VISIBILITIES)("accepts the %s value in the preflight query", (visibility) => {
+    expect(giftVisibilityPreviewQuerySchema.parse({ visibility })).toEqual({ visibility });
+  });
+
+  it("rejects a missing, unknown or foreign query value", () => {
+    for (const query of [{}, { visibility: null }, { visibility: "EVERYONE" }, { visibility: [] }]) {
+      const parsed = giftVisibilityPreviewQuerySchema.safeParse(query);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["visibility"]);
+    }
+  });
+
+  it("rejects keys the preflight does not answer", () => {
+    expect(giftVisibilityPreviewQuerySchema.safeParse({ visibility: "SECRET", id: "g1" }).success).toBe(
+      false,
+    );
+  });
+
+  it("carries the reservation flag and nothing else", () => {
+    expect(giftVisibilityPreviewSchema.parse({ wouldCancelReservation: true })).toEqual({
+      wouldCancelReservation: true,
+    });
+    expect(giftVisibilityPreviewSchema.safeParse({ wouldCancelReservation: "yes" }).success).toBe(false);
+    expect(giftVisibilityPreviewSchema.safeParse({ wouldCancelReservation: true, id: "g1" }).success).toBe(
+      false,
+    );
+  });
+});
+

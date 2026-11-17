@@ -38,10 +38,21 @@
 - CI (`.github/workflows/ci.yml`) на PR и push в `main` гоняет `typecheck`, `lint`, `test`, `build` и запуск standalone-сервера; локально перед PR прогоните те же `npm run typecheck`, `npm test`, `npm run lint`, `npm run build`.
 - Сборка — `output: 'standalone'`: вне Vercel запускайте `node apps/web/.next/standalone/apps/web/server.js`, не `npm start` (`next start`).
 
+## Storybook (visual catalog)
+
+- Каталог компонентов — Storybook для web (react-native-web + Vite) в корневом `.storybook/`: `npm run storybook` → http://localhost:6007 (порт 6006 не используем), сборка — `npm run build-storybook`.
+- Stories обязательны для новых и изменённых компонентов `packages/ui` (раздел `UI/…`) и `apps/mobile/src/ui` (раздел `App/…`): файл `<component>.stories.tsx` рядом с компонентом, все состояния из `DESIGN.md` и `EXPERIENCE.md` (normal, disabled, busy, error, empty, длинная кириллица) и проверка на 360 px через `globals.viewport`.
+- Перед PR смотрите панель a11y (`@storybook/addon-a11y`, `parameters.a11y.test: "todo"`): нарушения видны в панели, но сборку пока не валят.
+- Экранные истории (`App/*Screen`, у которых кадр — сам экран) ставят `parameters: { layout: "fullscreen", screenFrame: true }`: `.storybook/preview.tsx` даёт им кадр высотой во вьюпорт без отступов каталога, иначе `Screen`/`SafeArea`/`PageScroll` схлопываются в 0 и экран выглядит пустым.
+- Hover, focus и pressed не подделывайте стилями: показывайте настоящие состояния — сфокусируйте элемент в `play` или напишите «наведите / Tab» в описании story.
+- Stories — dev-only: ни `src/index.ts`, ни приложения их не импортируют, в прод-бандлы они не попадают, `storybook-static/` в `.gitignore`. Провайдеры приложения в каталоге заменяются моками из `.storybook/mocks` (роутер, env, safe area, иконки), код компонентов из-за этого не меняется.
+- `/ui-check` — не каталог, а dev-проверка серверного рендера Tamagui в Next (Story 1.10): его примеры не дублируют stories.
+
 ## Conventions that differ from defaults
 
 - `packages/contracts` и `packages/ui` не собираются: отдают исходники TS (`exports` → `src/index.ts`), веб транспилирует их через `transpilePackages`. Не добавляйте build-шаг и `dist/`.
 - `packages/ui` — тема (`src/tokens.ts` и `src/config.ts`, значения из frontmatter `DESIGN.md`) и компоненты обоих клиентов. В пакете нет API, env, Prisma и строк интерфейса: тексты приходят пропсами, шрифты — из `expo-font` (приложение) и `next/font` (Next). Платформенные различия хранятся в парах `*.ts`/`*.native.ts`. Чего не хватает экрану, добавляйте в пакет, а не в `StyleSheet` приложения. `scripts/check-boundaries.mjs` (часть `npm run lint`) падает на второй копии `react`, `react-dom`, `tamagui` и `@tamagui/*` в lock и на импорте из `"tamagui"`.
+- Тонкая обёртка над `SafeAreaView` / `useSafeAreaInsets` из `react-native-safe-area-context` в `packages/ui` — **утверждённое** исключение из «только Tamagui и React» (AD-2, уточнение 2026-11-10): обёртка без API, env, данных и текстов. Это `SafeArea` из `@gift-list/ui` (`src/safe-area.tsx` и нативный `safe-area.native.tsx`): экран ставит её один раз под `Screen` вместо `SafeAreaView style={{ flex: 1 }}`, вложенных обёрток не ставится, а `SafeAreaView` из библиотеки экраны не импортируют (правило в `scripts/check-boundaries.mjs`).
 - `apps/web/public/` генерируется: `npm run build` пересоздаёт его из Expo-web экспорта `apps/mobile` (`scripts/sync-spa.mjs`). Не правьте его — меняйте исходники в `apps/mobile`.
 
 <!-- /bmad:context -->

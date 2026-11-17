@@ -1,4 +1,4 @@
-import { GIFT_TAG_TEXT_MAX, type GiftTagInput } from "@gift-list/contracts";
+import { GIFT_TAG_TEXT_MAX, textLength, type GiftTagInput } from "@gift-list/contracts";
 
 /**
  * A tag as the form holds it. A fixed tag keeps the server-provided label for
@@ -69,17 +69,14 @@ export function giftTagsKey(tags: readonly GiftFormTag[]): string {
   return JSON.stringify(tags.map(giftTagKey).sort());
 }
 
-/** Length in Unicode code points, the unit of `VARCHAR(30)` and the contract. */
-export function tagTextLength(text: string): number {
-  return [...text].length;
-}
-
 /** Why a custom tag cannot be added; `null` means it can. */
 export type CustomTagIssue = "empty" | "tooLong" | "duplicate" | "invalid";
 
 /**
  * Client-side rule of the custom tag. Trim happens before every check, so only
- * the text that would reach the server is measured and compared. NUL is
+ * the text that would reach the server is measured and compared. The length is
+ * counted in code points by `textLength` from the contract — no `maxLength`:
+ * it counts UTF-16 units and would cut a 30-emoji tag the schema accepts. NUL is
  * rejected because PostgreSQL cannot store it in `VARCHAR` and the contract
  * would answer VALIDATION after a request.
  */
@@ -90,7 +87,7 @@ export function customTagIssue(
   const text = raw.trim();
   if (text === "") return "empty";
   if (text.includes("\u0000")) return "invalid";
-  if (tagTextLength(text) > GIFT_TAG_TEXT_MAX) return "tooLong";
+  if (textLength(text) > GIFT_TAG_TEXT_MAX) return "tooLong";
   if (selected.some((tag) => "text" in tag && tag.text === text)) return "duplicate";
   return null;
 }

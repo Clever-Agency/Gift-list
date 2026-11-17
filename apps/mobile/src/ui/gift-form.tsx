@@ -5,6 +5,7 @@ import {
   GIFT_TAG_TEXT_MAX,
   QUANTITIES,
   VISIBILITIES,
+  textLength,
 } from "@gift-list/contracts";
 import {
   Button,
@@ -31,6 +32,7 @@ import {
   useRef,
   useState,
   type ComponentRef,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { AccessibilityInfo } from "react-native";
@@ -43,15 +45,11 @@ import {
   giftTagsKey,
   isCustomTag,
   isFixedTag,
-  tagTextLength,
   type CustomTagIssue,
   type GiftFormTag,
 } from "@/ui/gift-form-tags";
 import type { TagCatalogState } from "@/ui/use-tag-catalog";
 import {
-  DESCRIPTION_MAX,
-  LINK_MAX,
-  TITLE_MAX,
   fieldErrorCopy,
   firstErrorField,
   serverErrorField,
@@ -155,14 +153,23 @@ type GiftFormProps = {
   /** Overrides the cancel label; `action.cancel` («Отмена») by default. */
   cancelLabel?: string;
   /**
-   * The wish is no longer open: visibility is frozen by the server, so the rows
-   * show the stored value but cannot change it (`EXPERIENCE.md` → Правка
-   * забронированного желания).
+   * A secondary action of the screen (Story 2.3: «Удалить желание») shown in the same
+   * row as «Отмена»/«Сохранить», first in reading order. The screen owns the element,
+   * its destructive look and its confirm step; the form only places it, so the row
+   * wraps as one block on a narrow screen instead of squeezing the buttons.
    */
-  visibilityLocked?: boolean;
+  secondaryAction?: ReactNode;
   /**
-   * Story 2.5: `quantity` is frozen once the wish is no longer open, exactly like
-   * visibility. The rows show the stored value, disabled, with a hint why.
+   * The wish is `CLOSED` or archived: nothing on the form can be edited or saved
+   * (product clarification t351u, CLE-82/S23.3). The fields keep their stored
+   * values, the choices and tags are not controls, and the form shows the one
+   * caption of `errors.reason.GIFT_ARCHIVED` — the same sentence for both states.
+   * «Отмена» stays: leaving a read-only form is the only action left.
+   */
+  readOnly?: boolean;
+  /**
+   * Story 2.5: `quantity` is frozen once the wish is no longer open. The rows show
+   * the stored value, disabled, with a hint why.
    */
   quantityLocked?: boolean;
   /**
@@ -182,6 +189,7 @@ type GiftFormProps = {
  */
 export type GiftFormHandle = {
   focusCancel(): void;
+  focusSubmit(): void;
 };
 
 /**
@@ -200,6 +208,16 @@ export type GiftFormHandle = {
  * Validation runs on submit, not while typing: a field error disappears as soon
  * as that field is edited, and the first error is announced for the screen
  * reader (`EXPERIENCE.md` → Ошибки форм, → Accessibility Floor).
+ *
+ * The text fields carry no `maxLength`: it counts UTF-16 units and would cut an
+ * emoji the schema accepts, or a legacy stored value the owner is editing. The
+ * caps live in `@gift-list/contracts` and are checked on submit in the same unit
+ * as the schema (code points).
+ *
+ * CLE-82/S23.3: a reserved wish still edits its visibility (`RESERVED` is not a
+ * lock on the owner's side any more); only its quantity stays frozen. A `CLOSED`
+ * or archived wish is read-only as a whole (`readOnly`), with one caption for both
+ * states.
  */
 export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftForm(
   {
@@ -212,7 +230,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     onDirtyChange,
     onCancel,
     cancelLabel,
-    visibilityLocked = false,
+    secondaryAction,
+    readOnly = false,
     quantityLocked = false,
     tagCatalog = EMPTY_TAG_CATALOG,
     onRetryTagCatalog,
@@ -273,6 +292,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   // `tags.N` error names a position in that list, not in the current chips.
   const submittedTagKeys = useRef<readonly string[]>([]);
   const cancelRef = useRef<FocusTarget>(null);
+  // The confirm step of a visibility change is opened by «Сохранить»: it hands focus
+  // back there when it closes (`focusSubmit`), like the form's own «Отмена».
+  const submitRef = useRef<FocusTarget>(null);
   // UI5: the visual order of the form; the first invalid field gets focus and scroll.
   const titleRef = useRef<FieldInputRef | null>(null);
   const descriptionRef = useRef<FieldInputRef | null>(null);
@@ -297,6 +319,10 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           // react-native-web host nodes are DOM elements with `focus()`; native ones
           // are not, and there `Modal` keeps owning focus.
           const node = cancelRef.current as unknown as { focus?: () => void } | null;
+          node?.focus?.();
+        },
+        focusSubmit() {
+          const node = submitRef.current as unknown as { focus?: () => void } | null;
           node?.focus?.();
         },
       };
@@ -464,8 +490,8 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   }
 
   function inlineError(field: GiftFormField): string | undefined {
-    if (errors[field]) return copyText(fieldErrorCopy(field, { title }));
-    return serverField === field ? copyText(fieldErrorCopy(field, { title })) : undefined;
+    if (errors[field]) return copyText(fieldErrorCopy(field, { title, link }));
+    return serverField === field ? copyText(fieldErrorCopy(field, { title, link })) : undefined;
   }
 
   const tagServerError =
@@ -618,14 +644,16 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     setCustomTagError(tagIssue);
 
     const priceAmount = parsePriceToMinor(price);
-    const found = validateGiftForm({ title, link, price });
+    // An untouched stored value longer than the cap is legacy data and must not
+    // block the submit; the edit screen also leaves such a value out of the body.
+    const found = validateGiftForm({ title, description, link, price }, initial);
     if (tagIssue !== null) found.tags = true;
     setErrors(found);
     const first = firstErrorField(found);
     if (first !== null) {
       // `EXPERIENCE.md` → Accessibility Floor: announce the first error on submit.
       AccessibilityInfo.announceForAccessibility(
-        copyText(fieldErrorCopy(first, { title, tagIssue })),
+        copyText(fieldErrorCopy(first, { title, link, tagIssue })),
       );
       // UI5: the same field takes focus and is scrolled to the middle of the screen.
       // A problem in the typed custom tag opens its field; when it is already
@@ -664,6 +692,11 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     clearError("title");
   }
 
+  function handleDescriptionChange(value: string) {
+    setDescription(value);
+    clearError("description");
+  }
+
   function handleLinkChange(value: string) {
     setLink(value);
     clearError("link");
@@ -673,6 +706,17 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     setPrice(value);
     clearError("price");
   }
+
+  // A read-only wish has nothing to save: the button is not rendered at all, so
+  // «Отмена» stays the only action of a closed or archived form.
+  const submitButton = readOnly ? null : (
+    <Button
+      ref={submitRef as never}
+      label={submitLabel ?? t("action.save")}
+      onPress={submit}
+      busy={submitting}
+    />
+  );
 
   return (
     <YStack gap="$grid-gap">
@@ -684,22 +728,24 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         error={inlineError("title")}
         input={{
           placeholder: t("field.titlePlaceholder"),
-          maxLength: TITLE_MAX,
+          // No `maxLength`: it counts UTF-16 units and would cut an emoji the
+          // schema accepts. The cap is reported under the field on submit.
           autoCapitalize: "sentences",
+          ...readOnlyInput(readOnly),
         }}
       />
       <TextField
         ref={descriptionRef}
         label={t("field.description")}
         value={description}
-        onChangeText={setDescription}
+        onChangeText={handleDescriptionChange}
         error={inlineError("description")}
         multiline
         rows={4}
         input={{
           placeholder: t("field.descriptionPlaceholder"),
-          maxLength: DESCRIPTION_MAX,
           autoCapitalize: "sentences",
+          ...readOnlyInput(readOnly),
         }}
       />
       <TextField
@@ -713,7 +759,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           keyboardType: "url",
           autoCapitalize: "none",
           autoCorrect: false,
-          maxLength: LINK_MAX,
+          ...readOnlyInput(readOnly),
         }}
       />
       <TextField
@@ -722,11 +768,12 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         value={price}
         onChangeText={handlePriceChange}
         error={inlineError("price")}
-        hint={showCurrency ? t("field.priceHint") : undefined}
+        hint={showCurrency && !readOnly ? t("field.priceHint") : undefined}
         input={{
           placeholder: t("field.pricePlaceholder"),
           keyboardType: "decimal-pad",
           inputMode: "decimal",
+          ...readOnlyInput(readOnly),
         }}
       />
       {showCurrency ? (
@@ -736,6 +783,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           value={currency}
           onChange={setCurrency}
           options={CURRENCIES.map((code) => ({ value: code, label: code }))}
+          disabled={readOnly}
         />
       ) : null}
       <ChoiceGroup
@@ -744,8 +792,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         value={visibility}
         onChange={setVisibility}
         error={inlineError("visibility")}
-        disabled={visibilityLocked}
-        description={visibilityLocked ? t("field.visibilityLocked") : undefined}
+        disabled={readOnly}
         autoFocusValue={visibility}
         autoFocusRef={visibilityRef}
         options={VISIBILITIES.map((code) => ({
@@ -760,8 +807,10 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         value={quantity}
         onChange={setQuantity}
         error={inlineError("quantity")}
-        disabled={quantityLocked}
-        description={quantityLocked ? t("field.quantityLocked") : undefined}
+        disabled={readOnly || quantityLocked}
+        // The read-only caption already explains the whole form; the frozen-quantity
+        // hint only speaks for a reserved wish, which the person can still edit.
+        description={quantityLocked && !readOnly ? t("field.quantityLocked") : undefined}
         autoFocusValue={quantity}
         autoFocusRef={quantityRef}
         options={QUANTITIES.map((code) => ({
@@ -770,6 +819,23 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           hint: t(`field.quantityHint.${code}`),
         }))}
       />
+      {readOnly ? (
+        // CLE-82/S23.3: a closed or archived wish shows its tags as plain labels —
+        // nothing here is a control, so there is no «Свой тег» and no catalogue.
+        tags.length > 0 ? (
+          <YStack gap="$1">
+            <Text kind="label">{t("field.tags")}</Text>
+            <XStack testID="gift-form-tags-read-only" flexWrap="wrap" gap="$2">
+              {tags.map(function renderReadOnlyTag(tag) {
+                return (
+                  <TagChip key={giftTagKey(tag)} variant="card" label={giftTagLabel(tag)} />
+                );
+              })}
+            </XStack>
+          </YStack>
+        ) : null
+      ) : (
+      <>
       <YStack gap="$1">
         <Text kind="label">{t("field.tags")}</Text>
         {tagCatalog.status === "loading" ? (
@@ -886,7 +952,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
               onChangeText={handleCustomTagChange}
               error={customTagErrorCopy}
               hint={t("field.tagCounter", {
-                count: tagTextLength(customTag),
+                count: textLength(customTag),
                 max: GIFT_TAG_TEXT_MAX,
               })}
               input={{
@@ -941,37 +1007,77 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           clearError("expiresOn");
         }}
       />
+      </>
+      )}
+      {readOnly ? (
+        // The one caption of a closed and an archived wish (t351u): the same sentence
+        // for both, taken from the reason the server answers with.
+        <Text testID="gift-form-read-only" kind="caption" tone="muted">
+          {common("errors.reason.GIFT_ARCHIVED")}
+        </Text>
+      ) : null}
       {formError ? (
         <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
           {formError}
         </Text>
       ) : null}
-      {onCancel ? (
-        // Cancel on the left of the save button, the pair flush right (`DESIGN.md` → Форма).
-        <XStack alignItems="center" justifyContent="flex-end" gap="$2">
-          <Button
-            ref={cancelRef as never}
-            variant="ghost"
-            label={cancelLabel ?? t("action.cancel")}
-            onPress={onCancel}
-            disabled={submitting}
-            // A disabled «Отмена» keeps its place in the focus order.
-            focusableWhenDisabled
-          />
-          <Button
-            label={submitLabel ?? t("action.save")}
-            onPress={submit}
-            busy={submitting}
-          />
+      {onCancel || secondaryAction ? (
+        // One row for the screen's secondary action and the cancel/save pair: cancel
+        // sits left of save, the pair stays flush right (`DESIGN.md` → Форма), and on a
+        // narrow screen the pair wraps under the secondary action instead of shrinking.
+        <XStack
+          testID="gift-form-actions"
+          alignItems="center"
+          justifyContent="space-between"
+          flexWrap="wrap"
+          gap="$2"
+        >
+          {secondaryAction ?? null}
+          {onCancel ? (
+            // `marginLeft="auto"` keeps the pair right-aligned on its own wrapped line.
+            <XStack
+              alignItems="center"
+              justifyContent="flex-end"
+              gap="$2"
+              flexShrink={0}
+              marginLeft="auto"
+            >
+              <Button
+                ref={cancelRef as never}
+                variant="ghost"
+                label={cancelLabel ?? t("action.cancel")}
+                onPress={onCancel}
+                disabled={submitting}
+                // A disabled «Отмена» keeps its place in the focus order.
+                focusableWhenDisabled
+              />
+              {submitButton}
+            </XStack>
+          ) : (
+            submitButton
+          )}
         </XStack>
       ) : (
-        <Button label={submitLabel ?? t("action.save")} onPress={submit} busy={submitting} />
+        submitButton
       )}
     </YStack>
   );
 });
 
 GiftForm.displayName = "GiftForm";
+
+/**
+ * A read-only input keeps its stored value on screen and takes no typing: Tamagui
+ * maps `readOnly` to `editable: false` on the phone and to the native `readOnly`
+ * attribute in a browser. The muted surface is the same affordance the disabled
+ * choices give.
+ */
+function readOnlyInput(readOnly: boolean): {
+  readOnly?: true;
+  backgroundColor?: "$muted";
+} {
+  return readOnly ? { readOnly: true, backgroundColor: "$muted" } : {};
+}
 
 /** The stored amount back as editable text: `25000` → `"250"`, `25050` → `"250.50"`. */
 function initialPriceText(priceAmount: number | null | undefined): string {
@@ -998,8 +1104,8 @@ type ChoiceOption<T extends string> = {
  * `labelHidden` keeps the accessible name of the group while the visible heading
  * comes from the surrounding layer (the picker title is a header of its own).
  *
- * `disabled` shows the stored value without letting it change (a wish that is no
- * longer open keeps its visibility and quantity frozen).
+ * `disabled` shows the stored value without letting it change (a read-only closed
+ * or archived wish, and the quantity of a wish that is no longer open).
  *
  * `autoFocusRef` is only set by `VisibilityPicker`: it receives the node of the option
  * holding `autoFocusValue`, so the dialog can put focus there when it opens instead of

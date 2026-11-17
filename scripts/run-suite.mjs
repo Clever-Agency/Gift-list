@@ -24,6 +24,7 @@ function defaultSteps() {
         "--test",
         "scripts/check-boundaries.test.mjs",
         "scripts/emulator-origin.test.mjs",
+        "scripts/generate-brand-icons.test.mjs",
         "scripts/measure-web-size.test.mjs",
         "scripts/run-suite.test.mjs",
       ],

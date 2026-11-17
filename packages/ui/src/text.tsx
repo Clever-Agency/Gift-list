@@ -1,5 +1,6 @@
 import { Text as CoreText, styled, type GetProps } from "@tamagui/core";
 import { fontFor } from "./font-style";
+import { focusRing } from "./focus-ring";
 import { typography, type TypographyRole } from "./tokens";
 
 function roleStyle(role: TypographyRole) {
@@ -55,13 +56,21 @@ Heading.displayName = "Heading";
 /**
  * The «Назад» / navigation link text (`DESIGN.md` → button, primary colour, 44 px
  * tall touch zone). Wrap it in the router's link, or give it `onPress`.
+ *
+ * Hover and keyboard focus are real CSS states: the menu-item background
+ * (`nav-item.hover-background`) on hover, the `$ring` ring on `:focus-visible` only
+ * (a mouse click must not leave a ring; a phone has no `:focus-visible` and takes
+ * `focus`, `focus-ring.native.ts`), and the `opacity: 0.9` press feedback.
  */
 export const LinkText = styled(CoreText, {
   name: "GLLinkText",
   ...roleStyle("button"),
   color: "$primary",
+  backgroundColor: "transparent hover:$background",
   minHeight: "$touch-target",
   minWidth: "$touch-target",
   lineHeight: "$touch-target",
   cursor: "pointer",
+  opacity: "press:0.9",
+  ...focusRing,
 });

@@ -5,10 +5,18 @@
     "name": "Имя",
     "nick": "Ник",
     "showPassword": "Показать пароль",
+    "confirmPassword": "Повторите пароль",
+    "passwordMismatch": "Пароли не совпадают.",
     "submitLogin": "Войти",
     "submitRegister": "Зарегистрироваться",
     "nickPreview": "@{nick}",
+    "nickCyrillic": "Ник пишется латиницей — без русских букв",
+    "nickSpace": "В нике не может быть пробелов",
+    "nickChar": "Символ «{char}» нельзя использовать. Подойдут латинские буквы, цифры и _",
+    "nickShort": "Ник должен быть не короче {min} символов",
+    "nickLong": "Ник может быть не длиннее {max} символов",
     "passwordRules": "Минимум 8 символов",
+    "passwordTooLong": "Пароль — до {max} символов.",
     "network": "Нет соединения. Попробуйте ещё раз."
   },
   "login": {
@@ -23,8 +31,7 @@
     "title": "Регистрация",
     "pageTitle": "Регистрация — {brand}",
     "toLogin": "Войти",
-    "toHome": "На главную",
-    "nickRules": "3–24 символа: латиница, цифры, _"
+    "toHome": "На главную"
   },
   "forgot": {
     "title": "Сброс пароля",
@@ -68,18 +75,135 @@
     "archiveMenu": "Меню",
     "archiveRestore": "Вернуть в вишлист",
     "archiveCopy": "Скопировать",
-    "archiveClose": "Закрыть"
+    "archiveClose": "Закрыть",
+    "search": "Поиск",
+    "friends": "Друзья"
   },
   "settings": {
     "title": "Настройки",
     "pageTitle": "Настройки — {brand}",
     "nickSection": "Ник",
-    "nickHint": "3–24 символа: латиница, цифры, _",
     "save": "Сохранить",
     "back": "Назад",
     "nickSaved": "Ник изменён.",
     "nickUnchanged": "Это ваш текущий ник.",
-    "loadError": "Не получилось загрузить. Проверьте сеть."
+    "hideFromSearch": "Не показывать в поиске",
+    "hideFromSearchHint": "Прямые ссылки на профиль и вишлист по-прежнему работают.",
+    "hideFromSearchSaved": "Настройка сохранена.",
+    "loadError": "Не получилось загрузить. Проверьте сеть.",
+    "blocked": {
+      "title": "Заблокированные",
+      "empty": "Вы никого не блокировали",
+      "unblock": "Разблокировать",
+      "unblockLabel": "Разблокировать: {name}",
+      "unblocked": "{name} разблокирован",
+      "showMore": "Показать ещё",
+      "retry": "Повторить",
+      "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз."
+    }
+  },
+  "search": {
+    "title": "Поиск",
+    "pageTitle": "Поиск — {brand}",
+    "back": "Назад",
+    "fieldPlaceholder": "Имя или @ник",
+    "clear": "Очистить",
+    "beforeInput": "Найдите человека по нику или имени.",
+    "emptyTitle": "Никого не нашли",
+    "emptyBody": "Проверьте ник или имя. Скрытых из поиска можно открыть только по ссылке.",
+    "loading": "Ищем людей",
+    "loadError": "Не получилось загрузить. Проверьте сеть.",
+    "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз.",
+    "retry": "Повторить",
+    "openProfile": "Открыть профиль @{nick}"
+  },
+  "friends": {
+    "pageTitle": "Друзья — {brand}",
+    "title": "Друзья",
+    "back": "Назад",
+    "findContacts": "Найти знакомых",
+    "searchAll": "Искать среди всех пользователей",
+    "openProfileLabel": "Открыть профиль: {name}, @{nick}",
+    "openProfileChipLabel": "Открыть профиль: {name}, @{nick}, {chip}",
+    "tabs": {
+      "label": "Разделы друзей",
+      "friends": "Друзья",
+      "subscriptions": "Подписки",
+      "requests": "Запросы"
+    },
+    "friendsSearch": {
+      "label": "Искать среди друзей",
+      "clear": "Очистить",
+      "counter": "{shown} из {total}",
+      "emptyTitle": "Никого не нашли по «{query}»",
+      "emptyBody": "Проверьте имя или ник."
+    },
+    "list": {
+      "loading": "Загружаем…",
+      "allShown": "Показаны все ({count})"
+    },
+    "loadError": "Не получилось загрузить. Проверьте сеть.",
+    "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз.",
+    "retry": "Повторить",
+    "empty": {
+      "friendsTitle": "Пока нет друзей",
+      "friendsBody": "Найдите человека по нику или отправьте ссылку-приглашение.",
+      "subscribedTitle": "Вы ни на кого не подписаны",
+      "subscribedBody": "Подписка показывает желания «всем» без дружбы.",
+      "subscribersTitle": "Пока никто не подписан",
+      "subscribersBody": "Подписчики видят ваши желания «всем».",
+      "requestsTitle": "Запросов нет",
+      "requestsBody": "Здесь появятся приглашения в друзья."
+    },
+    "subscriptions": {
+      "label": "Подписки",
+      "subscribed": "Я подписан ({count})",
+      "subscribedPlain": "Я подписан",
+      "subscribers": "Мои подписчики ({count})",
+      "subscribersPlain": "Мои подписчики"
+    },
+    "requests": {
+      "incoming": "Входящие",
+      "outgoing": "Исходящие"
+    },
+    "actions": {
+      "accept": "Принять",
+      "reject": "Отклонить",
+      "cancel": "Отменить"
+    },
+    "menu": {
+      "actions": "Действия: {name}",
+      "openProfile": "Открыть профиль",
+      "cancelInvite": "Отменить приглашение",
+      "removeSubscriber": "Убрать подписчика",
+      "removeFriend": "Удалить из друзей",
+      "block": "Заблокировать"
+    },
+    "cooldown": "Можно снова через {hours} ч",
+    "removeSubscriber": {
+      "title": "Убрать подписчика?",
+      "body": "{name} перестанет видеть ваши желания «всем» в подписках.",
+      "confirm": "Убрать",
+      "cancel": "Отмена"
+    },
+    "removeFriend": {
+      "title": "Удалить {name} из друзей?",
+      "body": "Желания «друзьям» перестанут быть видны друг другу. Брони останутся.",
+      "confirm": "Удалить",
+      "cancel": "Отмена"
+    },
+    "block": {
+      "title": "Заблокировать {name}?",
+      "body": "Вы перестанете видеть друг друга, дружба и подписки удалятся. Его бронь ваших желаний останется.",
+      "confirm": "Заблокировать",
+      "cancel": "Отмена"
+    },
+    "toast": {
+      "inviteCancelled": "Приглашение отменено",
+      "subscriberRemoved": "{name} больше не подписан",
+      "friendRemoved": "{name} удалён из друзей",
+      "blocked": "{name} заблокирован"
+    }
   },
   "newGift": {
     "pageTitle": "Новое желание — {brand}",
@@ -109,6 +233,11 @@
       "title": "Кто видит «{title}»",
       "cancel": "Отмена"
     },
+    "visibilityConfirm": {
+      "title": "Бронирующий потеряет доступ, бронь снимется",
+      "confirm": "Подтвердить",
+      "cancel": "Отмена"
+    },
     "quantity": {
       "SINGLE": "Один раз",
       "UNLIMITED": "Можно дарить снова"
@@ -121,7 +250,7 @@
     "tagsMoreLabel": "Ещё теги ({count}): {tags}",
     "toast": {
       "visibility": "Видимость: {value}",
-      "visibilityLocked": "Желание уже забронировано — видимость не изменить."
+      "visibilityReservationCancelled": "Видимость: {value}. Бронь снята"
     }
   },
   "toast": {
@@ -143,17 +272,29 @@
       "addFriend": "Добавить в друзья",
       "acceptInvite": "Принять приглашение",
       "rejectInvite": "Отклонить",
+      "removeFriend": "Удалить из друзей",
       "cooldown": "Можно снова через {hours} ч",
       "chips": {
         "OUTGOING_PENDING": "Ожидает ответа",
         "INCOMING_PENDING": "Зовёт в друзья",
         "FRIENDS": "Друзья",
         "REJECTED": "Отклонено",
-        "SELF": "Это вы"
+        "SELF": "Это вы",
+        "FOLLOWS_YOU": "Подписан на вас",
+        "MUTUAL": "Взаимная подписка"
       },
       "toast": {
         "invited": "Приглашение отправлено",
         "friends": "{name} теперь в друзьях"
+      },
+      "network": "Нет сети. Попробуйте ещё раз."
+    },
+    "subscription": {
+      "subscribe": "Подписаться",
+      "unsubscribe": "Отписаться",
+      "toast": {
+        "subscribed": "Вы подписались",
+        "unsubscribed": "Вы отписались"
       },
       "network": "Нет сети. Попробуйте ещё раз."
     }
@@ -189,7 +330,6 @@
         "FRIENDS": "только друзья",
         "SECRET": "только вы"
       },
-      "visibilityLocked": "Видимость меняется только у открытого желания.",
       "quantity": "Сколько раз можно дарить",
       "quantityHint": {
         "SINGLE": "Желание можно забронировать один раз.",
@@ -241,6 +381,7 @@
       "descriptionTooLong": "Описание — до {max} символов.",
       "priceInvalid": "Укажите цену числом, например 250.",
       "linkInvalid": "Укажите ссылку вида https://…",
+      "linkTooLong": "Ссылка — до {max} символов.",
       "quantityLocked": "Сколько раз можно дарить — меняется только у открытого желания.",
       "tags": "Проверьте теги: до {max} символов и без повторов.",
       "tagEmpty": "Напишите свой тег.",

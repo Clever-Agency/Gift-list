@@ -1,17 +1,32 @@
 // @vitest-environment happy-dom
 import type { GiftCard } from "@gift-list/contracts";
+import { breakpoints, spacing } from "@gift-list/ui";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "@/session/auth-context";
+import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, escape, pressScrim, settle, typeInto } from "@/test/dom";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
+import { pageGutter } from "@/ui/card-grid";
 import EditGiftScreen from "../../app/(app)/gifts/[id]/edit";
+
+/**
+ * W12.18: the edit screen lays itself out with the Tamagui media clause
+ * `$page-gutter medium:$page-gutter-lg` instead of `useWindowDimensions` +
+ * `pageGutter(width)`. There is no card grid here, so the window width is never
+ * read in JS. Widths are checked against the CSS Tamagui actually generated (see
+ * `@/test/tamagui-css`), not against a browser layout.
+ */
+
+/** The counter proves the screen never asks React Native for the window width. */
+const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const gifts = vi.hoisted(() => ({
   fetchGift: vi.fn(),
   updateGift: vi.fn(),
   deleteGift: vi.fn(),
+  previewGiftVisibility: vi.fn(),
 }));
 const tagApi = vi.hoisted(() => ({ fetchTagCatalog: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -84,6 +99,14 @@ vi.mock("@/api/my-gifts", () => gifts);
 vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  function useWindowDimensions() {
+    dimensions.calls += 1;
+    return actual.useWindowDimensions();
+  }
+  return { ...actual, useWindowDimensions };
+});
 // The discard dialog draws its close cross with `expo-symbols`; decorative.
 vi.mock("expo-symbols", async () => {
   const React = await import("react");
@@ -149,6 +172,8 @@ vi.mock("react-native-safe-area-context", async () => {
   return {
     SafeAreaView: ({ children }: { children?: React.ReactNode }) =>
       React.createElement("div", null, children),
+    // W12.23: the wide loading state reads the safe area for its window fallback.
+    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
   };
 });
 
@@ -371,12 +396,19 @@ function listThenForm() {
 beforeEach(() => {
   vi.resetAllMocks();
   guard.reset();
+  dimensions.calls = 0;
   platform.os = "android";
   search.params = { id: "g1" };
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   // Story 2.5: the form always asks for the fixed catalogue; an empty one is a
   // normal state and tests that need tags override this answer.
   tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: [] });
+  // CLE-82/S23.3: the preflight of a reserved wish keeps the reservation unless a
+  // test says otherwise, so a visibility change saves without a question.
+  gifts.previewGiftVisibility.mockResolvedValue({
+    ok: true,
+    preview: { wouldCancelReservation: false },
+  });
   // A direct link left nothing to go back to: the screen replaces itself with the list.
   navigation.canGoBack.mockReturnValue(false);
   // A router call that removes this screen is a removal like the system back.
@@ -615,6 +647,41 @@ describe("изменение желания: сохранение", () => {
     });
   });
 
+  /**
+   * Legacy: a stored value longer than the cap can only come from a direct
+   * database write, but it must not trap the owner. An untouched over-limit value
+   * is not sent back — the server's own schema would reject it — while a changed
+   * field goes as usual.
+   */
+  it("сохранённое название длиннее предела не отправляется, если его не трогали", async () => {
+    const legacyTitle = "я".repeat(160);
+    const legacy: GiftCard = { ...stored, title: legacyTitle };
+    loaded(legacy);
+    gifts.updateGift.mockResolvedValue({
+      ok: true,
+      gift: { ...legacy, description: "Заметка" },
+    });
+    await mount();
+
+    // The field opens the stored value intact: nothing cuts it on the way in.
+    expect(field("Название").value).toBe(legacyTitle);
+
+    await type("Описание (необязательно)", "Заметка");
+    await press("Сохранить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    // An absent key keeps the stored title, so the save does not fail on it.
+    expect(body).not.toHaveProperty("title");
+    expect(body.description).toBe("Заметка");
+    // A field under the cap is still sent as before.
+    expect(body.linkUrl).toBe("https://example.com/x");
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_updated" },
+    });
+  });
+
   /** D-25: an empty link clears the stored one instead of silently keeping it. */
   it("очистка ссылки шлёт linkUrl: null", async () => {
     loaded();
@@ -654,6 +721,25 @@ describe("изменение желания: сохранение", () => {
     expect(text()).not.toContain("Не получилось сохранить. Попробуйте ещё раз.");
     expect(navigation.dismissTo).not.toHaveBeenCalled();
     expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("413 при сохранении: причина локализуется, сырой текст сервера не показывается", async () => {
+    loaded();
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    await mount();
+
+    await press("Сохранить");
+
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(text()).not.toContain("Не получилось сохранить. Попробуйте ещё раз.");
+    expect(button("Сохранить")).toBeDefined();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
 
   it("NOT_FOUND при сохранении: toast и состояние «Желание не найдено.»", async () => {
@@ -1106,45 +1192,241 @@ describe("изменение желания: кнопка «назад» бра�
 });
 
 /**
- * `EXPERIENCE.md` → Правка забронированного желания: a wish that is no longer
- * open keeps its visibility frozen and offers no delete; an open one deletes
- * through a confirm step of the same form.
+ * `EXPERIENCE.md` → «Архивное или закрытое желание, правка владельцем» with the
+ * product rule of CLE-82/S23.3: a reserved wish changes its visibility (the holder
+ * may lose access — confirm first), keeps `quantity`, and an open one deletes
+ * through a confirm step of the same form. A closed or archived wish is read-only.
  */
-describe("изменение желания: видимость и удаление", () => {
-  it("RESERVED: показывает UNLIMITED, блокирует оба поля и не шлёт их", async () => {
-    const reserved: GiftCard = {
-      ...stored,
-      status: "RESERVED",
-      quantity: "UNLIMITED",
-    };
+describe("изменение желания: видимость, read-only и удаление", () => {
+  const reserved: GiftCard = {
+    ...stored,
+    status: "RESERVED",
+    quantity: "UNLIMITED",
+  };
+
+  /** The reserve that answers `wouldCancelReservation` and then resolves the PATCH. */
+  function preflightAnswers(wouldCancelReservation: boolean) {
+    gifts.previewGiftVisibility.mockResolvedValue({
+      ok: true,
+      preview: { wouldCancelReservation },
+    });
+  }
+
+  it("RESERVED: видимость меняется, quantity заморожен и не шлётся", async () => {
     loaded(reserved);
     gifts.updateGift.mockResolvedValue({ ok: true, gift: reserved });
     await mount();
 
-    expect(text()).toContain("Видимость меняется только у открытого желания.");
+    expect(text()).not.toContain("Видимость меняется только у открытого желания.");
     expect(text()).toContain("Сколько раз можно дарить — меняется только у открытого желания.");
+    // The visibility rows are live, the quantity rows stay frozen.
+    for (const label of ["Всем", "Друзьям", "Секрет"]) {
+      expect(
+        container.querySelector(`[role="radio"][aria-label="${label}"]`)?.getAttribute(
+          "aria-disabled",
+        ),
+        label,
+      ).toBeNull();
+    }
+    for (const label of ["Один раз", "Можно дарить снова"]) {
+      expect(
+        container.querySelector(`[role="radio"][aria-label="${label}"]`)?.getAttribute(
+          "aria-disabled",
+        ),
+        label,
+      ).toBe("true");
+    }
     // Editing shows the stored type, even though the control is frozen.
     expect(selected("Можно дарить снова")).toBe(true);
-    expect(selected("Один раз")).toBe(false);
-    for (const label of ["Один раз", "Можно дарить снова"]) {
-      const radio = container.querySelector(`[role="radio"][aria-label="${label}"]`);
-      expect(radio, label).not.toBeNull();
-      expect(radio?.getAttribute("aria-disabled"), label).toBe("true");
-    }
     expect(button("Удалить желание")).toBeUndefined();
 
     await press("Сохранить");
 
+    // An unchanged visibility needs no preflight: one PATCH carries the stored value.
+    expect(gifts.previewGiftVisibility).not.toHaveBeenCalled();
     expect(gifts.updateGift).toHaveBeenCalledTimes(1);
-    // Visibility and quantity are frozen outside OPEN, so the body omits both and
-    // an unchanged save cannot reset the stored values.
     expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
       title: "Наушники",
       description: "Чёрные, с шумоподавлением",
       priceAmount: 25000,
       priceCurrency: "RUB",
       linkUrl: "https://example.com/x",
+      visibility: "FRIENDS",
     });
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("quantity");
+  });
+
+  it("RESERVED, держатель сохраняет доступ: preflight без confirm и один PATCH", async () => {
+    loaded(reserved);
+    preflightAnswers(false);
+    gifts.updateGift.mockResolvedValue({
+      ok: true,
+      gift: { ...reserved, visibility: "SECRET" },
+    });
+    await mount();
+
+    await press("Секрет");
+    await press("Сохранить");
+
+    expect(gifts.previewGiftVisibility).toHaveBeenCalledWith("g1", "SECRET");
+    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    const body = gifts.updateGift.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.visibility).toBe("SECRET");
+    expect(body).not.toHaveProperty("quantity");
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_updated" },
+    });
+  });
+
+  it("RESERVED, бронь снимается: confirm, «Отмена» не сохраняет", async () => {
+    loaded(reserved);
+    preflightAnswers(true);
+    await mount();
+
+    await press("Секрет");
+    await press("Сохранить");
+
+    expect(dialogElement()).not.toBeNull();
+    expect(text()).toContain("Бронирующий потеряет доступ, бронь снимется");
+    expect(gifts.updateGift).not.toHaveBeenCalled();
+
+    await pressInDialog("Отмена");
+
+    expect(dialogElement()).toBeNull();
+    expect(gifts.updateGift).not.toHaveBeenCalled();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+    // The draft is kept: the chosen value is still on the form.
+    expect(selected("Секрет")).toBe(true);
+  });
+
+  it("RESERVED, бронь снимается: «Подтвердить» шлёт один PATCH со всеми полями", async () => {
+    loaded(reserved);
+    preflightAnswers(true);
+    gifts.updateGift.mockResolvedValue({
+      ok: true,
+      gift: { ...reserved, status: "OPEN", visibility: "SECRET", reservedBy: null },
+    });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Секрет");
+    await press("Сохранить");
+    expect(dialogElement()).not.toBeNull();
+
+    await pressInDialog("Подтвердить");
+
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
+      title: "Наушники Sony",
+      description: "Чёрные, с шумоподавлением",
+      priceAmount: 25000,
+      priceCurrency: "RUB",
+      linkUrl: "https://example.com/x",
+      visibility: "SECRET",
+    });
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_updated" },
+    });
+  });
+
+  it("RESERVED: сеть на preflight — toast и ни одного PATCH", async () => {
+    loaded(reserved);
+    gifts.previewGiftVisibility.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await press("Секрет");
+    await press("Сохранить");
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(gifts.updateGift).not.toHaveBeenCalled();
+    expect(dialogElement()).toBeNull();
+    expect(button("Сохранить")).toBeDefined();
+  });
+
+  /**
+   * CLE-82/S23.3 (product clarification t351u): `CLOSED` and an archived wish are one
+   * read-only form. The server refuses the write with the reason, and the screen shows
+   * the same caption and no save at all.
+   */
+  it.each([
+    { surface: "CLOSED", gift: { ...stored, status: "CLOSED" as const } },
+    {
+      surface: "архив",
+      gift: { ...stored, archivedAt: "2026-10-01T00:00:00.000Z" },
+    },
+  ])("$surface: форма read-only с общей подсказкой, сохранения нет", async ({ gift: card }) => {
+    loaded(card);
+    await mount();
+
+    expect(text()).toContain("Архивное желание можно только просматривать.");
+    expect(container.querySelector('[data-testid="gift-form-read-only"]')).not.toBeNull();
+    for (const label of [
+      "Название",
+      "Описание (необязательно)",
+      "Ссылка (необязательно)",
+      "Цена (необязательно)",
+    ]) {
+      expect(field(label).readOnly, label).toBe(true);
+    }
+    for (const label of ["Всем", "Друзьям", "Секрет", "Один раз", "Можно дарить снова"]) {
+      expect(
+        container.querySelector(`[role="radio"][aria-label="${label}"]`)?.getAttribute(
+          "aria-disabled",
+        ),
+        label,
+      ).toBe("true");
+    }
+    expect(button("Сохранить")).toBeUndefined();
+    expect(button("Удалить желание")).toBeUndefined();
+    expect(button("Отмена")).toBeDefined();
+    expect(gifts.updateGift).not.toHaveBeenCalled();
+  });
+
+  it("GIFT_ARCHIVED при сохранении: подсказка, перечитывание и read-only форма", async () => {
+    loaded();
+    gifts.fetchGift.mockResolvedValueOnce({ ok: true, gift: stored });
+    gifts.fetchGift.mockResolvedValue({
+      ok: true,
+      gift: { ...stored, archivedAt: "2026-10-01T00:00:00.000Z" },
+    });
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Archived wish is read-only",
+      reason: "GIFT_ARCHIVED",
+    });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(text()).toContain("Архивное желание можно только просматривать.");
+    expect(text()).not.toContain("Не получилось сохранить. Попробуйте ещё раз.");
+    expect(gifts.fetchGift).toHaveBeenCalledTimes(2);
+    // The re-read wish is archived: the form is the read-only one, nothing to save.
+    expect(button("Сохранить")).toBeUndefined();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("CONFLICT при сохранении: toast, перечитывание желания и его настоящий статус", async () => {
+    loaded();
+    gifts.fetchGift.mockResolvedValueOnce({ ok: true, gift: stored });
+    gifts.fetchGift.mockResolvedValue({ ok: true, gift: reserved });
+    gifts.updateGift.mockResolvedValue({ ok: false, code: "CONFLICT", message: "" });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
+    expect(gifts.fetchGift).toHaveBeenCalledTimes(2);
+    // The wish is reserved now: visibility is editable again, deletion is gone.
+    expect(button("Удалить желание")).toBeUndefined();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
 
   it("OPEN: «Удалить желание» открывает confirm, «Отмена» ничего не удаляет", async () => {
@@ -1162,6 +1444,29 @@ describe("изменение желания: видимость и удален�
     expect(gifts.deleteGift).not.toHaveBeenCalled();
     expect(dialogElement()).toBeNull();
     expect(button("Сохранить")).toBeDefined();
+  });
+
+  /**
+   * W2: one wrapper for the destructive action and the form's pair — «Удалить желание»
+   * first, then «Отмена» and «Сохранить» — instead of a separate button under the form.
+   */
+  it("OPEN: «Удалить желание» в одной строке с «Отмена» и «Сохранить», первым", async () => {
+    loaded();
+    await mount();
+
+    const row = container.querySelector('[data-testid="gift-form-actions"]');
+    expect(row).not.toBeNull();
+    const names = Array.from(
+      row?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).map((node) => node.getAttribute("aria-label") ?? node.textContent?.trim());
+    expect(names).toEqual(["Удалить желание", "Отмена", "Сохранить"]);
+
+    // The button keeps its role, accessible name and 44×44 touch target.
+    const remove = buttonByLabel("Удалить желание");
+    expect(remove).toBeDefined();
+    expect(row?.contains(remove ?? null)).toBe(true);
+    expect(remove?.getAttribute("role")).toBe("button");
+    expect(remove?.getAttribute("aria-label")).toBe("Удалить желание");
   });
 
   it("OPEN: «Удалить» зовёт deleteGift и уводит к списку с toast=gift_deleted", async () => {
@@ -1210,7 +1515,7 @@ describe("изменение желания: видимость и удален�
 
     expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
     expect(gifts.fetchGift).toHaveBeenCalledTimes(2);
-    expect(text()).toContain("Видимость меняется только у открытого желания.");
+    expect(text()).toContain("Сколько раз можно дарить — меняется только у открытого желания.");
     expect(button("Удалить желание")).toBeUndefined();
     expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
@@ -1277,6 +1582,8 @@ describe("изменение желания: возврат фокуса пос�
     const trigger = await openConfirm();
 
     await pressExact("Отмена");
+    // Фокус возвращается после exit-fade диалога (160 мс).
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1288,6 +1595,7 @@ describe("изменение желания: возврат фокуса пос�
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1297,6 +1605,7 @@ describe("изменение желания: возврат фокуса пос�
     const trigger = await openConfirm();
 
     await pressScrim("confirm-dialog-scrim");
+    await settle(300);
 
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -1421,6 +1730,87 @@ describe("изменение желания: теги", () => {
     expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
 
+  /**
+   * CLE-79/D3: a fixed tag that left the catalogue is a `tags.N.catalogId`
+   * rejection. The chip keeps its stored label (AD-27), and the copy must say the
+   * tag is gone instead of the generic length/duplicate hint or the raw message.
+   */
+  it("устаревший фиксированный тег: VALIDATION tags.0.catalogId говорит «Такого тега больше нет»", async () => {
+    loaded(tagged);
+    // Only «нужно сейчас» is left in the catalogue: the stored «мечта» is stale.
+    tagApi.fetchTagCatalog.mockResolvedValue({
+      ok: true,
+      tags: [{ id: "tag_need", slug: "need-now", label: "нужно сейчас" }],
+    });
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "A fixed tag id is not in the catalog",
+      field: "tags.0.catalogId",
+    });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(text()).toContain("Такого тега больше нет в списке. Уберите его и попробуйте снова.");
+    expect(text()).not.toContain("Проверьте теги: до 30 символов и без повторов.");
+    expect(text()).not.toContain("A fixed tag id is not in the catalog");
+    // Q-09: `tags.0` is the stored «мечта» in the submitted order.
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBe("true");
+    expect(
+      container
+        .querySelector('[role="button"][aria-label="Убрать тег своё"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBeNull();
+    expect(field("Название").value).toBe("Наушники Sony");
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("устаревший тег не первый: tags.1.catalogId помечает свой чип, а не первый", async () => {
+    const pair: GiftCard = {
+      ...stored,
+      tags: [
+        { catalogId: "tag_dream", label: "мечта" },
+        { catalogId: "tag_need", label: "нужно сейчас" },
+      ],
+    };
+    loaded(pair);
+    tagApi.fetchTagCatalog.mockResolvedValue({
+      ok: true,
+      tags: [{ id: "tag_dream", slug: "dream", label: "мечта" }],
+    });
+    gifts.updateGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "A fixed tag id is not in the catalog",
+      field: "tags.1.catalogId",
+    });
+    await mount();
+
+    await type("Название", "Наушники Sony");
+    await press("Сохранить");
+
+    expect(text()).toContain("Такого тега больше нет в списке. Уберите его и попробуйте снова.");
+    expect(text()).not.toContain("Проверьте теги: до 30 символов и без повторов.");
+    expect(text()).not.toContain("A fixed tag id is not in the catalog");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="нужно сейчас"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBe("true");
+    expect(
+      container
+        .querySelector('[role="checkbox"][aria-label="мечта"]')
+        ?.getAttribute("aria-invalid"),
+    ).toBeNull();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
   it("загрузка каталога не скрывает сохранённые фиксированный и свой теги", async () => {
     tagApi.fetchTagCatalog.mockReturnValue(new Promise(() => {}));
     loaded(tagged);
@@ -1483,7 +1873,7 @@ describe("изменение желания: теги", () => {
     expect(body).not.toHaveProperty("tags");
   });
 
-  it("RESERVED: набор тегов меняется, а visibility и quantity остаются вне тела", async () => {
+  it("RESERVED: набор тегов меняется, а quantity остаётся вне тела", async () => {
     const reserved: GiftCard = { ...tagged, status: "RESERVED" };
     loaded(reserved);
     tagApi.fetchTagCatalog.mockResolvedValue({ ok: true, tags: catalogue });
@@ -1499,8 +1889,8 @@ describe("изменение желания: теги", () => {
       { text: "своё" },
       { catalogId: "tag_need" },
     ]);
-    // No new status restriction for tags; the frozen fields stay omitted.
-    expect(body).not.toHaveProperty("visibility");
+    // No new status restriction for tags; visibility rides along, quantity stays frozen.
+    expect(body.visibility).toBe("FRIENDS");
     expect(body).not.toHaveProperty("quantity");
   });
 });
@@ -1531,6 +1921,8 @@ describe("изменение желания: фокус в вопросе о ч�
     expect(dialog?.contains(document.activeElement)).toBe(true);
 
     await escapeDialog();
+    // Фокус возвращается после exit-fade диалога (160 мс), а не сразу.
+    await settle(300);
 
     expect(document.activeElement).toBe(cancel);
     expect(field("Название").value).toBe("Наушники Sony");
@@ -1553,5 +1945,125 @@ describe("изменение желания: фокус в вопросе о ч�
     });
 
     expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** The one `GLColumn` of the page: the column whose padding is the page gutter. */
+function formColumn(): HTMLElement {
+  const node = container.querySelector<HTMLElement>('[name="GLColumn"]');
+  expect(node, "колонка страницы").not.toBeNull();
+  return node as HTMLElement;
+}
+
+/**
+ * Mounts the edit screen only once the session is ready. The shared loading
+ * skeleton is a screen of its own (W12.15) and still reads the window width, so it
+ * must be out of the tree when the width counter is read.
+ */
+async function mountReady() {
+  function SignedIn() {
+    const auth = useAuth();
+    return auth.state.status === "ready" ? <EditGiftScreen /> : null;
+  }
+  await act(async () => {
+    root.render(
+      <AuthProvider>
+        <SignedIn />
+      </AuthProvider>,
+    );
+  });
+  await settle(10);
+}
+
+describe("W12.18: изменение желания на медиа-пропсах", () => {
+  it("ширина окна из JS не читается у загруженного желания", async () => {
+    loaded();
+    await mountReady();
+
+    expect(dimensions.calls).toBe(0);
+    // The ready form is really on screen, not a skeleton left over from loading.
+    expect(field("Название").value).toBe("Наушники");
+  });
+
+  it("ширина окна из JS не читается, пока желание грузится", async () => {
+    signedIn();
+    gifts.fetchGift.mockReturnValue(new Promise(() => {}));
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="gift-edit-loading"]')).not.toBeNull();
+    expect(dimensions.calls).toBe(0);
+  });
+
+  it("счётчик видит экран, который ширину читает (контроль)", async () => {
+    // A probe through the same import the screen used to call: a zero above means
+    // the mock is in place, not that the spy is broken.
+    const { useWindowDimensions } = await import("react-native");
+    function Probe() {
+      useWindowDimensions();
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+
+    expect(dimensions.calls).toBeGreaterThan(0);
+  });
+
+  it.each([360, 600, 1024, 1280])("ширина %ipx: отступ как у pageGutter", async (width) => {
+    loaded();
+    await mountReady();
+
+    expect(paintedSpace(formColumn(), "padding-inline", width)).toBe(pageGutter(width));
+  });
+
+  it("граница одна и та же: 16 до bp-medium, 24 от bp-medium", async () => {
+    loaded();
+    await mountReady();
+    const element = formColumn();
+
+    expect(paintedSpace(element, "padding-inline", 360)).toBe(spacing["page-gutter"]);
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium - 1)).toBe(
+      spacing["page-gutter"],
+    );
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium)).toBe(
+      spacing["page-gutter-lg"],
+    );
+    expect(paintedSpace(element, "padding-inline", 1280)).toBe(spacing["page-gutter-lg"]);
+  });
+
+  it("меняется только на одной медиа-точке, без лишних правил", async () => {
+    loaded();
+    await mountReady();
+    const gutterRules = declarationsFor(formColumn(), "padding-inline");
+
+    expect(gutterRules).toHaveLength(2);
+    const conditions = gutterRules.map((rule) => rule.minWidth);
+    expect(conditions).toContain(null);
+    expect(conditions).toContain(breakpoints.medium);
+  });
+
+  it("экран редактирования отрисован: заголовок, поля и «Удалить желание»", async () => {
+    loaded();
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="gift-edit-page"]')).not.toBeNull();
+    const heading = container.querySelector("[role='heading']");
+    expect(heading?.getAttribute("aria-level")).toBe("1");
+    expect(heading?.textContent).toBe("Изменить желание");
+    expect(field("Название")).toBeDefined();
+    expect(field("Описание (необязательно)")).toBeDefined();
+    expect(button("Сохранить")).toBeDefined();
+    expect(button("Отмена")).toBeDefined();
+    expect(button("Удалить желание")).toBeDefined();
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  it("отступы контента — токены $2/$section-gap с прежними px", async () => {
+    loaded();
+    await mountReady();
+    const body = findByPaint(container, "padding-top", "2");
+
+    expect(body, "контент формы").toBeDefined();
+    expect(paintedValue(body as Element, "padding-top", 360)).toBe("var(--t-space-2)");
+    expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
   });
 });

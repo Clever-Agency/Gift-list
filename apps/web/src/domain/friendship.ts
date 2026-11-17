@@ -95,6 +95,63 @@ export type RejectFriendInviteResult =
   | { readonly ok: false; readonly code: "FORBIDDEN" | "NOT_FOUND" };
 
 /**
+ * The actor of a cancel is the sender of a pending invite (`viewerId`), and
+ * `toUserId` is the recipient. The recipient of that invite has no outgoing
+ * pending row of their own, so calling cancel with the direction reversed is a
+ * closed `NOT_FOUND` and never deletes the other person's invite.
+ */
+export type OutgoingInvite = {
+  readonly toUserId: string;
+  readonly viewerId: string;
+};
+
+/**
+ * Closed success outcomes of cancelling one's own pending invite (Story 4.3).
+ * `CANCELLED` deleted the invite and wrote the pair cooldown; `ALREADY_FRIENDS`
+ * is the no-op of an anomalous pending row next to a live friendship and writes
+ * nothing — no second edge, no cooldown.
+ */
+export const FRIEND_CANCEL_OUTCOMES = ["CANCELLED", "ALREADY_FRIENDS"] as const;
+
+export type FriendCancelOutcome = (typeof FRIEND_CANCEL_OUTCOMES)[number];
+
+export type CancelFriendInviteResult =
+  | { readonly ok: true; readonly outcome: FriendCancelOutcome }
+  | { readonly ok: false; readonly code: "FORBIDDEN" | "NOT_FOUND" };
+
+/**
+ * Closed success outcomes of removing an accepted friend (Story 4.4, AD-10
+ * step 4). `REMOVED` deleted the edge and every invite of the pair;
+ * `ALREADY_REMOVED` is the idempotent answer of a pair without an edge and
+ * still deletes dangling pair invites, so the acceptance criterion holds even
+ * when two removals race.
+ */
+export const FRIEND_REMOVE_OUTCOMES = ["REMOVED", "ALREADY_REMOVED"] as const;
+
+export type FriendRemoveOutcome = (typeof FRIEND_REMOVE_OUTCOMES)[number];
+
+/**
+ * Removing has no direction: either side of the accepted edge may act, and the
+ * refusal is the same `FORBIDDEN` as a blocked cancel. A self pair is refused
+ * as `FORBIDDEN` before the store is touched; there is no `NOT_FOUND` in this
+ * closed answer because the domain only receives an already resolved user id
+ * (the action resolves the nick in Story 4.4.2).
+ */
+export type RemoveFriendResult =
+  | { readonly ok: true; readonly outcome: FriendRemoveOutcome }
+  | { readonly ok: false; readonly code: "FORBIDDEN" };
+
+/**
+ * The actor of a removal (`viewerId`, the session) and the other side of the
+ * edge. The `Friendship` row itself is undirected, so the direction of the call
+ * never matters.
+ */
+export type FriendRemoval = {
+  readonly otherUserId: string;
+  readonly viewerId: string;
+};
+
+/**
  * The operations the protocol needs inside one transaction. The adapter answers
  * only the facts the rules ask for; it never decides the outcome itself.
  */
@@ -114,6 +171,11 @@ export interface FriendshipTransaction {
   lockPair(pair: FriendshipPair): Promise<void>;
   /** A `Block` row between the two users in either direction (AD-10 step 4). */
   hasBlockBetween(firstUserId: string, secondUserId: string): Promise<boolean>;
+  /**
+   * A `Block` row in exactly this direction. The reverse row is not reported:
+   * the block protocol of Story 4.5 owns each row separately.
+   */
+  findBlock(blockerId: string, blockedId: string): Promise<boolean>;
   /** Whether the canonical pair already has an accepted edge. */
   findFriendship(pair: FriendshipPair): Promise<boolean>;
   /** Whether `fromUserId` already has a pending invite to `toUserId`. */
@@ -123,8 +185,19 @@ export interface FriendshipTransaction {
   deleteInvite(fromUserId: string, toUserId: string): Promise<void>;
   /** Inserts the single edge of the pair; the UNIQUE index is the last guard. */
   createFriendship(pair: FriendshipPair): Promise<void>;
+  /** Removes the single edge of the pair (unfriend, AD-10 step 4). */
+  deleteFriendship(pair: FriendshipPair): Promise<void>;
   /** Removes every invite between the two users, in both directions (AD-10 step 2). */
   deleteInvitesBetween(firstUserId: string, secondUserId: string): Promise<void>;
+  /**
+   * Inserts `Block(blockerId → blockedId)`; an existing row is left unchanged,
+   * so the UNIQUE index can never surface as an error (Story 4.5).
+   */
+  insertBlock(blockerId: string, blockedId: string): Promise<void>;
+  /** Removes exactly one directed `Block` row and answers whether it existed. */
+  deleteBlock(blockerId: string, blockedId: string): Promise<boolean>;
+  /** Removes both directed `Subscription` rows of the pair (block protocol, AD-19). */
+  deleteSubscriptionsBetween(firstUserId: string, secondUserId: string): Promise<void>;
   /** The pair's rejection cooldown row, or `null` when none was ever written. */
   findInviteCooldown(pair: FriendshipPair): Promise<InviteCooldownRecord | null>;
   /** Upserts one row per pair; a repeated rejection refreshes `until`. */
@@ -313,8 +386,8 @@ export async function acceptFriendInvite(
 /**
  * Recipient-only rejection of an incoming invite (Story 4.2.1, AD-10 step 3,
  * A-16). `viewerId` is the authenticated actor and must be the recipient of the
- * pending row; the sender has no valid direction to call, so a sender-side
- * cancel is impossible here (that is Story 4.3).
+ * pending row; the sender has no valid direction to call, so a sender cancels
+ * through {@link cancelFriendInvite} instead (Story 4.3).
  *
  * Success deletes exactly that invite and writes one `InviteCooldown` row for
  * the canonical pair with `until = now + 24h` UTC and `rejectedFromUserId` set
@@ -338,5 +411,102 @@ export async function rejectFriendInvite(
     await tx.deleteInvite(fromUserId, viewerId);
     await tx.createInviteCooldown(pair, fromUserId, new Date(Date.now() + INVITE_COOLDOWN_MS));
     return { ok: true, outcome: "REJECTED" };
+  });
+}
+
+/**
+ * The sender withdraws their own pending invite (Story 4.3, AD-10 step 3): the
+ * mirror of {@link rejectFriendInvite} in the other direction.
+ *
+ * `viewerId` is the authenticated actor and must be the sender of the pending
+ * row `viewerId → toUserId`; the recipient calling cancel has no outgoing
+ * pending row, so the answer is a closed `NOT_FOUND` and the inviter's row
+ * survives. A self pair is answered before the store is touched. A missing
+ * pending row is `NOT_FOUND` in every state, even when the pair is already
+ * friends. A `Block` in either direction is `FORBIDDEN` and writes nothing at
+ * all.
+ *
+ * Success deletes exactly that directed invite and writes one `InviteCooldown`
+ * row for the canonical pair with `until = now + 24h` UTC and
+ * `rejectedFromUserId` set to the cancelling sender, so a repeat invite in the
+ * window is refused by `sendFriendInvite` with `RATE_LIMITED` /
+ * `INVITE_COOLDOWN`. No `Friendship` edge is created.
+ *
+ * A pending row next to a live friendship is an anomaly: the protocol never
+ * produces it (accept deletes every pair invite and the pair cooldown). It is
+ * the closed no-op `ALREADY_FRIENDS` and writes nothing — no second edge and no
+ * cooldown — so a second accept cannot be faked through cancel.
+ *
+ * Storage note for Story 4.3.2/4.3.3: `InviteCooldown` has no column that says
+ * who ended the invite, so a cancelled and a rejected window look identical
+ * (`rejectedFromUserId` is the inviter's id in both). The domain cannot tell
+ * them apart without a migration; the UI must not show «отклонено» after a
+ * self-cancel (see `FRIEND_CANCEL_OUTCOMES`).
+ */
+export async function cancelFriendInvite(
+  input: OutgoingInvite,
+  store: FriendshipStore,
+): Promise<CancelFriendInviteResult> {
+  const { toUserId, viewerId } = input;
+  if (viewerId === toUserId) return NOT_FOUND_RESULT;
+
+  return store.transaction(async function runCancelProtocol(tx) {
+    const pair = orderFriendPair(viewerId, toUserId);
+    await tx.lockPair(pair);
+
+    if (await tx.hasBlockBetween(viewerId, toUserId)) return FORBIDDEN_RESULT;
+    if (!(await tx.findPendingInvite(viewerId, toUserId))) return NOT_FOUND_RESULT;
+    if (await tx.findFriendship(pair)) return { ok: true, outcome: "ALREADY_FRIENDS" };
+
+    await tx.deleteInvite(viewerId, toUserId);
+    await tx.createInviteCooldown(pair, viewerId, new Date(Date.now() + INVITE_COOLDOWN_MS));
+    return { ok: true, outcome: "CANCELLED" };
+  });
+}
+
+/**
+ * Either side of an accepted friendship removes it (Story 4.4, FR-23, AD-10
+ * step 4). This is the only unfriend primitive: it deletes the pair's
+ * `Friendship` edge and every invite of the pair, and nothing else.
+ *
+ * Order inside the one transaction:
+ *
+ * 0. the transaction-scoped pair lock comes first, exactly as in send, accept,
+ *    reject and cancel, so a removal cannot interleave with an invite or an
+ *    acceptance of the same pair;
+ * 1. a self pair is refused before the store is touched;
+ * 2. a `Block` in either direction is `FORBIDDEN` and deletes nothing — the
+ *    block protocol (Story 4.5) owns the edge in that state;
+ * 3. a missing edge is the idempotent `ALREADY_REMOVED`; the pair invites are
+ *    still deleted, so a stale invite cannot survive a repeated removal;
+ * 4. otherwise the edge and both directed invites are deleted (`REMOVED`).
+ *
+ * Subscriptions stay untouched in both directions (their removal belongs to
+ * Story 4.5, not to unfriend), the pair is not blocked, and no `InviteCooldown`
+ * is written: the two people may invite each other again immediately, and a new
+ * friendship appears only through a newly accepted invite. Wishlist visibility
+ * is not touched here at all — `VisibilityPolicy` reads the edge and stops
+ * opening `FRIENDS` wishes as soon as the row is gone (AD-7).
+ */
+export async function removeFriend(
+  input: FriendRemoval,
+  store: FriendshipStore,
+): Promise<RemoveFriendResult> {
+  const { otherUserId, viewerId } = input;
+  if (viewerId === otherUserId) return FORBIDDEN_RESULT;
+
+  return store.transaction(async function runRemoveProtocol(tx) {
+    const pair = orderFriendPair(viewerId, otherUserId);
+    await tx.lockPair(pair);
+
+    if (await tx.hasBlockBetween(viewerId, otherUserId)) return FORBIDDEN_RESULT;
+
+    const hadFriendship = await tx.findFriendship(pair);
+    if (hadFriendship) await tx.deleteFriendship(pair);
+    // Both directions: a pending row next to a live edge is an anomaly the
+    // protocol never produces, and the AC says the pair's invites go with it.
+    await tx.deleteInvitesBetween(viewerId, otherUserId);
+
+    return { ok: true, outcome: hadFriendship ? "REMOVED" : "ALREADY_REMOVED" };
   });
 }

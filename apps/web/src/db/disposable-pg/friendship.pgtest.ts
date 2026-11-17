@@ -131,6 +131,7 @@ async function createPair(prefix: string): Promise<Fixture> {
   const alpha = await prisma.user.create({
     data: {
       name: `R1 ${prefix}`,
+      nameNormalized: `r1 ${prefix}`,
       email: `${prefix}-${suffix}-a@r1.invalid`,
       nick: nickAlpha,
       nickNormalized: nickAlpha,
@@ -139,6 +140,7 @@ async function createPair(prefix: string): Promise<Fixture> {
   const beta = await prisma.user.create({
     data: {
       name: `R1 ${prefix}`,
+      nameNormalized: `r1 ${prefix}`,
       email: `${prefix}-${suffix}-b@r1.invalid`,
       nick: nickBeta,
       nickNormalized: nickBeta,

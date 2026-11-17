@@ -3,15 +3,13 @@ import {
   LoadingCards,
   PageContainer,
   PageScroll,
+  SafeArea,
   Screen,
-  spacing,
   YStack,
 } from "@gift-list/ui";
-import { useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslations } from "use-intl";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
 import { SiteFooter } from "@/ui/site-footer";
+import { useCardGrid } from "@/ui/use-card-grid";
 
 export type SessionLoadingScreenProps = {
   /** A form reads best narrow; a list uses the wide page column. */
@@ -28,38 +26,47 @@ export type SessionLoadingScreenProps = {
  *
  * It is deliberately theme-only: the text and the region name come from the
  * catalogue (`common.loading`), so no screen adds its own loading copy.
+ *
+ * The gutter is the Tamagui media clause `$page-gutter medium:$page-gutter-lg`,
+ * so it follows the window without JS. The wide grid counts its columns and the
+ * card width from the measured content area (`useCardGrid`, W12.23): a classic
+ * scrollbar makes the window wider than the column, and the grid follows the
+ * column. A form skeleton just fills the column content box (`max-form` minus the
+ * CSS gutter), so its width does not depend on the window at all.
  */
 export function SessionLoadingScreen({ size = "wide", testID = "session-loading" }: SessionLoadingScreenProps) {
   const t = useTranslations("common");
-  const { width } = useWindowDimensions();
-  const gutter = pageGutter(width);
-  const cardWidth =
-    size === "form"
-      ? Math.max(0, Math.min(width, spacing["max-form"]) - gutter * 2)
-      : cardGrid(width).cardWidth;
+  // The hook is unconditional (rules of hooks) and is only consumed by the wide
+  // grid below; the form passes a percentage, so the width never reaches it.
+  // Destructured: React's `refs` lint rule treats an object that holds a ref callback
+  // as a ref, and a member read of it during render is an error.
+  const { cardWidth, attachContainer } = useCardGrid();
+  const skeletonWidth = size === "form" ? "100%" : cardWidth;
 
   return (
     <Screen>
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeArea>
         <PageScroll testID={`${testID}-page`}>
           <PageContainer>
             <Column
               size={size}
               flexGrow={1}
-              paddingHorizontal={gutter}
+              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
               paddingTop="$page-gutter"
               gap="$2"
             >
               <YStack
+                testID={`${testID}-content`}
+                ref={attachContainer}
                 flexGrow={1}
-                paddingTop={spacing["grid-gap"] / 2}
-                paddingBottom={spacing["section-gap"]}
-                gap={spacing["grid-gap"]}
+                paddingTop="$2"
+                paddingBottom="$section-gap"
+                gap="$grid-gap"
               >
                 <LoadingCards
                   testID={testID}
                   label={t("loading")}
-                  width={cardWidth}
+                  width={skeletonWidth}
                   count={size === "form" ? 1 : 3}
                 />
               </YStack>
@@ -67,7 +74,7 @@ export function SessionLoadingScreen({ size = "wide", testID = "session-loading"
             </Column>
           </PageContainer>
         </PageScroll>
-      </SafeAreaView>
+      </SafeArea>
     </Screen>
   );
 }

@@ -6,13 +6,13 @@ import { describe, expect, it } from "vitest";
 /**
  * AD-7: a viewer-facing `Gift` read belongs in the gated wishlist read.
  * Story 2.6 adds a second `findMany` there for the owner's archive, and
- * `GiftStatusService` scans expiry candidates by status. Neither path is a
+ * The status adapter scans expiry candidates by status. Neither path is a
  * visibility bypass: the archive stays inside `readWishlist`, and the scan
  * writes `archivedAt` through the CAS, not a card.
  */
 const WISHLIST_READ = path.resolve(fileURLToPath(new URL("./wishlist-read.ts", import.meta.url)));
 const STATUS_SERVICE = path.resolve(
-  fileURLToPath(new URL("../domain/gift-status.ts", import.meta.url)),
+  fileURLToPath(new URL("../lib/gift-status-store.ts", import.meta.url)),
 );
 const SRC = path.resolve(path.dirname(WISHLIST_READ), "..");
 

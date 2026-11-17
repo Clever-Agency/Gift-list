@@ -24,6 +24,9 @@ function run(command, args, cwd) {
       // variable overrides a developer `.env` written for the Android emulator;
       // the post-export scan below is the second guard.
       EXPO_PUBLIC_API_BASE_URL: "",
+      // Same brand as the server-rendered pages: one CI variable feeds both
+      // sides (AD-24). Empty means the constant default in `packages/contracts`.
+      EXPO_PUBLIC_BRAND_NAME: process.env.BRAND_NAME ?? "",
     },
   });
   if (result.error) throw result.error;

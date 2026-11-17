@@ -72,7 +72,7 @@ describe("auth proxy", () => {
     }
   });
 
-  it("link-shape sends https /reset?token= and swallows a mailer failure", async () => {
+  it("link-shape sends loopback http /reset?token= and swallows a mailer failure", async () => {
     setAuthEnv();
     process.env.BRAND_NAME = "Paper";
     vi.resetModules();
@@ -88,8 +88,8 @@ describe("auth proxy", () => {
       },
     );
     const payload = send.mock.calls[0]?.[0] as { html: string; text: string; subject: string };
-    expect(payload.html).toContain("https://127.0.0.1:3000/reset?token=tok");
-    expect(payload.text).toContain("https://127.0.0.1:3000/reset?token=tok");
+    expect(payload.html).toContain("http://127.0.0.1:3000/reset?token=tok");
+    expect(payload.text).toContain("http://127.0.0.1:3000/reset?token=tok");
     expect(payload.html).not.toContain("/api/auth");
     expect(payload.subject).toBe("Сброс пароля — Paper");
 

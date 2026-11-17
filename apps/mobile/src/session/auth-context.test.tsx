@@ -26,6 +26,7 @@ const user: Me = {
   name: "Аня",
   nick: "anya",
   timeZone: "Europe/Minsk",
+  hideFromSearch: false,
 };
 
 const probe: { auth?: Auth } = {};

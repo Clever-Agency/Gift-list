@@ -1,14 +1,29 @@
 // @vitest-environment happy-dom
 import type { Me } from "@gift-list/contracts";
+import { breakpoints, spacing } from "@gift-list/ui";
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls } from "@/test/dom";
+import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
+import { pageGutter } from "@/ui/card-grid";
 import SettingsScreen from "../../app/(app)/settings";
 
+/**
+ * W12.16: the settings screen lays itself out with the Tamagui media clause
+ * `$page-gutter medium:$page-gutter-lg` instead of `useWindowDimensions` +
+ * `pageGutter(width)`. There is no card grid here, so the window width is never
+ * read in JS. Widths are checked against the CSS Tamagui actually generated (see
+ * `@/test/tamagui-css`), not against a browser layout.
+ */
+
+/** The counter proves the screen never asks React Native for the window width. */
+const dimensions = vi.hoisted(() => ({ calls: 0 }));
+
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
-const me = vi.hoisted(() => ({ updateNick: vi.fn() }));
+const me = vi.hoisted(() => ({ updateNick: vi.fn(), updateHideFromSearch: vi.fn() }));
+const blocks = vi.hoisted(() => ({ listBlocked: vi.fn(), unblockUser: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
@@ -21,8 +36,17 @@ const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => me);
+vi.mock("@/api/block", () => blocks);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  function useWindowDimensions() {
+    dimensions.calls += 1;
+    return actual.useWindowDimensions();
+  }
+  return { ...actual, useWindowDimensions };
+});
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
   const { dirname, join } = await import("node:path");
@@ -73,6 +97,8 @@ vi.mock("react-native-safe-area-context", async () => {
   return {
     SafeAreaView: ({ children }: { children?: React.ReactNode }) =>
       React.createElement("div", null, children),
+    // W12.23: the wide loading state reads the safe area for its window fallback.
+    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
   };
 });
 
@@ -84,6 +110,7 @@ const user: Me = {
   name: "Аня",
   nick: "anya",
   timeZone: "Europe/Minsk",
+  hideFromSearch: false,
 };
 
 type Auth = ReturnType<typeof useAuth>;
@@ -101,10 +128,10 @@ let root: Root;
 let container: HTMLElement;
 
 /** `/api/v1/me` answers with the session. */
-function signedIn() {
+function signedIn(account: Me = user) {
   api.apiRequest.mockImplementation((path: string) =>
     Promise.resolve(
-      path === "/api/v1/me" ? { ok: true, data: user } : { ok: true, data: { signedOut: true } },
+      path === "/api/v1/me" ? { ok: true, data: account } : { ok: true, data: { signedOut: true } },
     ),
   );
 }
@@ -135,6 +162,13 @@ async function type(label: string, value: string) {
   });
 }
 
+/** React listens to focus through the bubbling `focusout`. */
+async function blur(label: string) {
+  await act(async () => {
+    field(label).dispatchEvent(new Event("focusout", { bubbles: true }));
+  });
+}
+
 function button(label: string): HTMLElement | undefined {
   return controls(container).find((node) => (node.textContent ?? "").includes(label));
 }
@@ -144,6 +178,34 @@ async function press(label: string) {
   expect(target, `кнопка «${label}»`).toBeDefined();
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+/** Story 4.5: a press by the accessible name, e.g. «Разблокировать: Аня». */
+async function pressLabel(label: string) {
+  const target = controls(container).find((node) => node.getAttribute("aria-label") === label);
+  expect(target, `кнопка «${label}»`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
+/** The name and the @nick of a row, as the reader announces them together. */
+function blockedRow(nick: string): HTMLElement | null {
+  return container.querySelector<HTMLElement>(`[data-testid="blocked-row-${nick}"]`);
+}
+
+/** Story 3.5: the one switch of the screen (`role="switch"`). */
+function hideSwitch(): HTMLElement {
+  const node = container.querySelector<HTMLElement>('[role="switch"]');
+  expect(node, "переключатель «Не показывать в поиске»").not.toBeNull();
+  return node as HTMLElement;
+}
+
+async function flipSwitch() {
+  const node = hideSwitch();
+  await act(async () => {
+    node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 }
 
@@ -165,6 +227,7 @@ async function mount() {
 beforeEach(() => {
   vi.resetAllMocks();
   scrollIntoView.mockClear();
+  dimensions.calls = 0;
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
     configurable: true,
     value: scrollIntoView,
@@ -172,6 +235,10 @@ beforeEach(() => {
   delete probe.auth;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
+  blocks.listBlocked.mockResolvedValue({
+    ok: true,
+    page: { items: [], nextCursor: null, total: 0 },
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -223,7 +290,7 @@ describe("настройки: гейт сессии", () => {
 });
 
 describe("настройки: ник", () => {
-  it("показывает текущий ник и превью, а невалидный ник — правила", async () => {
+  it("показывает текущий ник и превью; длина становится ошибкой после blur", async () => {
     signedIn();
     await mount();
 
@@ -235,10 +302,44 @@ describe("настройки: ник", () => {
     expect(fieldText("Ник")).toContain("@new_nick");
 
     await type("Ник", "ab");
-    expect(fieldText("Ник")).toContain("3–24 символа: латиница, цифры, _");
+    expect(fieldText("Ник")).not.toContain("не короче");
+    await blur("Ник");
+    expect(fieldText("Ник")).toContain("Ник должен быть не короче 3 символов");
   });
 
-  it("ник не по правилам: показывает правила и не шлёт запрос", async () => {
+  it("кириллица во время ввода: причина под полем, превью скрыто", async () => {
+    signedIn();
+    await mount();
+
+    await type("Ник", "аня");
+
+    expect(fieldText("Ник")).toContain("Ник пишется латиницей — без русских букв");
+    expect(fieldText("Ник")).not.toContain("@");
+  });
+
+  it("пробел во время ввода: под полем причина, превью скрыто", async () => {
+    signedIn();
+    await mount();
+
+    await type("Ник", "an na");
+
+    expect(fieldText("Ник")).toContain("В нике не может быть пробелов");
+    expect(fieldText("Ник")).not.toContain("@");
+  });
+
+  it("запрещённый символ во время ввода: назван этот символ", async () => {
+    signedIn();
+    await mount();
+
+    await type("Ник", "an#a");
+
+    expect(fieldText("Ник")).toContain(
+      "Символ «#» нельзя использовать. Подойдут латинские буквы, цифры и _",
+    );
+    expect(fieldText("Ник")).not.toContain("@");
+  });
+
+  it("ник не по правилам: при сохранении показывает причину и не шлёт запрос", async () => {
     signedIn();
     await mount();
 
@@ -246,7 +347,7 @@ describe("настройки: ник", () => {
     await press("Сохранить");
 
     expect(me.updateNick).not.toHaveBeenCalled();
-    expect(fieldText("Ник")).toContain("3–24 символа: латиница, цифры, _");
+    expect(fieldText("Ник")).toContain("Ник должен быть не короче 3 символов");
   });
 
   it("текущий ник: «Это ваш текущий ник.» и запрос не уходит", async () => {
@@ -275,6 +376,24 @@ describe("настройки: ник", () => {
 
     expect(me.updateNick).toHaveBeenCalledWith("newnick");
     expect(fieldText("Ник")).toContain("Этот ник уже занят.");
+  });
+
+  it("413: причина показывается тостом, сырой текст сервера не виден", async () => {
+    signedIn();
+    me.updateNick.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+    await mount();
+
+    await type("Ник", "newnick");
+    await press("Сохранить");
+
+    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
+    expect(text()).not.toContain("Payload too large");
+    expect(field("Ник").value).toBe("newnick");
   });
 
   it("невалидный ник: фокус на поле и прокрутка к нему (UI5)", async () => {
@@ -349,6 +468,237 @@ describe("настройки: ник", () => {
   });
 });
 
+describe("настройки: скрыть из поиска", () => {
+  it("выключен по умолчанию; включение сразу шлёт PATCH и обновляет контекст", async () => {
+    signedIn();
+    const hidden = { ...user, hideFromSearch: true };
+    me.updateHideFromSearch.mockResolvedValue({ ok: true, data: hidden });
+    await mount();
+
+    const node = hideSwitch();
+    expect(node.getAttribute("aria-checked")).toBe("false");
+    expect(text()).toContain("Не показывать в поиске");
+    expect(text()).toContain("Прямые ссылки на профиль и вишлист по-прежнему работают.");
+
+    await flipSwitch();
+
+    expect(me.updateHideFromSearch).toHaveBeenCalledWith(true);
+    expect(hideSwitch().getAttribute("aria-checked")).toBe("true");
+    expect(probe.auth?.state).toEqual({ status: "ready", user: hidden });
+  });
+
+  it("исходное true приходит с /me; выключение шлёт false", async () => {
+    signedIn({ ...user, hideFromSearch: true });
+    const visible = { ...user, hideFromSearch: false };
+    me.updateHideFromSearch.mockResolvedValue({ ok: true, data: visible });
+    await mount();
+
+    expect(hideSwitch().getAttribute("aria-checked")).toBe("true");
+
+    await flipSwitch();
+
+    expect(me.updateHideFromSearch).toHaveBeenCalledWith(false);
+    expect(hideSwitch().getAttribute("aria-checked")).toBe("false");
+    expect(probe.auth?.state).toEqual({ status: "ready", user: visible });
+  });
+
+  it("пока PATCH идёт, переключатель недоступен и второй тап не шлёт второй запрос", async () => {
+    signedIn();
+    me.updateHideFromSearch.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    await flipSwitch();
+
+    expect(me.updateHideFromSearch).toHaveBeenCalledTimes(1);
+    expect(hideSwitch().getAttribute("aria-disabled")).toBe("true");
+
+    await act(async () => {
+      hideSwitch().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(me.updateHideFromSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("обрыв сети: флаг откатывается и показан тост", async () => {
+    signedIn();
+    me.updateHideFromSearch.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await flipSwitch();
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(hideSwitch().getAttribute("aria-checked")).toBe("false");
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+  });
+
+  it("401: сессия закончилась, вход с возвратом в настройки", async () => {
+    signedIn();
+    me.updateHideFromSearch.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    await mount();
+
+    await flipSwitch();
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/settings", reason: "session_expired" },
+    });
+  });
+});
+
+describe("настройки: заблокированные", () => {
+  /** `/me/blocks` answers with these rows; `nextCursor` is the opaque page cursor. */
+  function blockedServer(
+    items: { displayName: string; nick: string }[],
+    nextCursor: string | null = null,
+  ) {
+    blocks.listBlocked.mockResolvedValue({
+      ok: true,
+      page: { items, nextCursor, total: items.length },
+    });
+  }
+
+  it("список: имя, @ник и «Разблокировать», без меню ⋯", async () => {
+    signedIn();
+    blockedServer([
+      { displayName: "Аня", nick: "anya" },
+      { displayName: "Борис", nick: "boris" },
+    ]);
+    await mount();
+
+    const headings = Array.from(container.querySelectorAll("[role='heading']"));
+    const section = headings.find((node) => node.getAttribute("aria-level") === "2");
+    expect(section?.textContent).toBe("Заблокированные");
+    expect(blockedRow("anya")?.textContent).toContain("Аня");
+    expect(blockedRow("anya")?.textContent).toContain("@anya");
+    expect(blockedRow("boris")?.textContent).toContain("@boris");
+    expect(container.querySelector('[aria-label^="Действия"]')).toBeNull();
+    expect(
+      controls(container).filter(
+        (node) => node.getAttribute("aria-label") === "Разблокировать: Аня",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("пусто: «Вы никого не блокировали»", async () => {
+    signedIn();
+    await mount();
+
+    expect(text()).toContain("Вы никого не блокировали");
+    expect(container.querySelector('[data-testid="blocked-row-skeleton"]')).toBeNull();
+  });
+
+  it("разблокировать: строка исчезает сразу и приходит тост", async () => {
+    signedIn();
+    blockedServer([
+      { displayName: "Аня", nick: "anya" },
+      { displayName: "Борис", nick: "boris" },
+    ]);
+    blocks.unblockUser.mockResolvedValue({ ok: true, outcome: "UNBLOCKED" });
+    await mount();
+
+    await pressLabel("Разблокировать: Аня");
+
+    expect(blocks.unblockUser).toHaveBeenCalledWith("anya");
+    expect(blockedRow("anya")).toBeNull();
+    expect(blockedRow("boris")).not.toBeNull();
+    expect(text()).toContain("Аня разблокирован");
+  });
+
+  it("ошибка сети откатывает строку и показывает тост", async () => {
+    signedIn();
+    blockedServer([{ displayName: "Аня", nick: "anya" }]);
+    blocks.unblockUser.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await pressLabel("Разблокировать: Аня");
+
+    expect(blocks.unblockUser).toHaveBeenCalledTimes(1);
+    expect(blockedRow("anya")).not.toBeNull();
+    expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
+  });
+
+  it("повторная загрузка берёт список с сервера и не возвращает разблокированного", async () => {
+    signedIn();
+    blockedServer([
+      { displayName: "Аня", nick: "anya" },
+      { displayName: "Борис", nick: "boris" },
+    ]);
+    blocks.unblockUser.mockResolvedValue({ ok: true, outcome: "UNBLOCKED" });
+    await mount();
+
+    await pressLabel("Разблокировать: Аня");
+    expect(blockedRow("anya")).toBeNull();
+
+    // The server no longer lists Аня; a fresh screen reads the list again.
+    blockedServer([{ displayName: "Борис", nick: "boris" }]);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await mount();
+
+    expect(blocks.listBlocked).toHaveBeenCalledTimes(2);
+    expect(blockedRow("anya")).toBeNull();
+    expect(text()).not.toContain("Аня");
+    expect(blockedRow("boris")).not.toBeNull();
+  });
+
+  it("ошибка загрузки: текст и «Повторить» перезагружают список", async () => {
+    signedIn();
+    blocks.listBlocked.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    expect(text()).toContain("Не получилось загрузить. Проверьте сеть.");
+
+    blockedServer([{ displayName: "Аня", nick: "anya" }]);
+    await press("Повторить");
+
+    expect(blocks.listBlocked).toHaveBeenCalledTimes(2);
+    expect(blockedRow("anya")).not.toBeNull();
+  });
+
+  it("«Показать ещё» добавляет следующую страницу по курсору", async () => {
+    signedIn();
+    blocks.listBlocked.mockResolvedValueOnce({
+      ok: true,
+      page: { items: [{ displayName: "Аня", nick: "anya" }], nextCursor: "c1", total: 2 },
+    });
+    blocks.listBlocked.mockResolvedValueOnce({
+      ok: true,
+      page: { items: [{ displayName: "Борис", nick: "boris" }], nextCursor: null, total: 2 },
+    });
+    await mount();
+
+    await press("Показать ещё");
+
+    expect(blocks.listBlocked).toHaveBeenLastCalledWith("c1");
+    expect(blockedRow("anya")).not.toBeNull();
+    expect(blockedRow("boris")).not.toBeNull();
+    expect(button("Показать ещё")).toBeUndefined();
+  });
+
+  it("401 при разблокировке: сессия закончилась, вход с возвратом в настройки", async () => {
+    signedIn();
+    blockedServer([{ displayName: "Аня", nick: "anya" }]);
+    blocks.unblockUser.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    await mount();
+
+    await pressLabel("Разблокировать: Аня");
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/settings", reason: "session_expired" },
+    });
+  });
+});
+
 describe("настройки: назад", () => {
   it("с историей возвращает назад", async () => {
     signedIn();
@@ -370,5 +720,111 @@ describe("настройки: назад", () => {
 
     expect(navigation.back).not.toHaveBeenCalled();
     expect(navigation.replace).toHaveBeenCalledWith("/");
+  });
+});
+
+/** The one `GLColumn` of the page: the column whose padding is the page gutter. */
+function column(): HTMLElement {
+  const node = container.querySelector<HTMLElement>('[name="GLColumn"]');
+  expect(node, "колонка страницы").not.toBeNull();
+  return node as HTMLElement;
+}
+
+/**
+ * Mounts the settings screen only once the session is ready. The shared loading
+ * skeleton is a screen of its own (W12.15) and still reads the window width, so it
+ * must be out of the tree when the width counter is read.
+ */
+async function mountReady() {
+  function SignedIn() {
+    const auth = useAuth();
+    return auth.state.status === "ready" ? <SettingsScreen /> : null;
+  }
+  await act(async () => {
+    root.render(
+      <AuthProvider>
+        <SignedIn />
+      </AuthProvider>,
+    );
+  });
+}
+
+describe("W12.16: настройки на медиа-пропсах", () => {
+  it("ширина окна из JS не читается", async () => {
+    signedIn();
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="session-loading"]')).toBeNull();
+    expect(dimensions.calls).toBe(0);
+  });
+
+  it("счётчик видит экран, который ширину читает (контроль)", async () => {
+    // A probe through the same import the screen used to call: a zero above means
+    // the mock is in place, not that the spy is broken.
+    const { useWindowDimensions } = await import("react-native");
+    function Probe() {
+      useWindowDimensions();
+      return null;
+    }
+    await act(async () => root.render(<Probe />));
+
+    expect(dimensions.calls).toBeGreaterThan(0);
+  });
+
+  it.each([360, 600, 1024, 1280])("ширина %ipx: отступ как у pageGutter", async (width) => {
+    signedIn();
+    await mountReady();
+
+    expect(paintedSpace(column(), "padding-inline", width)).toBe(pageGutter(width));
+  });
+
+  it("граница одна и та же: 16 до bp-medium, 24 от bp-medium", async () => {
+    signedIn();
+    await mountReady();
+    const element = column();
+
+    expect(paintedSpace(element, "padding-inline", 360)).toBe(spacing["page-gutter"]);
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium - 1)).toBe(
+      spacing["page-gutter"],
+    );
+    expect(paintedSpace(element, "padding-inline", breakpoints.medium)).toBe(
+      spacing["page-gutter-lg"],
+    );
+    expect(paintedSpace(element, "padding-inline", 1280)).toBe(spacing["page-gutter-lg"]);
+  });
+
+  it("меняется только на одной медиа-точке, без лишних правил", async () => {
+    signedIn();
+    await mountReady();
+    const gutterRules = declarationsFor(column(), "padding-inline");
+
+    expect(gutterRules).toHaveLength(2);
+    const conditions = gutterRules.map((rule) => rule.minWidth);
+    expect(conditions).toContain(null);
+    expect(conditions).toContain(breakpoints.medium);
+  });
+
+  it("экран настроек отрисован: заголовок, поле ника и сохранение на месте", async () => {
+    signedIn();
+    await mountReady();
+
+    expect(container.querySelector('[data-testid="settings-page"]')).not.toBeNull();
+    const heading = container.querySelector("[role='heading']");
+    expect(heading?.getAttribute("aria-level")).toBe("1");
+    expect(heading?.textContent).toBe("Настройки");
+    expect(field("Ник").value).toBe("anya");
+    expect(button("Сохранить")).toBeDefined();
+    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  it("отступы контента — токены $2/$section-gap с прежними px", async () => {
+    signedIn();
+    await mountReady();
+    const body = findByPaint(container, "padding-top", "2");
+
+    expect(body, "контент настроек").toBeDefined();
+    expect(paintedValue(body as Element, "padding-top", 360)).toBe("var(--t-space-2)");
+    expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
+    expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
   });
 });

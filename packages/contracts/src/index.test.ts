@@ -74,6 +74,13 @@ describe("actionResultSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  /** CLE-82/S23.2: an archived or closed own wish is read-only with a machine-readable reason. */
+  it.each(["GIFT_ARCHIVED", "GIFT_CLOSED"] as const)("accepts the %s read-only reason", (reason) => {
+    expect(schema.safeParse({ ok: false, code: "VALIDATION", message: "Invalid input", reason }).success).toBe(
+      true,
+    );
+  });
+
   it("accepts params of primitives and rejects nested values", () => {
     const base = { ok: false, code: "VALIDATION", message: "?" };
     expect(schema.safeParse({ ...base, params: { max: 3, until: "2026-11-01", f: false, n: null } }).success).toBe(true);
@@ -233,6 +240,18 @@ describe("listDataSchema", () => {
     );
   });
 
+  it("accepts the viewer's profile-only subscription flag", () => {
+    expect(
+      listDataSchema.safeParse({ access: "gifts", gifts: [], subscribed: true }).success,
+    ).toBe(true);
+    expect(
+      listDataSchema.safeParse({ access: "gifts", gifts: [], subscribed: false }).success,
+    ).toBe(true);
+    expect(listDataSchema.safeParse({ access: "gifts", gifts: [], subscribed: "yes" }).success).toBe(
+      false,
+    );
+  });
+
   it("rejects keys outside the list data and unknown access values", () => {
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [], total: 0 }).success).toBe(false);
     expect(listDataSchema.safeParse({ access: "hidden", gifts: [] }).success).toBe(false);
@@ -240,10 +259,33 @@ describe("listDataSchema", () => {
 });
 
 describe("meSchema", () => {
-  it("is strict", () => {
-    const me = { id: "u1", email: "a@example.com", name: "Анна", nick: "anna", timeZone: null };
+  it("is strict and carries the search visibility flag", () => {
+    const me = {
+      id: "u1",
+      email: "a@example.com",
+      name: "Анна",
+      nick: "anna",
+      timeZone: null,
+      hideFromSearch: false,
+    };
     expect(meSchema.safeParse(me).success).toBe(true);
-    expect(meSchema.safeParse({ ...me, timeZone: "Europe/Minsk" }).success).toBe(true);
-    expect(meSchema.safeParse({ ...me, hideFromSearch: true }).success).toBe(false);
+    expect(meSchema.safeParse({ ...me, timeZone: "Europe/Minsk", hideFromSearch: true }).success).toBe(
+      true,
+    );
+    expect(meSchema.safeParse({ ...me, hideFromSearch: "true" }).success).toBe(false);
+    expect(meSchema.parse(me)).not.toHaveProperty("gifts");
+    expect(meSchema.safeParse({ ...me, emailVerified: true }).success).toBe(false);
+  });
+
+  it("requires hideFromSearch, so a client never guesses the switch state", () => {
+    expect(
+      meSchema.safeParse({
+        id: "u1",
+        email: "a@example.com",
+        name: "Анна",
+        nick: "anna",
+        timeZone: null,
+      }).success,
+    ).toBe(false);
   });
 });

@@ -38,6 +38,7 @@ const row = {
   nick: "anna",
   nickNormalized: "anna",
   timeZone: null as string | null,
+  hideFromSearch: false,
 };
 
 beforeEach(() => {
@@ -87,6 +88,7 @@ describe("updateNick", () => {
         name: "Анна",
         nick: "newnick",
         timeZone: null,
+        hideFromSearch: false,
       },
     });
   });
@@ -120,6 +122,7 @@ describe("updateNick", () => {
         name: "Анна",
         nick: "anna",
         timeZone: null,
+        hideFromSearch: false,
       },
     });
     expect(findFirst).not.toHaveBeenCalled();

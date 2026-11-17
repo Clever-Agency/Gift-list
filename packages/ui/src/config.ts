@@ -130,6 +130,10 @@ export function createGiftListConfig(families: FontFamilies) {
       medium: { minWidth: breakpoints.medium },
       expanded: { minWidth: breakpoints.expanded },
       wide: { minWidth: breakpoints.wide },
+      // «Уменьшить движение» (DESIGN.md → Движение): web reads
+      // `prefers-reduced-motion: reduce`, a phone reads
+      // `AccessibilityInfo.isReduceMotionEnabled` through the Tamagui driver.
+      reduce: { prefersReducedMotion: "reduce" },
     },
     settings: { defaultFont: "body" },
   });

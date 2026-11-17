@@ -1,10 +1,14 @@
-import { styled } from "@tamagui/core";
+import { isWeb, styled } from "@tamagui/core";
 import { Input as BehaviorInput, TextArea as BehaviorTextArea } from "@tamagui/input";
-import { XStack, YStack } from "@tamagui/stacks";
+import { YStack } from "@tamagui/stacks";
 import { forwardRef, useId, useState, type ComponentProps, type ComponentRef } from "react";
+import { a11yHintProps } from "./a11y-hint";
 import { fontFor } from "./font-style";
+import { Close, Eye, EyeOff, Search } from "./icons";
+import { passwordToggleA11yProps } from "./password-toggle-a11y";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
+import { colors, spacing } from "./tokens";
 
 const inputSkin = {
   ...fontFor("body"),
@@ -66,6 +70,28 @@ export type TextFieldProps = {
 
 export type FieldInputRef = ComponentRef<typeof InputFrame>;
 
+/**
+ * React Native names the keyboard's action key `returnKeyType`; a browser reads
+ * the same hint as `enterKeyHint`. The web half of Tamagui's input drops the
+ * native name, so the field passes the browser spelling next to it — the phone
+ * half maps `enterKeyHint` back when `returnKeyType` is absent.
+ */
+const ENTER_KEY_HINTS = {
+  done: "done",
+  enter: "enter",
+  go: "go",
+  next: "next",
+  previous: "previous",
+  search: "search",
+  send: "send",
+} as const;
+
+function withEnterKeyHint(input: TextFieldInputProps | undefined): TextFieldInputProps | undefined {
+  if (!input || input.enterKeyHint !== undefined || !input.returnKeyType) return input;
+  const hint = ENTER_KEY_HINTS[input.returnKeyType as keyof typeof ENTER_KEY_HINTS];
+  return hint ? { ...input, enterKeyHint: hint } : input;
+}
+
 type FieldShellProps = {
   id: string;
   label: string;
@@ -117,7 +143,7 @@ export const TextField = forwardRef<FieldInputRef, TextFieldProps>(function Text
   return (
     <FieldShell id={id} label={label} error={error} hint={hint}>
       <Control
-        {...(input as object)}
+        {...(withEnterKeyHint(input) as object)}
         ref={ref as never}
         id={id}
         value={value}
@@ -125,8 +151,10 @@ export const TextField = forwardRef<FieldInputRef, TextFieldProps>(function Text
         invalid={Boolean(error)}
         aria-label={label}
         aria-invalid={error ? true : undefined}
-        aria-describedby={described ? `${id}-description` : undefined}
-        accessibilityHint={described}
+        {...a11yHintProps({
+          hint: described,
+          describedBy: described ? `${id}-description` : undefined,
+        })}
         {...(multiline ? { rows: rows ?? 3, multiline: true } : null)}
       />
     </FieldShell>
@@ -136,13 +164,20 @@ export const TextField = forwardRef<FieldInputRef, TextFieldProps>(function Text
 TextField.displayName = "TextField";
 
 export type PasswordFieldProps = Omit<TextFieldProps, "multiline" | "rows"> & {
-  /** The reveal button's text and name, e.g. «Показать». */
+  /**
+   * The reveal toggle's accessible name, e.g. «Показать пароль». The button shows
+   * only an icon and keeps this name in both states; the state is `aria-pressed`
+   * on the web and `accessibilityState.checked` on the phone.
+   */
   showLabel: string;
 };
 
 /**
- * `TextField` that hides its text, with a button to reveal it. The button reports
- * its state with `aria-pressed`.
+ * `TextField` that hides its text, with an icon-only button to reveal it
+ * (`DESIGN.md` → «Поля входа»): the button sits inside the field on the right,
+ * its name is `showLabel` and its state is `aria-pressed` on the web,
+ * `accessibilityState.checked` on the phone, so the visible words are not
+ * needed. A hidden password shows `Eye`, a revealed one `EyeOff`.
  */
 export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
   function PasswordField({ label, value, onChangeText, error, hint, showLabel, input }, ref) {
@@ -154,43 +189,148 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
       setVisible((current) => !current);
     }
 
+    // In a browser a press on a focusable element moves focus (and the caret) out
+    // of the input; the toggle types nothing, so the field keeps both.
+    function keepFieldFocus(event: { preventDefault: () => void }) {
+      event.preventDefault();
+    }
+
     return (
       <FieldShell id={id} label={label} error={error} hint={hint}>
-        <XStack alignItems="center" gap="$2">
+        <YStack position="relative" justifyContent="center">
           <InputFrame
-            {...(input as object)}
+            {...(withEnterKeyHint(input) as object)}
             ref={ref as never}
             id={id}
-            flex={1}
+            width="100%"
             value={value}
             onChangeText={onChangeText}
             secureTextEntry={!visible}
             type={visible ? "text" : "password"}
+            // The text never runs under the toggle: its width is the field's right inset.
+            paddingRight={spacing["touch-target"]}
             invalid={Boolean(error)}
             aria-label={label}
             aria-invalid={error ? true : undefined}
-            aria-describedby={described ? `${id}-description` : undefined}
-            accessibilityHint={described}
+            {...a11yHintProps({
+              hint: described,
+              describedBy: described ? `${id}-description` : undefined,
+            })}
           />
           <Pressable
-            role="button"
+            {...passwordToggleA11yProps(visible)}
             aria-label={showLabel}
-            aria-pressed={visible}
             onPress={handleToggleVisibility}
-            minHeight="$touch-target"
-            minWidth="$touch-target"
+            onMouseDown={isWeb ? keepFieldFocus : undefined}
+            position="absolute"
+            right={0}
+            top={0}
+            bottom={0}
+            width="$touch-target"
             alignItems="center"
             justifyContent="center"
-            paddingHorizontal="$2"
+            color="$foreground"
           >
-            <Text kind="caption" tone="primary">
-              {showLabel}
-            </Text>
+            {visible ? (
+              <EyeOff size={spacing["icon-inline"]} />
+            ) : (
+              <Eye size={spacing["icon-inline"]} />
+            )}
           </Pressable>
-        </XStack>
+        </YStack>
       </FieldShell>
     );
   },
 );
 
 PasswordField.displayName = "PasswordField";
+
+export type SearchFieldProps = {
+  /** The accessible name of the field; the visible copy is the placeholder. */
+  label: string;
+  placeholder: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  /** The accessible name of the clear (×) button, e.g. «Очистить». */
+  clearLabel: string;
+  /** Everything else of the input: `maxLength`, `autoCapitalize`, `onSubmitEditing`… */
+  input?: TextFieldInputProps;
+  testID?: string;
+};
+
+/**
+ * `DESIGN.md` → Мелкие элементы: SearchField — a field with a magnifier and the
+ * clear (×) button. Both sit in 44×44 touch zones inside the control, so the
+ * text never runs under them. The clear button appears only when there is
+ * something to clear; it presses with Enter/Space and returns focus to the input.
+ */
+export const SearchField = forwardRef<FieldInputRef, SearchFieldProps>(function SearchField(
+  { label, placeholder, value, onChangeText, clearLabel, input, testID },
+  ref,
+) {
+  const id = useId();
+  const canClear = value.length > 0;
+
+  function clear() {
+    onChangeText("");
+  }
+
+  // A browser press on the button would move focus out of the field; clearing
+  // types nothing, so the caret stays where the next character belongs.
+  function keepFieldFocus(event: { preventDefault: () => void }) {
+    event.preventDefault();
+  }
+
+  return (
+    <YStack gap="$1">
+      <YStack position="relative" justifyContent="center">
+        <InputFrame
+          {...(input as object)}
+          ref={ref as never}
+          id={id}
+          testID={testID}
+          width="100%"
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          // The icons own the field's edges: the text starts after the magnifier
+          // and ends before the clear button.
+          paddingLeft={spacing["touch-target"]}
+          paddingRight={canClear ? spacing["touch-target"] : undefined}
+          aria-label={label}
+        />
+        <YStack
+          position="absolute"
+          left={0}
+          top={0}
+          bottom={0}
+          width="$touch-target"
+          alignItems="center"
+          justifyContent="center"
+          pointerEvents="none"
+        >
+          <Search size={spacing["icon-inline"]} color={colors["muted-foreground"]} />
+        </YStack>
+        {canClear ? (
+          <Pressable
+            aria-label={clearLabel}
+            onPress={clear}
+            onMouseDown={isWeb ? keepFieldFocus : undefined}
+            position="absolute"
+            right={0}
+            top={0}
+            bottom={0}
+            width="$touch-target"
+            alignItems="center"
+            justifyContent="center"
+            color="$foreground"
+          >
+            <Close size={spacing["icon-inline"]} color={colors.foreground} />
+          </Pressable>
+        ) : null}
+      </YStack>
+    </YStack>
+  );
+});
+
+SearchField.displayName = "SearchField";

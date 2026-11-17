@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spacing } from "@gift-list/ui";
-import { cardGrid, pageGutter } from "@/ui/card-grid";
+import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
 
 const gap = spacing["grid-gap"];
 
@@ -93,3 +93,57 @@ describe("cardGrid", () => {
     }
   });
 });
+
+/**
+ * W12.23: on the web the grid takes its numbers from the measured content area, not
+ * from the window. The boundaries are the ones the coordinator measured in a browser:
+ * a 600 px window with a classic ~15 px scrollbar leaves a 585 px column, so the cards
+ * get 585 − 2·24 = 537 px; the same window without a scrollbar leaves 552 px.
+ */
+describe("cardGridForContent", () => {
+  it.each([
+    // Content width → what the cards get from it (gap 16, card-min 280).
+    { content: 328, columns: 1 }, // 360 window, 16 px gutter
+    { content: 537, columns: 1 }, // 600 window with a scrollbar: 585 − 2·24
+    { content: 552, columns: 1 }, // 600 window, no scrollbar: 600 − 2·24
+    { content: 575, columns: 1 }, // one px under two cards + a gap
+    { content: 576, columns: 2 }, // two cards at `card-min` and one gap
+    { content: 976, columns: 3 }, // 1024 window − 2·24
+    { content: 1072, columns: 3 }, // 1280 window capped at max-wide − 2·24
+  ])(
+    "$content px: $columns колонка(и), ряд не шире области контента",
+    ({ content, columns }) => {
+      const grid = cardGridForContent(content);
+
+      expect(grid.columns).toBe(columns);
+      expect(grid.cardWidth).toBeCloseTo((content - gap * (columns - 1)) / columns, 10);
+      expect(grid.cardWidth * grid.columns + gap * (grid.columns - 1)).toBeLessThanOrEqual(
+        content + 1e-9,
+      );
+      // Every card but the one-column case still honors the design minimum.
+      if (columns > 1) expect(grid.cardWidth).toBeGreaterThanOrEqual(spacing["card-min"]);
+    },
+  );
+
+  it("narrows the single card instead of overflowing when the area is tiny", () => {
+    expect(cardGridForContent(200)).toEqual({ columns: 1, cardWidth: 200 });
+    expect(cardGridForContent(0)).toEqual({ columns: 1, cardWidth: 0 });
+    expect(cardGridForContent(-10)).toEqual({ columns: 1, cardWidth: 0 });
+  });
+
+  /**
+   * The window-based helper stays the source of the phone's numbers and of the web's
+   * first frame: it only derives the content width and hands it to the same math, so
+   * the two can never disagree.
+   */
+  it("is the same math as `cardGrid`: only the source of the width differs", () => {
+    for (let windowWidth = 280; windowWidth <= 1600; windowWidth += 20) {
+      for (const inset of [undefined, { left: 44, right: 44 }, { left: 24, right: 0 }]) {
+        expect(cardGridForContent(contentWidth(windowWidth, inset))).toEqual(
+          cardGrid(windowWidth, inset),
+        );
+      }
+    }
+  });
+});
+

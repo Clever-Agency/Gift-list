@@ -16,20 +16,26 @@ export { createGiftListConfig, type FontFamilies, type GiftListConfig } from "./
 export { GiftListProvider, type GiftListProviderProps } from "./provider";
 
 export { Column, PageContainer, Screen, View, XStack, YStack, ZStack } from "./layout";
+export { SafeArea } from "./safe-area";
+export type { SafeAreaProps } from "./safe-area.types";
 export { PageScroll, type PageScrollProps } from "./page-scroll";
 export { PageFooter, type PageFooterProps } from "./page-footer";
 export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./text";
 export { ScrollView, type ScrollViewProps } from "./scroll";
-export { Pressable, focusRing, type PressableProps } from "./pressable";
+export { focusRing } from "./focus-ring";
+export { Pressable, type PressableProps } from "./pressable";
+export { Switch, type SwitchProps } from "./switch";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
 export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";
 export { DateField, type DateFieldProps } from "./date-field";
 export {
   PasswordField,
+  SearchField,
   TextField,
   type FieldInputRef,
   type PasswordFieldProps,
+  type SearchFieldProps,
   type TextFieldInputProps,
   type TextFieldProps,
 } from "./text-field";
@@ -54,9 +60,22 @@ export {
 export { WishCard, type WishCardProps } from "./wish-card";
 export { Skeleton, WishCardSkeleton, type WishCardSkeletonProps } from "./skeleton";
 export { LoadingCards, type LoadingCardsProps } from "./loading-cards";
+export {
+  PersonRow,
+  PersonRowSkeleton,
+  type PersonRowProps,
+  type PersonRowSkeletonProps,
+} from "./person-row";
+export {
+  OverflowMenu,
+  type OverflowMenuItem,
+  type OverflowMenuProps,
+} from "./overflow-menu";
+export { SegmentTabs, type SegmentTab, type SegmentTabsProps } from "./segment-tabs";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
+export { useReduceMotion } from "./use-reduce";
 export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";

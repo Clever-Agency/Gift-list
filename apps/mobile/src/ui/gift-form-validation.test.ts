@@ -1,30 +1,41 @@
+import { GIFT_DESCRIPTION_MAX, GIFT_LINK_URL_MAX, GIFT_TITLE_MAX, textLength } from "@gift-list/contracts";
 import { describe, expect, it } from "vitest";
 import {
-  DESCRIPTION_MAX,
-  TITLE_MAX,
   fieldErrorCopy,
   firstErrorField,
   isHttpUrl,
   serverErrorField,
   tagErrorKey,
   validateGiftForm,
+  type GiftFormBaseline,
 } from "@/ui/gift-form-validation";
+
+/** The three text fields of a valid form; each test overrides what it checks. */
+function form(overrides: Partial<{ title: string; description: string; link: string; price: string }> = {}) {
+  return { title: "Наушники", description: "", link: "", price: "", ...overrides };
+}
+
+/** A URL of exactly `length` code points: the prefix is part of it. */
+function linkOfLength(length: number): string {
+  const prefix = "https://example.com/";
+  return `${prefix}${"a".repeat(length - prefix.length)}`;
+}
 
 describe("validateGiftForm", () => {
   it("accepts empty optional fields", () => {
-    expect(validateGiftForm({ title: "Наушники", link: "", price: "" })).toEqual({});
-    expect(validateGiftForm({ title: "Наушники", link: "   ", price: "250,50" })).toEqual({});
+    expect(validateGiftForm(form())).toEqual({});
+    expect(validateGiftForm(form({ link: "   ", price: "250,50" }))).toEqual({});
   });
 
   it("requires a title that is not only spaces", () => {
-    expect(validateGiftForm({ title: "", link: "", price: "" })).toEqual({ title: true });
-    expect(validateGiftForm({ title: "  \n ", link: "", price: "" })).toEqual({ title: true });
+    expect(validateGiftForm(form({ title: "" }))).toEqual({ title: true });
+    expect(validateGiftForm(form({ title: "  \n " }))).toEqual({ title: true });
   });
 
   it("rejects a price the parser cannot read", () => {
-    expect(validateGiftForm({ title: "t", link: "", price: "abc" })).toEqual({ price: true });
-    expect(validateGiftForm({ title: "t", link: "", price: "12.345" })).toEqual({ price: true });
-    expect(validateGiftForm({ title: "t", link: "", price: "-5" })).toEqual({ price: true });
+    expect(validateGiftForm(form({ price: "abc" }))).toEqual({ price: true });
+    expect(validateGiftForm(form({ price: "12.345" }))).toEqual({ price: true });
+    expect(validateGiftForm(form({ price: "-5" }))).toEqual({ price: true });
   });
 
   it("rejects a link that is not an absolute http(s) URL", () => {
@@ -35,15 +46,114 @@ describe("validateGiftForm", () => {
       "https:/example.com",
       "https://",
     ]) {
-      expect(validateGiftForm({ title: "t", link, price: "" })).toEqual({ link: true });
+      expect(validateGiftForm(form({ link }))).toEqual({ link: true });
     }
   });
 
   it("reports every invalid field at once", () => {
-    expect(validateGiftForm({ title: " ", link: "nope", price: "x" })).toEqual({
+    expect(
+      validateGiftForm(form({ title: " ", link: "nope", price: "x", description: "a".repeat(GIFT_DESCRIPTION_MAX + 1) })),
+    ).toEqual({
       title: true,
+      description: true,
       link: true,
       price: true,
+    });
+  });
+
+  /**
+   * The caps of `giftInputSchema` are counted in code points, so the form counts
+   * the same unit: `String#length` (and every `maxLength`) would measure emoji as
+   * two and reject a value the server stores.
+   */
+  describe("длины в кодовых точках", () => {
+    it("название: 120 принимается, 121 — нет (кириллица), 119 — тоже можно", () => {
+      expect(validateGiftForm(form({ title: "я".repeat(GIFT_TITLE_MAX - 1) }))).toEqual({});
+      expect(validateGiftForm(form({ title: "я".repeat(GIFT_TITLE_MAX) }))).toEqual({});
+      expect(validateGiftForm(form({ title: "я".repeat(GIFT_TITLE_MAX + 1) }))).toEqual({
+        title: true,
+      });
+    });
+
+    it("название: 120 эмодзи (240 UTF-16 units) принимаются, 121 — нет", () => {
+      const emoji = "🎁";
+      expect(emoji.length).toBe(2);
+      const accepted = emoji.repeat(GIFT_TITLE_MAX);
+      expect(accepted.length).toBe(GIFT_TITLE_MAX * 2);
+      expect(validateGiftForm(form({ title: accepted }))).toEqual({});
+      expect(validateGiftForm(form({ title: emoji.repeat(GIFT_TITLE_MAX + 1) }))).toEqual({
+        title: true,
+      });
+    });
+
+    it("название: combining-знаки считаются по кодовым точкам, как в схеме", () => {
+      const pair = "и\u0306";
+      expect(textLength(pair)).toBe(2);
+      expect(validateGiftForm(form({ title: pair.repeat(GIFT_TITLE_MAX / 2) }))).toEqual({});
+      expect(validateGiftForm(form({ title: pair.repeat(GIFT_TITLE_MAX / 2 + 1) }))).toEqual({
+        title: true,
+      });
+    });
+
+    it("название: внешние пробелы не съедают лимит (trim до проверки)", () => {
+      expect(validateGiftForm(form({ title: `  ${"я".repeat(GIFT_TITLE_MAX)}  ` }))).toEqual({});
+    });
+
+    it("описание: 2000 принимается, 2001 — нет; 2000 эмодзи тоже принимаются", () => {
+      expect(validateGiftForm(form({ description: "я".repeat(GIFT_DESCRIPTION_MAX - 1) }))).toEqual({});
+      expect(validateGiftForm(form({ description: "я".repeat(GIFT_DESCRIPTION_MAX) }))).toEqual({});
+      expect(validateGiftForm(form({ description: "я".repeat(GIFT_DESCRIPTION_MAX + 1) }))).toEqual({
+        description: true,
+      });
+      expect(
+        validateGiftForm(form({ description: "🎁".repeat(GIFT_DESCRIPTION_MAX) })),
+      ).toEqual({});
+    });
+
+    it("ссылка: 2048 кодовых точек принимается, 2049 — нет", () => {
+      expect(validateGiftForm(form({ link: linkOfLength(GIFT_LINK_URL_MAX - 1) }))).toEqual({});
+      expect(validateGiftForm(form({ link: linkOfLength(GIFT_LINK_URL_MAX) }))).toEqual({});
+      expect(validateGiftForm(form({ link: linkOfLength(GIFT_LINK_URL_MAX + 1) }))).toEqual({
+        link: true,
+      });
+      // The same text in UTF-16 units is longer: a `maxLength` would have cut it.
+      const emojiLink = `https://example.com/${"🎁".repeat(2028)}`;
+      expect(textLength(emojiLink)).toBe(GIFT_LINK_URL_MAX);
+      expect(emojiLink.length).toBeGreaterThan(GIFT_LINK_URL_MAX);
+      expect(validateGiftForm(form({ link: emojiLink }))).toEqual({});
+    });
+  });
+
+  /**
+   * Legacy: a stored value longer than the current cap cannot appear through the
+   * API, but it is not impossible in the database. An untouched value must not
+   * block the owner from changing another field; a changed one is reported.
+   */
+  describe("сохранённое значение длиннее предела", () => {
+    const baseline: GiftFormBaseline = {
+      title: "я".repeat(GIFT_TITLE_MAX + 10),
+      description: "я".repeat(GIFT_DESCRIPTION_MAX + 10),
+      link: linkOfLength(GIFT_LINK_URL_MAX + 10),
+    };
+
+    it("нетронутое значение не блокирует отправку", () => {
+      expect(validateGiftForm(form(baseline), baseline)).toEqual({});
+    });
+
+    it("изменённое значение проверяется как обычно", () => {
+      expect(
+        validateGiftForm(form({ ...baseline, title: `${baseline.title}я` }), baseline),
+      ).toEqual({ title: true });
+      expect(
+        validateGiftForm(
+          form({ title: "Книга", description: `${baseline.description}я`, link: baseline.link }),
+          baseline,
+        ),
+      ).toEqual({ description: true });
+    });
+
+    it("значение короче предела проверяется и без baseline", () => {
+      expect(validateGiftForm(form(), baseline)).toEqual({});
     });
   });
 });
@@ -70,6 +180,7 @@ describe("firstErrorField", () => {
     expect(firstErrorField({ visibility: true, price: true, link: true })).toBe("link");
     expect(firstErrorField({ quantity: true, visibility: true })).toBe("visibility");
     expect(firstErrorField({ quantity: true })).toBe("quantity");
+    expect(firstErrorField({ link: true, description: true })).toBe("description");
   });
 });
 
@@ -136,7 +247,7 @@ describe("fieldErrorCopy", () => {
     expect(fieldErrorCopy("description")).toEqual({
       catalog: "giftForm",
       key: "error.descriptionTooLong",
-      values: { max: DESCRIPTION_MAX },
+      values: { max: GIFT_DESCRIPTION_MAX },
     });
     expect(fieldErrorCopy("price")).toEqual({ catalog: "giftForm", key: "error.priceInvalid" });
     expect(fieldErrorCopy("link")).toEqual({ catalog: "giftForm", key: "error.linkInvalid" });
@@ -183,20 +294,55 @@ describe("fieldErrorCopy", () => {
   });
 
   it("reads a server title error as too long only past the title cap", () => {
-    const tooLong = { catalog: "giftForm", key: "error.titleTooLong", values: { max: TITLE_MAX } };
+    const tooLong = {
+      catalog: "giftForm",
+      key: "error.titleTooLong",
+      values: { max: GIFT_TITLE_MAX },
+    };
     const required = { catalog: "giftForm", key: "error.titleRequired" };
 
-    expect(fieldErrorCopy("title", { title: "я".repeat(TITLE_MAX + 1) })).toEqual(tooLong);
+    expect(fieldErrorCopy("title", { title: "я".repeat(GIFT_TITLE_MAX + 1) })).toEqual(tooLong);
     // Trimmed first: outer spaces do not make a short title too long.
-    expect(fieldErrorCopy("title", { title: `  ${"я".repeat(TITLE_MAX)}  ` })).toEqual(required);
+    expect(fieldErrorCopy("title", { title: `  ${"я".repeat(GIFT_TITLE_MAX)}  ` })).toEqual(required);
     expect(fieldErrorCopy("title", { title: "" })).toEqual(required);
     expect(fieldErrorCopy("title", {})).toEqual(required);
   });
 
-  it("keeps the other fields independent of the title value", () => {
-    expect(fieldErrorCopy("price", { title: "я".repeat(TITLE_MAX + 1) })).toEqual({
+  it("counts a title in code points, so 120 emoji are not too long", () => {
+    expect(fieldErrorCopy("title", { title: "🎁".repeat(GIFT_TITLE_MAX) })).toEqual({
       catalog: "giftForm",
-      key: "error.priceInvalid",
+      key: "error.titleRequired",
     });
+    expect(fieldErrorCopy("title", { title: "🎁".repeat(GIFT_TITLE_MAX + 1) })).toEqual({
+      catalog: "giftForm",
+      key: "error.titleTooLong",
+      values: { max: GIFT_TITLE_MAX },
+    });
+  });
+
+  it("words a server link error as too long past the cap, invalid otherwise", () => {
+    const tooLong = {
+      catalog: "giftForm",
+      key: "error.linkTooLong",
+      values: { max: GIFT_LINK_URL_MAX },
+    };
+    expect(fieldErrorCopy("link", { link: linkOfLength(GIFT_LINK_URL_MAX + 1) })).toEqual(tooLong);
+    expect(fieldErrorCopy("link", { link: linkOfLength(GIFT_LINK_URL_MAX) })).toEqual({
+      catalog: "giftForm",
+      key: "error.linkInvalid",
+    });
+    expect(fieldErrorCopy("link", { link: "example.com" })).toEqual({
+      catalog: "giftForm",
+      key: "error.linkInvalid",
+    });
+  });
+
+  it("keeps the other fields independent of the title and link values", () => {
+    expect(
+      fieldErrorCopy("price", {
+        title: "я".repeat(GIFT_TITLE_MAX + 1),
+        link: linkOfLength(GIFT_LINK_URL_MAX + 1),
+      }),
+    ).toEqual({ catalog: "giftForm", key: "error.priceInvalid" });
   });
 });

@@ -17,15 +17,14 @@ describe("/ui-check", () => {
     vi.unstubAllEnvs();
   });
 
-  it("HTML первого ответа содержит карточки, кнопки и CSS Tamagui", () => {
+  it("HTML первого ответа содержит контроль и CSS темы Tamagui", () => {
     const html = renderToString(
       <GiftListProvider config={config}>
         <UiCheck />
       </GiftListProvider>,
     );
-    expect(html).toContain("Плед");
-    expect(html).toContain("Книга");
-    expect(html).toContain("Открыть Dialog");
+    expect(html).toContain("Кнопка проверки");
+    expect(html).toContain("Открыт");
     expect(html).toContain("<style");
     expect(config.getNewCSS()).toContain("--c-primary");
     expect(config.getCSS()).toContain("var(--c-");

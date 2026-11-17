@@ -74,6 +74,26 @@ describe("apiRequest envelope", () => {
     });
   });
 
+  it("parses the 413 envelope as an action error, not a network failure", async () => {
+    fetchMock.mockResolvedValue(
+      respond(
+        {
+          ok: false,
+          code: "VALIDATION",
+          message: "Payload too large",
+          reason: "PAYLOAD_TOO_LARGE",
+        },
+        { status: 413 },
+      ),
+    );
+    expect(await apiRequest("/x")).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Payload too large",
+      reason: "PAYLOAD_TOO_LARGE",
+    });
+  });
+
   it("drops unknown reason and extra fields", async () => {
     fetchMock.mockResolvedValue(
       respond({

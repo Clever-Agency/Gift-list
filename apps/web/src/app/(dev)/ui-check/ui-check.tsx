@@ -1,97 +1,31 @@
 "use client";
 
-import { useRef, useState, type ComponentRef } from "react";
-import {
-  Button,
-  Column,
-  Dialog,
-  Heading,
-  restoreFocus,
-  Screen,
-  StatusPill,
-  Text,
-  VisibilityChip,
-  WishCard,
-  XStack,
-} from "@gift-list/ui";
+import { Button, StatusPill, Text, YStack } from "@gift-list/ui";
 
-// Служебные тексты dev-страницы: не пользовательский интерфейс, в каталог не идут.
+/**
+ * The dev-only SSR smoke check (Story 1.9, narrowed in Story 1.10).
+ *
+ * It is not a component catalog: `Storybook` shows components and their states.
+ * What only Next can prove stays here — that Tamagui renders on the server, that
+ * its CSS reaches the first HTML with the theme's custom properties, and that the
+ * provider wires the components in a Server/Client boundary. One control and one
+ * pill are enough for that; examples must not duplicate stories.
+ */
 export function UiCheck() {
-  const [open, setOpen] = useState(false);
-  const opener = useRef<ComponentRef<typeof Button>>(null);
-
-  function handleOpen() {
-    setOpen(true);
-  }
-  function handleClose() {
-    setOpen(false);
-  }
-  function handleClosed() {
-    restoreFocus(opener.current);
-  }
-  function handleNoop() {}
-
   return (
-    <Screen>
-      <Column size="wide" gap="$4" paddingVertical="$5" paddingHorizontal="$4">
-        <Heading level={1} kind="display-sm">
-          UI check
-        </Heading>
-        <Text tone="muted">Проверка SSR Tamagui и слоя Dialog на Next.</Text>
-        <XStack role="list" flexWrap="wrap" gap="$3">
-          <WishCard
-            title="Плед"
-            price="2 500 ₽"
-            status={<StatusPill status="open" label="Свободно" />}
-            chip={<VisibilityChip tone="public" label="Всем" />}
-            width={240}
-            testID="ui-check-card-open"
-          />
-          <WishCard
-            title="Книга"
-            price="900 ₽"
-            status={<StatusPill status="reserved" label="Забронировано" />}
-            chip={<VisibilityChip tone="friends" label="Друзьям" />}
-            width={240}
-            testID="ui-check-card-reserved"
-          />
-        </XStack>
-        <XStack gap="$2" flexWrap="wrap">
-          <Button
-            label="Забронировать"
-            variant="reserve"
-            onPress={handleNoop}
-          />
-          <Button label="Отмена" variant="secondary" onPress={handleNoop} />
-          <Button
-            ref={opener}
-            label="Открыть Dialog"
-            variant="primary"
-            onPress={handleOpen}
-            testID="ui-check-open"
-          />
-        </XStack>
-      </Column>
-      <Dialog
-        open={open}
-        title="Dialog"
-        description="Закрывается кнопкой, Esc и подложкой."
-        onClose={handleClose}
-        onClosed={handleClosed}
-        actions={
-          <Button
-            label="Закрыть"
-            variant="secondary"
-            onPress={handleClose}
-            testID="ui-check-close"
-          />
-        }
-        testID="ui-check-dialog"
-      >
-        <Text>Содержимое слоя.</Text>
-      </Dialog>
-    </Screen>
+    <YStack gap="$3" paddingVertical="$5" paddingHorizontal="$4" maxWidth="$max-form">
+      <Text kind="heading">SSR smoke: Tamagui в Next</Text>
+      <Text tone="muted">
+        Если эта страница отрисована, провайдер и CSS темы доехали до первого HTML.
+      </Text>
+      <YStack gap="$3" alignItems="flex-start">
+        <Button label="Кнопка проверки" onPress={handleNoop} />
+        <StatusPill status="open" label="Открыт" />
+      </YStack>
+    </YStack>
   );
 }
 
 UiCheck.displayName = "UiCheck";
+
+function handleNoop() {}

@@ -7,7 +7,7 @@ paradigm: modular-monolith-layered
 scope: "Gift List MVP — один вишлист, нативный клиент Expo и веб для публичной ссылки и админки. Бронь «куплю сам». Без оплаты и без денежных сборов."
 status: final
 created: 2026-09-30
-updated: 2026-10-29
+updated: 2026-11-10
 language: ru
 workflow: bmad-architecture
 round: 1
@@ -110,6 +110,10 @@ flowchart TB
 - **Prevents:** два набора компонентов и две копии токенов; разный вид одной карточки в приложении и на `/l`
 - **Rule:** UI приложения Expo (Android, iOS, браузер) и Next-страниц — пакет `packages/ui` на Tamagui. Пакет отдаёт исходники TS без сборки, как `packages/contracts`, и транспилируется Next через `transpilePackages`. В пакете — тема Tamagui со значениями из frontmatter DESIGN.md (единственный источник токенов в коде) и компоненты; запросов к API, Prisma, env и переводов в нём нет — тексты приходят пропсами. Шрифты пакет не грузит: приложение передаёт имена начертаний expo-font, Next — CSS-переменные `next/font`. Next-страницы рендерятся на сервере, CSS Tamagui попадает в HTML (`useServerInsertedHTML`). Компоненты Tamagui импортируются только по подпутям (`@tamagui/core`, `@tamagui/stacks`, `tamagui/dialog` …), не из `"tamagui"` целиком. shadcn/ui, Tailwind и `@base-ui/react` в репозитории не используются. По API Tamagui v3 сверяться с `tamagui.dev/llms.txt` и `*.manifest.ts` компонентов.
 
+  **Уточнения (2026-11-10, `sprint-change-proposal-2026-11-10-ui-polish.md`).**
+  1. **Safe area.** Тонкая обёртка над `SafeAreaView` / `useSafeAreaInsets` из `react-native-safe-area-context` в `packages/ui` **допустима**: это единственное исключение из «только Tamagui и React», потому что `react-native-safe-area-context` уже peer-зависимость `@tamagui/sheet`, а обёртка не содержит API, env, данных и текстов. Экраны перестают повторять `SafeAreaView style={{ flex: 1 }}` вручную; вложенных обёрток не ставится.
+  2. **Каталог компонентов.** Visual-каталог `packages/ui` — **Storybook для web** (`@storybook/react-native-web-vite`: react-native-web + Vite, Story 1.10), объявленный dev-зависимостью. Сторис лежат в `packages/ui/src/**/*.stories.tsx`, конфиг — в корне (`.storybook/`), в `src/index.ts` и в экраны они не импортируются, поэтому в прод-бандлы Next и Expo не попадают; сборка каталога (`storybook-static/`) в git не кладётся. `/ui-check` в `apps/web` остаётся dev-проверкой серверного рендера Next и каталогом компонентов не считается. Вторая платформа (on-device Storybook) в R1 не вводится.
+
 ### AD-3 — Аутентификация `[ASSUMPTION]`
 
 - **Binds:** FR-1..FR-3, A-1..A-3, D-21, AD-17
@@ -184,6 +188,8 @@ flowchart TB
   Исключение для Владельца: preflight снятия брони / удаления подарка возвращает `warning: "BOUGHT" | "GIVEN" | null` — только в ответ на это действие.
   Reservation card держателя (A-14) дополняется полями `dueAt`, `phase`, `bought`, `holderVisibleToOwner`, `holderVisibleToOthers`.
 
+  **Сужение видимости Владельцем (FR-10, ред. 2026-11-11).** Для снятия брони при смене `Gift.visibility` «есть ли доступ» считается как у обычного зрителя желания — фильтром этой AD-7 (`SECRET` / `FRIENDS` / `PUBLIC`), **без** исключения reservation card. Иначе `SECRET` никогда не снимал бы бронь. Исключение A-14 / FR-25 (`reservedById` видит reservation card после разрыва дружбы или блока) остаётся только для потери отношения и к смене видимости Владельцем не применяется. Сужает и расширяет видимость Владелец в любой момент, кроме `CLOSED` и архива; снятие — через `GiftStatusService` (AD-8), в одной транзакции с записью поля; повторное расширение бронь не восстанавливает. Перед снятием клиент показывает confirm «Бронирующий потеряет доступ, бронь снимется»; признак для confirm считает сервер тем же `VisibilityPolicy` (preflight, как `warning: BOUGHT | GIVEN` выше).
+
   Любой list/gift read API (включая профиль) вызывает тот же `resolve`; сырой `findMany` по `listId` без policy запрещён. FR-25 — исключение только через reservation-card матрицу выше.
 
 ### AD-8 — Статусы подарка; единственный writer
@@ -199,14 +205,16 @@ flowchart TB
   Переходы MVP:
   - `OPEN → RESERVED` — только `SINGLE`; даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны. Отдельного права «забронировать первым» нет (D-28)
   - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, toggles); владелец (T6 «оставить», T10 «не получал»); cron (таймеры)
-  - `RESERVED → OPEN` — держатель | владелец | cron (только `phase=AWAITING_OWNER AND bought=false`)
+  - `RESERVED → OPEN` — держатель | владелец (в том числе при сужении `visibility`, из-за которого держатель теряет доступ по AD-7) | cron (только `phase=AWAITING_OWNER AND bought=false`)
   - `OPEN | RESERVED → CLOSED` — владелец; reserved* **сохраняются** для аудита; пишутся `closedAt`, `closedFromStatus`; FR-25 активные = `status=RESERVED`
   - `CLOSED → closedFromStatus` — только владелец, только при `closedAt > now()-UNDO_WINDOW` (отмена; `UNDO_WINDOW` = 10 min, D-43) `[ARCH-A5]`
   - Остальные `CLOSED → *` запрещены
   - Владелец **не** может `OPEN → RESERVED` на своём подарке → `FORBIDDEN`
   - `COLLECTION` не используется в R1
 
-  Gift CRUD: поля `title`, `description?`, `priceAmount?` (целые минимальные единицы, два знака), `priceCurrency?` (`USD|EUR|CNY|BYN|RUB`, при непустой цене по умолчанию `USD`), `linkUrl?`, `visibility`, `quantity`, `expiresOn?`, теги (AD-22, AD-25). Переноса между списками нет. Правка полей при `RESERVED` разрешена и порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в том же списке. Нематериальное желание — то же желание без обязательного `linkUrl`. Денежный сбор не создаётся (AD-11). Цена может отсутствовать (D-36).
+  Gift CRUD: поля `title`, `description?`, `priceAmount?` (целые минимальные единицы, два знака), `priceCurrency?` (`USD|EUR|CNY|BYN|RUB`, при непустой цене по умолчанию `USD`), `linkUrl?`, `visibility`, `quantity`, `expiresOn?`, теги (AD-22, AD-25). Переноса между списками нет. Правка полей при `RESERVED` разрешена — включая `visibility` при `RESERVED` (ред. 2026-11-11); если новое значение отнимает у держателя доступ по AD-7, бронь снимается (`RESERVED → OPEN`) через `GiftStatusService` в одной транзакции с записью поля, а повторное расширение её не восстанавливает. Уведомление держателю о снятии по этой причине — Epic 5–6 (`deferred-work.md`), до него снятие тихое. Правка прочих полей при `RESERVED` порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в том же списке. Нематериальное желание — то же желание без обязательного `linkUrl`. Денежный сбор не создаётся (AD-11). Цена может отсутствовать (D-36).
+
+  `Gift.archivedAt != null` — архивное желание для Владельца только для просмотра: правка полей или видимости → `VALIDATION` с подсказкой «Архивное желание можно только просматривать» (не `NOT_FOUND`); чужое архивное желание по-прежнему `NOT_FOUND`. «Вернуть в вишлист» (archive → `OPEN`) и «Скопировать» — отдельные операции Story 2.6, они не являются правкой архивного желания.
 
 ### AD-9 — Сериализация всех переходов статуса
 
@@ -233,7 +241,7 @@ flowchart TB
   | cron: AWAITING_GIVER→AWAITING_OWNER | `phase=AWAITING_GIVER AND phaseAt<=now()-72h` |
   | cron: AWAITING_OWNER→OPEN | `phase=AWAITING_OWNER AND phaseAt<=now()-168h AND bought=false`; clear reserved* |
   | RESERVED→OPEN (holder) | `status=RESERVED AND reservedById=actor`; clear reserved* |
-  | RESERVED→OPEN (owner) | `status=RESERVED`; clear reserved* |
+  | RESERVED→OPEN (owner) | `status=RESERVED`; clear reserved*; тот же переход выполняет снятие при сужении `visibility`, отнявшем доступ у держателя (AD-7, AD-8) — в одной транзакции с записью `visibility` |
   | OPEN/RESERVED→CLOSED | `status = expected`; set CLOSED, `closedAt`, `closedFromStatus`; keep reserved* |
   | CLOSED→undo | `status=CLOSED AND closedAt>now()-UNDO_WINDOW AND owner=actor`; restore `closedFromStatus` |
   | OPEN→archive | `status=OPEN AND archivedAt IS NULL`; set `archivedAt` |
@@ -271,6 +279,8 @@ flowchart TB
   Gift card — закрытый набор, один и тот же для веба и Expo (`packages/contracts`):
   `{ id, title, description, priceAmount: number|null, priceCurrency: "USD"|"EUR"|"CNY"|"BYN"|"RUB"|null, linkUrl, visibility: "PUBLIC"|"FRIENDS"|"SECRET", quantity: "SINGLE"|"UNLIMITED", expiresOn: string|null, archivedAt: string|null, tags: { catalogId: string|null, label: string }[], status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservationLabel: null | "BOUGHT" | "GIVEN", ownerAction: null | "CONFIRM_GIVEN" | "EXPIRED_NO_REPLY" }`.
   `reservedBy` — по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. `reservationLabel` — только не-владельцу; `ownerAction` — только владельцу. Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOwner, holderVisibleToOthers }`. Пустая цена — оба поля `null`. Непустая цена без выбранной валюты сохраняется как `USD`. `visibility` чужое желание не раскрывает: в выдаче только те карточки, которые фильтр уже пропустил.
+
+  **Размер тела запроса (2026-11-10).** Мутация с телом больше 32 КиБ (32768 байт) отклоняется до `JSON.parse`: HTTP 413 и конверт AD-12 `{ ok: false, code: "VALIDATION", message, reason: "PAYLOAD_TOO_LARGE" }`, без `field`. Закрытый `ErrorCode` не расширяется — размера в нём нет, номер ответа несёт `reason`, расширяемая часть конверта (`apps/web/src/lib/api-v1.ts`). `Content-Length` — только ранний отказ: без заголовка (chunked) тело читается с бюджетом, и поток отменяется при превышении. Клиент показывает `common.errors.reason.PAYLOAD_TOO_LARGE` (AD-27).
 
 ### AD-13 — Идентификаторы, ник, поиск
 
@@ -341,11 +351,11 @@ flowchart TB
 - **Prevents:** напоминание тому, кто дату не видит; госпраздники в календаре; второй источник часового пояса
 - **Rule:** `User.timeZone` IANA, not null, default `UTC` — единственный пояс пользователя. `reservationTimeZone` на брони — снимок на момент Срока, не второй источник правки. `UserDate`: `kind BIRTHDAY|CUSTOM`, день, месяц, год опционален, `visibility only_me|friends|everyone` (default `friends`). `only_me` — владелец. `friends` — принятая дружба. `everyone` — любой зритель профиля после проверки Block, включая анонима на `/u/:nick`, подписчика и `ContactMatch`. Дата не входит в ответ `/l/:token`. BIRTHDAY — не больше одной. CUSTOM — не больше 10. Год — отдельный флаг `yearVisibility`, default `only_me`; видимость даты `everyone` год сама не открывает. Напоминание дарителю (T-14) — только другу, которому дата видна, и только при видимом ему `OPEN` желании. Напоминание владельцу (T-30) — только о своём ДР. `ReminderLog` UNIQUE(получатель, dateId, год, kind). Cron `api/cron/date-reminders`. Напоминания не стоят за платёжным флагом (D-39). Интересы (FR-39) в MVP не создаются; видимость по умолчанию — друзья (D-31).
 
-### AD-24 — Имя продукта `[ADOPTED D-35]`
+### AD-24 — Имя продукта и публичный контакт `[ADOPTED D-35]`
 
 - **Binds:** весь UI веба и Expo
 - **Prevents:** два захардкоженных названия; смена имени правкой экранов
-- **Rule:** Единственный источник отображаемого имени — переменная `BRAND_NAME`. Веб читает её из `env.ts`. Сборка Expo получает то же значение как `EXPO_PUBLIC_BRAND_NAME` из той же переменной CI, не из второго литерала. В компонентах строка «Gift List» не пишется. Пока имя не выбрано по спросу в поиске, значение переменной — `Gift List`. Домен эта переменная не задаёт (Q-2).
+- **Rule:** Значения по умолчанию — константы в `packages/contracts/src/brand.ts`: `PRODUCT_NAME = "WishMoon"`, `AUTHOR_EMAIL = "clever.web.agency@gmail.com"`, а `AUTHOR_MAILTO` и `authorMailto(subject?)` — производные от `AUTHOR_EMAIL` (одна точка правки адреса). Это единственный источник: литерала имени и адреса нет ни в `apps/web`, ни в `apps/mobile`, ни в `app.config.ts`, ни в скриптах сборки. Веб читает имя через `env.ts`, приложение — через `src/config/env.ts`; оба падают на константу, когда переменная пуста. `BRAND_NAME` (веб) и `EXPO_PUBLIC_BRAND_NAME` (сборка Expo) — осознанное переопределение, не второй источник: обе стороны получают его из одной переменной CI, `sync-spa.mjs` передаёт в Expo `BRAND_NAME` и очищает ручное значение, поэтому SSR и SPA не расходятся. `AUTHOR_EMAIL` окружением не переопределяется. «Написать автору» — ссылка `mailto:` из `AUTHOR_MAILTO`; `EXPO_PUBLIC_AUTHOR_URL` удаляется. Домен эта переменная не задаёт (Q-2).
 
 ### AD-25 — Валюта цены `[ADOPTED D-36, D-37]`
 
@@ -379,6 +389,8 @@ flowchart TB
 - **Prevents:** две копии React или `@tamagui/*` и разорванные React-контексты (портал, меню); падение на Android, которое не видно в браузере
 - **Rule:** React и `react-dom` в `apps/web` и `apps/mobile` — одна точная версия, та, на которую рассчитан Expo SDK; поднимать парой вместе с SDK. Корневой `package.json` держит `overrides` для `react` и `react-dom` на этой версии. Все `@tamagui/*` и `tamagui` — одна точная версия; `@tamagui/native` объявлен зависимостью корневого `package.json`, иначе npm раскладывает его вложенными копиями. Проверка в CI падает, если в дереве больше одной копии `react`, `react-dom`, `tamagui` или любого `@tamagui/*`. Metro — без правил подмены путей (`resolveRequest`) для React и Tamagui. Пакеты, у которых версия закреплена в одном месте и не закреплена в другом (как `@better-auth/core` при `better-auth`), закрепляются явно.
 
+  Dev-инструменты (Storybook и его аддоны, `vite`) версию React и Tamagui не меняют: после любой установки проверка копий (`scripts/check-boundaries.mjs`) обязана оставаться зелёной, а вложенные `react`, `react-dom`, `tamagui` и `@tamagui/*`, пришедшие из dev-зависимостей, недопустимы так же, как из рантайма (2026-11-10, Story 1.10).
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -406,6 +418,7 @@ flowchart TB
 | @better-auth/expo | 1.7.6 (равна установленному better-auth; поднимать только парой) |
 | TypeScript | create-next-app default at scaffold |
 | Tamagui (`tamagui`, `@tamagui/*`) | 3.1.10 (одна версия всех пакетов, AD-28) |
+| Storybook (`storybook`, `@storybook/react-native-web-vite`) — dev-only, visual-каталог `packages/ui` (Story 1.10) | 10.6.7 (framework требует `storybook ^10.6.7`, `vite ^5…^8`; в репозитории vite 8.3.5 транзитивно через vitest) |
 | Better Auth | 1.7.6 |
 | Prisma + `@prisma/client` | 7.10.0 (pin; не `latest` → 8 RC) |
 | PostgreSQL | 16+ managed |
@@ -418,7 +431,7 @@ flowchart TB
 | Resend | 6.31.0 |
 | Hosting | Разработка: Vercel (Hobby) + Neon (preferred) + Resend; цель: Docker-образ (`standalone`) на собственном сервере РБ/РФ (AD-5) |
 
-Проверено npm view / Next security release 2026-09-30; i18n-пакеты — npm view 2026-10-29.
+Проверено npm view / Next security release 2026-09-30; i18n-пакеты — npm view 2026-10-29; Storybook — npm view 2026-11-10 (`storybook` 10.6.7, `@storybook/react-native-web-vite` 10.6.7, peer `react ^16.8…^19`, `react-native-web ^0.19.12…^0.21`, `vite ^5…^8` — все выполнены текущими версиями).
 
 ## Structural Seed
 
@@ -452,6 +465,8 @@ packages/
   contracts/                  # zod wire types AD-12, без React/Prisma/env
     src/i18n/                 # каталоги ru/*.json, SUPPORTED_LOCALES, negotiateLocale (AD-27)
   ui/                         # Tamagui: тема из DESIGN.md + компоненты, AD-2
+    src/*.stories.tsx         # visual-каталог, dev-only: не импортируется приложениями (Story 1.10)
+.storybook/                   # конфиг Storybook (web, RNW + Vite): dev-зависимость, AD-2
 ```
 
 ```mermaid
@@ -568,7 +583,7 @@ stateDiagram-v2
 | ID | Решение spine | Источник |
 |----|---------------|----------|
 | ARCH-A1 | Принято как D-34: жалоб в MVP нет. Юридическая сверка — чеклист перед публикацией | D-34 |
-| ARCH-A2 | Имя — переменная `BRAND_NAME` (AD-24). Домен открыт | Q-2, D-35 |
+| ARCH-A2 | Имя — WishMoon, дефолт в `packages/contracts`, переопределение `BRAND_NAME` (AD-24). Домен открыт | Q-2, D-35 |
 | ARCH-A3 | Снято для механизма: удаление в приложении обязательно (AD-20, D-33). Срок хранения по-прежнему Q-3 | Q-3 |
 | ARCH-A4 | Принято: цена необязательна, валюта из AD-25 | D-36, D-37 |
 | ARCH-A5 | Нет reopen CLOSED в R1, кроме отмены владельцем в течение `UNDO_WINDOW` = 10 min (было 10 s; D-43 — WCAG 2.2.1). Константа одна на сервере; клиент берёт срок из ответа (`undoUntil`), а не из своего таймера | UX-A11, D-12, D-43 |

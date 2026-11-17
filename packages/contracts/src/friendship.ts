@@ -98,6 +98,56 @@ export const friendRejectDataSchema = z.strictObject({
 export type FriendRejectData = z.infer<typeof friendRejectDataSchema>;
 
 /**
+ * Closed success outcomes of the sender withdrawing their own pending invite
+ * (Story 4.3, AD-10 step 3). They mirror the domain results of
+ * `cancelFriendInvite`: `CANCELLED` deleted the invite and wrote the pair
+ * cooldown, `ALREADY_FRIENDS` is a successful no-op. Neither is an error, so no
+ * `ERROR_REASONS` entry is needed.
+ *
+ * The cooldown row does not say whether the invite was cancelled or rejected
+ * (Story 4.3.1 storage note), so the wire keeps the same closed vocabulary and
+ * the two outcomes stay distinguishable here: a repeat invite in the window is
+ * refused by `POST /u/:nick/invite` with `INVITE_COOLDOWN`, while a cancel
+ * itself always succeeds.
+ */
+export const FRIEND_CANCEL_OUTCOMES = ["CANCELLED", "ALREADY_FRIENDS"] as const;
+
+export const friendCancelOutcomeSchema = z.enum(FRIEND_CANCEL_OUTCOMES);
+
+export type FriendCancelOutcome = (typeof FRIEND_CANCEL_OUTCOMES)[number];
+
+/** Success payload of `DELETE /api/v1/u/:nick/invite`. */
+export const friendCancelDataSchema = z.strictObject({
+  outcome: friendCancelOutcomeSchema,
+});
+
+export type FriendCancelData = z.infer<typeof friendCancelDataSchema>;
+
+/**
+ * Closed success outcomes of removing an accepted friend (Story 4.4, FR-23,
+ * AD-10 step 4). The wire values are the same closed set as the domain protocol
+ * in `apps/web/src/domain/friendship.ts`, so the client never translates a
+ * second vocabulary: `REMOVED` deleted the edge and every invite of the pair,
+ * `ALREADY_REMOVED` is the idempotent answer of a pair without an edge (the
+ * dangling pair invites are still deleted).
+ *
+ * Both are successful answers, never errors, so no `ERROR_REASONS` entry is
+ * needed. Removing has no direction: either side of the edge may call it.
+ */
+export const FRIEND_REMOVE_OUTCOMES = ["REMOVED", "ALREADY_REMOVED"] as const;
+
+export const friendRemoveOutcomeSchema = z.enum(FRIEND_REMOVE_OUTCOMES);
+
+export type FriendRemoveOutcome = (typeof FRIEND_REMOVE_OUTCOMES)[number];
+
+/** Success payload of `DELETE /api/v1/u/:nick/friend`. */
+export const friendRemoveDataSchema = z.strictObject({
+  outcome: friendRemoveOutcomeSchema,
+});
+
+export type FriendRemoveData = z.infer<typeof friendRemoveDataSchema>;
+
+/**
  * The live rejection cooldown of the viewer/owner pair, carried only by the
  * profile answer (Story 4.2.2, FR-14, A-16). The field is absent when the window
  * is closed or expired, so its presence means "cooldown is live".

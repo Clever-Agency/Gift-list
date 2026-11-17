@@ -8,6 +8,13 @@ export type PageScrollProps = {
   testID?: string;
   /** Forms keep the keyboard open while the user taps a control. */
   keyboardShouldPersistTaps?: ScrollViewProps["keyboardShouldPersistTaps"];
+  /**
+   * The page's scroll events, for a list that pages on approach to the end
+   * (`EXPERIENCE.md` → Friends infinite list: a 200 px reserve).
+   */
+  onScroll?: ScrollViewProps["onScroll"];
+  /** How often `onScroll` runs; 16 gives every frame, the browser default. */
+  scrollEventThrottle?: ScrollViewProps["scrollEventThrottle"];
 };
 
 type PageLayoutEvent = { nativeEvent: { layout: { height: number } } };
@@ -27,7 +34,13 @@ export function pageViewportHeight(event: PageLayoutEvent): number {
  * (UI5): `focus.native.ts` moves the first invalid field to the middle of the
  * viewport before focus. The viewport height comes from the layout pass.
  */
-export function PageScroll({ children, testID, keyboardShouldPersistTaps }: PageScrollProps) {
+export function PageScroll({
+  children,
+  testID,
+  keyboardShouldPersistTaps,
+  onScroll,
+  scrollEventThrottle,
+}: PageScrollProps) {
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const viewportHeight = useRef(0);
 
@@ -51,6 +64,8 @@ export function PageScroll({ children, testID, keyboardShouldPersistTaps }: Page
       testID={testID}
       ref={scroller}
       onLayout={handleLayout}
+      onScroll={onScroll}
+      scrollEventThrottle={scrollEventThrottle}
       flex={1}
       contentContainerStyle={{ flexGrow: 1 }}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}

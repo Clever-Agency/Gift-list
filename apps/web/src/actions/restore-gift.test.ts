@@ -16,10 +16,8 @@ vi.mock("@/db/client", () => ({
     gift: { findFirst: giftFindFirst },
   },
 }));
-vi.mock("@/domain/gift-status", () => ({
-  GiftStatusService: class {
-    restoreFromArchive = restoreFromArchive;
-  },
+vi.mock("@/lib/gift-status-store", () => ({
+  restoreFromArchive,
 }));
 
 import { restoreGift } from "./restore-gift";

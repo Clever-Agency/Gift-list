@@ -66,8 +66,13 @@ export const getLinkPage = cache(loadLinkPage);
  * Story 3.3: preview metadata names only the owner and the product. Wish titles,
  * prices, descriptions, photos and hidden counts are never consulted, so a
  * `not_found` metadata is indistinguishable for unknown, malformed and blocked
- * tokens. Next applies this page metadata on the 404 response and injects
- * `noindex` itself, so the title stays `Список не найден — {brand}`.
+ * tokens.
+ *
+ * A 404 is answered from Next's not-found recovery document, and Next builds that
+ * document's `<head>` from the segment `not-found.tsx`, not from this page
+ * (`app-render`: `errorType: 'not-found'`). The boundary calls this builder with
+ * `{ kind: "not_found" }`, so both the found page and the 404 keep the same
+ * closed `Список не найден — {brand}` title; Next injects `noindex` itself.
  */
 export function buildLinkMetadata(page: LinkPage, brand: string): Metadata {
   const messages = getMessages(page.locale);

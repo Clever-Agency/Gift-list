@@ -16,8 +16,11 @@ export type PublicNotFoundProps = {
  * and renders this frame: the same `h1` sentence from i18n and the same full
  * `PublicPageFooter` as the found page, no owner, no wishes and no actions.
  *
- * The document title stays the segment's `notFoundTitle` from `generateMetadata`;
- * Next injects `noindex` into every 404 itself.
+ * The document title stays the segment's `notFoundTitle`, produced by the
+ * segment `not-found.tsx` `generateMetadata` because Next builds the 404
+ * document's `<head>` from that boundary; Next injects `noindex` into every 404
+ * itself. The frame itself is painted after hydration: Next 16 keeps the body of
+ * the first 404 HTML empty.
  */
 export function PublicNotFound({ locale, message }: PublicNotFoundProps) {
   return (

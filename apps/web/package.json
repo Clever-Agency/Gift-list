@@ -12,6 +12,7 @@
     "typecheck": "prisma generate && next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify:public-404": "node ./scripts/verify-public-404-http.mjs",
     "verify:disposable-pg": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg.config.ts",
     "verify:friendship-concurrency": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg-friendship.config.ts",
     "verify:friendship-42-http": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/verify-friendship-42-http.mjs"
@@ -25,7 +26,7 @@
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "better-auth": "1.7.14",
-    "next": "16.4.3",
+    "next": "16.4.6",
     "next-intl": "4.14.9",
     "pg": "8.23.1",
     "react": "19.3.0",
@@ -41,7 +42,7 @@
     "@types/react-dom": "^19",
     "dotenv": "^18.0.5",
     "eslint": "^9",
-    "eslint-config-next": "16.4.3",
+    "eslint-config-next": "16.4.6",
     "prisma": "7.10.0",
     "typescript": "^5",
     "vitest": "^4.1.12"

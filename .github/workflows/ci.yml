@@ -98,3 +98,8 @@ jobs:
           code=$(status /register)
           [ "$code" = "200" ] || fail "GET /register вернул $code вместо 200"
           echo "Сервер ответил 200 на / и /register"
+
+      # CLE-103 followup: /l и /i отвечают реальным 404, а его документ несёт
+      # noindex и закрытый <title> (без базы: сегмент заведомо битый).
+      - name: Check public 404 HTML (/l, /i)
+        run: node apps/web/scripts/verify-public-404-http.mjs

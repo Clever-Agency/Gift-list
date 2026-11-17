@@ -119,6 +119,21 @@ describe("not-found copy", () => {
   });
 });
 
+describe("invite confirmation copy", () => {
+  /**
+   * CLE-73 followup: the name is not declined (AD-24), so the sentence names
+   * «пользователя» and keeps the display name in «ёлочки», the same way the
+   * catalog quotes `{char}` and `{query}`.
+   */
+  it("quotes the display name and substitutes it unchanged", () => {
+    const text = getMessages("ru").app.invite.addTitle;
+
+    expect(text).toBe("Добавить пользователя «{name}» в друзья?");
+    expect(text.match(/\{name\}/g)).toHaveLength(1);
+    expect(text.replace("{name}", "Сергей")).toBe("Добавить пользователя «Сергей» в друзья?");
+  });
+});
+
 describe("error catalog", () => {
   it("covers every error code and reason with non-empty text", () => {
     const { code, reason } = getMessages("ru").common.errors;

@@ -321,3 +321,88 @@ describe("registerUser", () => {
     });
   });
 });
+
+/**
+ * AD-13 / CLE-94: the unique index on `nickNormalized` is the last word, but the
+ * use-case must look up and store the canonical form on its own, not rely on the
+ * HTTP body schema having lower-cased the nick first.
+ */
+describe("registerUser nick uniqueness", () => {
+  type StoredUser = { email: string; nickNormalized: string };
+  type FindFirstArgs = {
+    where: { OR: { email?: string; nickNormalized?: string }[] };
+  };
+  type CreateArgs = { data: { email: string; nickNormalized: string } };
+
+  /** The two unique indexes of `User`, emulated in memory. */
+  function uniqueStore(rows: StoredUser[] = []): StoredUser[] {
+    findFirst.mockImplementation(async ({ where }: FindFirstArgs) => {
+      return (
+        rows.find((row) =>
+          where.OR.some((condition) =>
+            condition.email !== undefined
+              ? condition.email === row.email
+              : condition.nickNormalized === row.nickNormalized,
+          ),
+        ) ?? null
+      );
+    });
+    create.mockImplementation(async ({ data }: CreateArgs) => {
+      if (rows.some((row) => row.email === data.email || row.nickNormalized === data.nickNormalized)) {
+        throw new PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002" });
+      }
+      rows.push({ email: data.email, nickNormalized: data.nickNormalized });
+      return {};
+    });
+    return rows;
+  }
+
+  it("stores and looks up the canonical nick when the caller skipped the body schema", async () => {
+    const rows = uniqueStore();
+
+    const outcome = await registerUser({ ...input, nick: " Anna_1 " }, headers());
+
+    expect(outcome.result).toMatchObject({ ok: true, data: { user: { nick: "anna_1" } } });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { OR: [{ email: "a@example.com" }, { nickNormalized: "anna_1" }] },
+      select: { email: true, nickNormalized: true },
+    });
+    expect(create.mock.calls[0]?.[0].data).toMatchObject({
+      nick: "anna_1",
+      nickNormalized: "anna_1",
+    });
+    expect(rows).toEqual([{ email: "a@example.com", nickNormalized: "anna_1" }]);
+  });
+
+  it("refuses a case variant of a taken nick with NICK_TAKEN", async () => {
+    uniqueStore([{ email: "b@example.com", nickNormalized: "anna_1" }]);
+
+    const outcome = await registerUser({ ...input, nick: "ANNA_1" }, headers());
+
+    expect(outcome.result).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "nick",
+      reason: "NICK_TAKEN",
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("answers NICK_TAKEN, not 500, when the unique index decides the race", async () => {
+    const rows = uniqueStore();
+    create.mockImplementationOnce(async ({ data }: CreateArgs) => {
+      // The parallel registration committed first; the index then refuses this row.
+      rows.push({ email: "b@example.com", nickNormalized: data.nickNormalized });
+      throw new PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002" });
+    });
+
+    const outcome = await registerUser({ ...input, nick: "ANNA_1" }, headers());
+
+    expect(outcome.result).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "nick",
+      reason: "NICK_TAKEN",
+    });
+  });
+});

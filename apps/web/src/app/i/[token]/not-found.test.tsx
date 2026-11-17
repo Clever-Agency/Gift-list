@@ -3,11 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTHOR_MAILTO, getMessages } from "@gift-list/contracts";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 
-const { headers } = vi.hoisted(() => ({ headers: vi.fn() }));
+const { headers, buildInviteMetadata, getBrandName } = vi.hoisted(() => ({
+  headers: vi.fn(),
+  buildInviteMetadata: vi.fn(),
+  getBrandName: vi.fn(() => "WishMoon"),
+}));
 
 vi.mock("next/headers", () => ({ headers }));
+vi.mock("@/lib/env", () => ({ getBrandName }));
+vi.mock("./invite-page", () => ({ buildInviteMetadata }));
 
-import InviteNotFound from "./not-found";
+import InviteNotFound, { generateMetadata } from "./not-found";
 
 const config = createGiftListConfig({
   body: "var(--font-sans)",
@@ -21,7 +27,12 @@ async function render(): Promise<string> {
 
 beforeEach(() => {
   headers.mockReset();
+  buildInviteMetadata.mockReset();
   headers.mockResolvedValue(new Headers({ "accept-language": "ru-RU,ru;q=0.9" }));
+  buildInviteMetadata.mockReturnValue({
+    title: "Приглашение не найдено — WishMoon",
+    description: "Сервис вишлистов",
+  });
 });
 
 describe("app/i/[token]/not-found.tsx", () => {
@@ -41,5 +52,31 @@ describe("app/i/[token]/not-found.tsx", () => {
     expect(html).not.toContain("У меня уже есть аккаунт");
     expect(html).not.toContain("Пока нет открытых желаний");
     expect(html).not.toContain("Список не найден.");
+  });
+
+  it("gives the 404 document its own head from the closed not-found metadata", async () => {
+    const metadata = await generateMetadata();
+
+    // Next builds the 404 document's <head> from this boundary, not from the
+    // page, so the closed not-found metadata has to be produced here as well.
+    expect(buildInviteMetadata).toHaveBeenCalledTimes(1);
+    expect(buildInviteMetadata).toHaveBeenCalledWith(
+      { locale: "ru", view: { kind: "not_found" } },
+      "WishMoon",
+    );
+    expect(metadata.title).toBe("Приглашение не найдено — WishMoon");
+  });
+
+  it("negotiates the boundary locale from Accept-Language like the page", async () => {
+    headers.mockResolvedValue(new Headers({ "accept-language": "en-US,en;q=0.9" }));
+
+    await generateMetadata();
+
+    // `ru` is the only published catalog today, so an unsupported language
+    // falls back to it exactly as the page's own loader does.
+    expect(buildInviteMetadata).toHaveBeenCalledWith(
+      { locale: "ru", view: { kind: "not_found" } },
+      "WishMoon",
+    );
   });
 });

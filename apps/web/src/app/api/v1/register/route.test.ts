@@ -151,6 +151,22 @@ describe("POST /api/v1/register caps", () => {
     expect(registerUser).not.toHaveBeenCalled();
   });
 
+  /**
+   * AD-21 (Story 4.7.2): the invite token of `/i/:token` is part of the body
+   * contract, so the only door that creates an account hands it to the use-case
+   * unchanged. Trimming is the contract's job, the format is not checked on
+   * purpose: a stale or foreign token must never fail a registration.
+   */
+  it("passes inviteToken to the use-case and does not require it", async () => {
+    await POST(post({ ...validBody, inviteToken: " cu2token " }));
+
+    expect(registerUser.mock.calls[0]?.[0]).toMatchObject({ inviteToken: "cu2token" });
+
+    await POST(post(validBody));
+
+    expect(registerUser.mock.calls[1]?.[0]).not.toHaveProperty("inviteToken");
+  });
+
   it("counts a display name emoji as one code point, as the clients' textLength does", async () => {
     const emoji = "😀";
     // 50 emoji are 50 code points here and 100 UTF-16 units (the unit a

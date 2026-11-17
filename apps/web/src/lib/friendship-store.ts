@@ -221,7 +221,13 @@ async function deleteInviteCooldown(
   });
 }
 
-function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
+/**
+ * The `FriendshipTransaction` port over a transaction the caller already opened.
+ * Exported for registration (AD-21, Story 4.7.1): the account, its list, the
+ * invite link and the friendship must share one `$transaction`, so the caller
+ * cannot use `friendshipStore`, which opens its own.
+ */
+export function transactionAdapter(tx: TransactionClient): FriendshipTransaction {
   return {
     lockPair(pair) {
       return lockPair(tx, pair);

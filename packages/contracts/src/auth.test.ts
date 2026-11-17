@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DISPLAY_NAME_MAX,
   EMAIL_MAX,
+  INVITE_TOKEN_MAX,
   NICK_MAX,
   NICK_MIN,
   NICK_PATTERN,
@@ -67,6 +68,55 @@ describe("registerBodySchema", () => {
       nick: "ан",
     });
     expect(parsed.success).toBe(false);
+  });
+
+  it("keeps the optional invite token and checks only its length", () => {
+    // AD-21: the token travels with registration but its format is the server's
+    // business — a stale or foreign value must never fail the registration.
+    const withToken = registerBodySchema.parse({
+      email: "a@example.com",
+      password: "password1",
+      displayName: "Анна",
+      nick: "anna",
+      inviteToken: "  tok_1  ",
+    });
+    expect(withToken.inviteToken).toBe("tok_1");
+
+    const oddToken = registerBodySchema.safeParse({
+      email: "a@example.com",
+      password: "password1",
+      displayName: "Анна",
+      nick: "anna",
+      inviteToken: "../не-токен",
+    });
+    expect(oddToken.success).toBe(true);
+
+    const withoutToken = registerBodySchema.parse({
+      email: "a@example.com",
+      password: "password1",
+      displayName: "Анна",
+      nick: "anna",
+    });
+    expect(withoutToken).not.toHaveProperty("inviteToken");
+
+    expect(
+      registerBodySchema.safeParse({
+        email: "a@example.com",
+        password: "password1",
+        displayName: "Анна",
+        nick: "anna",
+        inviteToken: "a".repeat(INVITE_TOKEN_MAX),
+      }).success,
+    ).toBe(true);
+    expect(
+      registerBodySchema.safeParse({
+        email: "a@example.com",
+        password: "password1",
+        displayName: "Анна",
+        nick: "anna",
+        inviteToken: "a".repeat(INVITE_TOKEN_MAX + 1),
+      }).success,
+    ).toBe(false);
   });
 });
 

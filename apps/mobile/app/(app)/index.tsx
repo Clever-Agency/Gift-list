@@ -20,6 +20,7 @@ import { useTranslations } from "use-intl";
 import type { ClientResult } from "@/api/client";
 import { fetchMyGifts, previewGiftVisibility, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
+import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
@@ -95,6 +96,7 @@ function reservationReleased(before: GiftCard, after: GiftCard): boolean {
 export default function MyWishlistScreen() {
   const t = useTranslations("app");
   const wishlist = useTranslations("app.myWishlist");
+  const invite = useTranslations("app.invite");
   const giftForm = useTranslations("app.giftForm");
   const common = useTranslations("common");
   const tLower = useTranslations("app.gift.visibilityLower");
@@ -307,6 +309,23 @@ export default function MyWishlistScreen() {
       message: result === "copied" ? wishlist("copyLinkDone") : wishlist("copyLinkFailed"),
       tone: result === "copied" ? "info" : "error",
     });
+  }
+
+  /**
+   * Story 4.7 (AD-21): the invite link is `{origin}/i/{token}` and does not
+   * depend on what the public list shows, so it stays available in an empty or a
+   * private-only wishlist. The token is read on the press, never on load.
+   */
+  async function copyInvite() {
+    const result = await copyMyInviteLink();
+    setToast({
+      message: result === "copied" ? invite("copyDone") : wishlist("copyLinkFailed"),
+      tone: result === "copied" ? "info" : "error",
+    });
+  }
+
+  function handleCopyInvite() {
+    void copyInvite();
   }
 
   function openComposer() {
@@ -561,8 +580,10 @@ export default function MyWishlistScreen() {
                 «Добавить желание» ~173 px, «Скопировать ссылку» ~187 px, the icon button
                 44 px, gaps 8 px — the row is one line from ~577 px of window (552 px of
                 content) with both buttons, and from ~395 px when the list is empty and
-                only «Скопировать ссылку» + its icon are shown. On phones the buttons wrap
-                under the title; they are never clipped, hidden or shrunk.
+                only «Скопировать ссылку» + its icon are shown. Story 4.7 adds
+                «Скопировать ссылку-приглашение» to the same row: it is a whole button,
+                so it wraps under the others when the row no longer fits. On phones the
+                buttons wrap under the title; they are never clipped, hidden or shrunk.
               */}
               <XStack
                 testID="wishlist-header"
@@ -598,6 +619,12 @@ export default function MyWishlistScreen() {
                           closeLabel={wishlist("copyLinkHelpClose")}
                         />
                       </XStack>
+                      <Button
+                        testID="wishlist-copy-invite-link"
+                        label={wishlist("copyInviteLink")}
+                        variant="secondary"
+                        onPress={handleCopyInvite}
+                      />
                     </XStack>
                     {!canShare ? (
                       <Text

@@ -211,6 +211,14 @@ export type ButtonProps = {
    */
   busy?: boolean;
   fullWidth?: boolean;
+  /**
+   * A navigation target. On the web the root becomes a real `<a href>` with the
+   * same look, so a page action that only opens another page (a link to
+   * registration, login or a public page) keeps the browser's own click, the new
+   * tab and the context menu. A blocked button stays a `<button>` and ignores it.
+   * Native has no anchor: the caller hands the navigation to the router.
+   */
+  href?: string;
   testID?: string;
   /** `submit` makes the web button submit its form; the phone ignores it. */
   type?: ButtonType;
@@ -219,8 +227,8 @@ export type ButtonProps = {
 /**
  * The button of the app and of the Next pages (`DESIGN.md` → components
  * `button-primary`, `button-reserve`, `button-secondary`, `button-ghost`).
- * On the web it is a real `<button>` with the label as its name; a disabled one
- * never fires `onPress`.
+ * On the web it is a real `<button>` with the label as its name (with `href` it is
+ * a real `<a href>` with the same look); a disabled one never fires `onPress`.
  *
  * `busy` keeps the button exactly the size it has at rest (`t343u`): the paddings
  * do not change and the label keeps its place in the row, only its opacity drops
@@ -238,12 +246,19 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
     focusableWhenDisabled = false,
     busy = false,
     fullWidth,
+    href,
     testID,
     type = "button",
   },
   ref,
 ) {
   const blocked = disabled || busy;
+  // An anchor holds no disabled state: a blocked button keeps the `<button>` root
+  // and only pretends to be one, so its `disabled` and `aria-disabled` stay honest.
+  const link = href !== undefined && !blocked;
+  // Tamagui's `View` props type has no `href`; the attribute is spread past it and
+  // `render="a"` turns the root into the element that takes it (as `PersonRow`).
+  const anchor = { href };
   // A blocked button must not react to hover or press (`DESIGN.md` → Состояния): it
   // takes the variant value without those states. Focus, clicks and the Tab order stay
   // as they are.
@@ -251,6 +266,14 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
   // `busy` keeps the button in the Tab order (focus must not drop to <body> when a
   // form is submitted); only a plain `disabled` is a native disabled button.
   const native = disabled && !focusableWhenDisabled;
+  // A blocked button never navigates and never submits: it is a plain button.
+  const root = link ? (
+    "a"
+  ) : native ? (
+    <button type="button" disabled />
+  ) : (
+    <button type={blocked ? "button" : type} />
+  );
   // «Уменьшить движение»: the spinner slot fades in with the project's fade, 100 ms
   // instead of 160 ms (`motion.ts`), the same rule the layers follow.
   const reduce = useReduceMotion();
@@ -261,8 +284,9 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
       fullWidth={fullWidth}
       inactive={disabled}
       busy={busy}
-      // A blocked button never submits: it is a plain button for the browser.
-      render={native ? <button type="button" disabled /> : <button type={blocked ? "button" : type} />}
+      {...(link ? anchor : {})}
+      render={root}
+      role={link ? "link" : "button"}
       tabIndex={native ? -1 : 0}
       aria-label={ariaLabel ?? label}
       aria-describedby={ariaDescribedBy}

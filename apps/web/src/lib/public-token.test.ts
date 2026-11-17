@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPublicTokenSegment, wishlistPathForToken } from "./public-token";
+import { invitePathForToken, isPublicTokenSegment, wishlistPathForToken } from "./public-token";
 
 describe("isPublicTokenSegment", () => {
   it("accepts one short identifier segment", () => {
@@ -41,6 +41,28 @@ describe("wishlistPathForToken", () => {
       "tok#fragment",
     ]) {
       expect(wishlistPathForToken(token)).toBeNull();
+    }
+  });
+});
+
+describe("invitePathForToken", () => {
+  it("builds the one allowed app target from the validated segment", () => {
+    expect(invitePathForToken("tok-1")).toBe("/invite/tok-1");
+  });
+
+  it("returns no target for dot segments, encoded paths or absolute URLs", () => {
+    for (const token of [
+      "",
+      "..",
+      "../admin",
+      "a/b",
+      "//evil.example",
+      "https://evil.example",
+      "%2e%2e",
+      "tok?next=//evil.example",
+      "tok#fragment",
+    ]) {
+      expect(invitePathForToken(token)).toBeNull();
     }
   });
 });

@@ -1,7 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
-import { getMessages, type GiftCard } from "@gift-list/contracts";
+import { getMessages, AUTHOR_MAILTO, type GiftCard } from "@gift-list/contracts";
 import { PublicWishlistView, type PublicWishlistData } from "./public-wishlist-view";
 
 const config = createGiftListConfig({
@@ -63,6 +63,8 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("Анна");
     expect(html).toContain("@anna");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
+    expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
+    expect(html).toContain("Написать автору");
     expect(html).toContain('role="contentinfo"');
     expect(html).toContain("Плед");
     expect(html).toContain("мечта");
@@ -100,6 +102,9 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("Пока нет открытых желаний");
     expect(html).not.toContain("закрыт");
     expect(html).not.toContain("не найден");
+    // The footer is the same full one in the empty state.
+    expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
+    expect(html).toContain("Написать автору");
   });
 
   it("renders one not-found phrase without an owner or wishes", () => {
@@ -111,6 +116,8 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(levelOneHeadings(html)).toBe(1);
     expect(html).toContain(notFound);
     expect(html).toContain("Сделано с любовью командой cleverAgency");
+    expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
+    expect(html).toContain("Написать автору");
     expect(html).toContain('role="contentinfo"');
     expect(html).not.toContain("Анна");
     expect(html).not.toContain("Плед");

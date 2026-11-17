@@ -71,8 +71,11 @@ describe("InvitePreviewView: anonymous invite HTML", () => {
     expect(html).not.toContain("Принять приглашение");
     expect(html).not.toContain("У меня уже есть аккаунт");
     expect(html).not.toContain("/register");
-    // The anonymous shell keeps the one way in.
+    // The anonymous shell keeps the one way in and the full footer.
     expect(html).toContain('href="/login"');
+    expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
+    expect(html).toContain("Написать автору");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
+    expect(html).toContain('role="contentinfo"');
   });
 });

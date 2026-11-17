@@ -1,18 +1,9 @@
 "use client";
 
 import { createTranslator } from "next-intl";
-import { AUTHOR_MAILTO, getMessages, type SupportedLocale } from "@gift-list/contracts";
-import {
-  Button,
-  Column,
-  Heading,
-  LinkText,
-  PageFooter,
-  Screen,
-  Text,
-  XStack,
-  YStack,
-} from "@gift-list/ui";
+import { getMessages, type SupportedLocale } from "@gift-list/contracts";
+import { Button, Column, Heading, Screen, Text, XStack, YStack } from "@gift-list/ui";
+import { PublicPageFooter } from "@/components/public-page-footer";
 import type { InviteView } from "./invite-page";
 
 export type InvitePreviewData = Exclude<InviteView, { kind: "redirect" }>;
@@ -71,13 +62,7 @@ export function InvitePreviewView({ view, locale, brand }: InvitePreviewViewProp
     </XStack>
   );
 
-  const footer = (
-    <PageFooter tagline={messages.common.footerTagline}>
-      <a href={AUTHOR_MAILTO} style={{ textDecoration: "none" }}>
-        <LinkText>{messages.common.writeToAuthor}</LinkText>
-      </a>
-    </PageFooter>
-  );
+  const footer = <PublicPageFooter locale={locale} />;
 
   if (view.kind === "not_found") {
     return (

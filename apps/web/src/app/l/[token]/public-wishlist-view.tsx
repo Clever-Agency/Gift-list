@@ -7,7 +7,6 @@ import {
   EmptyState,
   Heading,
   LinkText,
-  PageFooter,
   Screen,
   StatusPill,
   TagChipList,
@@ -16,6 +15,7 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
+import { PublicPageFooter } from "@/components/public-page-footer";
 import type { LinkView } from "./link-page";
 
 export type PublicWishlistData = Exclude<LinkView, { kind: "redirect" }>;
@@ -56,7 +56,7 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
             </Heading>
           </Column>
         </YStack>
-        <PageFooter tagline={messages.common.footerTagline} />
+        <PublicPageFooter locale={locale} />
       </Screen>
     );
   }
@@ -155,7 +155,7 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
           )}
         </Column>
       </YStack>
-      <PageFooter tagline={messages.common.footerTagline} />
+      <PublicPageFooter locale={locale} />
     </Screen>
   );
 }

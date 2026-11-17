@@ -91,6 +91,34 @@ describe("catalogs", () => {
   });
 });
 
+describe("not-found copy", () => {
+  /**
+   * CLE-102: a not-found state is one and the same sentence on the web page and
+   * in the app, and a sentence ends with a period (`EXPERIENCE.md` → State
+   * Patterns: «Список не найден.», «Приглашение не найдено.»).
+   */
+  it("is the same sentence with a final period on the web and in the app", () => {
+    const { web, app } = getMessages("ru");
+    const pairs: ReadonlyArray<readonly [string, string]> = [
+      [web.wishlist.notFound, app.myWishlist.listNotFound],
+      [web.invite.notFound, app.invite.notFound],
+    ];
+
+    for (const [webText, appText] of pairs) {
+      expect(webText).toBe(appText);
+      expect(webText.endsWith(".")).toBe(true);
+    }
+  });
+
+  /** A page title is not a sentence: it drops the final period before the brand. */
+  it("keeps the document titles without the final period", () => {
+    const { web } = getMessages("ru");
+
+    expect(web.wishlist.notFoundTitle).toBe(`${web.wishlist.notFound.slice(0, -1)} — {brand}`);
+    expect(web.invite.notFoundTitle).toBe(`${web.invite.notFound.slice(0, -1)} — {brand}`);
+  });
+});
+
 describe("error catalog", () => {
   it("covers every error code and reason with non-empty text", () => {
     const { code, reason } = getMessages("ru").common.errors;

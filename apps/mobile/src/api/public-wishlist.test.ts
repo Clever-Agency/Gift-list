@@ -51,12 +51,25 @@ describe("fetchPublicWishlist", () => {
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/l/tok_1");
   });
 
-  it("keeps the closed not_found answer without an owner block", async () => {
-    api.apiRequest.mockResolvedValue(link({ access: "not_found", gifts: [] }));
+  it("turns the one NOT_FOUND refusal into the closed not_found state", async () => {
+    api.apiRequest.mockResolvedValue({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Not found",
+    });
 
     await expect(fetchPublicWishlist("tok_1")).resolves.toEqual({
       ok: true,
       access: "not_found",
+    });
+  });
+
+  it("treats the retired not_found success body as outside the contract", async () => {
+    api.apiRequest.mockResolvedValue(link({ access: "not_found", gifts: [] }));
+
+    await expect(fetchPublicWishlist("tok_1")).resolves.toEqual({
+      ok: false,
+      invalid: true,
     });
   });
 

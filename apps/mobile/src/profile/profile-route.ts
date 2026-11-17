@@ -11,7 +11,7 @@ import { NICK_PATTERN, safeNextPath } from "@gift-list/contracts";
  * `safeNextPath` proves the resulting `/u/{nick}` is a plain relative path.
  *
  * Existence is not checked here: the server answers every unknown nick, a
- * former nick after a rename and a Block with the same `not_found`.
+ * former nick after a rename and a Block with the same `NOT_FOUND` 404.
  */
 export type ProfileRoute = {
   readonly nick: string;

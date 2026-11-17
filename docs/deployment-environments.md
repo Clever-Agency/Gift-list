@@ -17,6 +17,34 @@
 | `DATABASE_URL`, `DIRECT_URL` | переменные прода | Preview-переменные, ограниченные веткой `staging` | Preview-переменные без привязки к ветке |
 | Мобильное приложение | боевая сборка | `EXPO_PUBLIC_API_BASE_URL=https://staging.wishmoon.clever-agency.dev` | — |
 
+## Порядок выкладки
+
+Прод обновляется только через `staging`:
+
+1. feature-ветка (от `staging`) → PR в `staging`, мерж squash-ом;
+2. проверка на `staging.wishmoon.clever-agency.dev` после деплоя Vercel и
+   зелёного CI;
+3. PR `staging → main`, мерж merge-коммитом (не squash-ом), чтобы истории веток
+   не расходились;
+4. после продвижения `staging` при необходимости перематывается до `main`
+   (fast-forward) человеком с правом обхода защиты ветки: force-push для этого
+   не нужен, история только дополняется.
+
+Миграции Prisma запускаются вручную — автоматического шага в деплое нет (команда —
+README, «Деплой вне Vercel»): `prisma migrate deploy` с `DATABASE_URL` и
+`DIRECT_URL` staging-базы после мержа в `staging` и до проверки на staging,
+на прод-базу — только при продвижении в `main`.
+
+Хотфикс, попавший сразу в `main`, сразу же вливается обратно в `staging`; иначе
+`staging` разойдётся с продом и следующая проверка пройдёт без фикса.
+
+Настройки GitHub, которые человек меняет вручную — до первого PR в `staging`:
+
+- защита ветки `staging` как у `main`: запрет прямого push и force-push,
+  обязательный PR и зелёная проверка CI `check`;
+- в настройках репозитория разрешены merge-коммиты (Allow merge commits) — без
+  этого PR `staging → main` не смержить merge-коммитом.
+
 ## Production
 
 - Домен `wishmoon.clever-agency.dev` привязан в Vercel к окружению Production
@@ -28,7 +56,7 @@
 ## Staging
 
 - Домен `staging.wishmoon.clever-agency.dev` привязан к ветке GitHub `staging`
-  (сначала создайте саму ветку).
+  (в неё приходят PR задач — см. «Порядок выкладки»).
 - Переменные `RESEND_API_KEY`, `EMAIL_FROM`
   (`WishMoon Staging <noreply@staging.wishmoon.clever-agency.dev>`),
   `BETTER_AUTH_URL=https://staging.wishmoon.clever-agency.dev`, `DATABASE_URL` и

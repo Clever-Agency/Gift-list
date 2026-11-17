@@ -13,6 +13,7 @@ import type { TextInputInstance } from "react-native";
 import { useTranslations } from "use-intl";
 import { apiRequest } from "@/api/client";
 import { getBrandName } from "@/config/env";
+import { inviteTokenFromNext } from "@/invite/invite-route";
 import { useAuth } from "@/session/auth-context";
 import { rememberAuthEmail } from "@/session/auth-navigation";
 import {
@@ -115,12 +116,17 @@ export default function RegisterScreen() {
 
   async function submit() {
     setIssue(null);
+    // AD-21: only a registration that came through `/invite/{token}` sends the
+    // token; `/l/:token` (rewritten to `/wishlist/:token`) never creates a
+    // friendship (AD-15-11), and no other return path carries one either.
+    const inviteToken = inviteTokenFromNext(next);
     const parsed = registerBodySchema.safeParse({
       email,
       password,
       displayName,
       nick,
       next,
+      ...(inviteToken === undefined ? {} : { inviteToken }),
     });
     const field = parsed.success ? undefined : firstZodField(parsed.error.issues[0]?.path);
     if (field === "password") {

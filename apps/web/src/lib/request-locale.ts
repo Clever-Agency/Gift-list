@@ -7,8 +7,9 @@ import {
 
 /**
  * AD-27: the request language of a public Next page. The proxy sets the header
- * only for `/l/*`, so every other route (including the Russian-only admin) keeps
- * the default `<html lang>` and does not vary by `Accept-Language`.
+ * only for `/l/*` and `/i/*`, so every other route (including the Russian-only
+ * admin) keeps the default `<html lang>` and does not vary by
+ * `Accept-Language`.
  */
 export const PUBLIC_LOCALE_HEADER = "x-gift-list-locale";
 

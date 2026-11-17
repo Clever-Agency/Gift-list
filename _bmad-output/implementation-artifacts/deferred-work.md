@@ -195,3 +195,13 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-fix-password-reset-loopback-http.md`
   summary: Документ деплоя и замороженная Story 1.7 по-прежнему говорят, что ссылка сброса всегда `https`.
   evidence: `docs/deployment-environments.md` пишет «Ссылка сброса всегда имеет вид `https://<хост из BETTER_AUTH_URL>/reset?token=…`». Замороженный блок `spec-1-7-сброс-пароля-по-email.md` требует `https://{origin}/reset?token=`, а его журнал ревью отклоняет сохранение локального `http`. Для прод, staging и preview код по-прежнему ставит `https`; расхождение только у loopback. Эти файлы вне разрешённого diff, замороженный блок Story 1.7 не меняется.
+
+## Deferred from: t422u — код сначала в staging (2026-11-16)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-t422u-staging-flow.md`
+  summary: В «Порядок выкладки» нет процедуры на случай сбоя: staging-деплой сломан, миграция на staging ошибочна, плохой PR продвинут в прод или CI `check` красный на PR `staging → main`.
+  evidence: Раздел описывает только успешный путь из четырёх шагов (`docs/deployment-environments.md`). Правила отката (revert-PR в `staging`, корректирующая миграция до продвижения, порядок при красном CI) требуют решения человека; в рамках t422u описаны не были.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-t422u-staging-flow.md`
+  summary: Не определено, что значит «проверка на staging»: нет чек-листа, критерия выхода и шага проверки мобильной staging-сборки.
+  evidence: Шаг 2 в `docs/deployment-environments.md` называет только адрес; в сводной таблице есть `EXPO_PUBLIC_API_BASE_URL` для staging-сборки, но команды и критериев «проверено» нигде нет. Чек-лист — предмет отдельного решения, а не этой инфраструктурной правки.

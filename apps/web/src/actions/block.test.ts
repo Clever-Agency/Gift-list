@@ -186,7 +186,7 @@ describe("unblockUserByNick (Story 4.5)", () => {
   );
 
   it("does not need the profile gate: a blocked person is resolved by nick directly", async () => {
-    // After a block `/u/:nick` answers `not_found` in both directions; the
+    // After a block `/u/:nick` answers `NOT_FOUND` 404 in both directions; the
     // unblock still has to reach the person, so only the nick lookup runs.
     blockUser.mockResolvedValue({ ok: true, outcome: "BLOCKED" });
 

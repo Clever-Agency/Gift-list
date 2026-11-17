@@ -329,9 +329,13 @@ async function becomeFriends(): Promise<void> {
   expect(accepted).toEqual({ ok: true, outcome: "FRIENDS_CREATED" });
 }
 
-function giftIds(data: ListData): string[] {
-  if (data.access !== "gifts") throw new Error(`unexpected access: ${data.access}`);
-  return data.gifts.map((gift) => gift.id);
+function found(data: ListData | null): ListData {
+  if (data === null) throw new Error("unexpected closed gate");
+  return data;
+}
+
+function giftIds(data: ListData | null): string[] {
+  return found(data).gifts.map((gift) => gift.id);
 }
 
 describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
@@ -369,8 +373,8 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
       target: { ownerId: OWNER_ID },
     });
 
-    expect(data.access).toBe("gifts");
-    expect(data.gifts).toEqual([]);
+    expect(found(data).access).toBe("gifts");
+    expect(found(data).gifts).toEqual([]);
   });
 
   it("shows FRIENDS and PUBLIC wishes after the counter invite creates the edge", async () => {
@@ -397,13 +401,13 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
       target: { ownerId: OWNER_ID },
     });
 
-    expect(data.access).toBe("gifts");
-    expect(data.gifts.map((gift) => gift.id).sort()).toEqual(["gift_friends", "gift_public"]);
+    expect(found(data).access).toBe("gifts");
+    expect(found(data).gifts.map((gift) => gift.id).sort()).toEqual(["gift_friends", "gift_public"]);
     // A friendship never opens SECRET and never fakes a subscriber.
-    expect(data.gifts.some((gift) => gift.id === "gift_secret")).toBe(false);
+    expect(found(data).gifts.some((gift) => gift.id === "gift_secret")).toBe(false);
   });
 
-  it("answers not_found when the owner blocked the viewer", async () => {
+  it("answers the closed gate when the owner blocked the viewer", async () => {
     fake.state.blocks.push({ blockerId: OWNER_ID, blockedId: VIEWER_ID });
 
     const data = await readWishlist({
@@ -411,7 +415,7 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
       target: { ownerId: OWNER_ID },
     });
 
-    expect(data).toEqual({ access: "not_found", gifts: [] });
+    expect(data).toBeNull();
   });
 
   describe("after unfriend (Story 4.4, FR-23, AD-7, AD-10 step 4)", () => {
@@ -445,13 +449,13 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
         viaListToken: true,
       });
 
-      // AD-7: not_found is reserved for a Block; an unfriended profile stays a
+      // AD-7: the closed gate is reserved for a Block; an unfriended profile stays a
       // readable list with the public wishes only.
       expect(giftIds(profile)).toEqual(["gift_public"]);
       expect(giftIds(link)).toEqual(["gift_public"]);
-      expect(Object.keys(profile).sort()).toEqual(["access", "gifts"]);
+      expect(Object.keys(found(profile)).sort()).toEqual(["access", "gifts"]);
 
-      // NFR-3: no hidden count, no hidden title — in the profile or in the link.
+      // NFR-3: no hidden count, no hidden title вЂ” in the profile or in the link.
       const body = JSON.stringify([profile, link]);
       expect(body).not.toContain("Wish gift_friends");
       expect(body).not.toContain("Wish gift_secret");
@@ -483,7 +487,7 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
       });
 
       // A signed-in stranger needs a relation for PUBLIC, so the profile is an
-      // empty — still readable — list; the list token is the relation the link carries.
+      // empty вЂ” still readable вЂ” list; the list token is the relation the link carries.
       expect(profile).toEqual({ access: "gifts", gifts: [] });
       expect(giftIds(link)).toEqual(["gift_public"]);
     });
@@ -516,7 +520,7 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
         viewer: { id: VIEWER_ID },
         target: { ownerId: OWNER_ID },
       });
-      expect(pending.gifts).toEqual([]);
+      expect(found(pending).gifts).toEqual([]);
 
       const accepted = await sendFriendInvite(
         { fromUserId: OWNER_ID, toUserId: VIEWER_ID },
@@ -588,10 +592,10 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
           viaListToken: true,
         });
 
-        // AD-7 / AD-15 (3): a block in either direction is the same not_found as
-        // an unknown nick or token, and no hidden title travels with it.
-        expect(profile).toEqual({ access: "not_found", gifts: [] });
-        expect(link).toEqual({ access: "not_found", gifts: [] });
+        // AD-7 / AD-15 (3): a block in either direction is the same closed gate
+        // as an unknown nick or token, and no hidden title travels with it.
+        expect(profile).toBeNull();
+        expect(link).toBeNull();
         expect(JSON.stringify([profile, link])).not.toContain("Wish gift_");
       }
     });
@@ -638,7 +642,7 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
         viewer: { id: VIEWER_ID },
         target: { ownerId: OWNER_ID },
       });
-      expect(hidden).toEqual({ access: "not_found", gifts: [] });
+      expect(hidden).toBeNull();
 
       const alsoRemoved = await unblockUser(
         { viewerId: OWNER_ID, otherUserId: VIEWER_ID },

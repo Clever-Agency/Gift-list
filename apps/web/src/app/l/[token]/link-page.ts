@@ -15,8 +15,9 @@ export type LinkOwner = { displayName: string; nick: string };
 
 /**
  * What the page may render, after the one gate has run. `not_found` covers an
- * unknown token, a malformed segment and a block: the HTML and the metadata are
- * the same for all three.
+ * unknown token, a malformed segment and a block: the page maps it to the real
+ * HTTP 404 (`notFound()`), and the HTML and the metadata are the same for all
+ * three.
  */
 export type LinkView =
   | { kind: "redirect"; to: string }
@@ -47,7 +48,7 @@ export async function loadLinkPage(token: string): Promise<LinkPage> {
   const data = await readPublicWishlist(token, null, locale);
   // A found list always names its owner for a link read; without it the answer
   // is treated as the same closed gate rather than rendering an unnamed list.
-  if (data.access === "not_found" || !data.owner) return { locale, view: { kind: "not_found" } };
+  if (data === null || !data.owner) return { locale, view: { kind: "not_found" } };
 
   return {
     locale,
@@ -65,7 +66,8 @@ export const getLinkPage = cache(loadLinkPage);
  * Story 3.3: preview metadata names only the owner and the product. Wish titles,
  * prices, descriptions, photos and hidden counts are never consulted, so a
  * `not_found` metadata is indistinguishable for unknown, malformed and blocked
- * tokens.
+ * tokens. Next applies this page metadata on the 404 response and injects
+ * `noindex` itself, so the title stays `Список не найден — {brand}`.
  */
 export function buildLinkMetadata(page: LinkPage, brand: string): Metadata {
   const messages = getMessages(page.locale);

@@ -1,6 +1,7 @@
 import {
   giftCardSchema,
   giftVisibilityPreviewSchema,
+  isNotFound,
   listDataSchema,
   type GiftCard,
   type GiftInputDraft,
@@ -46,9 +47,10 @@ export type GiftVisibilityPreviewResult =
  * The payload is re-checked with the shared contract (AD-12): `listDataSchema` is
  * `{ access, gifts: giftCardSchema[], publicToken? }`, a closed set on every card.
  * A body that does not match is its own outcome (`invalid`): the screen still
- * recovers with the retry view, but it does not claim a broken connection. A closed
- * gate (`access: "not_found"`) stays its own outcome: it is not an empty list
- * (EXPERIENCE → State Patterns → «Список не найден»).
+ * recovers with the retry view, but it does not claim a broken connection. The
+ * anomaly `NOT_FOUND` of the owner read stays the closed `access: "not_found"`
+ * state: it is not an empty list (EXPERIENCE → State Patterns → «Список не
+ * найден»).
  *
  * Story 2.4: the owner answer carries the immutable `publicToken` (AD-6), from
  * which the screen builds `https://{домен}/l/{publicToken}`. The server repairs
@@ -58,12 +60,11 @@ export type GiftVisibilityPreviewResult =
  */
 export async function fetchMyGifts(): Promise<MyGiftsResult> {
   const result = await apiRequest<unknown>("/api/v1/me/gifts");
+  if (isNotFound(result)) return { ok: true, access: "not_found" };
   if (!result.ok) return result;
 
   const parsed = listDataSchema.safeParse(result.data);
   if (!parsed.success) return { ok: false, invalid: true };
-
-  if (parsed.data.access === "not_found") return { ok: true, access: "not_found" };
 
   return {
     ok: true,

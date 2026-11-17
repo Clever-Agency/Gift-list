@@ -1,4 +1,4 @@
-import { listDataSchema, type GiftCard } from "@gift-list/contracts";
+import { isNotFound, listDataSchema, type GiftCard } from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
 import { publicWishlistRoute } from "@/wishlist/public-token";
 
@@ -21,11 +21,12 @@ export type PublicWishlistResult =
   | Exclude<ClientResult<unknown>, { ok: true }>;
 
 /**
- * Story 3.3 / AD-7: `GET /api/v1/l/:token` through the shared `apiRequest`
+ * Story 3.3 / AD-7, AD-12: `GET /api/v1/l/:token` through the shared `apiRequest`
  * transport (cookie on the web, bearer on the phone). The server applies
  * `VisibilityPolicy`; the client only checks the AD-12 envelope and never
- * filters wishes by visibility on its own. A malformed segment is the same
- * `not_found` before a request, matching the server route.
+ * filters wishes by visibility on its own. The one `NOT_FOUND` refusal is the
+ * closed `access: "not_found"` state of the screen; a malformed segment is the
+ * same state before a request, matching the server route.
  */
 export async function fetchPublicWishlist(token: string): Promise<PublicWishlistResult> {
   const route = publicWishlistRoute(token);
@@ -34,12 +35,12 @@ export async function fetchPublicWishlist(token: string): Promise<PublicWishlist
   const result = await apiRequest<unknown>(
     `/api/v1/l/${encodeURIComponent(route.token)}`,
   );
+  if (isNotFound(result)) return { ok: true, access: "not_found" };
   if (!result.ok) return result;
 
   const parsed = listDataSchema.safeParse(result.data);
   if (!parsed.success) return { ok: false, invalid: true };
 
-  if (parsed.data.access === "not_found") return { ok: true, access: "not_found" };
   if (parsed.data.owner === undefined) return { ok: true, access: "not_found" };
 
   return {

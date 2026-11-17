@@ -108,11 +108,25 @@ const existingEmailSchema = z.string().trim().toLowerCase().pipe(z.email());
 /** Registration and nick change validate the same way (AD-13). */
 const nickSchema = z.string().trim().toLowerCase().pipe(z.string().regex(NICK_PATTERN));
 
+/**
+ * Cap of the `/i/:token` value sent with registration (AD-21, Story 4.7.1). It
+ * matches the token pattern of the app paths, so a real link always fits.
+ */
+export const INVITE_TOKEN_MAX = 128;
+
+/**
+ * The invite token of `/i/:token`, forwarded by the app to registration. Only
+ * the length is checked, never the format: a stale or foreign token must not
+ * fail a registration — it only means that no friendship is created (AD-21).
+ */
+const inviteTokenSchema = z.string().trim().max(INVITE_TOKEN_MAX);
+
 export const registerBodySchema = z.object({
   email: newEmailSchema,
   password: passwordFieldSchema,
   displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX),
   nick: nickSchema,
+  inviteToken: inviteTokenSchema.optional(),
   next: z.string().optional(),
 });
 

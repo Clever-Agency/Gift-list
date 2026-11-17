@@ -1,6 +1,15 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
-import { actionResultSchema, giftCardSchema, listDataSchema, meSchema, type ActionResult } from "./index";
+import {
+  actionResultSchema,
+  giftCardSchema,
+  isNotFound,
+  listDataSchema,
+  meSchema,
+  notFoundError,
+  notFoundErrorSchema,
+  type ActionResult,
+} from "./index";
 
 const giftCard = {
   id: "g1",
@@ -186,12 +195,65 @@ describe("giftCardSchema", () => {
   });
 });
 
-describe("listDataSchema", () => {
-  it("accepts a not_found gate with no gifts", () => {
-    expect(listDataSchema.safeParse({ access: "not_found", gifts: [] }).success).toBe(true);
+describe("notFoundErrorSchema", () => {
+  it("accepts exactly the closed body of every hidden cause", () => {
+    expect(notFoundErrorSchema.parse(notFoundError())).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Not found",
+    });
+    expect(notFoundErrorSchema.safeParse({ ok: false, code: "NOT_FOUND", message: "x" }).success).toBe(
+      true,
+    );
   });
 
-  it("rejects a not_found gate that carries gifts", () => {
+  it("rejects a reason, a field, params or another code", () => {
+    expect(
+      notFoundErrorSchema.safeParse({
+        ok: false,
+        code: "NOT_FOUND",
+        message: "x",
+        reason: "EMAIL_TAKEN",
+      }).success,
+    ).toBe(false);
+    expect(
+      notFoundErrorSchema.safeParse({ ok: false, code: "NOT_FOUND", message: "x", field: "token" })
+        .success,
+    ).toBe(false);
+    expect(
+      notFoundErrorSchema.safeParse({
+        ok: false,
+        code: "NOT_FOUND",
+        message: "x",
+        params: { hours: 1 },
+      }).success,
+    ).toBe(false);
+    expect(notFoundErrorSchema.safeParse({ ok: false, code: "FORBIDDEN", message: "x" }).success).toBe(
+      false,
+    );
+    expect(notFoundErrorSchema.safeParse({ ok: true, code: "NOT_FOUND", message: "x" }).success).toBe(
+      false,
+    );
+  });
+
+  it("is the one refusal clients recognise, never a success envelope", () => {
+    // Non-fresh values keep the helper's structural parameter type honest.
+    const network = { ok: false, network: true };
+    const success = { ok: true, data: { access: "gifts", gifts: [] } };
+    const notFoundBody = { ok: false, code: "NOT_FOUND", message: "Not found" } as const;
+    const forbidden = { ok: false, code: "FORBIDDEN", message: "Forbidden" } as const;
+
+    expect(isNotFound(notFoundError())).toBe(true);
+    expect(isNotFound(notFoundBody)).toBe(true);
+    expect(isNotFound(network)).toBe(false);
+    expect(isNotFound(forbidden)).toBe(false);
+    expect(isNotFound(success)).toBe(false);
+  });
+});
+
+describe("listDataSchema", () => {
+  it("rejects the retired not_found success branch", () => {
+    expect(listDataSchema.safeParse({ access: "not_found", gifts: [] }).success).toBe(false);
     expect(listDataSchema.safeParse({ access: "not_found", gifts: [giftCard] }).success).toBe(false);
   });
 
@@ -213,18 +275,10 @@ describe("listDataSchema", () => {
     );
   });
 
-  it("rejects a publicToken on a closed gate", () => {
-    expect(
-      listDataSchema.safeParse({ access: "not_found", gifts: [], publicToken: "clx1example" })
-        .success,
-    ).toBe(false);
-  });
-
-  /** Story 3.3: a link read names the owner; a closed gate never does. */
-  it("accepts the owner block on open access and rejects it on a closed gate", () => {
+  /** Story 3.3: a link read names the owner; only a found list may do it. */
+  it("accepts the owner block on open access", () => {
     const owner = { displayName: "Анна", nick: "anna" };
     expect(listDataSchema.safeParse({ access: "gifts", gifts: [], owner }).success).toBe(true);
-    expect(listDataSchema.safeParse({ access: "not_found", gifts: [], owner }).success).toBe(false);
   });
 
   it("rejects an owner block with extra fields or missing names", () => {

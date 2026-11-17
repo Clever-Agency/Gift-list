@@ -52,8 +52,15 @@ describe("InvitePreviewView: anonymous invite HTML", () => {
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
 
+    // The skip link is the first stop of the Tab order, before the header action.
+    expect(html.indexOf('href="#main-content"')).toBeLessThan(
+      html.indexOf('href="/login?next=/invite/tok-1"'),
+    );
+
     // Server HTML with the Tamagui CSS, not a client-only shell.
-    expect(html).toContain('role="main"');
+    expect(html).toContain("<main");
+    expect(html).toContain('id="main-content"');
+    expect(html).toContain('href="#main-content"');
     expect(html).toContain("<style");
     expect(html).toContain("--c-primary:#2F5D3A");
   });

@@ -1,8 +1,8 @@
 "use client";
 
 import type { SupportedLocale } from "@gift-list/contracts";
-import { Column, Heading, Screen, YStack } from "@gift-list/ui";
-import { PublicPageFooter } from "@/components/public-page-footer";
+import { Column, Heading } from "@gift-list/ui";
+import { PublicPageFrame } from "@/components/public-page-frame";
 
 export type PublicNotFoundProps = {
   locale: SupportedLocale;
@@ -24,16 +24,13 @@ export type PublicNotFoundProps = {
  */
 export function PublicNotFound({ locale, message }: PublicNotFoundProps) {
   return (
-    <Screen>
-      <YStack flexGrow={1} role="main">
-        <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
-          <Heading level={1} kind="display-sm" textAlign="center">
-            {message}
-          </Heading>
-        </Column>
-      </YStack>
-      <PublicPageFooter locale={locale} />
-    </Screen>
+    <PublicPageFrame locale={locale}>
+      <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
+        <Heading level={1} kind="display-sm" textAlign="center">
+          {message}
+        </Heading>
+      </Column>
+    </PublicPageFrame>
   );
 }
 

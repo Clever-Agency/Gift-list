@@ -1,6 +1,6 @@
 import { View, styled } from "@tamagui/core";
 import { YStack } from "@tamagui/stacks";
-import type { ReactNode } from "react";
+import type { ComponentRef, ReactNode, Ref } from "react";
 import { PhotoPlaceholder } from "./photo-placeholder";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
@@ -69,6 +69,8 @@ export type WishCardProps = {
    * With `onPress` the app supplies it; without it the content text is the name.
    */
   pressLabel?: string;
+  /** The card button, so a closing detail dialog can return focus to it. */
+  pressRef?: Ref<ComponentRef<typeof Pressable>>;
   /** Card width in px, or a CSS size. Defaults to the full width of the parent. */
   width?: number | string;
   testID?: string;
@@ -98,6 +100,7 @@ export function WishCard({
   chipInteractive,
   onPress,
   pressLabel,
+  pressRef,
   width,
   testID,
 }: WishCardProps) {
@@ -132,7 +135,7 @@ export function WishCard({
   return (
     <Card role="listitem" width={width} testID={testID}>
       {onPress ? (
-        <Pressable aria-label={pressLabel} onPress={onPress} borderRadius="$lg">
+        <Pressable ref={pressRef} aria-label={pressLabel} onPress={onPress} borderRadius="$lg">
           {content}
         </Pressable>
       ) : (

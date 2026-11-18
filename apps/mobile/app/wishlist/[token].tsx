@@ -24,6 +24,7 @@ import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
+import { loadViewerDetail } from "@/ui/wish-detail-load";
 import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useCardGrid } from "@/ui/use-card-grid";
@@ -296,6 +297,13 @@ export default function PublicWishlistScreen() {
                               gift={gift}
                               width={cardWidth}
                               listToken={token}
+                              loadDetail={
+                                auth.state.status === "ready"
+                                  ? function loadThisGift() {
+                                      return loadViewerDetail(gift.id, token, gift);
+                                    }
+                                  : undefined
+                              }
                             />
                           );
                         })}

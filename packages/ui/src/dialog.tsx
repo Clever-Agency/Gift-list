@@ -1,3 +1,4 @@
+import { useMedia } from "@tamagui/core";
 import { XStack, YStack } from "@tamagui/stacks";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Dialog as TamaguiDialog } from "tamagui/dialog";
@@ -6,6 +7,7 @@ import { focusInLayer, type FocusTarget } from "./focus";
 import { useBackClose, useNativeFocusOnOpen, useNativeLayerClosed } from "./layer";
 import { layerExitMs, layerFade } from "./motion";
 import { Pressable } from "./pressable";
+import { ScrollView } from "./scroll";
 import { SCRIM_OPACITY } from "./tokens";
 import { useReduceMotion } from "./use-reduce";
 
@@ -39,6 +41,12 @@ export type DialogProps = {
   children?: ReactNode;
   /** The buttons row, aligned to the end. */
   actions?: ReactNode;
+  /**
+   * `default` is the confirm width. `detail` is the wish-detail layer: almost the
+   * full screen below the `medium` breakpoint, and up to `detail-width` above it.
+   * The body scrolls; the title and the close control stay in view.
+   */
+  layout?: "default" | "detail";
   testID?: string;
 };
 
@@ -63,8 +71,12 @@ export function Dialog({
   closeAction,
   children,
   actions,
+  layout = "default",
   testID,
 }: DialogProps) {
+  const media = useMedia();
+  const detail = layout === "detail";
+  const compact = detail && !media.medium;
   const titleRef = useRef<FocusTarget>(null);
   const openRef = useRef(open);
   const closedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -109,7 +121,10 @@ export function Dialog({
 
   return (
     <TamaguiDialog modal open={open} onOpenChange={handleOpenChange}>
-      <TamaguiDialog.Portal paddingHorizontal="$page-gutter">
+      <TamaguiDialog.Portal
+        paddingHorizontal={compact ? "$2" : "$page-gutter"}
+        paddingVertical={compact ? "$2" : undefined}
+      >
         <TamaguiDialog.Overlay
           key="overlay"
           testID={testID ? `${testID}-scrim` : undefined}
@@ -122,9 +137,12 @@ export function Dialog({
           role={role}
           testID={testID}
           width="100%"
-          maxWidth="$dialog-width"
+          maxWidth={detail ? (compact ? "100%" : "$detail-width") : "$dialog-width"}
+          maxHeight={detail ? (compact ? "100%" : "85%") : undefined}
+          height={compact ? "100%" : undefined}
+          overflow={detail ? "hidden" : undefined}
           backgroundColor="$surface"
-          borderRadius="$lg"
+          borderRadius={compact ? "$md" : "$lg"}
           borderWidth={0}
           padding="$card-padding"
           gap="$grid-gap"
@@ -175,7 +193,17 @@ export function Dialog({
               </Pressable>
             ) : null}
           </XStack>
-          {children}
+          {detail ? (
+            <ScrollView
+              testID={testID ? `${testID}-scroll` : "dialog-scroll"}
+              maxHeight={compact ? "85vh" : "70vh"}
+              flexShrink={1}
+            >
+              {children}
+            </ScrollView>
+          ) : (
+            children
+          )}
           {actions ? (
             <XStack
               alignItems="center"

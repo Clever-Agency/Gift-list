@@ -270,7 +270,33 @@
     },
     "detail": {
       "pageTitle": "Желание — {brand}",
-      "loading": "Загружаем желание"
+      "loading": "Загружаем желание",
+      "description": "Описание",
+      "price": "Цена",
+      "link": "Ссылка",
+      "quantity": "Сколько раз можно дарить",
+      "expires": "Актуально до",
+      "tags": "Теги",
+      "status": "Статус",
+      "visibility": "Кто видит",
+      "reservation": "Бронь",
+      "bought": "Куплено",
+      "yes": "да",
+      "no": "нет",
+      "archivedLabel": "Архив",
+      "archived": "В архиве с {date}",
+      "phase": {
+        "ACTIVE": "Вы берёте · до {date}",
+        "AWAITING_GIVER": "Срок истёк",
+        "AWAITING_OWNER": "Срок истёк · ждём ответа владельца",
+        "GIVEN": "Ждёт подтверждения"
+      },
+      "reservationLabel": {
+        "BOUGHT": "Куплен",
+        "GIVEN": "Подарен"
+      },
+      "close": "Закрыть",
+      "edit": "Изменить желание"
     },
     "loadError": "Не получилось загрузить. Проверьте сеть.",
     "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз.",

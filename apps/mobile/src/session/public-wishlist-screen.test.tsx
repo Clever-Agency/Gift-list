@@ -7,7 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
-import { controls, settle } from "@/test/dom";
+import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
@@ -356,6 +356,52 @@ describe("вишлист по ссылке: список", () => {
     // The link page has no visibility chip and no hidden count.
     expect(text()).not.toContain("Всем");
     expect(text()).not.toContain("Друзьям");
+  });
+
+  it("карточка открывает обновлённые подробности, «Куплю сам» ведёт в бронь", async () => {
+    const card = gift();
+    respond(giftsAnswer([card]));
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (String(path).startsWith("/api/v1/gifts/")) {
+        return Promise.resolve({
+          ok: true,
+          data: { ...card, description: "Обновлённое описание с сервера." },
+        });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+    await mount();
+
+    const cardButton = container.querySelector(
+      '[role="listitem"] [role="button"]',
+    ) as HTMLElement;
+    await act(async () => {
+      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    const dialog = dialogElement();
+    expect(dialog?.textContent).toContain("Обновлённое описание с сервера.");
+    expect(dialog?.textContent).not.toContain("Всем");
+    expect(navigation.push).not.toHaveBeenCalled();
+
+    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
+    await act(async () => {
+      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(300);
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cardButton);
+
+    // This file's translator stub only loads `app` and `common`, so the web
+    // catalogue key is what the button renders here.
+    await press("buyMyself");
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]",
+      params: { id: "g1", listToken: "tok_1", title: "Наушники", openReserve: "1" },
+    });
+    expect(dialogElement()).toBeNull();
   });
 
   it("не показывает скрытое желание, которого нет в ответе сервера", async () => {

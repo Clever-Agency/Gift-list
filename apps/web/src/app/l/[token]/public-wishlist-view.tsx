@@ -1,10 +1,20 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { createTranslator } from "next-intl";
-import { formatPrice, getMessages, type GiftCard, type SupportedLocale } from "@gift-list/contracts";
+import {
+  detailCopy,
+  formatPrice,
+  getMessages,
+  toDetailFacts,
+  type GiftCard,
+  type SupportedLocale,
+} from "@gift-list/contracts";
 import {
   Column,
+  DetailDialog,
   EmptyState,
+  restoreFocus,
   Heading,
   LinkText,
   StatusPill,
@@ -36,8 +46,10 @@ export type PublicWishlistViewProps = {
 /**
  * Story 3.3: the anonymous link page, built from the same `packages/ui` cards as
  * the app screen. The owner is the one `h1`, the nick is a caption, and the grid
- * is plain list content: no visibility chip and no hidden count. «Куплю сам» is
- * a relative link to the SPA route (AD-26), only for a single open wish; the
+ * is plain list content: no visibility chip and no hidden count. The card press
+ * opens a detail dialog of the fields this response already allowed (CLE-84).
+ * «Куплю сам» is a separate link to the SPA route (AD-26) and does not open the
+ * dialog. It is only for a single open wish; the
  * booking and friendship confirm flows belong to Epic 5 and AD-21 forbids
  * creating a friendship from `/l`.
  *
@@ -51,6 +63,10 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
 
   const tGift = createTranslator({ locale, messages, namespace: "app.gift" });
   const tWishlist = createTranslator({ locale, messages, namespace: "app.myWishlist" });
+  const [selected, setSelected] = useState<GiftCard | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const cardNodes = useRef(new Map<string, { focus?: () => void } | null>());
+  const copy = detailCopy(messages);
 
   function moreTagLabel(hiddenCount: number): string {
     return tGift("tagsMore", { count: hiddenCount });
@@ -78,6 +94,15 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
       gift.quantity === "SINGLE" && gift.status === "OPEN" && wishlistPath
         ? `${wishlistPath}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`
         : null;
+
+    function openDetail() {
+      setSelected(gift);
+      setDetailOpen(true);
+    }
+
+    function rememberCard(node: { focus?: () => void } | null) {
+      cardNodes.current.set(gift.id, node);
+    }
 
     return (
       <YStack
@@ -110,6 +135,9 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
           }
           reservation={reservation}
           width="100%"
+          pressLabel={gift.title}
+          pressRef={rememberCard}
+          onPress={openDetail}
         />
         {href ? (
           <a
@@ -143,6 +171,23 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
           </XStack>
         )}
       </Column>
+      {selected ? (
+        <DetailDialog
+          open={detailOpen}
+          title={selected.title}
+          facts={toDetailFacts(selected, "guest", locale, copy)}
+          closeLabel={messages.app.gift.detail.close}
+          onClose={function closeDetail() {
+            setDetailOpen(false);
+          }}
+          onClosed={function detailClosed() {
+            const node = cardNodes.current.get(selected.id) ?? null;
+            setSelected(null);
+            restoreFocus(node);
+          }}
+          testID="public-wish-detail"
+        />
+      ) : null}
     </PublicPageFrame>
   );
 }

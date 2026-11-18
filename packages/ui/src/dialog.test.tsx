@@ -198,6 +198,28 @@ describe("Dialog", () => {
   });
 });
 
+describe("Dialog: подробности", () => {
+  it("тело прокручивается, заголовок остаётся именем диалога", async () => {
+    const { render } = mounted();
+    const body = "Очень длинное описание. ".repeat(40);
+    await render(
+      <Dialog open layout="detail" title="Плед из шерсти" onClose={noop} testID="detail">
+        {body}
+      </Dialog>,
+    );
+    await settle();
+
+    const dialog = document.querySelector("[role='dialog']") as HTMLElement;
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    const name = document.getElementById(dialog.getAttribute("aria-labelledby") as string);
+    expect(name?.textContent).toBe("Плед из шерсти");
+    const scroll = document.querySelector("[data-testid='detail-scroll']") as HTMLElement;
+    expect(scroll).not.toBeNull();
+    expect(["auto", "scroll"]).toContain(getComputedStyle(scroll).overflowY);
+    expect(scroll.textContent).toContain("Очень длинное описание.");
+  });
+});
+
 describe("Dialog: возврат фокуса после Esc", () => {
   it("после Esc и закрытия фокус на кнопке, открывшей слой", async () => {
     const opener = createRef<HTMLElement>();

@@ -1,15 +1,18 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
-import { Button, TagChipList, Text, WishCard as UiWishCard, YStack } from "@gift-list/ui";
+import { Button, TagChipList, Text, WishCard as UiWishCard, YStack, restoreFocus, type FocusTarget } from "@gift-list/ui";
 import { router } from "expo-router";
+import { useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { StatusPill } from "@/ui/status-pill";
+import { WishDetailDialog } from "@/ui/wish-detail-dialog";
+import type { DetailLoadResult } from "@/ui/wish-detail-load";
 
 /**
  * Story 3.3 / DESIGN → `/l/{token}`: the link visitor sees the same
  * `packages/ui` card as the owner, but without the visibility chip and without
- * the hidden-count affordance. The card is plain list content — there is no
- * public gift detail route — so it has no press zone and no visibility value in
- * its accessible name.
+ * the hidden-count affordance. The main zone opens the detail dialog (CLE-84)
+ * and does not put `visibility` in the accessible name. «Куплю сам» is a sibling
+ * and does not open the dialog.
  *
  * The server has already applied `VisibilityPolicy`: whatever arrives in
  * `gift` is allowed for this viewer. This component deliberately does not
@@ -19,12 +22,20 @@ export function PublicGiftCard({
   gift,
   width,
   listToken,
+  loadDetail,
 }: {
   gift: GiftCardData;
   width: number;
   /** When set, «Куплю сам» returns here with `?reserve=` after auth. */
   listToken?: string;
+  /**
+   * Signed-in refresh of one wish. Omit it for an anonymous visitor: the list
+   * card is already everything the server allowed.
+   */
+  loadDetail?: () => Promise<DetailLoadResult>;
 }) {
+  const [detailOpen, setDetailOpen] = useState(false);
+  const cardRef = useRef<FocusTarget | null>(null);
   const t = useTranslations("app.myWishlist");
   const tGift = useTranslations("app.gift");
   const tWeb = useTranslations("web.wishlist");
@@ -64,7 +75,15 @@ export function PublicGiftCard({
   }
 
   function openDetail() {
-    router.push({ pathname: "/gifts/[id]", params: detailParams(false) });
+    setDetailOpen(true);
+  }
+
+  function closeDetail() {
+    setDetailOpen(false);
+  }
+
+  function returnToCard() {
+    restoreFocus(cardRef.current);
   }
 
   function openReserveFlow() {
@@ -91,6 +110,7 @@ export function PublicGiftCard({
         reservation={reservation}
         width={width}
         pressLabel={gift.title}
+        pressRef={cardRef as never}
         onPress={openDetail}
       />
       {showReserve ? (
@@ -109,6 +129,14 @@ export function PublicGiftCard({
           {tGift(`reserveNoButton.${gift.status}`)}
         </Text>
       ) : null}
+      <WishDetailDialog
+        open={detailOpen}
+        viewer="guest"
+        snapshot={gift}
+        load={loadDetail}
+        onClose={closeDetail}
+        onClosed={returnToCard}
+      />
     </YStack>
   );
 }

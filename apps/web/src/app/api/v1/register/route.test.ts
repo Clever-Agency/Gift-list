@@ -179,4 +179,13 @@ describe("POST /api/v1/register caps", () => {
     expect(overCap.status).toBe(400);
     expect(await overCap.json()).toEqual(validationBody("displayName"));
   });
+
+  /** CLE-94: the door normalizes the nick and never accepts a preset column. */
+  it("lower-cases the nick and drops a client-sent nickNormalized", async () => {
+    const res = await POST(post({ ...validBody, nick: " ANNA ", nickNormalized: "free" }));
+
+    expect(res.status).toBe(200);
+    expect(registerUser).toHaveBeenCalledTimes(1);
+    expect(registerUser.mock.calls[0]?.[0]).toEqual({ ...validBody, nick: "anna" });
+  });
 });

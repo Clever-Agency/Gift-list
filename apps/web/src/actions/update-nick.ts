@@ -44,8 +44,7 @@ export async function updateNick(input: NickUpdateBody, headers: Headers): Promi
   });
   if (!row) return unauthenticated;
 
-  const nick = input.nick;
-  const nickNormalized = normalizeNick(nick);
+  const nickNormalized = normalizeNick(input.nick);
   const current = meSchema.parse({
     id: row.id,
     email: row.email,
@@ -65,7 +64,9 @@ export async function updateNick(input: NickUpdateBody, headers: Headers): Promi
   try {
     await prisma.user.update({
       where: { id: row.id },
-      data: { nick, nickNormalized },
+      // AD-13: `nick` keeps only the canonical form, so it is the exact copy of
+      // `nickNormalized` and the two columns cannot drift.
+      data: { nick: nickNormalized, nickNormalized },
     });
   } catch (error) {
     // Another user's write won the race after findFirst; the unique index decides.
@@ -74,5 +75,5 @@ export async function updateNick(input: NickUpdateBody, headers: Headers): Promi
     }
     throw error;
   }
-  return { ok: true, data: { ...current, nick } };
+  return { ok: true, data: { ...current, nick: nickNormalized } };
 }

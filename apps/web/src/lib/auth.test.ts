@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseUserInput } from "better-auth/db";
 
 vi.mock("server-only", () => ({}));
 
@@ -70,6 +71,31 @@ describe("auth proxy", () => {
       };
       expect(typeof adapter.options?.adapterConfig?.transaction).toBe("function");
     }
+  });
+
+  /**
+   * CLE-94: Better Auth is a second writer of `User`. `input: false` keeps
+   * `nick`/`nickNormalized` out of `/api/auth/update-user`; only the two use-cases
+   * (registration and the nick change) may write them.
+   */
+  it("keeps nick and nickNormalized out of Better Auth client input", async () => {
+    setAuthEnv();
+    delete globalForAuth.auth;
+    vi.resetModules();
+    const { auth } = await import("@/lib/auth");
+    const fields = auth.options.user?.additionalFields ?? {};
+    expect(fields.nick).toMatchObject({ input: false });
+    expect(fields.nickNormalized).toMatchObject({ input: false });
+
+    // The library seam: `/api/auth/update-user` parses its body with these flags.
+    expect(() => parseUserInput(auth.options, { nick: "other" }, "update")).toThrow(
+      /nick is not allowed to be set/,
+    );
+    expect(() => parseUserInput(auth.options, { nickNormalized: "other" }, "update")).toThrow(
+      /nickNormalized is not allowed to be set/,
+    );
+    // A column the config does not declare is dropped, never written.
+    expect(parseUserInput(auth.options, { nameNormalized: "other" }, "update")).toEqual({});
   });
 
   it("link-shape sends loopback http /reset?token= and swallows a mailer failure", async () => {

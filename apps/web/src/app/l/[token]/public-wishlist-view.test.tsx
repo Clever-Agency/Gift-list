@@ -94,7 +94,9 @@ describe("PublicWishlistView: link page HTML", () => {
       ],
     });
 
-    expect(html).toContain('href="/wishlist/tok-1"');
+    expect(html).toContain(
+      'href="/wishlist/tok-1?reserve=g-open&amp;title=%D0%9F%D0%BB%D0%B5%D0%B4"',
+    );
     expect(html).toContain('aria-label="Куплю сам: Плед"');
     expect(html).not.toContain("Куплю сам: Свитер");
     expect(html).not.toContain("Куплю сам: Наушники");

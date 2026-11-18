@@ -1,6 +1,8 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
-import { TagChipList, WishCard as UiWishCard } from "@gift-list/ui";
+import { Button, LinkText, TagChipList, WishCard as UiWishCard, YStack } from "@gift-list/ui";
+import { router } from "expo-router";
 import { useLocale, useTranslations } from "use-intl";
+import { useAuth } from "@/session/auth-context";
 import { StatusPill } from "@/ui/status-pill";
 
 /**
@@ -17,13 +19,18 @@ import { StatusPill } from "@/ui/status-pill";
 export function PublicGiftCard({
   gift,
   width,
+  listToken,
 }: {
   gift: GiftCardData;
   width: number;
+  /** When set, «Куплю сам» returns here with `?reserve=` after auth. */
+  listToken?: string;
 }) {
   const t = useTranslations("app.myWishlist");
   const tGift = useTranslations("app.gift");
+  const tWeb = useTranslations("web.wishlist");
   const locale = useLocale();
+  const auth = useAuth();
   const price =
     gift.priceAmount !== null && gift.priceCurrency !== null
       ? formatPrice(gift.priceAmount, gift.priceCurrency, locale)
@@ -46,25 +53,59 @@ export function PublicGiftCard({
     return tGift("tagsMoreLabel", { count: hiddenCount, tags: hiddenLabels.join(", ") });
   }
 
+  const showReserve =
+    gift.quantity === "SINGLE" && gift.status === "OPEN";
+
+  function openDetail() {
+    router.push(`/gifts/${gift.id}`);
+  }
+
+  function openReserveFlow() {
+    const reservePath = listToken
+      ? `/wishlist/${listToken}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`
+      : `/gifts/${gift.id}?openReserve=1`;
+    if (auth.state.status !== "ready") {
+      router.push({ pathname: "/login", params: { next: reservePath } });
+      return;
+    }
+    if (listToken) {
+      router.push(reservePath);
+      return;
+    }
+    router.push({ pathname: "/gifts/[id]", params: { id: gift.id, openReserve: "1" } });
+  }
+
   return (
-    <UiWishCard
-      title={gift.title}
-      closed={gift.status === "CLOSED"}
-      price={price}
-      status={<StatusPill status={gift.status} />}
-      tags={
-        tagLabels.length > 0 ? (
-          <TagChipList
-            labels={tagLabels}
-            testID="gift-tags"
-            moreLabel={moreTagLabel}
-            moreAccessibilityLabel={moreTagAccessibilityLabel}
-          />
-        ) : undefined
-      }
-      reservation={reservation}
-      width={width}
-    />
+    <YStack gap="$2" width={width}>
+      <UiWishCard
+        title={gift.title}
+        closed={gift.status === "CLOSED"}
+        price={price}
+        status={<StatusPill status={gift.status} />}
+        tags={
+          tagLabels.length > 0 ? (
+            <TagChipList
+              labels={tagLabels}
+              testID="gift-tags"
+              moreLabel={moreTagLabel}
+              moreAccessibilityLabel={moreTagAccessibilityLabel}
+            />
+          ) : undefined
+        }
+        reservation={reservation}
+        width={width}
+        onPress={openDetail}
+      />
+      {showReserve ? (
+        <Button
+          label={tWeb("buyMyselfLabel", { title: gift.title })}
+          variant="reserve"
+          onPress={openReserveFlow}
+        />
+      ) : gift.quantity === "UNLIMITED" ? (
+        <LinkText>{tGift("reserveNoButton.UNLIMITED")}</LinkText>
+      ) : null}
+    </YStack>
   );
 }
 

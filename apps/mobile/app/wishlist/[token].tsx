@@ -12,7 +12,7 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { useTranslations } from "use-intl";
 import { fetchPublicWishlist, type PublicWishlistOwner } from "@/api/public-wishlist";
@@ -70,7 +70,7 @@ export default function PublicWishlistScreen() {
   // Destructured: React's `refs` lint rule treats an object that holds a ref callback
   // as a ref, and a member read of it during render is an error.
   const { cardWidth, attachContainer } = useCardGrid();
-  const params = useLocalSearchParams<{ token?: string }>();
+  const params = useLocalSearchParams<{ token?: string; reserve?: string; title?: string }>();
   const route = publicWishlistRoute(paramValue(params.token));
   const token = route?.token ?? null;
   const [state, setState] = useState<ScreenState>(
@@ -152,6 +152,21 @@ export default function PublicWishlistScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authPending, token, attempt]);
 
+  useEffect(function followReserveDeepLink() {
+    const reserveId = paramValue(params.reserve);
+    if (!reserveId || authPending || auth.state.status !== "ready") return;
+    if (state.status !== "ready" || state.token !== token) return;
+    const gift = state.gifts.find(function matchGift(row) {
+      return row.id === reserveId;
+    });
+    if (gift?.quantity === "SINGLE" && gift.status === "OPEN") {
+      router.replace({
+        pathname: "/gifts/[id]",
+        params: { id: reserveId, openReserve: "1" },
+      });
+    }
+  }, [authPending, auth.state.status, params.reserve, state, token]);
+
   if (token === null) {
     return <NotFoundScreen />;
   }
@@ -230,7 +245,12 @@ export default function PublicWishlistScreen() {
                       <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
                         {view.gifts.map(function renderGift(gift) {
                           return (
-                            <PublicGiftCard key={gift.id} gift={gift} width={cardWidth} />
+                            <PublicGiftCard
+                              key={gift.id}
+                              gift={gift}
+                              width={cardWidth}
+                              listToken={token}
+                            />
                           );
                         })}
                       </XStack>

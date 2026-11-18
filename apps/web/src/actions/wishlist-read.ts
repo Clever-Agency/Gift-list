@@ -46,6 +46,8 @@ const giftSelect = {
   archivedAt: true,
   status: true,
   reservationPhase: true,
+  reservationDueAt: true,
+  reservationTimeZone: true,
   reservationBought: true,
   holderVisibleToOwner: true,
   holderVisibleToOthers: true,

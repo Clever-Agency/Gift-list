@@ -18,7 +18,7 @@ Epic 1 можно принимать. Все критерии Story 1.9 выпо
 
 - ОС: Windows 11 Pro 10.0.26200, Git Bash.
 - Node.js 24.22.1, npm 11.19.1.
-- PostgreSQL: Docker и PostgreSQL на машине не установлены. Временный кластер поднят пакетом `embedded-postgres` (PostgreSQL 18.6, beta-сборка пакета) в scratchpad сессии, порт 5433, база `gift_list`. `apps/web/.env` основного checkout указывает на Supabase — к нему не подключался.
+- PostgreSQL: Docker и PostgreSQL на машине не установлены. Временный кластер поднят пакетом `embedded-postgres` (PostgreSQL 18.6, beta-сборка пакета) в scratchpad сессии, порт 5433, база `gift_list`. `apps/web/.env` основного checkout указывает на Neon — к нему не подключался.
 - `apps/web/.env` — временный, локальные значения, после прогона удалён. `RESEND_API_KEY` не задан. `AUTH_DEV_TRUSTED_ORIGINS=http://localhost:8081`.
 - Сервер: standalone `node apps/web/.next/standalone/apps/web/server.js` на `127.0.0.1:3100` (порт 3000 был занят чужим процессом). Для проверки Next-страницы `/ui-check` — `next dev` на 3200.
 - UI: встроенный браузер Claude, вьюпорты 390×844 и 1280×900.
@@ -167,7 +167,7 @@ API — сценарий `fetch` против standalone, 31 проверка. �
 - SSR-CSS проверен только на служебной `/ui-check` в `next dev`: в production она 404, рабочих Next-страниц на `packages/ui` до Story 3.3 нет.
 - Базовый вес на `dc10567` не пересобирался: сравнение с числом из спеки.
 - PostgreSQL — 18.6 из `embedded-postgres`, не 16, как в CI и проде. Миграции и все сценарии прошли.
-- Прод, Vercel и Supabase не вызывались.
+- Прод, Vercel и удалённая БД (Neon) не вызывались.
 
 ## 8. Что завести в Linear
 

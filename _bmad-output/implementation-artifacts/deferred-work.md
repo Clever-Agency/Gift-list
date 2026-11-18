@@ -222,3 +222,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-support-email-author-contact.md`
   summary: Письма уходят с `noreply@` без `Reply-To`, поэтому ответ пользователя на письмо теряется; стоит ставить `Reply-To: AUTHOR_EMAIL` (`support@`) или явно решить, что ответы не поддерживаются.
   evidence: D-48 и `docs/deployment-environments.md` фиксируют отправителя `noreply@` и что ответы на него не читаются; ни один документ не требует `Reply-To`. Поведение было и до смены контакта.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-92-zapret-tekushchego-parolya.md`
+  summary: На сыром `/api/auth/change-password` проверка HIBP выполняется до сверки текущего пароля, поэтому вошедший без знания текущего пароля может отличить утёкший новый пароль (`PASSWORD_COMPROMISED`) от неверного текущего.
+  evidence: Порядок Better Auth 1.7.14 и хука CLE-90: `hash` (а в нём HIBP) вызывается раньше `password.verify` текущего пароля. CLE-92 эту проверку не переставлял: отказ `PASSWORD_REUSED` звучит только после верного `currentPassword`, но HIBP по-прежнему раньше. Чинить отдельно, не смешивая с запретом текущего пароля.

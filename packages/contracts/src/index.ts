@@ -82,9 +82,9 @@ export const ERROR_REASONS = [
    */
   "PASSWORD_PWNED",
   /**
-   * Registration or reset reused the account's current password. Always rides
-   * with `code: "VALIDATION"` and `field: "password"`; reset tokens are not
-   * spent.
+   * Reset or change-password matched the account's current hash. Always rides
+   * with `code: "VALIDATION"` and `field: "password"`. The reset token is not
+   * spent. Registration does not use this reason.
    */
   "PASSWORD_REUSED",
 ] as const;

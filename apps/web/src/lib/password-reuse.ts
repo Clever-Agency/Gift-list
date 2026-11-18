@@ -32,12 +32,17 @@ async function rejectIfSameAsStored(
   }
 }
 
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 async function userIdForResetToken(
   endpoint: NonNullable<ReturnType<typeof tryGetCurrentAuthEndpointContext>>,
 ): Promise<string | undefined> {
-  const token =
-    (endpoint.body as { token?: string } | undefined)?.token ??
-    (endpoint.query as { token?: string } | undefined)?.token;
+  // Better Auth uses `body.token || query.token`, so a blank body token is absent.
+  const body = endpoint.body as { token?: unknown } | undefined;
+  const query = endpoint.query as { token?: unknown } | undefined;
+  const token = nonEmpty(body?.token) ?? nonEmpty(query?.token);
   if (!token) return undefined;
   const verification = await endpoint.context.internalAdapter.findVerificationValue(
     `${RESET_TOKEN_PREFIX}${token}`,
@@ -52,11 +57,8 @@ async function userIdForPasswordSet(
   if (path === "/change-password") {
     return endpoint.context.session?.user?.id;
   }
-  if (path === "/reset-password" || path === "/email-otp/reset-password" || path === "/phone-number/reset-password") {
+  if (path === "/reset-password") {
     return userIdForResetToken(endpoint);
-  }
-  if (path === "/admin/set-user-password") {
-    return (endpoint.body as { userId?: string } | undefined)?.userId;
   }
   return undefined;
 }

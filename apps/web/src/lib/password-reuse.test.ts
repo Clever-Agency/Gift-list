@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { runWithEndpointContext } from "@better-auth/core/context";
-import { APIError } from "better-auth/api";
 import { rejectReusedPassword } from "@/lib/password-reuse";
 
 vi.mock("server-only", () => ({}));
@@ -121,8 +120,9 @@ describe("rejectReusedPassword", () => {
       runWithEndpointContext(ctx as never, async function changeReuse() {
         await rejectReusedPassword("same-secret-12", { password: ctx.passwordApi } as never);
       }),
-    ).rejects.toBeInstanceOf(APIError);
+    ).rejects.toMatchObject({ body: { code: "PASSWORD_REUSED" } });
 
+    verify.mockClear();
     const wrongCtx = endpointContext(
       {
         path: "/change-password",
@@ -137,5 +137,25 @@ describe("rejectReusedPassword", () => {
         await rejectReusedPassword("same-secret-12", { password: wrongCtx.passwordApi } as never);
       }),
     ).resolves.toBeUndefined();
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(verify).toHaveBeenCalledWith({ password: "wrong-current", hash: "stored-hash" });
+  });
+
+  it("reads a reset token from the query when the body token is missing or blank", async () => {
+    for (const body of [{ newPassword: "same-secret-12" }, { token: "", newPassword: "same-secret-12" }]) {
+      const ctx = endpointContext({
+        path: "/reset-password",
+        body,
+        query: { token: "tok" },
+        accountPassword: "stored-hash",
+        verificationUserId: "u1",
+      });
+      await expect(
+        runWithEndpointContext(ctx as never, async function queryToken() {
+          await rejectReusedPassword("same-secret-12", { password: ctx.passwordApi } as never);
+        }),
+      ).rejects.toMatchObject({ body: { code: "PASSWORD_REUSED" } });
+      expect(ctx.findVerificationValue).toHaveBeenCalledWith("reset-password:tok");
+    }
   });
 });

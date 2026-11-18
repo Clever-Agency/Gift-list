@@ -8,7 +8,8 @@ vi.mock("better-auth/plugins/haveibeenpwned", () => ({
   isPasswordCompromised: compromised,
 }));
 
-import { isPasswordPwnedFailOpen } from "@/lib/hibp-password";
+import { runWithEndpointContext } from "@better-auth/core/context";
+import { haveIBeenPwnedPlugin, isPasswordPwnedFailOpen } from "@/lib/hibp-password";
 
 afterEach(() => {
   compromised.mockReset();
@@ -47,4 +48,44 @@ describe("isPasswordPwnedFailOpen", () => {
     await expect(pending).resolves.toBe(false);
     expect(spy).toHaveBeenCalledWith("HaveIBeenPwnedTimeout");
   });
+});
+
+describe("haveIBeenPwnedPlugin hash hook", () => {
+  function wrappedHash() {
+    const hash = vi.fn(async function hashPassword(password: string) {
+      return `hashed:${password}`;
+    });
+    const plugin = haveIBeenPwnedPlugin();
+    return { hash, guarded: plugin.init({ password: { hash } }).context.password.hash };
+  }
+
+  it("does not consult HIBP when the endpoint is sign-in or there is no endpoint", async () => {
+    compromised.mockResolvedValue(true);
+    const { hash, guarded } = wrappedHash();
+
+    await expect(guarded("short-legacy")).resolves.toBe("hashed:short-legacy");
+    await runWithEndpointContext({ path: "/sign-in/email" } as never, async function signInHash() {
+      await expect(guarded("short-legacy")).resolves.toBe("hashed:short-legacy");
+    });
+
+    expect(compromised).not.toHaveBeenCalled();
+    expect(hash).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["/reset-password", "/change-password"])(
+    "rejects a compromised password on %s and does not hash it",
+    async (path) => {
+      compromised.mockResolvedValue(true);
+      const { hash, guarded } = wrappedHash();
+
+      await expect(
+        runWithEndpointContext({ path } as never, async function setPasswordHash() {
+          await guarded("leaked-password");
+        }),
+      ).rejects.toMatchObject({ body: { code: "PASSWORD_COMPROMISED" } });
+
+      expect(compromised).toHaveBeenCalledWith("leaked-password");
+      expect(hash).not.toHaveBeenCalled();
+    },
+  );
 });

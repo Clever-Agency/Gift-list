@@ -233,7 +233,7 @@ describe("регистрация: подтверждение пароля", () =
   it("пустое подтверждение при отправке — та же ошибка", async () => {
     await mount("register");
     await fill("Email", "a@b.test");
-    await fill("Пароль", "password1");
+    await fill("Пароль", "password1234");
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
 
@@ -317,7 +317,7 @@ describe("сброс пароля: подтверждение пароля", () 
     await press("Сохранить пароль");
 
     expect(api.apiRequest).not.toHaveBeenCalled();
-    expect(describedBy("Пароль")).toBe("Минимум 8 символов");
+    expect(describedBy("Пароль")).toBe("Минимум 12 символов");
     expect(describedBy("Повторите пароль")).toBe("");
     expect(document.activeElement).toBe(field("Пароль"));
   });

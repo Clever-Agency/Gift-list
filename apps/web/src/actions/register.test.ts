@@ -205,7 +205,8 @@ describe("registerUser", () => {
       field: "password",
       reason: "PASSWORD_PWNED",
     });
-    expect(findFirst).not.toHaveBeenCalled();
+    expect(findFirst).toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
   });
   it("creates one list without a type and stores the negotiated locale", async () => {
     const outcome = await registerUser(input, headers());

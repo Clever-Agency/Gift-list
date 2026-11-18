@@ -87,6 +87,9 @@ beforeAll(async () => {
   const api = auth.api as { resetPassword: typeof auth.api.resetPassword };
   api.resetPassword = (async ({ body }: { body: { newPassword: string; token: string } }) => {
     providerCalls += 1;
+    if (body.newPassword === "pwned-password-1") {
+      throw Object.assign(new Error("Password compromised"), { body: { code: "PASSWORD_COMPROMISED" } });
+    }
     if (body.newPassword.length < 12) {
       throw Object.assign(new Error("Password too short"), { body: { code: "PASSWORD_TOO_SHORT" } });
     }
@@ -174,6 +177,18 @@ describe("resetPassword outstanding links", () => {
       reason: "PASSWORD_TOO_SHORT",
     });
     expect(providerCalls).toBe(0);
+    expect(identifiers()).toContain("reset-password:T1");
+    expect(identifiers()).toContain("reset-password:T2");
+
+    providerCalls = 0;
+    const leaked = await resetPassword({ token: "T1", password: "pwned-password-1" });
+    expect(leaked).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "password",
+      reason: "PASSWORD_PWNED",
+    });
+    expect(providerCalls).toBe(1);
     expect(identifiers()).toContain("reset-password:T1");
     expect(identifiers()).toContain("reset-password:T2");
 

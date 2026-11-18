@@ -72,9 +72,6 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
   if (lengthReason) {
     return { result: validation("password", lengthReason) };
   }
-  if (await isPasswordPwnedFailOpen(password)) {
-    return { result: validation("password", "PASSWORD_PWNED") };
-  }
   // AD-13: `nick` is stored only in its canonical form, and the lookup below
   // uses the same value, so a case or padding variant can never slip past the
   // unique index even if the caller skipped the body schema.
@@ -85,6 +82,9 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
   });
   if (existing) {
     return { result: conflict(existing.email === email, existing.nickNormalized === nick) };
+  }
+  if (await isPasswordPwnedFailOpen(password)) {
+    return { result: validation("password", "PASSWORD_PWNED") };
   }
 
   const userId = createId();

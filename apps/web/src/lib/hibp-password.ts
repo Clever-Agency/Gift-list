@@ -1,8 +1,8 @@
 import "server-only";
 
+import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
 import { APIError } from "better-auth/api";
 import { isPasswordCompromised } from "better-auth/plugins/haveibeenpwned";
-import { getCurrentAuthEndpointContext } from "@better-auth/core/context";
 
 const HIBP_TIMEOUT_MS = 1500;
 
@@ -20,20 +20,38 @@ const PASSWORD_SET_PATHS = [
  * k-anonymity check with a hard timeout. Any failure or hang is fail-open: the
  * password is treated as not compromised and only the error name is logged.
  */
+function hibpDeadline(ms: number): { promise: Promise<"timeout">; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<"timeout">(function giveUp(resolve) {
+    timer = setTimeout(function markTimeout() {
+      resolve("timeout");
+    }, ms);
+  });
+  return {
+    promise,
+    cancel() {
+      clearTimeout(timer);
+    },
+  };
+}
+
 export async function isPasswordPwnedFailOpen(password: string): Promise<boolean> {
+  const check = isPasswordCompromised(password);
+  // The deadline may win first. A later rejection must not surface as unhandled.
+  check.catch(function ignoreLateHibpFailure() {
+    // Swallowed on purpose: see the comment above.
+  });
+  const deadline = hibpDeadline(HIBP_TIMEOUT_MS);
   try {
-    const compromised = await Promise.race([
-      isPasswordCompromised(password),
-      new Promise<"timeout">((resolve) => {
-        setTimeout(() => resolve("timeout"), HIBP_TIMEOUT_MS);
-      }),
-    ]);
+    const compromised = await Promise.race([check, deadline.promise]);
+    deadline.cancel();
     if (compromised === "timeout") {
       console.error("HaveIBeenPwnedTimeout");
       return false;
     }
     return compromised;
   } catch (error) {
+    deadline.cancel();
     const name = error instanceof Error ? error.name : "Error";
     console.error(name);
     return false;
@@ -65,8 +83,8 @@ export function haveIBeenPwnedPlugin() {
           password: {
             ...ctx.password,
             async hash(password: string) {
-              const endpoint = getCurrentAuthEndpointContext();
-              if (!endpoint.path || !PASSWORD_SET_PATHS.includes(endpoint.path as (typeof PASSWORD_SET_PATHS)[number])) {
+              const path = tryGetCurrentAuthEndpointContext()?.path;
+              if (!path || !PASSWORD_SET_PATHS.includes(path as (typeof PASSWORD_SET_PATHS)[number])) {
                 return originalHash(password);
               }
               await rejectCompromisedPassword(password);

@@ -24,7 +24,7 @@ function HiddenPasswordStory() {
       value="wishmoon-demo"
       onChangeText={noop}
       showLabel="Показать пароль"
-      hint="Не короче 8 символов"
+      hint="Не короче 12 символов"
     />
   );
 }

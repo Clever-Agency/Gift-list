@@ -197,17 +197,27 @@ export async function guardRequestBody(
   };
 }
 
-/** Parses the JSON body with a contracts schema; failure is a VALIDATION result. */
+/**
+ * Parses the JSON body with a contracts schema; failure is a VALIDATION result.
+ * `newPassword` attaches the set-password length reason. Sign-in must leave it
+ * off: an empty password is not "shorter than 12".
+ */
 export async function parseJsonBody<S extends z.ZodType>(
   request: Request,
   schema: S,
+  options?: { newPassword?: boolean },
 ): Promise<{ ok: true; data: z.output<S> } | InvalidBody> {
   const parsed = await parseJson(request);
   if (!parsed.ok) return parsed;
   const result = schema.safeParse(parsed.data);
   if (!result.success) {
     const field = firstIssueField(result.error);
-    if (field === "password" && parsed.data !== null && typeof parsed.data === "object") {
+    if (
+      options?.newPassword &&
+      field === "password" &&
+      parsed.data !== null &&
+      typeof parsed.data === "object"
+    ) {
       const reason = passwordFieldReason((parsed.data as Record<string, unknown>).password);
       if (reason) return invalid(field, reason);
     }

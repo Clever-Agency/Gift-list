@@ -140,12 +140,14 @@ describe("formIssue", () => {
       reason: "PASSWORD_TOO_SHORT",
       text: "form.passwordRules",
     });
-    expect(passwordFieldIssue("12345678901", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("12345678901", fake, fake).reason).toBe("PASSWORD_TOO_SHORT");
+    expect(passwordFieldIssue("123456789012", fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue("password1234", fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue("x".repeat(127), fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue("x".repeat(128), fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue("x".repeat(129), fake, fake)).toEqual({
       field: "password",
+      reason: "PASSWORD_TOO_LONG",
       text: "form.passwordTooLong",
     });
   });
@@ -166,7 +168,8 @@ describe("formIssue", () => {
     // Twelve UTF-16 units inside the padding pass the minimum.
     expect(passwordFieldIssue("  password12  ", fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue("  1234   ", fake, fake).reason).toBe("PASSWORD_TOO_SHORT");
-    expect(passwordFieldIssue("            ", fake, fake).reason).toBe("PASSWORD_TOO_SHORT");
+    expect(passwordFieldIssue(" ".repeat(11), fake, fake).reason).toBe("PASSWORD_TOO_SHORT");
+    expect(passwordFieldIssue(" ".repeat(12), fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue(`  ${"x".repeat(127)}  `, fake, fake).text).toBe(
       "form.passwordTooLong",
     );

@@ -79,7 +79,9 @@ export function newPasswordLengthReason(password: string): NewPasswordLengthReas
  * A password is measured in UTF-16 code units (`String#length`), not in code
  * points: Better Auth compares `password.length` with its own
  * `minPasswordLength`/`maxPasswordLength`
- * (`better-auth/dist/utils/password.mjs:4-15`) at sign-in and reset. A password
+ * (`better-auth/dist/utils/password.mjs:4-15`) when a password is set.
+ * Sign-in calls only the upper-bound check, so a shorter stored password still
+ * reaches the hash. A password
  * accepted here must not be one Better Auth refuses later, so the contract counts
  * the same unit — an emoji outside the BMP is two units. Zod's `.min()/.max()`
  * count code points and cannot express this.

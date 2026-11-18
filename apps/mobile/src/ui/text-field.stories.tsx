@@ -76,7 +76,7 @@ export const PasswordHidden: Story = {
           value="wishmoon-demo"
           onChangeText={noop}
           showLabel="Показать пароль"
-          hint="Пароль — от 8 символов"
+          hint="Пароль — от 12 символов"
         />
       </YStack>
     );
@@ -94,7 +94,7 @@ export const PasswordRevealed: Story = {
           value="wishmoon-demo"
           onChangeText={noop}
           showLabel="Показать пароль"
-          hint="Пароль — от 8 символов"
+          hint="Пароль — от 12 символов"
         />
       </YStack>
     );

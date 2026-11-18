@@ -24,7 +24,12 @@ function staleLink(): ActionResult<{ saved: true }> {
 }
 
 const STALE_TOKEN_CODES = new Set(["INVALID_TOKEN", "TOKEN_EXPIRED", "USER_NOT_FOUND"]);
-const PASSWORD_RULE_CODES = new Set(["PASSWORD_TOO_SHORT", "PASSWORD_TOO_LONG", "PASSWORD_COMPROMISED"]);
+const PASSWORD_RULE_CODES = new Set([
+  "PASSWORD_TOO_SHORT",
+  "PASSWORD_TOO_LONG",
+  "PASSWORD_COMPROMISED",
+  "PASSWORD_REUSED",
+]);
 
 function errorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
@@ -83,7 +88,9 @@ export async function resetPassword(input: PasswordResetBody): Promise<ActionRes
           ? "PASSWORD_TOO_SHORT"
           : code === "PASSWORD_TOO_LONG"
             ? "PASSWORD_TOO_LONG"
-            : "PASSWORD_PWNED";
+            : code === "PASSWORD_REUSED"
+              ? "PASSWORD_REUSED"
+              : "PASSWORD_PWNED";
       return { ok: false, code: "VALIDATION", message: "Invalid input", field: "password", reason };
     }
     if (STALE_TOKEN_CODES.has(errorCode(error) ?? "")) return staleLink();

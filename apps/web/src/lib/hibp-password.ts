@@ -1,8 +1,10 @@
 import "server-only";
 
+import type { AuthContext } from "@better-auth/core";
 import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
 import { APIError } from "better-auth/api";
 import { isPasswordCompromised } from "better-auth/plugins/haveibeenpwned";
+import { rejectReusedPassword } from "@/lib/password-reuse";
 
 const HIBP_TIMEOUT_MS = 1500;
 
@@ -74,9 +76,7 @@ async function rejectCompromisedPassword(password: string): Promise<void> {
 export function haveIBeenPwnedPlugin() {
   return {
     id: "have-i-been-pwned",
-    init(ctx: {
-      password: { hash: (password: string) => Promise<string> };
-    }) {
+    init(ctx: AuthContext) {
       const originalHash = ctx.password.hash;
       return {
         context: {
@@ -87,6 +87,7 @@ export function haveIBeenPwnedPlugin() {
               if (!path || !PASSWORD_SET_PATHS.includes(path as (typeof PASSWORD_SET_PATHS)[number])) {
                 return originalHash(password);
               }
+              await rejectReusedPassword(password, ctx);
               await rejectCompromisedPassword(password);
               return originalHash(password);
             },

@@ -90,6 +90,9 @@ beforeAll(async () => {
     if (body.newPassword === "pwned-password-1") {
       throw Object.assign(new Error("Password compromised"), { body: { code: "PASSWORD_COMPROMISED" } });
     }
+    if (body.newPassword === "reused-password1") {
+      throw Object.assign(new Error("Password reused"), { body: { code: "PASSWORD_REUSED" } });
+    }
     if (body.newPassword.length < 12) {
       throw Object.assign(new Error("Password too short"), { body: { code: "PASSWORD_TOO_SHORT" } });
     }
@@ -187,6 +190,18 @@ describe("resetPassword outstanding links", () => {
       code: "VALIDATION",
       field: "password",
       reason: "PASSWORD_PWNED",
+    });
+    expect(providerCalls).toBe(1);
+    expect(identifiers()).toContain("reset-password:T1");
+    expect(identifiers()).toContain("reset-password:T2");
+
+    providerCalls = 0;
+    const reused = await resetPassword({ token: "T1", password: "reused-password1" });
+    expect(reused).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "password",
+      reason: "PASSWORD_REUSED",
     });
     expect(providerCalls).toBe(1);
     expect(identifiers()).toContain("reset-password:T1");

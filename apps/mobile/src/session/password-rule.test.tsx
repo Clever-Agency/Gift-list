@@ -9,6 +9,7 @@ import ResetScreen from "../../app/(auth)/reset";
 
 const RULE = "Минимум 12 символов";
 const PWNED = "Этот пароль встречается в утечках. Выберите другой.";
+const REUSED = "Этот пароль уже используется. Выберите другой.";
 const LONG_ENOUGH = "123456789012";
 const TOO_LONG = "Пароль — до 128 символов.";
 const GENERIC = "Проверьте введённые данные.";
@@ -289,6 +290,25 @@ describe("требование к паролю", () => {
 
     expect(toneText("error")).toContain(PWNED);
     expect(describedBy("Пароль")).toBe(PWNED);
+  });
+
+  it("на новом пароле повтор текущего пароля называется у поля", async () => {
+    api.apiRequest.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+      reason: "PASSWORD_REUSED",
+    });
+    await mount("reset");
+    await fill("Пароль", LONG_ENOUGH);
+    await fill("Повторите пароль", LONG_ENOUGH);
+
+    await press("Сохранить пароль");
+
+    expect(toneText("error")).toContain(REUSED);
+    expect(describedBy("Пароль")).toBe(REUSED);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(REUSED);
   });
 
   it("на новом пароле короткий пароль показывает подсказку и ошибку, а длинный ответ сервера — общий текст", async () => {

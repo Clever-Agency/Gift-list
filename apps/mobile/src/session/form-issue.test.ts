@@ -134,6 +134,17 @@ describe("formIssue", () => {
     ).toEqual({ field: "password", reason: "PASSWORD_PWNED", text: "errors.reason.PASSWORD_PWNED" });
   });
 
+  it("PASSWORD_REUSED keeps the reuse sentence on the password field", () => {
+    expect(
+      formIssue(
+        err({ code: "VALIDATION", field: "password", reason: "PASSWORD_REUSED" }),
+        fake,
+        fake,
+        "reset",
+      ),
+    ).toEqual({ field: "password", reason: "PASSWORD_REUSED", text: "errors.reason.PASSWORD_REUSED" });
+  });
+
   it("passwordFieldIssue states the rule on both bounds and the generic text between them", () => {
     expect(passwordFieldIssue("1234567", fake, fake)).toEqual({
       field: "password",

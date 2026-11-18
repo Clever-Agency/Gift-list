@@ -15,6 +15,7 @@ const gifts = vi.hoisted(() => ({
   createGift: vi.fn(),
   fetchGift: vi.fn(),
   updateGift: vi.fn(),
+  restoreGift: vi.fn(),
 }));
 const tagApi = vi.hoisted(() => ({ fetchTagCatalog: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -220,8 +221,8 @@ function signedIn() {
 }
 
 /** The owner list answer `fetchMyGifts` resolves with. */
-function listAnswer(cards: GiftCard[]) {
-  return { ok: true, access: "gifts" as const, gifts: cards };
+function listAnswer(cards: GiftCard[], archived: GiftCard[] = []) {
+  return { ok: true, access: "gifts" as const, gifts: cards, archived };
 }
 
 let root: Root;
@@ -379,6 +380,7 @@ describe("поток: создание желания из списка", () => 
       priceCurrency: "RUB",
       visibility: "FRIENDS",
       quantity: "SINGLE",
+      expiresOn: null,
     });
 
     // `dismissTo` pops the composer and the list shows the handed-over notice.
@@ -486,5 +488,145 @@ describe("поток: редактирование желания из спис�
     // The list read itself again and shows the saved title.
     expect(gifts.fetchMyGifts).toHaveBeenCalledTimes(2);
     expect(text()).toContain("Свитер мериносовый");
+  });
+});
+
+/**
+ * Story 2.6: the owner archive at the end of the list — a collapsed «Архив (N)»,
+ * no empty section, and the ⋯ actions «Вернуть в вишлист» and «Скопировать».
+ */
+describe("поток: архив из списка", () => {
+  const archived = gift({
+    id: "g-arch",
+    title: "Старый свитер",
+    expiresOn: "2025-12-31",
+    archivedAt: "2026-01-01T00:00:00.000Z",
+    tags: [{ catalogId: "tag-electronics", label: "электроника" }],
+  });
+
+  it("не показывает пустую секцию", async () => {
+    signedIn();
+    gifts.fetchMyGifts.mockResolvedValue(listAnswer([gift()]));
+
+    await mount();
+    expect(text()).toContain("Свитер");
+    expect(document.querySelector('[data-testid="wishlist-archive"]')).toBeNull();
+    expect(text()).not.toContain("Архив (");
+  });
+
+  it("⋯ только у архивных карточек, «Скопировать» создаёт новое OPEN без даты", async () => {
+    const copy = gift({ id: "g-copy", title: "Старый свитер" });
+    signedIn();
+    gifts.fetchMyGifts.mockResolvedValue(listAnswer([gift()], [archived]));
+    gifts.createGift.mockResolvedValue({ ok: true, gift: copy });
+
+    await mount();
+    expect(text()).toContain("Архив (1)");
+    expect(text()).not.toContain("Старый свитер");
+    await press("Архив (1)");
+    expect(text()).toContain("Старый свитер");
+    expect(document.querySelectorAll('[data-testid^="wishlist-archive-menu-"]')).toHaveLength(1);
+
+    const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
+    expect(menu).not.toBeNull();
+    await act(async () => {
+      menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+
+    expect(text()).toContain("Вернуть в вишлист");
+    expect(text()).toContain("Скопировать");
+
+    // Exact label: press("Скопировать") would hit «Скопировать ссылку» first.
+    const dialog = document.querySelector('[data-testid="wishlist-archive-menu"]');
+    expect(dialog).not.toBeNull();
+    const copyButton = controls(dialog as HTMLElement).find(function isCopy(node) {
+      return (node.textContent ?? "").trim() === "Скопировать";
+    });
+    expect(copyButton).toBeDefined();
+    await act(async () => {
+      copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    expect(gifts.createGift).toHaveBeenCalledTimes(1);
+    expect(gifts.createGift).toHaveBeenCalledWith({
+      title: "Старый свитер",
+      description: "Синий",
+      linkUrl: "https://example.com/sviter",
+      priceAmount: 105000,
+      priceCurrency: "BYN",
+      visibility: "FRIENDS",
+      quantity: "SINGLE",
+      tags: [{ catalogId: "tag-electronics" }],
+    });
+    expect(gifts.createGift.mock.calls[0][0]).not.toHaveProperty("expiresOn");
+    expect(text()).toContain("Добавлено в вишлист");
+    expect(text()).toContain("Старый свитер");
+  });
+
+  it("«Вернуть в вишлист» зовёт restoreGift и переносит карточку в активный список", async () => {
+    const restored = gift({
+      id: "g-arch",
+      title: "Старый свитер",
+      expiresOn: null,
+      archivedAt: null,
+    });
+    signedIn();
+    gifts.fetchMyGifts.mockResolvedValue(listAnswer([gift()], [archived]));
+    gifts.restoreGift.mockResolvedValue({ ok: true, gift: restored });
+
+    await mount();
+    await press("Архив (1)");
+    const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
+    await act(async () => {
+      menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+    await press("Вернуть в вишлист");
+    await press("Сохранить");
+    await flush();
+
+    expect(gifts.restoreGift).toHaveBeenCalledWith("g-arch", null);
+    expect(text()).not.toContain("Архив (");
+    expect(text()).toContain("Старый свитер");
+  });
+
+  it("прошлая дата при возврате показывает ошибку поля и оставляет желание в архиве", async () => {
+    signedIn();
+    gifts.fetchMyGifts.mockResolvedValue(listAnswer([gift()], [archived]));
+    gifts.restoreGift.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      field: "expiresOn",
+      message: "Invalid input",
+    });
+
+    await mount();
+    await press("Архив (1)");
+    const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
+    await act(async () => {
+      menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+    await press("Вернуть в вишлист");
+
+    const input = Array.from(document.querySelectorAll("input")).find(
+      (node) => node.getAttribute("type") === "date",
+    );
+    expect(input).toBeDefined();
+    await act(async () => {
+      const field = input as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(field, "2020-01-01");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await press("Сохранить");
+    await flush();
+
+    expect(gifts.restoreGift).toHaveBeenCalledWith("g-arch", "2020-01-01");
+    expect(text()).toContain("Выберите сегодняшнюю дату или более позднюю.");
+    expect(text()).toContain("Архив (1)");
   });
 });

@@ -1,7 +1,9 @@
-import type { GiftCard } from "@gift-list/contracts";
+import { formatDate, type GiftCard, type GiftTagInput } from "@gift-list/contracts";
 import {
   Button,
   Column,
+  DateField,
+  Dialog,
   Heading,
   InfoButton,
   LoadingCards,
@@ -16,9 +18,15 @@ import {
 } from "@gift-list/ui";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTranslations } from "use-intl";
+import { useLocale, useTranslations } from "use-intl";
 import type { ClientResult } from "@/api/client";
-import { fetchMyGifts, previewGiftVisibility, updateGift } from "@/api/my-gifts";
+import {
+  createGift,
+  fetchMyGifts,
+  previewGiftVisibility,
+  restoreGift,
+  updateGift,
+} from "@/api/my-gifts";
 import { loadOwnerDetail } from "@/ui/wish-detail-load";
 import { WishDetailDialog } from "@/ui/wish-detail-dialog";
 import { getBrandName } from "@/config/env";
@@ -48,7 +56,7 @@ type ScreenState =
   | { status: "loading" }
   // Story 2.4: the owner answer also carries the immutable `publicToken` (AD-6);
   // it is `null` when the server omits it, so the screen has no link to copy.
-  | { status: "ready"; gifts: GiftCard[]; publicToken: string | null }
+  | { status: "ready"; gifts: GiftCard[]; archived: GiftCard[]; publicToken: string | null }
   | { status: "missing" }
   // Only a broken connection claims a network problem; other failed reads get the
   // generic body (EXPERIENCE → State Patterns → «Нет сети при загрузке / ошибка загрузки»).
@@ -98,6 +106,7 @@ function reservationReleased(before: GiftCard, after: GiftCard): boolean {
 export default function MyWishlistScreen() {
   const t = useTranslations("app");
   const wishlist = useTranslations("app.myWishlist");
+  const locale = useLocale();
   const invite = useTranslations("app.invite");
   const giftForm = useTranslations("app.giftForm");
   const common = useTranslations("common");
@@ -122,6 +131,12 @@ export default function MyWishlistScreen() {
   const [sessionExpired, setSessionExpired] = useState(false);
   // Story 2.3: the chip of an open wish opens the visibility dialog over the list.
   const [picker, setPicker] = useState<{ gift: GiftCard } | null>(null);
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
+  const [archiveMenu, setArchiveMenu] = useState<GiftCard | null>(null);
+  const [restoreStep, setRestoreStep] = useState(false);
+  const [restoreDate, setRestoreDate] = useState("");
+  const [restoreError, setRestoreError] = useState<string | undefined>();
+  const [archiveBusy, setArchiveBusy] = useState(false);
   // CLE-82/S23.3: narrowing a reserved wish may take the holder's access away — the
   // step asks first, and only its «Подтвердить» runs the PATCH.
   const [visibilityConfirm, setVisibilityConfirm] = useState<{
@@ -234,7 +249,12 @@ export default function MyWishlistScreen() {
         setState(
           result.access === "not_found"
             ? { status: "missing" }
-            : { status: "ready", gifts: result.gifts, publicToken: result.publicToken },
+            : {
+                status: "ready",
+                gifts: result.gifts,
+                archived: result.archived ?? [],
+                publicToken: result.publicToken,
+              },
         );
         return;
       }
@@ -570,6 +590,81 @@ export default function MyWishlistScreen() {
     router.push("/settings");
   }
 
+  function closeArchiveMenu() {
+    setArchiveMenu(null);
+    setRestoreStep(false);
+    setRestoreDate("");
+    setRestoreError(undefined);
+  }
+
+  function openArchiveMenu(gift: GiftCard) {
+    setArchiveMenu(gift);
+    setRestoreStep(false);
+    setRestoreDate("");
+    setRestoreError(undefined);
+  }
+
+  function toggleArchive() {
+    setArchiveExpanded((open) => !open);
+  }
+
+  async function copyArchived() {
+    if (!archiveMenu || archiveBusy) return;
+    setArchiveBusy(true);
+    const tags = tagsFromCard(archiveMenu);
+    const result = await createGift({
+      title: archiveMenu.title,
+      description: archiveMenu.description,
+      linkUrl: archiveMenu.linkUrl,
+      priceAmount: archiveMenu.priceAmount,
+      priceCurrency: archiveMenu.priceCurrency,
+      visibility: archiveMenu.visibility,
+      quantity: archiveMenu.quantity,
+      ...(tags.length > 0 ? { tags } : {}),
+    });
+    setArchiveBusy(false);
+    if (result.ok) {
+      const gift = result.gift;
+      setState(function addCopy(current) {
+        if (current.status !== "ready") return current;
+        return { ...current, gifts: [gift, ...current.gifts] };
+      });
+      setToast({ message: giftForm("toast.created"), tone: "info" });
+      closeArchiveMenu();
+      return;
+    }
+    setToast({ message: giftForm("error.form"), tone: "error" });
+  }
+
+  async function submitRestore() {
+    if (!archiveMenu || archiveBusy) return;
+    setArchiveBusy(true);
+    const result = await restoreGift(archiveMenu.id, restoreDate === "" ? null : restoreDate);
+    setArchiveBusy(false);
+    if (result.ok) {
+      const gift = result.gift;
+      setState(function moveRestored(current) {
+        if (current.status !== "ready") return current;
+        return {
+          ...current,
+          archived: current.archived.filter(function stillArchived(item) {
+            return item.id !== gift.id;
+          }),
+          gifts: [gift, ...current.gifts.filter(function notRestored(item) {
+            return item.id !== gift.id;
+          })],
+        };
+      });
+      closeArchiveMenu();
+      return;
+    }
+    if (!("network" in result) && !("invalid" in result) && result.field === "expiresOn") {
+      setRestoreError(giftForm("error.expiresOnPast"));
+      return;
+    }
+    setToast({ message: giftForm("error.form"), tone: "error" });
+  }
+
   function openSearch() {
     // NOTE FOR UX: временный вход в «Поиск» до Story 6.2, где постоянное место —
     // вкладка «Поиск» (DESIGN.md:449, UX-A13).
@@ -699,45 +794,60 @@ export default function MyWishlistScreen() {
                     label={wishlist("retry")}
                     onPress={retry}
                   />
-                ) : state.gifts.length === 0 ? (
-                  <EmptyState
-                    title={wishlist("emptyTitle")}
-                    body={wishlist("emptyText")}
-                    action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
-                  />
                 ) : (
-                  // Review m5: the grid is a list for assistive tech.
-                  <XStack role="list" flexWrap="wrap" gap="$grid-gap">
-                    {state.gifts.map((gift) => {
-                      function handlePress() {
-                        openDetail(gift);
-                      }
+                  <>
+                    {state.gifts.length === 0 ? (
+                      <EmptyState
+                        title={wishlist("emptyTitle")}
+                        body={wishlist("emptyText")}
+                        action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
+                      />
+                    ) : (
+                      // Review m5: the grid is a list for assistive tech.
+                      <XStack role="list" flexWrap="wrap" gap="$grid-gap">
+                        {state.gifts.map((gift) => {
+                          function handlePress() {
+                            openDetail(gift);
+                          }
 
-                      function setCardNode(node: ChipNode | null) {
-                        cardNodes.current.set(gift.id, node);
-                      }
+                          function setCardNode(node: ChipNode | null) {
+                            cardNodes.current.set(gift.id, node);
+                          }
 
-                      function handleVisibilityPress() {
-                        openVisibilityPicker(gift);
-                      }
+                          function handleVisibilityPress() {
+                            openVisibilityPicker(gift);
+                          }
 
-                      function setChipNode(node: ChipNode | null) {
-                        chipNodes.current.set(gift.id, node);
-                      }
+                          function setChipNode(node: ChipNode | null) {
+                            chipNodes.current.set(gift.id, node);
+                          }
 
-                      return (
-                        <WishCard
-                          key={gift.id}
-                          gift={gift}
-                          width={cardWidth}
-                          onPress={handlePress}
-                          pressRef={setCardNode}
-                          onVisibilityPress={handleVisibilityPress}
-                          visibilityChipRef={setChipNode}
-                        />
-                      );
-                    })}
-                  </XStack>
+                          return (
+                            <WishCard
+                              key={gift.id}
+                              gift={gift}
+                              width={cardWidth}
+                              onPress={handlePress}
+                              pressRef={setCardNode}
+                              onVisibilityPress={handleVisibilityPress}
+                              visibilityChipRef={setChipNode}
+                            />
+                          );
+                        })}
+                      </XStack>
+                    )}
+                    {state.archived.length > 0 ? (
+                      <ArchiveSection
+                        label={wishlist("archiveSection", { count: state.archived.length })}
+                        expanded={archiveExpanded}
+                        onToggle={toggleArchive}
+                        gifts={state.archived}
+                        cardWidth={cardWidth}
+                        menuLabel={wishlist("archiveMenu")}
+                        onOpenMenu={openArchiveMenu}
+                      />
+                    ) : null}
+                  </>
                 )}
               </YStack>
 
@@ -801,6 +911,55 @@ export default function MyWishlistScreen() {
             </Column>
           </PageContainer>
         </PageScroll>
+        <Dialog
+          open={archiveMenu !== null}
+          title={restoreStep ? wishlist("archiveRestore") : (archiveMenu?.title ?? wishlist("archiveMenu"))}
+          onClose={closeArchiveMenu}
+          testID="wishlist-archive-menu"
+          actions={
+            restoreStep ? (
+              <Button
+                label={giftForm("action.save")}
+                onPress={submitRestore}
+                disabled={archiveBusy}
+              />
+            ) : (
+              <Button variant="ghost" label={wishlist("archiveClose")} onPress={closeArchiveMenu} />
+            )
+          }
+        >
+          {restoreStep ? (
+            <DateField
+              label={giftForm("field.expiresOn")}
+              hint={giftForm("field.expiresOnHint")}
+              error={restoreError}
+              value={restoreDate}
+              min={deviceToday()}
+              clearLabel={giftForm("field.expiresOnClear")}
+              placeholder={giftForm("field.expiresOnChoose")}
+              displayValue={restoreDate === "" ? undefined : formatDate(restoreDate, locale)}
+              doneLabel={giftForm("field.expiresOnDone")}
+              onChange={function handleRestoreDate(next) {
+                setRestoreDate(next);
+                setRestoreError(undefined);
+              }}
+            />
+          ) : (
+            <YStack gap="$2">
+              <Button
+                label={wishlist("archiveRestore")}
+                onPress={function showRestore() {
+                  setRestoreStep(true);
+                }}
+              />
+              <Button
+                label={wishlist("archiveCopy")}
+                onPress={copyArchived}
+                disabled={archiveBusy}
+              />
+            </YStack>
+          )}
+        </Dialog>
         <VisibilityPicker
           visible={picker !== null}
           title={picker?.gift.title ?? ""}
@@ -861,3 +1020,86 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
 }
 
 RetryView.displayName = "RetryView";
+
+/** Owner archive at the end of the list. Hidden by the caller when it is empty. */
+function ArchiveSection({
+  label,
+  expanded,
+  onToggle,
+  gifts,
+  cardWidth,
+  menuLabel,
+  onOpenMenu,
+}: {
+  label: string;
+  expanded: boolean;
+  onToggle: () => void;
+  gifts: readonly GiftCard[];
+  cardWidth: number;
+  menuLabel: string;
+  onOpenMenu: (gift: GiftCard) => void;
+}) {
+  return (
+    <YStack gap="$2" width="100%" testID="wishlist-archive">
+      <Pressable
+        aria-expanded={expanded}
+        onPress={onToggle}
+        minHeight="$touch-target"
+        justifyContent="center"
+        testID="wishlist-archive-toggle"
+      >
+        <Heading>{label}</Heading>
+      </Pressable>
+      {expanded ? (
+        <XStack role="list" flexWrap="wrap" gap="$grid-gap">
+          {gifts.map(function renderArchived(gift) {
+            function openMenu() {
+              onOpenMenu(gift);
+            }
+
+            return (
+              <WishCard
+                key={gift.id}
+                gift={gift}
+                width={cardWidth}
+                closed
+                menu={
+                  <Pressable
+                    aria-label={menuLabel}
+                    onPress={openMenu}
+                    width="$touch-target"
+                    height="$touch-target"
+                    alignItems="center"
+                    justifyContent="center"
+                    testID={`wishlist-archive-menu-${gift.id}`}
+                  >
+                    <Text>⋯</Text>
+                  </Pressable>
+                }
+              />
+            );
+          })}
+        </XStack>
+      ) : null}
+    </YStack>
+  );
+}
+
+ArchiveSection.displayName = "ArchiveSection";
+
+function tagsFromCard(gift: GiftCard): GiftTagInput[] {
+  return gift.tags.flatMap(function toInput(tag): GiftTagInput[] {
+    if (tag.catalogId) return [{ catalogId: tag.catalogId }];
+    const text = tag.label.trim();
+    if (text === "") return [];
+    return [{ text }];
+  });
+}
+
+/** The device's calendar day, the browser `min` of the date field. */
+function deviceToday(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}

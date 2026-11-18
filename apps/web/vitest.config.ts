@@ -7,6 +7,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    env: {
+      // Story 2.6: getEnv() requires the cron secret. Tests that parse env
+      // inherit this placeholder; it is not a production secret.
+      CRON_SECRET: "01234567890123456789012345678901",
+    },
     include: ["src/**/*.test.{ts,tsx}"],
     // Cold import of auth, Prisma and Next under a parallel run exceeds
     // Vitest's 5s test / 10s hook defaults on Windows (CLE-67). A passing

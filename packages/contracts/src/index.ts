@@ -268,6 +268,11 @@ export const listDataSchema = z.strictObject({
    */
   inviteCooldown: profileInviteCooldownSchema.optional(),
   /**
+   * Story 2.6: the owner's archived wishes. Only the owner read adds the key;
+   * a viewer answer omits it, and archived rows never appear in `gifts`.
+   */
+  archived: z.array(giftCardSchema).optional(),
+  /**
    * Story 4.6 (FR-46, AD-19): `true` when the viewer has a directed
    * `Subscription(viewerId → ownerId)`. Only `/u/:nick` adds it, so `/l/:token`
    * and `/me` stay unchanged; absence reads as "not subscribed". The flag is
@@ -431,6 +436,7 @@ export {
   GIFT_TITLE_MAX,
   giftInputSchema,
   giftReserveBodySchema,
+  giftRestoreSchema,
   giftTagInputSchema,
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
@@ -438,6 +444,7 @@ export {
   type GiftInput,
   type GiftInputDraft,
   type GiftReserveBody,
+  type GiftRestore,
   type GiftTagInput,
   type GiftUpdate,
   type GiftVisibilityPreview,

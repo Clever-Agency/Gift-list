@@ -34,6 +34,27 @@ const row = {
   tags: [],
 };
 
+type GiftWhere = {
+  listId?: string;
+  archivedAt?: null;
+  NOT?: { archivedAt: null };
+};
+
+function isArchivedQuery(where: GiftWhere): boolean {
+  return where.NOT?.archivedAt === null;
+}
+
+/** Owner reads query twice: active rows, then archived. Honour both filters. */
+function giftsFor(rows: (typeof row)[]) {
+  return function filterRows({ where }: { where: GiftWhere }) {
+    return Promise.resolve(
+      rows.filter(function matchArchive(item) {
+        return (item.archivedAt !== null) === isArchivedQuery(where);
+      }),
+    );
+  };
+}
+
 /** Calls the use-case and the HTTP adapter with the same request, like the `/me` route test. */
 async function both() {
   const { GET } = await import("./route");
@@ -52,7 +73,7 @@ beforeEach(() => {
   createGift.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1", ownerId: "u1", publicToken: "tok-1" });
-  findMany.mockResolvedValue([row]);
+  findMany.mockImplementation(giftsFor([row]));
   create.mockResolvedValue({ id: "l1" });
 });
 
@@ -90,6 +111,7 @@ describe("GET /api/v1/me/gifts", () => {
             ownerAction: null,
           },
         ],
+        archived: [],
       },
     });
   });
@@ -111,7 +133,7 @@ describe("GET /api/v1/me/gifts", () => {
     expect(res.status).toBe(200);
     expect(viaHttp).toEqual({
       ok: true,
-      data: { access: "gifts", gifts: [], publicToken: "tok-1" },
+      data: { access: "gifts", gifts: [], archived: [], publicToken: "tok-1" },
     });
   });
 
@@ -138,7 +160,7 @@ describe("GET /api/v1/me/gifts", () => {
     expect(warn).toHaveBeenCalledWith("Missing List row repaired for owner", "u1");
     expect(await res.json()).toEqual({
       ok: true,
-      data: { access: "gifts", gifts: [], publicToken: "tok-new" },
+      data: { access: "gifts", gifts: [], archived: [], publicToken: "tok-new" },
     });
   });
 
@@ -158,9 +180,14 @@ describe("GET /api/v1/me/gifts", () => {
         publicToken: where.ownerId === "u1" ? "tok-1" : "tok-2",
       }),
     );
-    findMany.mockImplementation(({ where }: { where: { listId: string } }) =>
-      Promise.resolve(where.listId === "l1" ? [row] : [otherRow]),
-    );
+    findMany.mockImplementation(({ where }: { where: GiftWhere & { listId: string } }) => {
+      const rows = where.listId === "l1" ? [row] : [otherRow];
+      return Promise.resolve(
+        rows.filter(function matchArchive(item) {
+          return (item.archivedAt !== null) === isArchivedQuery(where);
+        }),
+      );
+    });
 
     const { GET } = await import("./route");
     const res = await GET(new Request("http://x/api/v1/me/gifts?ownerId=u2&listId=l2"));
@@ -179,7 +206,7 @@ describe("GET /api/v1/me/gifts", () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { listId: "l1", archivedAt: null } }),
     );
-    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledTimes(2);
     expect(body.data.publicToken).toBe("tok-1");
     expect(body.data.gifts.map((card: { id: string }) => card.id)).toEqual(["g1"]);
     expect(JSON.stringify(body)).not.toContain("Чужое желание");

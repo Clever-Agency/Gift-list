@@ -1,0 +1,44 @@
+/**
+ * The skip link of `DESIGN.md` → Порядок Tab: the first stop of the Tab order,
+ * visible only under the keyboard focus. The ring is the one of
+ * `packages/ui/src/focus-ring.ts` — `$ring`, 2 px, offset 2 px — so the link
+ * keeps the same focus state as every other link of the shell instead of
+ * changing its colour. Colours and the font come from the theme as CSS
+ * variables, the same way `globals.css` reads `--c-background`.
+ */
+.skipLink {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 7;
+  padding: 6px 12px;
+  border: 2px solid var(--c-ring);
+  border-radius: 6px;
+  background: var(--c-surface);
+  color: var(--c-primary);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+/**
+ * The same `:focus-visible` rule the Tamagui links get: a mouse click leaves no
+ * ring, keyboard navigation always shows one. The link slides into the window
+ * corner, so it is never painted over the header without a focus.
+ */
+.skipLink:focus-visible {
+  transform: none;
+  outline: 2px solid var(--c-ring);
+  outline-offset: 2px;
+}
+
+/** The `main` landmark keeps the `YStack` box it replaced: `flexGrow={1}`. */
+.main {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+}

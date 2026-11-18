@@ -1,4 +1,6 @@
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 
 const { notFound, redirect, getInvitePage, buildInviteMetadata, getBrandName } = vi.hoisted(
   () => ({
@@ -15,6 +17,11 @@ vi.mock("@/lib/env", () => ({ getBrandName }));
 vi.mock("./invite-page", () => ({ getInvitePage, buildInviteMetadata }));
 
 import InvitePreviewPage from "./page";
+
+const config = createGiftListConfig({
+  body: "var(--font-sans)",
+  heading: "var(--font-heading)",
+});
 
 const params = Promise.resolve({ token: "tok-1" });
 const searchParams = Promise.resolve({});
@@ -48,5 +55,27 @@ describe("app/i/[token]/page.tsx", () => {
 
     expect(redirect).toHaveBeenCalledWith("/invite/tok-1");
     expect(notFound).not.toHaveBeenCalled();
+  });
+
+  it("renders the skip link before the header action and the main landmark (CLE-105)", async () => {
+    getInvitePage.mockResolvedValue({
+      locale: "ru",
+      view: {
+        kind: "invite",
+        inviter: { displayName: "Сергей Петров", nick: "sergey" },
+        to: "/invite/tok-1",
+      },
+    });
+
+    const element = await InvitePreviewPage({ params, searchParams });
+    const html = renderToString(<GiftListProvider config={config}>{element}</GiftListProvider>);
+
+    expect(html).toContain("Перейти к содержимому");
+    expect(html.indexOf('href="#main-content"')).toBeLessThan(
+      html.indexOf('href="/login?next=/invite/tok-1"'),
+    );
+    expect(html.indexOf('href="#main-content"')).toBeLessThan(html.indexOf("<main"));
+    expect(html.match(/<main/g)).toHaveLength(1);
+    expect(html).toContain('id="main-content"');
   });
 });

@@ -57,11 +57,17 @@ vi.mock("@/lib/rate-limit", () => ({
   clientIp: () => "127.0.0.1",
 }));
 
+const isPasswordPwnedFailOpen = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/hibp-password", () => ({
+  isPasswordPwnedFailOpen,
+}));
+
 import { registerUser } from "./register";
 
 const input = {
   email: "a@example.com",
-  password: "password1",
+  password: "password1234",
   displayName: "Анна",
   nick: "anna",
 };
@@ -171,9 +177,36 @@ beforeEach(() => {
   inviteLinkTransaction.mockImplementation((client: { invite: InviteLinkTransaction }) => {
     return client.invite;
   });
+  isPasswordPwnedFailOpen.mockReset();
+  isPasswordPwnedFailOpen.mockResolvedValue(false);
 });
 
 describe("registerUser", () => {
+  it("rejects a short password before the database and without a breach check", async () => {
+    const outcome = await registerUser({ ...input, password: "short" }, headers());
+    expect(outcome.result).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+      reason: "PASSWORD_TOO_SHORT",
+    });
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(isPasswordPwnedFailOpen).not.toHaveBeenCalled();
+  });
+
+  it("rejects a leaked password before the database", async () => {
+    isPasswordPwnedFailOpen.mockResolvedValue(true);
+    const outcome = await registerUser(input, headers());
+    expect(outcome.result).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+      reason: "PASSWORD_PWNED",
+    });
+    expect(findFirst).not.toHaveBeenCalled();
+  });
   it("creates one list without a type and stores the negotiated locale", async () => {
     const outcome = await registerUser(input, headers());
     expect(outcome.result).toMatchObject({

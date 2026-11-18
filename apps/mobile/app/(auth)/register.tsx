@@ -183,7 +183,10 @@ export default function RegisterScreen() {
     setPending(false);
     if (!result.ok) {
       const issue = formIssue(result, t, common, "register");
-      let nextIssue = issue.field === "password" ? passwordFieldIssue(password, t, common) : issue;
+      let nextIssue =
+        issue.field === "password" && issue.reason === undefined
+          ? passwordFieldIssue(password, t, common)
+          : issue;
       if (nextIssue.field === "nick" && nextIssue.reason !== "NICK_TAKEN") {
         // A server-side nick validation names the same reason the client would.
         setNickSettled(true);
@@ -275,7 +278,6 @@ export default function RegisterScreen() {
           value={password}
           onChangeText={change("password", setPassword)}
           error={fieldError("password")}
-          // NOTE FOR UX: «Ошибки форм» не задаёт длину пароля. Подсказка и ошибка — form.passwordRules / form.passwordTooLong.
           hint={password.length < PASSWORD_MIN ? t("form.passwordRules") : undefined}
           showLabel={t("form.showPassword")}
           input={{

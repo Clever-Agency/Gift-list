@@ -53,7 +53,10 @@ describe("auth proxy", () => {
     const ids = (auth.options.plugins ?? []).map((plugin) => plugin.id);
     expect(ids).toContain("expo");
     expect(ids).toContain("bearer");
+    expect(ids).toContain("have-i-been-pwned");
     expect(ids.at(-1)).toBe("next-cookies");
+    expect(auth.options.emailAndPassword?.minPasswordLength).toBe(12);
+    expect(auth.options.emailAndPassword?.maxPasswordLength).toBe(128);
     expect(auth.options.trustedOrigins).toContain("giftlist://");
     expect(auth.options.emailAndPassword?.disableSignUp).toBe(true);
     expect(auth.options.disabledPaths).toEqual([
@@ -292,6 +295,15 @@ describe("closed Better Auth HTTP routes", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await response.json()).toMatchObject({ code: "PROVIDER_NOT_FOUND" });
+  });
+
+  it("rejects a short password on reset-password before looking up the token", async () => {
+    const { POST } = await handler();
+    const response = await POST(
+      post("/api/auth/reset-password", { newPassword: "short", token: "unused-token" }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "PASSWORD_TOO_SHORT" });
   });
 
   it("still answers session reads and the health route", async () => {

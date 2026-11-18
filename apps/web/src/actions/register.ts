@@ -4,6 +4,7 @@ import { createId } from "@paralleldrive/cuid2";
 import { hashPassword } from "better-auth/crypto";
 import {
   negotiateLocale,
+  newPasswordLengthReason,
   normalizeForSearch,
   preferredFromAcceptLanguage,
   rateLimitedError,
@@ -17,6 +18,7 @@ import { Prisma } from "@/db/generated/client";
 import { acceptInviteLinkInTransaction } from "@/domain/invite-link";
 import { normalizeNick } from "@/domain/nick";
 import { auth } from "@/lib/auth";
+import { isPasswordPwnedFailOpen } from "@/lib/hibp-password";
 import { inviteLinkTransaction } from "@/lib/invite-link-store";
 import { authRateLimit, clientIp, consumeRateLimit } from "@/lib/rate-limit";
 
@@ -27,7 +29,9 @@ export type AuthOutcome = {
   session?: Response;
 };
 
-function validation(field?: string, reason?: "EMAIL_TAKEN" | "NICK_TAKEN"): ActionResult<AuthPayload> {
+type RegisterValidationReason = "EMAIL_TAKEN" | "NICK_TAKEN" | "PASSWORD_TOO_SHORT" | "PASSWORD_TOO_LONG" | "PASSWORD_PWNED";
+
+function validation(field?: string, reason?: RegisterValidationReason): ActionResult<AuthPayload> {
   return {
     ok: false,
     code: "VALIDATION",
@@ -64,6 +68,13 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
   }
 
   const { email, password, displayName } = input;
+  const lengthReason = newPasswordLengthReason(password);
+  if (lengthReason) {
+    return { result: validation("password", lengthReason) };
+  }
+  if (await isPasswordPwnedFailOpen(password)) {
+    return { result: validation("password", "PASSWORD_PWNED") };
+  }
   // AD-13: `nick` is stored only in its canonical form, and the lookup below
   // uses the same value, so a case or padding variant can never slip past the
   // unique index even if the caller skipped the body schema.

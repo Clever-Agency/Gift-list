@@ -17,7 +17,7 @@ function emailOfLength(length: number): string {
 
 const validBody = {
   email: "a@example.com",
-  password: "password1",
+  password: "password1234",
   displayName: "Анна",
   nick: "anna",
 };
@@ -111,11 +111,28 @@ describe("POST /api/v1/register caps", () => {
     expect(registerUser).not.toHaveBeenCalled();
   });
 
+  it("rejects a short password with PASSWORD_TOO_SHORT", async () => {
+    const res = await POST(post({ ...validBody, password: "short" }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+      reason: "PASSWORD_TOO_SHORT",
+    });
+    expect(registerUser).not.toHaveBeenCalled();
+  });
+
   it("rejects a password of 129 characters", async () => {
     const res = await POST(post({ ...validBody, password: "x".repeat(129) }));
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual(validationBody("password"));
+    expect(await res.json()).toEqual({
+      ...validationBody("password"),
+      reason: "PASSWORD_TOO_LONG",
+    });
     expect(registerUser).not.toHaveBeenCalled();
   });
 
@@ -128,7 +145,10 @@ describe("POST /api/v1/register caps", () => {
     const res = await POST(post({ ...validBody, password }));
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual(validationBody("password"));
+    expect(await res.json()).toEqual({
+      ...validationBody("password"),
+      reason: "PASSWORD_TOO_LONG",
+    });
     expect(registerUser).not.toHaveBeenCalled();
   });
 

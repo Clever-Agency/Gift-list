@@ -101,7 +101,11 @@ export default function ResetScreen() {
     if (!result.ok) {
       flight.current = false;
       const issue = formIssue(result, t, common, "reset");
-      setIssue(issue.field === "password" ? passwordFieldIssue(password, t, common) : issue);
+      setIssue(
+        issue.field === "password" && issue.reason === undefined
+          ? passwordFieldIssue(password, t, common)
+          : issue,
+      );
       focusField(passwordRef.current);
       return;
     }
@@ -148,7 +152,6 @@ export default function ResetScreen() {
               value={password}
               onChangeText={change}
               error={issue?.field === "password" ? issue.text : undefined}
-              // NOTE FOR UX: «Ошибки форм» не задаёт длину пароля. Подсказка и ошибка — form.passwordRules / form.passwordTooLong.
               hint={password.length < PASSWORD_MIN ? t("form.passwordRules") : undefined}
               showLabel={t("form.showPassword")}
               input={{

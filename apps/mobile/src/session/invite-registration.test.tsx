@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { router } from "expo-router";
 import { click, controlByText, typeInto } from "@/test/dom";
 import RegisterScreen from "../../app/(auth)/register";
 
@@ -12,15 +13,45 @@ import RegisterScreen from "../../app/(auth)/register";
  */
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const route = vi.hoisted(() => ({ params: {} as Record<string, string> }));
+const session = vi.hoisted(() => ({
+  user: null as {
+    id: string;
+    email: string;
+    name: string;
+    nick: string;
+    timeZone: null;
+  } | null,
+  listeners: new Set<() => void>(),
+}));
 
 vi.mock("@/api/client", () => api);
-vi.mock("@/session/auth-context", () => ({
-  useAuth: () => ({
-    state: { status: "anonymous" as const },
-    setUser: vi.fn(),
-    signOut: vi.fn(async () => ({ ok: true as const })),
-  }),
-}));
+vi.mock("@/session/auth-context", async () => {
+  const React = await import("react");
+  return {
+    useAuth() {
+      const [, bump] = React.useState(0);
+      React.useEffect(function subscribeToSession() {
+        function notify() {
+          bump((value) => value + 1);
+        }
+        session.listeners.add(notify);
+        return function unsubscribe() {
+          session.listeners.delete(notify);
+        };
+      }, [bump]);
+      return {
+        state: session.user
+          ? { status: "ready" as const, user: session.user }
+          : { status: "anonymous" as const },
+        setUser(user: NonNullable<typeof session.user>) {
+          session.user = user;
+          for (const notify of session.listeners) notify();
+        },
+        signOut: vi.fn(async () => ({ ok: true as const })),
+      };
+    },
+  };
+});
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
 vi.mock("expo-router", async () => {
   const React = await import("react");
@@ -95,6 +126,8 @@ function bodyOf(call: unknown[]): Record<string, unknown> {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  session.user = null;
+  session.listeners.clear();
   route.params = {};
   api.apiRequest.mockResolvedValue({
     ok: true,
@@ -154,5 +187,37 @@ describe("регистрация по приглашению", () => {
     const body = bodyOf(api.apiRequest.mock.calls[0]);
     expect(body.next).toBe("/");
     expect("inviteToken" in body).toBe(false);
+  });
+
+  it("после регистрации идёт на «Мой вишлист», если сервер вернул / (CLE-99)", async () => {
+    route.params = { next: "/invite/tok_1" };
+    api.apiRequest.mockResolvedValue({
+      ok: true,
+      data: {
+        user: { id: "u1", email: "a@b.test", name: "Анна", nick: "anna", timeZone: null },
+        next: "/",
+      },
+    });
+    await mount();
+    await createAccount();
+
+    expect(router.replace).toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalledWith("/invite/tok_1");
+    expect(router.replace).toHaveBeenLastCalledWith("/");
+  });
+
+  it("после регистрации с дружбой остаётся на экране приглашения (CLE-99)", async () => {
+    route.params = { next: "/invite/tok_1" };
+    api.apiRequest.mockResolvedValue({
+      ok: true,
+      data: {
+        user: { id: "u1", email: "a@b.test", name: "Анна", nick: "anna", timeZone: null },
+        next: "/invite/tok_1",
+      },
+    });
+    await mount();
+    await createAccount();
+
+    expect(router.replace).toHaveBeenLastCalledWith("/invite/tok_1");
   });
 });

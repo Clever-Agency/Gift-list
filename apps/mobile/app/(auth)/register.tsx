@@ -50,6 +50,11 @@ export default function RegisterScreen() {
   const [nickSettled, setNickSettled] = useState(false);
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
+  // CLE-99: the server replaces an invite `next` with `/` when the registration
+  // did not create a friendship (unknown token and Block share that answer).
+  // The ready-effect must follow that landing, not the URL the form was opened
+  // with — otherwise the new account opens «Приглашение не найдено.».
+  const landing = useRef<string | null>(null);
   // UI5: submit moves focus to the invalid field and scrolls it into view.
   const emailRef = useRef<TextInputInstance | null>(null);
   const passwordRef = useRef<TextInputInstance | null>(null);
@@ -102,7 +107,7 @@ export default function RegisterScreen() {
   }
 
   useEffect(function redirectWhenReady() {
-    if (auth.state.status === "ready") router.replace(next as "/");
+    if (auth.state.status === "ready") router.replace((landing.current ?? next) as "/");
   }, [auth.state.status, next]);
 
   // AD-13: the same rule as the server, taken from the contract. The preview is
@@ -191,8 +196,9 @@ export default function RegisterScreen() {
       focusIssueField(nextIssue.field);
       return;
     }
+    landing.current = safeNextPath(result.data.next);
     auth.setUser(result.data.user);
-    router.replace(safeNextPath(result.data.next) as "/");
+    router.replace(landing.current as "/");
   }
 
   function handleSubmit() {

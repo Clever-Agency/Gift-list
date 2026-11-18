@@ -604,7 +604,7 @@ describe("друзья: запросы", () => {
   });
 });
 
-describe("друзья: меню ⋯", () => {
+describe("друзья: меню ⋮", () => {
   it("в списке друзей destructive «Удалить из друзей», затем «Заблокировать»", async () => {
     signedIn();
     await mount();
@@ -679,7 +679,7 @@ describe("друзья: удаление из друзей (Story 4.4)", () => {
     return nodes[0];
   }
 
-  /** The ⋯ menu of the friends tab, then the destructive item and its confirm. */
+  /** The ⋮ menu of the friends tab, then the destructive item and its confirm. */
   async function askRemoveFriend(name: string) {
     await openMenu(name);
     await press(openedMenuItem("Удалить из друзей"));
@@ -815,7 +815,7 @@ describe("друзья: блокировка (Story 4.5)", () => {
     return target as HTMLElement;
   }
 
-  /** The friends row's ⋯, then its last item and the confirm it opens. */
+  /** The friends row's ⋮, then its last item and the confirm it opens. */
   async function askBlock(name: string) {
     await openMenu(name);
     await press(menuItem("Заблокировать"));

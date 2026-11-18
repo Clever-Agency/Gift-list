@@ -41,9 +41,10 @@ function joinCardName(parts: readonly (string | null)[]): string {
  * its chip only shows the value. A non-pressable chip lets the press through to
  * the card underneath, so it also opens the edit route.
  *
- * NOTE FOR UX: photo, tags and ⋯ arrive with Stories 2.5–2.7, together with the
- * `Link` main zone that `DESIGN.md` reserves for the detail route; for now the
- * owner edit route is a button.
+ * NOTE FOR UX: the wish photo is not in the contract yet, so the v8 card shows the
+ * placeholder; tags are rendered, while the ⋮ menu and the `Link` main zone that
+ * `DESIGN.md` reserves for the detail route are still pending — for now the owner
+ * edit route is a button.
  */
 export function WishCard({
   gift,

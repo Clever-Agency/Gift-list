@@ -97,7 +97,7 @@ type InvitesState =
 
 /**
  * Story 4.5: the person a block confirm would take away and the rows around them
- * in the list the press came from, so focus lands on the neighbour's ⋯.
+ * in the list the press came from, so focus lands on the neighbour's ⋮.
  */
 type BlockTarget = { card: CircleCard; rows: readonly CircleCard[] };
 
@@ -198,7 +198,7 @@ function FriendsContent({
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
   const [blockBusy, setBlockBusy] = useState(false);
 
-  // Focus: the ⋯ of each row, so an action can put focus back; the page title is
+  // Focus: the ⋮ of each row, so an action can put focus back; the page title is
   // the last resort of «Куда уходит фокус».
   const menuNodes = useRef(new Map<string, FocusTarget | null>());
   const headingNode = useRef<FocusTarget | null>(null);
@@ -581,7 +581,7 @@ function FriendsContent({
     void loadMoreInvites();
   }
 
-  /** The neighbour's ⋯ gets focus after a row disappears, else the page title. */
+  /** The neighbour's ⋮ gets focus after a row disappears, else the page title. */
   function focusAfterRemoval(items: readonly CircleCard[], nick: string) {
     const next = focusNeighbour(
       items.map((item) => item.nick),
@@ -592,7 +592,7 @@ function FriendsContent({
     }, 0);
   }
 
-  /** A row that stays puts focus back on its own ⋯. */
+  /** A row that stays puts focus back on its own ⋮. */
   function focusSameRow(nick: string) {
     setTimeout(function moveFocus() {
       restoreFocus(menuNodes.current.get(nick));
@@ -752,7 +752,7 @@ function FriendsContent({
     return state.status === "ready" ? state.items : [];
   }
 
-  /** The ⋯ item of every person row: «Заблокировать» last, after the divider. */
+  /** The ⋮ item of every person row: «Заблокировать» last, after the divider. */
   function blockItem(card: CircleCard, rows: readonly CircleCard[]): OverflowMenuItem {
     return {
       key: "block",
@@ -1006,7 +1006,7 @@ function FriendsContent({
   }
 
   /**
-   * The ⋯ of «Друзья» (`EXPERIENCE.md` → Отношение → статус и меню): «Открыть
+   * The ⋮ of «Друзья» (`EXPERIENCE.md` → Отношение → статус и меню): «Открыть
    * профиль», then the destructive «Удалить из друзей» and «Заблокировать» with
    * their confirms.
    */
@@ -1026,7 +1026,7 @@ function FriendsContent({
     ];
   }
 
-  /** The ⋯ of «Я подписан»: the table minus «Удалить из друзей». */
+  /** The ⋮ of «Я подписан»: the table minus «Удалить из друзей». */
   function subscribedItems(card: CircleCard): OverflowMenuItem[] {
     const items = [openProfileItem(card)];
     if (card.relationship === "NONE") {
@@ -1049,7 +1049,7 @@ function FriendsContent({
     return items;
   }
 
-  /** The ⋯ of «Мои подписчики»: the subscription back and the removal with confirm. */
+  /** The ⋮ of «Мои подписчики»: the subscription back and the removal with confirm. */
   function subscriberItems(card: CircleCard): OverflowMenuItem[] {
     const items = [openProfileItem(card)];
     if (card.relationship === "NONE") {
@@ -1775,9 +1775,9 @@ type PersonItemProps = {
   card: CircleCard;
   /** The relation or subscription chip, already translated; `undefined` hides it. */
   chip?: string;
-  /** The ⋯ actions of the row; `undefined` renders the row without a menu. */
+  /** The ⋮ actions of the row; `undefined` renders the row without a menu. */
   menu?: OverflowMenuItem[];
-  /** Stores the ⋯ trigger of this row, so an action can put focus back on it. */
+  /** Stores the ⋮ trigger of this row, so an action can put focus back on it. */
   onMenuNode: (nick: string, node: FocusTarget | null) => void;
   /** v8 list: a hairline above this row (every row but the first). */
   divider?: boolean;

@@ -17,7 +17,7 @@ import { RelationshipActions } from "./relationship-actions";
  * share ids; the default `profile` is what the stories below use. Story 4.4
  * adds `onRemoveFriend`: the profile passes it next to the «Друзья» chip, the
  * search row does not. Story 4.5 adds `onBlock`: the profile and the search row
- * pass it, a circle list keeps «Заблокировать» in its ⋯ menu instead.
+ * pass it, a circle list keeps «Заблокировать» in its ⋮ menu instead.
  */
 const meta = {
   title: "App/RelationshipActions",

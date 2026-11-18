@@ -320,7 +320,7 @@ components:
   badge-count:
     background: '{colors.primary}'
     foreground: '{colors.primary-foreground}'
-    radius: '{rounded.full}'
+    radius: '{rounded.sm}'
     typography: '{typography.caption}'
   tag-chip:
     background: '{colors.background}'

@@ -597,7 +597,7 @@ function SearchScreenContent({
                           )}
                           {/*
                             NOTE FOR UX: `DESIGN.md` → PersonRow keeps the row's
-                            actions in the ⋯ menu. CLE-89 asks for the profile's
+                            actions in the ⋮ menu. CLE-89 asks for the profile's
                             buttons in the search row, so the same block sits next
                             to the link — never inside `<a>`, so a press on a
                             button cannot open the profile. Story 4.6 adds the

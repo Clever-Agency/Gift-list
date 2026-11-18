@@ -133,7 +133,7 @@ export function BottomSheet({
                 height="$touch-target"
                 alignItems="center"
                 justifyContent="center"
-                borderRadius="$full"
+                borderRadius="$md"
               >
                 {closeAction.icon}
               </Pressable>

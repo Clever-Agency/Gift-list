@@ -7,7 +7,7 @@ paradigm: modular-monolith-layered
 scope: "Gift List MVP — один вишлист, нативный клиент Expo и веб для публичной ссылки и админки. Бронь «куплю сам». Без оплаты и без денежных сборов."
 status: final
 created: 2026-09-30
-updated: 2026-11-10
+updated: 2026-11-18
 language: ru
 workflow: bmad-architecture
 round: 1
@@ -44,6 +44,7 @@ binds:
   - D-42
   - D-46
   - D-47
+  - D-48
   - A-24
 sources:
   - _bmad-output/planning-artifacts/prds/prd-gift-list-2026-09-30/prd.md
@@ -356,11 +357,11 @@ flowchart TB
 - **Prevents:** напоминание тому, кто дату не видит; госпраздники в календаре; второй источник часового пояса
 - **Rule:** `User.timeZone` IANA, not null, default `UTC` — единственный пояс пользователя. `reservationTimeZone` на брони — снимок на момент Срока, не второй источник правки. `UserDate`: `kind BIRTHDAY|CUSTOM`, день, месяц, год опционален, `visibility only_me|friends|everyone` (default `friends`). `only_me` — владелец. `friends` — принятая дружба. `everyone` — любой зритель профиля после проверки Block, включая анонима на `/u/:nick`, подписчика и `ContactMatch`. Дата не входит в ответ `/l/:token`. BIRTHDAY — не больше одной. CUSTOM — не больше 10. Год — отдельный флаг `yearVisibility`, default `only_me`; видимость даты `everyone` год сама не открывает. Напоминание дарителю (T-14) — только другу, которому дата видна, и только при видимом ему `OPEN` желании. Напоминание владельцу (T-30) — только о своём ДР. `ReminderLog` UNIQUE(получатель, dateId, год, kind). Cron `api/cron/date-reminders`. Напоминания не стоят за платёжным флагом (D-39). Интересы (FR-39) в MVP не создаются; видимость по умолчанию — друзья (D-31).
 
-### AD-24 — Имя продукта и публичный контакт `[ADOPTED D-35]`
+### AD-24 — Имя продукта и публичный контакт `[ADOPTED D-35, D-48]`
 
 - **Binds:** весь UI веба и Expo
 - **Prevents:** два захардкоженных названия; смена имени правкой экранов
-- **Rule:** Значения по умолчанию — константы в `packages/contracts/src/brand.ts`: `PRODUCT_NAME = "WishMoon"`, `AUTHOR_EMAIL = "clever.web.agency@gmail.com"`, а `AUTHOR_MAILTO` и `authorMailto(subject?)` — производные от `AUTHOR_EMAIL` (одна точка правки адреса). Это единственный источник: литерала имени и адреса нет ни в `apps/web`, ни в `apps/mobile`, ни в `app.config.ts`, ни в скриптах сборки. Веб читает имя через `env.ts`, приложение — через `src/config/env.ts`; оба падают на константу, когда переменная пуста. `BRAND_NAME` (веб) и `EXPO_PUBLIC_BRAND_NAME` (сборка Expo) — осознанное переопределение, не второй источник: обе стороны получают его из одной переменной CI, `sync-spa.mjs` передаёт в Expo `BRAND_NAME` и очищает ручное значение, поэтому SSR и SPA не расходятся. `AUTHOR_EMAIL` окружением не переопределяется. «Написать автору» — ссылка `mailto:` из `AUTHOR_MAILTO`; `EXPO_PUBLIC_AUTHOR_URL` удаляется. Домен эта переменная не задаёт (Q-2).
+- **Rule:** Значения по умолчанию — константы в `packages/contracts/src/brand.ts`: `PRODUCT_NAME = "WishMoon"`, `AUTHOR_EMAIL = "support@wishmoon.clever-agency.dev"` (D-35, ред. 2026-11-18, `sprint-change-proposal-2026-11-18-domain-and-mailboxes.md`, approved by Sergey), а `AUTHOR_MAILTO` и `authorMailto(subject?)` — производные от `AUTHOR_EMAIL` (одна точка правки адреса). Это единственный источник: литерала имени и адреса нет ни в `apps/web`, ни в `apps/mobile`, ни в `app.config.ts`, ни в скриптах сборки. Веб читает имя через `env.ts`, приложение — через `src/config/env.ts`; оба падают на константу, когда переменная пуста. `BRAND_NAME` (веб) и `EXPO_PUBLIC_BRAND_NAME` (сборка Expo) — осознанное переопределение, не второй источник: обе стороны получают его из одной переменной CI, `sync-spa.mjs` передаёт в Expo `BRAND_NAME` и очищает ручное значение, поэтому SSR и SPA не расходятся. `AUTHOR_EMAIL` окружением не переопределяется. «Написать автору» — ссылка `mailto:` из `AUTHOR_MAILTO`; `EXPO_PUBLIC_AUTHOR_URL` удаляется. Адрес для запросов о данных и удалении — `privacy@wishmoon.clever-agency.dev` (D-48); когда он понадобится в коде (ссылка на политику), это константа `PRIVACY_EMAIL` в том же файле, не литерал. Домен эта переменная не задаёт: он выбран (D-48) и приходит из конфигурации окружения (AD-26).
 
 ### AD-25 — Валюта цены `[ADOPTED D-36, D-37]`
 
@@ -368,11 +369,11 @@ flowchart TB
 - **Prevents:** рубль по умолчанию на одном клиенте и доллар на другом; произвольный ISO-код
 - **Rule:** Цена необязательна. Если она есть, `priceCurrency` — ровно одно из `USD`, `EUR`, `CNY`, `BYN`, `RUB`, иначе `VALIDATION`. Невыбранная валюта при непустой сумме — `USD`. Сумма хранится целым числом минимальных единиц; у всех пяти валют два знака после запятой. Поле не проводит платёж.
 
-### AD-26 — Монорепозиторий и ссылки в клиенты `[ADOPTED D-40, D-41]`
+### AD-26 — Монорепозиторий и ссылки в клиенты `[ADOPTED D-40, D-41, D-48]`
 
 - **Binds:** весь репозиторий, AD-17, AD-14, FR-26, FR-27, FR-47
 - **Prevents:** второй репозиторий и рассинхрон типов; письмо, которое ведёт только в браузер или только в приложение; архитектура «на время без iOS»
-- **Rule:** Один репозиторий, npm workspaces: `apps/web` (Next.js: сервер, `api/v1`, cron, серверные страницы, `/admin`, Prisma, env; раздаёт веб-сборку приложения), `apps/mobile` (Expo), `packages/contracts` (zod-схемы AD-12, gift card, коды ошибок, каталоги переводов AD-27; без React, Prisma и env), `packages/ui` (Tamagui-компоненты и тема, AD-2). Prisma и секреты живут только в `apps/web`. **Один домен.** Веб-сборка приложения (`expo export --platform web`, SPA) публикуется вместе с `apps/web`. Next.js обслуживает свои пути (`/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known`), всё остальное отдаёт SPA (fallback rewrite). Поэтому сессия в браузере — cookie того же домена, без CORS. `/l/:token` при наличии сессии или по «Куплю сам» передаёт пользователя на экран приложения `/wishlist/:token`; туда же ведёт `?next=` после входа; `?next=` принимает только относительный путь того же домена (иначе — главный экран). Этот путь отдаёт SPA fallback. App Links и Universal Links объявляют пути `/l/*`, `/i/*`, `/wishlist/*`. Next.js путь `/wishlist` не обслуживает (UX-A18). Все ссылки наружу (письма, копирование вишлиста, приглашение) — `https://{домен}/…`. Тот же домен объявлен для Android App Links (`assetlinks.json`) и iOS Universal Links (`apple-app-site-association`). При установленном приложении путь открывается в нём, иначе — тот же экран в браузере. Домен — конфигурация (Q-2); на этапе разработки — домен хостинга разработки. Флаг `IOS_APP_PUBLISHED` включает ссылку в App Store в подсказке «установите приложение» без правки кода. Деплой: веб-сборка приложения собирается в том же CI, что `apps/web`, и уходит на тот же хост (Vercel сейчас, Docker после переезда, AD-5).
+- **Rule:** Один репозиторий, npm workspaces: `apps/web` (Next.js: сервер, `api/v1`, cron, серверные страницы, `/admin`, Prisma, env; раздаёт веб-сборку приложения), `apps/mobile` (Expo), `packages/contracts` (zod-схемы AD-12, gift card, коды ошибок, каталоги переводов AD-27; без React, Prisma и env), `packages/ui` (Tamagui-компоненты и тема, AD-2). Prisma и секреты живут только в `apps/web`. **Один домен.** Веб-сборка приложения (`expo export --platform web`, SPA) публикуется вместе с `apps/web`. Next.js обслуживает свои пути (`/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known`), всё остальное отдаёт SPA (fallback rewrite). Поэтому сессия в браузере — cookie того же домена, без CORS. `/l/:token` при наличии сессии или по «Куплю сам» передаёт пользователя на экран приложения `/wishlist/:token`; туда же ведёт `?next=` после входа; `?next=` принимает только относительный путь того же домена (иначе — главный экран). Этот путь отдаёт SPA fallback. App Links и Universal Links объявляют пути `/l/*`, `/i/*`, `/wishlist/*`. Next.js путь `/wishlist` не обслуживает (UX-A18). Все ссылки наружу (письма, копирование вишлиста, приглашение) — `https://{домен}/…`. Тот же домен объявлен для Android App Links (`assetlinks.json`) и iOS Universal Links (`apple-app-site-association`). При установленном приложении путь открывается в нём, иначе — тот же экран в браузере. Домен — конфигурация (D-48: `wishmoon.clever-agency.dev`, staging — `staging.wishmoon.clever-agency.dev`); на этапе разработки — домен хостинга разработки. Флаг `IOS_APP_PUBLISHED` включает ссылку в App Store в подсказке «установите приложение» без правки кода. Деплой: веб-сборка приложения собирается в том же CI, что `apps/web`, и уходит на тот же хост (Vercel сейчас, Docker после переезда, AD-5).
 
 ### AD-27 — Мультиязычность `[ADOPTED D-46]`
 
@@ -577,7 +578,7 @@ stateDiagram-v2
 | Второй язык интерфейса и «Настройки → Язык», dark mode | D-46: каркас по AD-27, язык добавляется каталогом и строкой в `SUPPORTED_LOCALES`; UX-A8 |
 | Redis rate-limit prod hardening | пилот; soft |
 | Prisma 8 | RC; revisit after GA |
-| Финальный бренд/домен | Q-2 открыт |
+| Финальный бренд/домен | Закрыт: WishMoon, `wishmoon.clever-agency.dev` (D-35, D-48) |
 | Юрлицо и место хостинга | Q-7, до публикации. До этого сервер остаётся на Vercel (D-15). Публикация в стор до переезда запрещена |
 | Мультирегиональная модель (домашний регион + общий каталог ников; `homeRegion`) | PRD Q-8; чат 1 `discussion-backlog-2026-10-11.md`; сейчас не строим |
 | Внешний планировщик для `api/cron/*` | к Story 2.6 (`wish-expiry`), к Story 5.6 (`reservation-timers`); при переезде — cron хоста |
@@ -588,7 +589,7 @@ stateDiagram-v2
 | ID | Решение spine | Источник |
 |----|---------------|----------|
 | ARCH-A1 | Принято как D-34: жалоб в MVP нет. Юридическая сверка — чеклист перед публикацией | D-34 |
-| ARCH-A2 | Имя — WishMoon, дефолт в `packages/contracts`, переопределение `BRAND_NAME` (AD-24). Домен открыт | Q-2, D-35 |
+| ARCH-A2 | Имя — WishMoon, дефолт в `packages/contracts`, переопределение `BRAND_NAME` (AD-24). Домен — `wishmoon.clever-agency.dev` | D-35, D-48 |
 | ARCH-A3 | Снято для механизма: удаление в приложении обязательно (AD-20, D-33). Срок хранения по-прежнему Q-3 | Q-3 |
 | ARCH-A4 | Принято: цена необязательна, валюта из AD-25 | D-36, D-37 |
 | ARCH-A5 | Нет reopen CLOSED в R1, кроме отмены владельцем в течение `UNDO_WINDOW` = 10 min (было 10 s; D-43 — WCAG 2.2.1). Константа одна на сервере; клиент берёт срок из ответа (`undoUntil`), а не из своего таймера | UX-A11, D-12, D-43 |

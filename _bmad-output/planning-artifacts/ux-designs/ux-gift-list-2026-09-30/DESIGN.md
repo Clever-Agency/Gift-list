@@ -3,7 +3,7 @@ name: Gift List
 description: "Вишлист с видимостью на каждом желании и бронью «Куплю сам». Одно приложение Expo (React Native + react-native-web) на Android, iOS и в браузере — раздел App; четыре серверные страницы Next.js (/l, /i, /unsubscribe, /admin) — раздел Next-страницы. Компоненты и токены — один пакет packages/ui на Tamagui (AD-2), только светлая тема. Пилот на русском, мультиязычность заложена (кириллица + латиница)."
 status: final
 created: 2026-09-30
-updated: 2026-11-10
+updated: 2026-11-18
 language: ru
 workflow: bmad-ux
 round: 1
@@ -329,7 +329,7 @@ components:
 
 # Gift List — Design Spine
 
-> **[DECISION] Палитра C — Forest Paper** подтверждена Sergey (2026-09-30). Имя продукта выбрано 2026-11-10 — **WishMoon** (D-35); домен остаётся открытым (Q-2). Имя на экранах — константа `PRODUCT_NAME` из `packages/contracts`, переопределяемая `BRAND_NAME` / `EXPO_PUBLIC_BRAND_NAME` (AD-24); в макетах — только плейсхолдер. «Написать автору» — `mailto:` на `AUTHOR_EMAIL` из того же файла (AD-24).
+> **[DECISION] Палитра C — Forest Paper** подтверждена Sergey (2026-09-30). Имя продукта выбрано 2026-11-10 — **WishMoon** (D-35); домен — `wishmoon.clever-agency.dev` (D-48). Имя на экранах — константа `PRODUCT_NAME` из `packages/contracts`, переопределяемая `BRAND_NAME` / `EXPO_PUBLIC_BRAND_NAME` (AD-24); в макетах — только плейсхолдер. «Написать автору» — `mailto:` на `AUTHOR_EMAIL` (`support@wishmoon.clever-agency.dev`) из того же файла (AD-24).
 > **[DECISION] D-40 (2026-10-28).** Один клиент — приложение Expo на Android, iOS и в браузере; дизайн приложения один, с адаптивными раскладками (раздел **App**). Next.js отдаёт только `/l`, `/i`, `/unsubscribe`, `/admin` (раздел **Next-страницы**).
 > [ASSUMPTION: UX-A8] Только светлая тема. **[DECISION] D-46:** пилот на русском, мультиязычность заложена — кириллица и латиница, слева направо (`EXPERIENCE.md` → Локализация).
 > Spines главнее макетов. Ключевые экраны приложения (телефон и широкий браузер) — [`mockups/app-key-screens.html`](mockups/app-key-screens.html). `prototype/index.html` устарел (см. `EXPERIENCE.md` → Foundation).

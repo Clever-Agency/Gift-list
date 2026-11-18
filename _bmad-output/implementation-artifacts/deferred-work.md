@@ -205,3 +205,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-t422u-staging-flow.md`
   summary: Не определено, что значит «проверка на staging»: нет чек-листа, критерия выхода и шага проверки мобильной staging-сборки.
   evidence: Шаг 2 в `docs/deployment-environments.md` называет только адрес; в сводной таблице есть `EXPO_PUBLIC_API_BASE_URL` для staging-сборки, но команды и критериев «проверено» нигде нет. Чек-лист — предмет отдельного решения, а не этой инфраструктурной правки.
+
+## Deferred from: контакт автора support@ (2026-11-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-support-email-author-contact.md`
+  summary: Нет истории и маршрута для веб-страницы, где можно запросить удаление аккаунта без приложения (Google Play, Data safety): D-48 и п. 6 чеклиста требуют раздел политики с `privacy@wishmoon.clever-agency.dev`, но страницы политики нет ни в эпиках, ни в списке путей Next в AD-26.
+  evidence: Путь не входит в `/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known` (AD-26), поэтому без решения его отдаст SPA-fallback с рендером только на клиенте. Нужен `bmad-correct-course` вместе с пунктом 4 чеклиста (политика конфиденциальности) до публикации в Google Play.
+- source_spec: `_bmad-output/implementation-artifacts/spec-support-email-author-contact.md`
+  summary: Письма уходят с `noreply@` без `Reply-To`, поэтому ответ пользователя на письмо теряется; стоит ставить `Reply-To: AUTHOR_EMAIL` (`support@`) или явно решить, что ответы не поддерживаются.
+  evidence: D-48 и `docs/deployment-environments.md` фиксируют отправителя `noreply@` и что ответы на него не читаются; ни один документ не требует `Reply-To`. Поведение было и до смены контакта.

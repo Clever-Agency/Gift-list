@@ -979,7 +979,7 @@ describe("мой вишлист: список", () => {
 });
 
 /**
- * Story 2.4 (FR-28, AD-6, Q-2): one button copies `{origin}/l/{publicToken}` and
+ * Story 2.4 (FR-28, AD-6, D-48): one button copies `{origin}/l/{publicToken}` and
  * a toast says so. A missing origin or token is never copied as a broken string;
  * the press shows the error toast instead. No share-sheet.
  */

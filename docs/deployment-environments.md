@@ -78,6 +78,11 @@ README, «Деплой вне Vercel»): `prisma migrate deploy` с `DATABASE_UR
 
 ## Общие правила эксплуатации
 
+- Почтовые ящики продукта: `support@wishmoon.clever-agency.dev` — техподдержка,
+  на него ведёт «Написать автору» (`AUTHOR_EMAIL`);
+  `privacy@wishmoon.clever-agency.dev` — запросы на удаление аккаунта и о
+  персональных данных (политика, форма Google Play). Письма сервиса уходят с
+  `noreply@` (`EMAIL_FROM`), ответы на него не читаются (D-35, D-48).
 - Resend: регион `eu-west-1`.
 - DNS в Cloudflare — **DNS only** (серая тучка), без прокси. Значения CNAME
   берутся из Vercel. Оранжевая тучка (прокси) блокирует выпуск сертификата.

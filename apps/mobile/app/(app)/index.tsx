@@ -19,6 +19,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import type { ClientResult } from "@/api/client";
 import { fetchMyGifts, previewGiftVisibility, updateGift } from "@/api/my-gifts";
+import { loadOwnerDetail } from "@/ui/wish-detail-load";
+import { WishDetailDialog } from "@/ui/wish-detail-dialog";
 import { getBrandName } from "@/config/env";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
@@ -131,6 +133,10 @@ export default function MyWishlistScreen() {
   const saving = useRef(new Set<string>());
   // The chip node of every wish, so focus can return there after the dialog closes.
   const chipNodes = useRef(new Map<string, ChipNode | null>());
+  const cardNodes = useRef(new Map<string, ChipNode | null>());
+  const [detail, setDetail] = useState<GiftCard | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const detailReturn = useRef<string | null>(null);
   // The chip that should get focus once the closed dialog has left the tree.
   const pendingFocus = useRef<string | null>(null);
   // The chip behind the confirm step: it owns the focus return while that step is
@@ -333,9 +339,34 @@ export default function MyWishlistScreen() {
     router.push("/gifts/new");
   }
 
-  function openEditor(id: string) {
-    // Story 2.2: the owner card is the way into the edit form.
+  function openDetail(gift: GiftCard) {
+    detailReturn.current = gift.id;
+    setDetail(gift);
+    setDetailOpen(true);
+  }
+
+  function closeDetail() {
+    setDetailOpen(false);
+  }
+
+  function detailClosed() {
+    const id = detailReturn.current;
+    detailReturn.current = null;
+    setDetail(null);
+    restoreFocus(id ? cardNodes.current.get(id) : null);
+  }
+
+  function editDetail() {
+    if (!detail) return;
+    const id = detail.id;
+    setDetailOpen(false);
+    setDetail(null);
     router.push({ pathname: "/gifts/[id]/edit", params: { id } });
+  }
+
+  function loadDetail() {
+    if (!detail) return Promise.resolve({ ok: false as const, reason: "unavailable" as const });
+    return loadOwnerDetail(detail.id);
   }
 
   async function endSession() {
@@ -679,7 +710,11 @@ export default function MyWishlistScreen() {
                   <XStack role="list" flexWrap="wrap" gap="$grid-gap">
                     {state.gifts.map((gift) => {
                       function handlePress() {
-                        openEditor(gift.id);
+                        openDetail(gift);
+                      }
+
+                      function setCardNode(node: ChipNode | null) {
+                        cardNodes.current.set(gift.id, node);
                       }
 
                       function handleVisibilityPress() {
@@ -696,6 +731,7 @@ export default function MyWishlistScreen() {
                           gift={gift}
                           width={cardWidth}
                           onPress={handlePress}
+                          pressRef={setCardNode}
                           onVisibilityPress={handleVisibilityPress}
                           visibilityChipRef={setChipNode}
                         />
@@ -785,6 +821,17 @@ export default function MyWishlistScreen() {
           onCancel={cancelVisibilityChange}
           onClosed={returnFocusAfterConfirm}
         />
+        {detail ? (
+          <WishDetailDialog
+            open={detailOpen}
+            viewer="owner"
+            snapshot={detail}
+            load={loadDetail}
+            onClose={closeDetail}
+            onClosed={detailClosed}
+            onEdit={editDetail}
+          />
+        ) : null}
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}

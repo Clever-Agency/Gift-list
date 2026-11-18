@@ -43,6 +43,7 @@ import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
+import { loadViewerDetail } from "@/ui/wish-detail-load";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
@@ -786,7 +787,18 @@ export default function ProfileScreen() {
                       <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
                         {view.gifts.map(function renderGift(gift) {
                           return (
-                            <PublicGiftCard key={gift.id} gift={gift} width={cardWidth} />
+                            <PublicGiftCard
+                              key={gift.id}
+                              gift={gift}
+                              width={cardWidth}
+                              loadDetail={
+                                auth.state.status === "ready"
+                                  ? function loadThisGift() {
+                                      return loadViewerDetail(gift.id, undefined, gift);
+                                    }
+                                  : undefined
+                              }
+                            />
                           );
                         })}
                       </XStack>

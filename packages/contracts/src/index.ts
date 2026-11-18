@@ -452,6 +452,14 @@ export {
 } from "./tag";
 
 export {
+  detailCopy,
+  toDetailFacts,
+  type DetailCopy,
+  type DetailFact,
+  type DetailViewer,
+} from "./detail-fields";
+
+export {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
   compareForSort,

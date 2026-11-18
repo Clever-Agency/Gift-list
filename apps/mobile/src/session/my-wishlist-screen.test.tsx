@@ -172,11 +172,21 @@ function gift(overrides: Partial<GiftCard> = {}): GiftCard {
   };
 }
 
-/** `/api/v1/me` answers with the session; every other path answers with the wishlist. */
+/** `/api/v1/me` answers with the session; a single wish answers with that card; the rest with the list. */
 function respond(gifts: unknown, session: unknown = { ok: true, data: user }) {
-  api.apiRequest.mockImplementation((path: string) =>
-    Promise.resolve(path === "/api/v1/me" ? session : gifts),
-  );
+  api.apiRequest.mockImplementation((path: string) => {
+    if (path === "/api/v1/me") return Promise.resolve(session);
+    const one = /^\/api\/v1\/me\/gifts\/([^/]+)$/.exec(path);
+    if (one && gifts && typeof gifts === "object" && gifts !== null && "data" in gifts) {
+      const data = (gifts as { data?: { gifts?: { id: string }[] } }).data;
+      const card = data?.gifts?.find(function sameId(item) {
+        return item.id === decodeURIComponent(one[1] ?? "");
+      });
+      if (card) return Promise.resolve({ ok: true, data: card });
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Gift not found" });
+    }
+    return Promise.resolve(gifts);
+  });
 }
 
 function giftsAnswer(cards: unknown[], publicToken?: string) {
@@ -653,12 +663,13 @@ describe("мой вишлист: список", () => {
   });
 
   /**
-   * Story 2.2: the owner card is the way into the edit form. The pressable lives
+   * CLE-84: the owner card opens details. «Изменить желание» inside the dialog
+   * is the way into the edit form (Story 2.2). The pressable lives
    * inside the listitem, so the list semantics above stay exactly as they were.
    * CLE-65: the press zone is the whole card, and the chip is a sibling layer over
    * the reserved footer, not a nested button.
    */
-  it("нажатие на карточку открывает редактирование желания, listitem остаётся", async () => {
+  it("нажатие на карточку открывает подробности, listitem остаётся", async () => {
     respond(giftsAnswer([gift(), gift({ id: "g2", title: "Свитер" })]));
     await mount();
 
@@ -680,18 +691,63 @@ describe("мой вишлист: список", () => {
       card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
+    await settle();
+    const dialog = dialogElement();
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("Наушники");
+    expect(dialog?.textContent).toContain("Изменить желание");
+    expect(navigation.push).not.toHaveBeenCalled();
+    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
+    await act(async () => {
+      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
     expect(navigation.push).toHaveBeenCalledWith({
       pathname: "/gifts/[id]/edit",
       params: { id: "g1" },
     });
   });
 
+  it("подробности берут описание из чтения одного желания и возвращают фокус на карточку", async () => {
+    const card = gift();
+    respond(giftsAnswer([card]));
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({
+          ok: true,
+          data: { ...card, description: "Синие, с шумоподавлением." },
+        });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+    await mount();
+
+    const cardButton = container.querySelector(
+      '[role="listitem"] > [role="button"]',
+    ) as HTMLElement;
+    await act(async () => {
+      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(dialogElement()?.textContent).toContain("Синие, с шумоподавлением.");
+    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/me/gifts/g1");
+
+    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
+    await act(async () => {
+      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(300);
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cardButton);
+  });
+
   /**
    * CLE-65 reproduction: a click on the empty footer space next to the «Всем» chip
    * did nothing. That space is the card's reserved footer spacer — the last box of
-   * the card button — so the press now opens the editor.
+   * the card button — so the press now opens the detail dialog, not the editor.
    */
-  it("нажатие на пустое место рядом с чипом открывает редактирование", async () => {
+  it("нажатие на пустое место рядом с чипом открывает подробности", async () => {
     respond(giftsAnswer([gift()]));
     await mount();
 
@@ -706,10 +762,9 @@ describe("мой вишлист: список", () => {
       spacer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(navigation.push).toHaveBeenCalledWith({
-      pathname: "/gifts/[id]/edit",
-      params: { id: "g1" },
-    });
+    await settle();
+    expect(dialogElement()?.textContent).toContain("Наушники");
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 
   it("пустой вишлист: «Пока пусто» и «Добавить желание» ведёт в форму", async () => {
@@ -1603,6 +1658,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     await press("Всем");
     expect(dialogElement()).not.toBeNull();
     expect(text()).toContain("Кто видит «Наушники»");
+    // The chip is a sibling of the card button: it must not open wish details.
+    expect(text()).not.toContain("Изменить желание");
 
     // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
     let answer: (value: unknown) => void = function pendingAnswer() {};

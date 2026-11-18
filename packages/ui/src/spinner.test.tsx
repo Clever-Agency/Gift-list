@@ -95,10 +95,10 @@ describe("Spinner", () => {
   it("цвет варианта кнопки передаётся значением, разметка остаётся на currentColor", async () => {
     windowMedia.setReduceMotion(false);
     const { container, render } = mounted();
-    await render(<Spinner color="#F7FAF7" />);
+    await render(<Spinner color="#FFFFFF" />);
 
     const spinner = container.querySelector('[data-testid="spinner"]') as SVGSVGElement;
-    expect(spinner.style.color).toBe("#F7FAF7");
+    expect(spinner.style.color).toBe("#FFFFFF");
     expect(spinner.getAttribute("stroke")).toBe("currentColor");
   });
 

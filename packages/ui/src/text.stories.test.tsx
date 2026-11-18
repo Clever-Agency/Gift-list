@@ -27,7 +27,7 @@ describe("UI/Text → Link (story): фокусируемая ссылка", () =
       const ring = declarationsFor(link)
         .filter((one) => one.property.startsWith("outline") && stateOf(one) === "focus-visible")
         .map((one) => `${one.property}:${one.value}`);
-      expect(ring).toContain("outline-color:var(--c-ring)");
+      expect(ring).toContain("outline-color:var(--ring)");
       expect(ring).toContain("outline-width:2px");
     }
   });

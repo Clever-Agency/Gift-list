@@ -21,8 +21,11 @@ function html(element: React.ReactElement) {
 describe("шрифты на вебе (Expo web)", () => {
   it("fontFor выбирает семейство по весу роли, Lora отдельно", () => {
     expect(fontFor("body").fontFamily).toBe("body");
-    expect(fontFor("button").fontFamily).toBe("body-600");
+    expect(fontFor("button").fontFamily).toBe("body-500");
+    expect(fontFor("body-strong").fontFamily).toBe("body-600");
     expect(fontFor("display").fontFamily).toBe("display");
+    // v8: заголовки экрана — Lora, а не Manrope.
+    expect(fontFor("heading").fontFamily).toBe("display");
   });
 
   it("вес 500/600 попадает в загруженный файл начертания с обычным весом", () => {
@@ -34,12 +37,13 @@ describe("шрифты на вебе (Expo web)", () => {
       </>,
     );
     const rule = (font: string) => out.match(new RegExp(String.raw`.font_${font}, [^{]*{[^}]*}`))?.[0] ?? "";
-    expect(rule("body-600")).toContain("--f-family:Manrope-600");
-    expect(rule("body-600")).toContain("--f-weight-button:400");
     expect(rule("body-500")).toContain("--f-family:Manrope-500");
+    expect(rule("body-500")).toContain("--f-weight-button:400");
     expect(rule("body-500")).toContain("--f-weight-label:400");
+    expect(rule("body-600")).toContain("--f-family:Manrope-600");
     expect(rule("display")).toContain("--f-family:Lora");
     expect(rule("display")).toContain("--f-weight-display:400");
+    expect(rule("display")).toContain("--f-weight-heading:400");
   });
 
   /** The class list of the element that holds the text (the font class sits on it). */
@@ -53,6 +57,7 @@ describe("шрифты на вебе (Expo web)", () => {
     const out = html(
       <>
         <Heading level={1} kind="display-sm">Вход</Heading>
+        <Heading level={2}>Секция</Heading>
         <Text kind="label">Email</Text>
         <Text kind="body">Текст</Text>
         <Button label="Войти" onPress={() => {}} />
@@ -61,8 +66,9 @@ describe("шрифты на вебе (Expo web)", () => {
     );
 
     expect(classesOf(out, "Вход")).toContain("font_display");
+    expect(classesOf(out, "Секция")).toContain("font_display");
     expect(classesOf(out, "Email")).toContain("font_body-500");
-    expect(classesOf(out, "Войти")).toContain("font_body-600");
+    expect(classesOf(out, "Войти")).toContain("font_body-500");
     expect(classesOf(out, "Пароль")).toContain("font_body-500");
     expect(classesOf(out, "Текст")).not.toContain("font_body-");
   });

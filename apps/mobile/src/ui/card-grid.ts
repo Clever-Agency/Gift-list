@@ -33,10 +33,25 @@ export function pageGutter(windowWidth: number): number {
 }
 
 /**
- * `DESIGN.md` → Layout → columns: cards keep at least `card-min` with `grid-gap`
- * between them, and there are never more than three. The input is the width of the
- * content area itself — the column the cards are drawn in, already without the page
- * gutter, the `max-wide` cap and the safe area.
+ * The v8 grid has two widths (`DESIGN.md` → Layout → columns): two columns up to the
+ * `expanded` breakpoint and three from it — phones and tablets portrait read as two,
+ * a desktop window as three, whatever the wish titles are.
+ */
+export const GRID_COLUMNS = { compact: 2, wide: 3 } as const;
+
+/**
+ * The content width of an `expanded` window (1024 − 2 × 24): the third column appears
+ * as soon as the content area is at least this wide. The `expanded` breakpoint is used
+ * on purpose — the page gutter does not change there, so the column count cannot
+ * disagree between the window-based and the measured (web) path.
+ */
+const WIDE_CONTENT = spacing["bp-expanded"] - spacing["page-gutter-lg"] * 2;
+
+/**
+ * `DESIGN.md` → Layout → columns: two columns on a phone or a tablet, three from the
+ * `expanded` breakpoint (`GRID_COLUMNS`), with `grid-gap` between them. `card-min` no
+ * longer decides the count — the v8 Pinterest card is narrow by design — but every row
+ * is still exactly as wide as the content area it is drawn in.
  *
  * W12.23: the web takes this number from a real layout measurement (`useCardGrid`), so
  * a classic scrollbar — which makes the window wider than the column by its own
@@ -44,17 +59,13 @@ export function pageGutter(windowWidth: number): number {
  * window-based form for the phone (where the window is the content area) and as the
  * first-frame fallback on the web.
  *
- * Review m7: the column count stays at least one and the card width never goes
- * negative. A very narrow area gets a card as wide as it allows instead of a
- * `card-min` card that overflows.
+ * Review m7: the card width never goes negative. A very narrow area gets two cards as
+ * wide as it allows instead of one `card-min` card that overflows.
  */
 export function cardGridForContent(contentWidth: number): CardGrid {
   const content = Math.max(0, contentWidth);
   const gap = spacing["grid-gap"];
-  const columns = Math.max(
-    1,
-    Math.min(3, Math.floor((content + gap) / (spacing["card-min"] + gap))),
-  );
+  const columns = content >= WIDE_CONTENT ? GRID_COLUMNS.wide : GRID_COLUMNS.compact;
   return {
     columns,
     cardWidth: Math.max(0, (content - gap * (columns - 1)) / columns),
@@ -64,9 +75,9 @@ export function cardGridForContent(contentWidth: number): CardGrid {
 /**
  * `DESIGN.md` → Layout → columns: the content area is the window minus the
  * safe-area insets, the page gutter (16 compact, 24 from medium) and never wider
- * than `max-wide`. Cards keep at least `card-min` with `grid-gap` between them, and
- * there are never more than three. A sidebar or a right column would shrink the
- * content area, and the count follows.
+ * than `max-wide`; the column count comes from that width (2 up to `expanded`, 3 from
+ * it). A sidebar or a right column would shrink the content area, and the count
+ * follows.
  *
  * The grid math itself lives in `cardGridForContent`: this function only derives
  * the content width from the window. That is exactly right on the phone; on the web

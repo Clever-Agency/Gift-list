@@ -15,8 +15,8 @@ const items: OverflowMenuItem[] = [
 ];
 
 /**
- * `DESIGN.md` → PersonRow / Мелкие элементы: the ⋯ trigger is 44 × 44 and opens
- * the `{components.user-menu}` bottom sheet with the person's name in the
+ * `DESIGN.md` → PersonRow / Мелкие элементы: the vertical ⋮ trigger is 44 × 44 and
+ * opens the `{components.user-menu}` bottom sheet with the person's name in the
  * heading. Destructive items are red and stay last, after the divider.
  */
 const meta = {
@@ -36,7 +36,7 @@ type Story = StoryObj<typeof meta>;
 /** The trigger alone: the catalog story opens the real menu with a press. */
 export const Trigger: Story = {};
 
-/** The full person row the menu belongs to: the card is the link, ⋯ is a sibling. */
+/** The full person row the menu belongs to: the card is the link, ⋮ is a sibling. */
 export const InPersonRow: Story = {
   render: function InPersonRowStory() {
     return (
@@ -50,14 +50,14 @@ export const InPersonRow: Story = {
           pressLabel="Открыть профиль: Алёна, @alena, Зовёт в друзья"
         />
         <Text kind="caption" tone="muted">
-          Press ⋯ to open the menu; the card itself is the profile link.
+          Press ⋮ to open the menu; the card itself is the profile link.
         </Text>
       </YStack>
     );
   },
 };
 
-/** A closed menu with its real trigger: press ⋯ in the story to open it. */
+/** A closed menu with its real trigger: press ⋮ in the story to open it. */
 export const ClosedWithTrigger: Story = {
   render: function ClosedWithTriggerStory() {
     return (
@@ -91,7 +91,7 @@ export const LongContentNarrow: Story = {
           ]}
         />
         <Text kind="caption" tone="muted">
-          Press ⋯ to open the menu.
+          Press ⋮ to open the menu.
         </Text>
       </YStack>
     );

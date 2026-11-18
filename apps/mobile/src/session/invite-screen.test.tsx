@@ -128,6 +128,16 @@ async function press(label: string) {
   await settle(10);
 }
 
+/** The toast's close cross: an icon button, so its name comes from `aria-label`. */
+async function dismissToast() {
+  const target = container.querySelector<HTMLElement>('[aria-label="Закрыть"]');
+  expect(target).not.toBeNull();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
 function readySession() {
   api.apiRequest.mockResolvedValue({ ok: true, data: user });
 }
@@ -227,7 +237,7 @@ describe("приглашение: превью", () => {
     expect(text()).toContain("Сергей теперь в друзьях");
     expect(navigation.replace).not.toHaveBeenCalled();
 
-    await press("Закрыть");
+    await dismissToast();
     await settle(200);
 
     expect(navigation.replace).toHaveBeenCalledWith({

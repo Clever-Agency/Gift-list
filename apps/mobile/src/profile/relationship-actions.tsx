@@ -20,7 +20,7 @@ export type RelationshipActionsProps = {
   onRemoveFriend?: () => void;
   /**
    * Story 4.5: «Заблокировать» stands next to the other buttons on the profile
-   * and the search row; a circle list keeps it in its ⋯ menu instead. The own
+   * and the search row; a circle list keeps it in its ⋮ menu instead. The own
    * card passes nothing: «Это вы» has no menu and no action.
    */
   onBlock?: () => void;
@@ -46,7 +46,7 @@ export type RelationshipActionsProps = {
  * chip. Only the profile passes it; a search row keeps the chip alone.
  *
  * Story 4.5: `onBlock` adds the ghost «Заблокировать» — the profile and the
- * search row pass it, a circle list keeps the action in its ⋯ menu.
+ * search row pass it, a circle list keeps the action in its ⋮ menu.
  */
 export function RelationshipActions({
   relationship,

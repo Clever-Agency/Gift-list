@@ -10,15 +10,18 @@ function noop() {}
 /**
  * Hover, press and focus are CSS states Tamagui paints from media queries: hover the
  * button, hold it, press Tab. A mouse click leaves no ring (`:focus-visible` only);
- * a phone paints the same `$ring` on `focus` (W12.9). On hover the fill of `primary`, `reserve` and
- * `destructive` darkens by 8% (`primary-hover`, `accent-hover`,
- * `destructive-hover` in `DESIGN.md` → Colors); `secondary` darkens its frame and
- * `ghost` takes the `muted` fill. A disabled or busy button keeps its 40% / 60% dim
- * and does not react to hover or press at all (`DESIGN.md` → Состояния кнопок,
- * DECISION 2026-11-10): it is painted by a variant value without those states. A
- * busy button also shows the 16 px spinner (`UI/Spinner`) in a slot centred over
- * the frame: the paddings stay the resting ones and the label keeps its place at
- * opacity 0, so neither the width nor the height jumps (`t343u`, `t344u`).
+ * a phone paints the same `$ring` on `focus` (W12.9). On hover the fill of `primary`,
+ * `reserve` and `destructive` darkens by 8% (`primary-hover`, `accent-hover`,
+ * `destructive-hover` in `DESIGN.md` → Colors); `secondary` is the calm violet fill —
+ * a translucent `accent-soft` (18 % of accent.8) that lifts to `accent-soft-hover`
+ * (27 %) with its `accent-border` frame; `outline` takes the `muted` fill and a
+ * `foreground` frame, `ghost` takes the `muted` fill. A disabled or
+ * busy button keeps its 40% / 60% dim and does not react to hover or press at all
+ * (`DESIGN.md` → Состояния кнопок, DECISION 2026-11-10): it is painted by a variant
+ * value without those states. A busy button also shows the 16 px spinner
+ * (`UI/Spinner`) in a slot centred over the frame: the paddings stay the resting ones
+ * and the label keeps its place at opacity 0, so neither the width nor the height
+ * jumps (`t343u`, `t344u`).
  */
 const meta = {
   title: "UI/Button",
@@ -37,7 +40,7 @@ The shared button of the app and the Next pages. On the web it is a real \`<butt
 - A blocked button (\`disabled\` or \`busy\`) keeps its resting look: no hover, no press. Blocking swaps the variant for a copy without those states; \`disabled\` dims to 40%, \`busy\` to 60%.
 - \`busy\` keeps the resting paddings and the resting width: the label stays in the row at opacity 0 and a 16 px spinner is centred over the button in an absolute slot. It takes no second press, is announced with \`aria-busy\`, and stays in the Tab order. While busy the web \`type\` is reset to \`button\`, so a form is not submitted twice.
 - \`disabled\` is a native disabled button and leaves the Tab order (\`tabIndex=-1\`). \`focusableWhenDisabled\` keeps it in the Tab order and uses \`aria-disabled\` instead; it still takes no press.
-- Height follows the variant, not a prop: \`primary\`, \`reserve\`, \`secondary\` and \`destructive\` are at least 48 px tall (\`$control-height\`); \`ghost\` is at least 44 × 44 px (\`$touch-target\`). There is no \`size\` prop.
+- Height follows the variant, not a prop: \`primary\`, \`reserve\`, \`secondary\`, \`outline\` and \`destructive\` are at least 48 px tall (\`$control-height\`); \`ghost\` is at least 44 × 44 px (\`$touch-target\`). There is no \`size\` prop.
 - \`fullWidth\` stretches the button to its parent; the row stays centred.
 - \`href\` makes the web root a real \`<a href>\` with the same look (a page action that only navigates: registration, login, a public page). A blocked button stays a \`<button>\` and ignores the target; a phone has no anchor and hands the navigation to the router.
 - Hover, press and focus are CSS states (media queries), not props.
@@ -54,8 +57,9 @@ The shared button of the app and the Next pages. On the web it is a real \`<butt
 | Variant | Resting | Hover | Press |
 | --- | --- | --- | --- |
 | \`primary\` | \`$primary\` fill | \`$primary-hover\` (8% darker) | 90% opacity |
-| \`reserve\` | \`$accent\` fill | \`$accent-hover\` | 90% opacity |
-| \`secondary\` | \`$surface\` fill, \`$border-strong\` border | \`$foreground\` border | 90% opacity |
+| \`reserve\` | \`$primary\` fill (the same CTA as primary in v8) | \`$primary-hover\` | 90% opacity |
+| \`secondary\` | \`$accent-soft\` translucent fill, \`$accent-border\` frame | \`$accent-soft-hover\` | 90% opacity |
+| \`outline\` | transparent, \`$border-strong\` frame | \`$muted\` fill, \`$foreground\` frame | \`$muted\` fill |
 | \`ghost\` | transparent | \`$muted\` fill | \`$muted\` fill |
 | \`destructive\` | \`$destructive\` fill | \`$destructive-hover\` | 90% opacity |
 
@@ -101,7 +105,7 @@ The shared button of the app and the Next pages. On the web it is a real \`<butt
     }),
     variant: propDoc({
       description:
-        "Visual style of the button. `reserve` is only «Куплю сам» and «Подтвердить» in the reservation confirm.",
+        "Visual style: `primary` and `reserve` are the solid navy CTA (reserve is only «Куплю сам» and «Подтвердить»), `secondary` is the calm violet fill, `outline` is neutral with a 1 px frame, `ghost` is transparent, `destructive` is coral.",
       type: formatUnionType(BUTTON_VARIANTS),
       options: BUTTON_VARIANTS,
       defaultValue: "primary",
@@ -175,8 +179,9 @@ export const Playground: Story = {};
 const VARIANT_LABELS: Record<ButtonVariant, string> = {
   primary: "Добавить желание",
   reserve: "Куплю сам",
-  secondary: "Отмена",
-  ghost: "Поделиться",
+  secondary: "Загадать",
+  outline: "Поделиться",
+  ghost: "Отмена",
   destructive: "Удалить желание",
 };
 

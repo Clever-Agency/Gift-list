@@ -101,9 +101,15 @@ export function BottomSheet({
       <Sheet.Handle backgroundColor="$border-strong" />
       <Sheet.Container testID={testID}>
         <Sheet.Background
-          backgroundColor="$surface"
+          // v8: a sheet is the raised layer; in the dark theme its tone and the
+          // highlight do the work, the shadow only softens the edge.
+          backgroundColor="$surface-raised"
           borderTopLeftRadius="$xl"
           borderTopRightRadius="$xl"
+          shadowColor="$scrim"
+          shadowOpacity={0.18}
+          shadowRadius={24}
+          shadowOffset={{ width: 0, height: -12 }}
         />
         <YStack padding="$card-padding" gap="$grid-gap">
           <XStack alignItems="flex-start" gap="$2">
@@ -127,7 +133,7 @@ export function BottomSheet({
                 height="$touch-target"
                 alignItems="center"
                 justifyContent="center"
-                borderRadius="$full"
+                borderRadius="$md"
               >
                 {closeAction.icon}
               </Pressable>

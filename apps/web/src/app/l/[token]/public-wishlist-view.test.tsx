@@ -80,7 +80,7 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).not.toContain("Секрет");
     // Tamagui CSS is part of this server render, not a client-only shell.
     expect(html).toContain("<style");
-    expect(html).toContain("--c-primary:#2F5D3A");
+    expect(html).toContain("--primary");
   });
 
   it("links «Куплю сам» only for a SINGLE and OPEN wish, relative to the SPA", () => {

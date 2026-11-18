@@ -41,9 +41,9 @@ export function InfoButton({ label, explanation, closeLabel, testID }: InfoButto
         height="$touch-target"
         alignItems="center"
         justifyContent="center"
-        borderRadius="$full"
+        borderRadius="$md"
         color="$foreground"
-        backgroundColor="transparent press:$surface"
+        backgroundColor="transparent press:$muted"
       >
         <Info testID={testID ? `${testID}-icon` : undefined} size={spacing["icon-inline"]} />
       </Pressable>

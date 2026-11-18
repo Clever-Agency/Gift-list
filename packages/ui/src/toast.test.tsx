@@ -66,14 +66,140 @@ describe("Toast", () => {
     expect(root().style.transition).not.toContain("translate");
   });
 
-  it("кольцо кнопки — $ring-inverse и только на :focus-visible", async () => {
+  it("кольцо кнопки — $ring и только на :focus-visible", async () => {
     const { render } = mounted();
     await render(<Toast testID="toast" message="Сохранено" closeLabel="Закрыть" onClose={noop} />);
 
     const close = document.querySelector('[aria-label="Закрыть"]') as HTMLElement;
     const keyboard = stateValues(close, "focus-visible", "outline-color");
-    expect(keyboard).toContain("var(--c-ring-inverse)");
-    expect(keyboard).not.toContain("var(--c-ring)");
+    // v8: the toast is a surface card in both themes, so the regular ring shows on it.
+    expect(keyboard).toContain("var(--ring)");
+    expect(keyboard).not.toContain("var(--ring-inverse)");
     expect(stateValues(close, "focus", "outline-color")).toEqual([]);
+  });
+});
+
+describe("Toast: тоны", () => {
+  const TONES = [
+    { tone: "info", role: "status", live: "polite", ink: "#2B3A7A" },
+    { tone: "success", role: "status", live: "polite", ink: "#2C7352" },
+    { tone: "warning", role: "alert", live: "assertive", ink: "#7E4A42" },
+    { tone: "error", role: "alert", live: "assertive", ink: "#C4473D" },
+  ] as const;
+
+  for (const { tone, role, live, ink } of TONES) {
+    it(`${tone}: роль ${role}, ${live}, иконка ${ink}`, async () => {
+      const { container, render } = mounted();
+      await render(
+        <Toast testID="toast" tone={tone} message="Сообщение" closeLabel="Закрыть" onClose={noop} />,
+      );
+
+      const card = container.querySelector<HTMLElement>(`[role='${role}']`);
+      expect(card).not.toBeNull();
+      expect(card?.getAttribute("aria-live")).toBe(live);
+      expect(container.querySelector("[role='alert']") !== null).toBe(role === "alert");
+
+      const icon = container.querySelector<SVGElement>("[data-testid='toast-icon']");
+      expect(icon).not.toBeNull();
+      // One icon per tone, coloured by its calm ink; the text stays neutral.
+      expect(icon?.getAttribute("stroke")).toBe(ink);
+      expect(icon?.getAttribute("aria-hidden")).toBe("true");
+      expect(container.querySelector("[data-testid='spinner']")).toBeNull();
+    });
+  }
+
+  it("иконки у тонов разные: галочка, треугольник и круг с восклицанием", async () => {
+    const { container, render } = mounted();
+    const shapes: Record<string, string> = {};
+
+    for (const tone of ["success", "warning", "error"] as const) {
+      await render(
+        <Toast testID="toast" tone={tone} message="Сообщение" closeLabel="Закрыть" onClose={noop} />,
+      );
+      const icon = container.querySelector<SVGElement>("[data-testid='toast-icon']");
+      shapes[tone] = icon?.innerHTML ?? "";
+    }
+
+    expect(shapes.success).not.toBe(shapes.warning);
+    expect(shapes.warning).not.toBe(shapes.error);
+    expect(shapes.success).not.toBe(shapes.error);
+  });
+});
+
+describe("Toast: варианты", () => {
+  it("заголовок и описание: две строки, заголовок первым", async () => {
+    const { container, render } = mounted();
+    await render(
+      <Toast
+        testID="toast"
+        tone="success"
+        title="Желание забронировано"
+        message="Владелец не узнает, кто его выбрал."
+        closeLabel="Закрыть"
+        onClose={noop}
+      />,
+    );
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("Желание забронировано");
+    expect(text).toContain("Владелец не узнает, кто его выбрал.");
+    expect(text.indexOf("Желание забронировано")).toBeLessThan(text.indexOf("Владелец не узнает"));
+  });
+
+  it("loading: спиннер вместо иконки и aria-busy на карточке", async () => {
+    const { container, render } = mounted();
+    await render(
+      <Toast testID="toast" tone="info" message="Сохраняем" loading closeLabel="Закрыть" onClose={noop} />,
+    );
+
+    expect(container.querySelector("[data-testid='spinner']")).not.toBeNull();
+    expect(container.querySelector("[data-testid='toast-icon']")).toBeNull();
+    expect(container.querySelector("[role='status']")?.getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("dismissible=false убирает крестик, по умолчанию он есть", async () => {
+    const { container, render } = mounted();
+    await render(<Toast testID="toast" message="Сохранено" closeLabel="Закрыть" onClose={noop} />);
+    expect(container.querySelector("[aria-label='Закрыть']")).not.toBeNull();
+
+    await render(
+      <Toast testID="toast" message="Сохранено" closeLabel="Закрыть" dismissible={false} onClose={noop} />,
+    );
+    expect(container.querySelector("[aria-label='Закрыть']")).toBeNull();
+    expect(container.textContent).toContain("Сохранено");
+  });
+
+  it("действие — текстовая кнопка со своим именем, длинный текст остаётся целиком", async () => {
+    const onAction = vi.fn();
+    const long = "Очень длинное сообщение тоста, которое должно переноситься на несколько строк и не обрезать кнопки";
+    const { container, render } = mounted();
+    await render(
+      <Toast
+        testID="toast"
+        tone="error"
+        message={long}
+        action={{ label: "Повторить", onPress: onAction }}
+        closeLabel="Закрыть"
+        onClose={noop}
+      />,
+    );
+
+    expect(container.textContent).toContain(long);
+    const action = container.querySelector<HTMLElement>("[aria-label='Повторить']");
+    expect(action).not.toBeNull();
+    action?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("крестик — иконка с подписью из closeLabel", async () => {
+    const { container, render } = mounted();
+    await render(<Toast testID="toast" message="Сохранено" closeLabel="Закрыть" onClose={noop} />);
+
+    const close = container.querySelector<HTMLElement>("[aria-label='Закрыть']");
+    expect(close).not.toBeNull();
+    expect(close?.getAttribute("role")).toBe("button");
+    // The cross is a picture: the name comes from the label, not from the glyph.
+    expect(close?.querySelector("svg")).not.toBeNull();
+    expect((close?.textContent ?? "").trim()).toBe("");
   });
 });

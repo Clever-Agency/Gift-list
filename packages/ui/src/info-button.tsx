@@ -47,23 +47,27 @@ export function InfoButton({ label, explanation, testID }: InfoButtonProps) {
           height="$touch-target"
           alignItems="center"
           justifyContent="center"
-          borderRadius="$full"
+          borderRadius="$md"
           color="$foreground"
-          backgroundColor="transparent hover:$surface press:$surface"
+          backgroundColor="transparent hover:$muted press:$muted"
         >
           <Info testID={testID ? `${testID}-icon` : undefined} size={spacing["icon-inline"]} />
         </Pressable>
       </Tooltip.Trigger>
       <Tooltip.Content
         maxWidth={320}
-        paddingHorizontal="$2.5"
-        paddingVertical="$1.5"
+        paddingHorizontal="$3"
+        paddingVertical="$2"
         backgroundColor="$surface"
-        borderColor="$border-strong"
+        borderColor="$border"
         borderWidth={1}
         borderRadius="$md"
+        shadowColor="$scrim"
+        shadowOpacity={0.18}
+        shadowRadius={24}
+        shadowOffset={{ width: 0, height: 12 }}
       >
-        <Text>{explanation}</Text>
+        <Text kind="label">{explanation}</Text>
       </Tooltip.Content>
     </Tooltip>
   );

@@ -62,6 +62,6 @@ describe("InvitePreviewView: anonymous invite HTML", () => {
     expect(html).toContain('id="main-content"');
     expect(html).toContain('href="#main-content"');
     expect(html).toContain("<style");
-    expect(html).toContain("--c-primary:#2F5D3A");
+    expect(html).toContain("--primary");
   });
 });

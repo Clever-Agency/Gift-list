@@ -85,17 +85,16 @@ function element(selector: string): HTMLElement {
   return found;
 }
 
-function button(label: string): HTMLElement {
-  const found = Array.from(container.querySelectorAll<HTMLElement>('[role="button"]')).find(
-    (node) => node.textContent === label,
-  );
-  if (!found) throw new Error(`Не найдена кнопка «${label}»`);
-  return found;
-}
-
 /** A toast button by the name a screen reader announces. */
 function buttonByName(name: string): HTMLElement | null {
   return container.querySelector<HTMLElement>(`[role="button"][aria-label="${name}"]`);
+}
+
+/** The close cross: an icon button whose name comes from `closeLabel`. */
+function closeButton(): HTMLElement {
+  const found = buttonByName("Закрыть");
+  if (!found) throw new Error("Не найдена кнопка «Закрыть»");
+  return found;
 }
 
 /** Атомарный класс непрозрачности Tamagui: `_o-…` у корня тоста. */
@@ -266,7 +265,7 @@ describe("ToastHost: сам скрывается по таймеру", () => {
     await render({ message: "Нет сети", tone: "error" });
 
     act(() => {
-      button("Закрыть").click();
+      closeButton().click();
     });
     expect(onDismiss).not.toHaveBeenCalled();
 
@@ -285,7 +284,10 @@ describe("ToastHost: действие и диктор", () => {
 
     const text = container.textContent ?? "";
     expect(text.indexOf(ACTION)).toBeGreaterThanOrEqual(0);
-    expect(text.indexOf(ACTION)).toBeLessThan(text.indexOf("Закрыть"));
+    // v8: the action sits in the text column, the close cross is the last control.
+    const action = buttonByName(ACTION) as HTMLElement;
+    const close = closeButton();
+    expect(action.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     advance(60_000);
     expect(onDismiss).not.toHaveBeenCalled();
@@ -321,7 +323,7 @@ describe("ToastHost: действие и диктор", () => {
     await render({ message: "Сохранено", tone: "info" });
     advance(2000);
 
-    const close = button("Закрыть");
+    const close = closeButton();
     focus(close);
     advance(60_000);
     expect(onDismiss).not.toHaveBeenCalled();

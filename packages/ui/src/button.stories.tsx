@@ -33,48 +33,17 @@ const meta = {
     docs: {
       description: {
         component: `
-The shared button of the app and the Next pages. On the web it is a real \`<button>\`; on a phone the same component renders through React Native.
+The shared button of the app and the Next pages. On the web it is a real \`<button>\`; with \`href\` it is a real \`<a href>\` with the same look, and on a phone the same component renders through React Native.
 
-**Rules**
-- \`label\` is required. It is the accessible name unless \`ariaLabel\` says more; while busy it stays in the layout but is drawn at opacity 0 under the spinner.
-- A blocked button (\`disabled\` or \`busy\`) keeps its resting look: no hover, no press. Blocking swaps the variant for a copy without those states; \`disabled\` dims to 40%, \`busy\` to 60%.
-- \`busy\` keeps the resting paddings and the resting width: the label stays in the row at opacity 0 and a 16 px spinner is centred over the button in an absolute slot. It takes no second press, is announced with \`aria-busy\`, and stays in the Tab order. While busy the web \`type\` is reset to \`button\`, so a form is not submitted twice.
-- \`disabled\` is a native disabled button and leaves the Tab order (\`tabIndex=-1\`). \`focusableWhenDisabled\` keeps it in the Tab order and uses \`aria-disabled\` instead; it still takes no press.
-- Height follows the variant, not a prop: \`primary\`, \`reserve\`, \`secondary\`, \`outline\` and \`destructive\` are at least 48 px tall (\`$control-height\`); \`ghost\` is at least 44 × 44 px (\`$touch-target\`). There is no \`size\` prop.
-- \`fullWidth\` stretches the button to its parent; the row stays centred.
-- \`href\` makes the web root a real \`<a href>\` with the same look (a page action that only navigates: registration, login, a public page). A blocked button stays a \`<button>\` and ignores the target; a phone has no anchor and hands the navigation to the router.
+The rules of each prop are in the table below. What is not a prop:
+
+- No \`size\` prop: the height follows the \`variant\`.
 - Hover, press and focus are CSS states (media queries), not props.
-
-| \`disabled\` | \`busy\` | \`focusableWhenDisabled\` | Result |
-| --- | --- | --- | --- |
-| — | — | — | Live: a press calls \`onPress\`; hover and press paint. |
-| \`true\` | — | — | Native \`disabled\`, \`tabIndex=-1\`, \`aria-disabled\`, 40% opacity, no hover or press. |
-| \`true\` | — | \`true\` | \`aria-disabled\` instead of \`disabled\`, stays in the Tab order, 40%, no press. |
-| — | \`true\` | — | \`aria-busy\`, stays in the Tab order, 60%, centred spinner over the hidden label, same paddings and width, no press and no submit. |
-
-**Visual states** (CSS, live button only)
-
-| Variant | Resting | Hover | Press |
-| --- | --- | --- | --- |
-| \`primary\` | \`$primary\` fill | \`$primary-hover\` (8% darker) | 90% opacity |
-| \`reserve\` | \`$primary\` fill (the same CTA as primary in v8) | \`$primary-hover\` | 90% opacity |
-| \`secondary\` | \`$accent-soft\` translucent fill, \`$accent-border\` frame | \`$accent-soft-hover\` | 90% opacity |
-| \`outline\` | transparent, \`$border-strong\` frame | \`$muted\` fill, \`$foreground\` frame | \`$muted\` fill |
-| \`ghost\` | transparent | \`$muted\` fill | \`$muted\` fill |
-| \`destructive\` | \`$destructive\` fill | \`$destructive-hover\` | 90% opacity |
-
-**Accessibility**
-- A real \`<button>\` on the web. The accessible name is \`aria-label\`, which defaults to \`label\`.
-- \`aria-describedby\` links the button to the visible text that explains why it is disabled.
-- \`aria-disabled\` is set whenever the button is blocked; \`aria-busy\` only while busy.
-- The spinner is decorative (\`aria-hidden\`); \`aria-busy\` announces the wait. The label hidden at opacity 0 stays in the tree but is not a second name: \`aria-label\` is the only one.
-- The touch target is at least 44 px; the filled variants are also 48 px tall.
-- Reduced motion: the spinner stops as a static ring and \`aria-busy\` still announces the wait; its fade shortens to 100 ms (\`reduceFade\`).
-
-**Web vs native**
-- \`type="submit"\` submits its form in the browser; a phone ignores it.
-- React Native has no \`currentColor\` inheritance, so the spinner takes the label token as a value.
-- Focus paints \`$ring\` on \`:focus-visible\` on the web and on \`focus\` on a phone.
+- Focus paints a 2 px \`$ring\`: \`:focus-visible\` on the web, \`focus\` on a phone (external keyboard, TalkBack/VoiceOver).
+- The busy spinner is decorative (\`aria-hidden\`); \`aria-busy\` announces the wait.
+- The touch target is at least 44 px.
+- Reduced motion: the spinner stops as a static ring, and its fade shortens to 100 ms (\`reduceFade\`).
+- React Native has no \`currentColor\`, so the spinner takes the label token as a value and matches the label in both themes.
         `.trim(),
       },
     },
@@ -82,61 +51,68 @@ The shared button of the app and the Next pages. On the web it is a real \`<butt
   argTypes: {
     label: propDoc({
       description:
-        "The text and the accessible name. Required: the busy spinner never replaces the label, it only covers it while the label keeps its room.",
+        "The visible text and the accessible name (unless `ariaLabel` says more). Required; the copy comes from the caller. While `busy` the label stays in the layout at opacity 0 under the spinner, so the width does not change.",
       type: "string",
       required: true,
       control: "text",
     }),
     ariaLabel: propDoc({
       description:
-        "The accessible name when it has to say more than the visible label, e.g. a disabled button's reason. Defaults to `label`.",
+        "The accessible name (`aria-label`) when it has to say more than the visible label, e.g. a disabled button's reason. Defaults to `label`; the label hidden under the busy spinner is not a second name.",
       type: "string",
       control: "text",
     }),
     ariaDescribedBy: propDoc({
-      description: "The id of the visible text that explains a disabled button.",
+      description:
+        "The id of visible text that explains why the button is disabled; reaches the web DOM as `aria-describedby`.",
       type: "string",
       control: "text",
     }),
     onPress: propDoc({
-      description: "Called on a real press. Never called while the button is `disabled` or `busy`.",
+      description: "Called on a live press only — never while `disabled` or `busy`.",
       type: "() => void",
       control: false,
     }),
     variant: propDoc({
-      description:
-        "Visual style: `primary` and `reserve` are the solid navy CTA (reserve is only «Куплю сам» and «Подтвердить»), `secondary` is the calm violet fill, `outline` is neutral with a 1 px frame, `ghost` is transparent, `destructive` is coral.",
+      description: `Visual style and height. \`primary\`, \`reserve\`, \`secondary\`, \`outline\` and \`destructive\` are at least 48 px tall (\`$control-height\`); \`ghost\` is at least 44 × 44 px (\`$touch-target\`). There is no \`size\` prop.
+
+- \`primary\` — \`$primary\` fill → hover \`$primary-hover\` (8% darker) → press 90% opacity
+- \`reserve\` — the same solid CTA as \`primary\` (only «Куплю сам» / «Подтвердить»)
+- \`secondary\` — translucent \`$accent-soft\` fill with \`$accent-border\` frame → hover \`$accent-soft-hover\` → press 90% opacity
+- \`outline\` — transparent with \`$border-strong\` frame → hover \`$muted\` fill and \`$foreground\` frame → press \`$muted\`
+- \`ghost\` — transparent → hover \`$muted\` fill → press \`$muted\` fill
+- \`destructive\` — \`$destructive\` fill → hover \`$destructive-hover\` → press 90% opacity`,
       type: formatUnionType(BUTTON_VARIANTS),
       options: BUTTON_VARIANTS,
       defaultValue: "primary",
     }),
     disabled: propDoc({
       description:
-        "Does not take a press and is announced as disabled; dims to 40% and leaves the Tab order unless `focusableWhenDisabled` is set.",
+        "Native disabled button: leaves the Tab order (`tabIndex=-1`), is announced with `aria-disabled`, dims to 40%, and takes no hover or press — a blocked button keeps its resting look.",
       type: "boolean",
       defaultValue: "false",
     }),
     focusableWhenDisabled: propDoc({
       description:
-        "Keeps a disabled button in the Tab order (`aria-disabled` instead of the `disabled` attribute), so a keyboard user can find it and read why. It still takes no press.",
+        "Keeps a disabled button in the Tab order: `aria-disabled` instead of the `disabled` attribute, 40% opacity, no press.",
       type: "boolean",
       defaultValue: "false",
     }),
     busy: propDoc({
       description:
-        "The action is running: dims to 60%, is announced busy, takes no second press and does not submit a form. A 16 px spinner is centred over the hidden label; the paddings and the width stay those of the resting button.",
+        "The action is running: keeps the resting paddings and width — the label stays in the row at opacity 0 while a 16 px spinner is centred in an absolute slot over it. Dims to 60%, is announced with `aria-busy`, stays in the Tab order, takes no second press, and on the web `type` is reset to `button` so a form is not submitted twice.",
       type: "boolean",
       defaultValue: "false",
     }),
     fullWidth: propDoc({
       description:
-        "Stretches the button to its parent's width; the label stays centred and the busy spinner sits centred over it.",
+        "Stretches to the parent's width (`align-self: stretch`); the row stays centred, and the busy spinner stays centred over the button.",
       type: "boolean",
       defaultValue: "false",
     }),
     href: propDoc({
       description:
-        "A navigation target: the web root becomes a real `<a href>` with the same look; a blocked button stays a `<button>` and ignores it. A phone hands navigation to the router.",
+        "A navigation target: on the web the root becomes a real `<a href>` with the same look, so a page action that only navigates (registration, login, a public page) keeps the browser's own click, new tab and context menu. A blocked button stays a `<button>` and ignores the target. A phone has no anchor: the caller hands navigation to the router.",
       type: "string",
       control: "text",
     }),
@@ -146,7 +122,8 @@ The shared button of the app and the Next pages. On the web it is a real \`<butt
       control: "text",
     }),
     type: propDoc({
-      description: "`submit` makes the web button submit its form; a phone ignores it. Reset to `button` while blocked.",
+      description:
+        "`submit` submits the web button's form; a phone ignores it. Reset to `button` while blocked, so a form is not submitted twice.",
       type: formatUnionType(BUTTON_TYPES),
       options: BUTTON_TYPES,
       defaultValue: "button",

@@ -124,9 +124,9 @@ describe("TagChip: свой тег с акцентом (UI4)", () => {
     expect(chip.getAttribute("aria-label")).toBe("своё");
     const star = chip.querySelector('[data-testid="custom-star"]') as SVGElement;
     expect(star).not.toBeNull();
-    // The star takes its stroke from the theme accent, not a hardcoded color.
-    expect(star.getAttribute("stroke")).toBe("var(--accent)");
-    expect(getComputedStyle(chip).borderColor).toBe("#EDEBF4");
+    // The star takes its stroke from the theme accent text, not a hardcoded color.
+    expect(star.getAttribute("stroke")).toBe("var(--accent-foreground)");
+    expect(getComputedStyle(chip).borderColor).toBe("#BAB4E0");
   });
 
   it("добавленный свой тег редактируется нажатием на подпись, крестик по-прежнему удаляет", async () => {
@@ -215,7 +215,8 @@ describe("TagChip: видимая ошибка", () => {
   const error = { id: "tags-error", message: "Проверьте теги" };
   const DESTRUCTIVE = "#C4473D";
   const BORDER = "#DAD6CE";
-  const ACCENT = "#EDEBF4";
+  const ACCENT = "#BAB4E0";
+  const ACCENT_FILL = "#EDEBF4";
 
   it("фиксированный чип с ошибкой: рамка destructive, ширина прежняя — 1 px", async () => {
     const { container, render } = mounted();
@@ -246,7 +247,7 @@ describe("TagChip: видимая ошибка", () => {
     const style = getComputedStyle(chip);
 
     expect(style.borderTopColor).toBe(DESTRUCTIVE);
-    expect(style.backgroundColor).toBe("#ECE7DF");
+    expect(style.backgroundColor).toBe(ACCENT_FILL);
     expect(chip.getAttribute("aria-checked")).toBe("true");
     expect(chip.getAttribute("aria-invalid")).toBe("true");
   });

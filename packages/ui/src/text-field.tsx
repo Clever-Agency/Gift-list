@@ -3,6 +3,7 @@ import { Input as BehaviorInput, TextArea as BehaviorTextArea } from "@tamagui/i
 import { YStack } from "@tamagui/stacks";
 import { forwardRef, useId, useState, type ComponentProps, type ComponentRef } from "react";
 import { a11yHintProps } from "./a11y-hint";
+import { focusRing } from "./focus-ring";
 import { fontFor } from "./font-style";
 import { Close, Eye, EyeOff, Search } from "./icons";
 import { passwordToggleA11yProps } from "./password-toggle-a11y";
@@ -19,11 +20,13 @@ const inputSkin = {
   backgroundColor: "$surface",
   placeholderTextColor: "$muted-foreground",
   borderWidth: 1,
-  borderColor: "$border-strong focus:$ring",
-  borderRadius: "$sm",
+  // v8 fields: border-strong at rest, a darker hairline on hover, `ring` on focus
+  // plus the 2 px ring with a 2 px offset (`focusRing`); error — `destructive`.
+  borderColor: "$border-strong hover:$muted-foreground focus:$ring",
+  borderRadius: "$md",
   minHeight: "$control-height",
   paddingHorizontal: "$3",
-  outlineWidth: 0,
+  ...focusRing,
   variants: {
     invalid: {
       true: { borderColor: "$destructive focus:$destructive" },

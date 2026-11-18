@@ -5,7 +5,7 @@ import { RelationshipChip } from "./relationship-chip";
 
 /**
  * The person card of Search and Friends (`DESIGN.md` → PersonRow, NFR-3): the
- * name, `@ник` and, in a circle list, one relation chip and the ⋯ menu. Wishes,
+ * name, `@ник` and, in a circle list, one relation chip and the ⋮ menu. Wishes,
  * email, id and the hidden flag are never part of a list answer, so they cannot
  * appear here. With `href` the row is a real link to the profile (`<a href>` on
  * the web); without it the row is plain list content.
@@ -36,7 +36,7 @@ export const Plain: Story = {
   args: { href: undefined, onPress: undefined, pressLabel: undefined },
 };
 
-/** A circle row: the relation chip on the right and the ⋯ menu beside the link. */
+/** A circle row: the relation chip on the right and the ⋮ menu beside the link. */
 export const WithChipAndMenu: Story = {
   args: {
     pressLabel: "Открыть профиль: Глеб, @gleb, Зовёт в друзья",
@@ -88,7 +88,7 @@ export const LongCyrillicNarrow: Story = {
   globals: { viewport: { value: "w360" } },
 };
 
-/** A long name with a chip and a menu at 360 px: the name truncates, ⋯ stays put. */
+/** A long name with a chip and a menu at 360 px: the name truncates, ⋮ stays put. */
 export const LongCyrillicWithMenuNarrow: Story = {
   args: {
     displayName: "Александра-Екатерина Преображенская",

@@ -27,10 +27,14 @@ colors:
   accent: '#EDEBF4'
   accent-hover: '#E5E2F1'
   accent-foreground: '#5B4C97'
+  # Рамка спокойной secondary-кнопки и выбранного чипа: та же фиолетовая гамма шага 7.
+  accent-border: '#BAB4E0'
   background: '#F3F1EC'
   foreground: '#1C1A2E'
   surface: '#FFFEFB'
   surface-raised: '#FFFEFB'
+  # Бегунок переключателя: v8 держит его светлым в обеих темах (трек — primary вкл. / border-strong выкл.).
+  switch-thumb: '#FFFFFF'
   muted: '#ECE7DF'
   muted-foreground: '#56565C'
   border: '#DAD6CE'
@@ -58,10 +62,12 @@ colors-dark:
   accent: '#373458'
   accent-hover: '#413E64'
   accent-foreground: '#C6BCEB'
+  accent-border: '#6F6895'
   background: '#0E0E20'
   foreground: '#F3F1F8'
   surface: '#1B1B3A'
   surface-raised: '#272642'
+  switch-thumb: '#F3F1F8'
   muted: '#272642'
   muted-foreground: '#BABBD4'
   border: '#302F4B'
@@ -193,20 +199,29 @@ components:
     min-height: '{spacing.control-height}'
     typography: '{typography.button}'
   button-reserve:
-    background: '{colors.accent}'
-    foreground: '{colors.accent-foreground}'
+    background: '{colors.primary}'
+    foreground: '{colors.primary-foreground}'
     radius: '{rounded.md}'
     min-height: '{spacing.control-height}'
     typography: '{typography.button}'
   button-secondary:
-    background: '{colors.surface}'
+    background: '{colors.accent}'
+    foreground: '{colors.accent-foreground}'
+    border: '1px solid {colors.accent-border}'
+    radius: '{rounded.md}'
+    min-height: '{spacing.control-height}'
+  button-outline:
+    background: 'transparent'
     foreground: '{colors.foreground}'
     border: '1px solid {colors.border-strong}'
+    hover-background: '{colors.muted}'
+    hover-border: '{colors.foreground}'
     radius: '{rounded.md}'
     min-height: '{spacing.control-height}'
   button-ghost:
     background: 'transparent'
-    foreground: '{colors.primary}'
+    foreground: '{colors.foreground}'
+    hover-background: '{colors.muted}'
     radius: '{rounded.md}'
     min-height: '{spacing.touch-target}'
   gift-card:
@@ -216,37 +231,43 @@ components:
     padding: '{spacing.card-padding}'
     hover-border: '{colors.primary}'
   status-pill-open:
-    background: '{colors.muted}'
-    foreground: '{colors.status-open}'
-    radius: '{rounded.full}'
+    background: '{colors.surface}'
+    foreground: '{colors.muted-foreground}'
+    border: '1px solid {colors.border}'
+    dot: '{colors.status-open}'
+    radius: '{rounded.sm}'
     typography: '{typography.caption}'
   status-pill-reserved:
-    background: '{colors.status-reserved-bg}'
-    foreground: '{colors.status-reserved}'
-    radius: '{rounded.full}'
+    background: '{colors.surface}'
+    foreground: '{colors.muted-foreground}'
+    border: '1px solid {colors.border}'
+    dot: '{colors.status-reserved}'
+    radius: '{rounded.sm}'
     typography: '{typography.caption}'
   status-pill-closed:
-    background: '{colors.muted}'
-    foreground: '{colors.status-closed}'
-    radius: '{rounded.full}'
+    background: '{colors.surface}'
+    foreground: '{colors.muted-foreground}'
+    border: '1px solid {colors.border}'
+    dot: '{colors.status-closed}'
+    radius: '{rounded.sm}'
     typography: '{typography.caption}'
   visibility-chip-public:
     background: '{colors.surface}'
     foreground: '{colors.primary}'
     border: '1px solid {colors.border-strong}'
-    radius: '{rounded.sm}'
+    radius: '{rounded.md}'
     icon: 'globe'
   visibility-chip-friends:
     background: '{colors.muted}'
     foreground: '{colors.foreground}'
     border: '1px solid {colors.border-strong}'
-    radius: '{rounded.sm}'
+    radius: '{rounded.md}'
     icon: 'users'
   visibility-chip-secret:
     background: 'transparent'
     foreground: '{colors.muted-foreground}'
     border: '1px dashed {colors.border-strong}'
-    radius: '{rounded.sm}'
+    radius: '{rounded.md}'
     icon: 'lock'
   owner-action-label:
     background: '{colors.muted}'
@@ -261,26 +282,30 @@ components:
     background: '{colors.surface}'
     foreground: '{colors.foreground}'
     border: '1px solid {colors.border-strong}'
+    hover-border: '{colors.muted-foreground}'
     focus-border: '{colors.ring}'
     error-border: '{colors.destructive}'
-    radius: '{rounded.sm}'
+    radius: '{rounded.md}'
     min-height: '{spacing.control-height}'
   switch:
     track-on: '{colors.primary}'
     track-off: '{colors.border-strong}'
-    thumb: '{colors.surface}'
+    thumb: '{colors.switch-thumb}'
   toast:
-    background: '{colors.foreground}'
-    foreground: '{colors.primary-foreground}'
-    action-foreground: '{colors.background}'
-    focus-ring: '{colors.ring-inverse}'
-    radius: '{rounded.md}'
+    background: '{colors.surface}'
+    foreground: '{colors.foreground}'
+    border: '1px solid {colors.border}'
+    action-foreground: '{colors.primary}'
+    focus-ring: '{colors.ring}'
+    radius: '{rounded.lg}'
     max-width: '{spacing.dialog-width}'
   toast-error:
-    background: '{colors.destructive}'
-    foreground: '{colors.destructive-foreground}'
-    focus-ring: '{colors.ring-inverse}'
-    radius: '{rounded.md}'
+    background: '{colors.surface}'
+    foreground: '{colors.destructive}'
+    border: '1px solid {colors.destructive}'
+    action-foreground: '{colors.primary}'
+    focus-ring: '{colors.ring}'
+    radius: '{rounded.lg}'
   empty-state:
     title: '{typography.display-sm}'
     body: '{typography.body}'
@@ -293,7 +318,7 @@ components:
   tag-chip:
     background: '{colors.background}'
     foreground: '{colors.muted-foreground}'
-    radius: '{rounded.sm}'
+    radius: '{rounded.md}'
     typography: '{typography.caption}'
   list-row:
     background: '{colors.surface}'
@@ -359,7 +384,7 @@ components:
     radius: '{rounded.lg}'
     padding: '12px 16px'
   bottom-sheet:
-    background: '{colors.surface}'
+    background: '{colors.surface-raised}'
     radius: '{rounded.xl} {rounded.xl} 0 0'
     scrim: '{colors.scrim} at 40%'
   dialog:
@@ -403,7 +428,18 @@ Spines главнее макетов. Ключевые экраны прилож
 - **Объём (блок `effects`).** Светлая — двухслойная мягкая тень `card`, усиленная `card-hover`, и `popover` для слоёв; тёмная — то же плюс блик по верхней грани `inset 0 1px 0 rgba(255,255,255,0.15)`, объём даёт разница тонов слоёв. Тени, блики и `surface-raised` уже в токенах; стекла, blur, glow и scrim-постера нет.
 - **Контраст.** Все пары текста и фона проверены в обеих темах: текст ≥ 4.5:1, UI (рамки полей, фокус, иконки) ≥ 3:1, провалов нет; сводная таблица — `design-system/tokens/contrast-report.csv` в референсе. Исключение, как и в v8: белый текст на коралловом `#C4473D` — 4.87:1.
 
-Чего эта подзадача **не** делает (следующие подзадачи v8): перекраска компонентов под новые состояния (кнопки, поля, чипы, toast), вертикальное ⋮ в меню строк, карточки желания Pinterest с фото 4:5 и сетка 2/3 колонки, магазины-партнёры, «Подборки» варианта A, экраны «Друзья» (мобильный A и веб D), аватары с фото и статусом, пустые состояния с иллюстрацией. До них компоненты рисуются прежними вариантами, но уже на токенах v8: статусные pill и бейджи пока остаются круглыми, `Button variant="reserve"` пока берёт спокойную `accent`, а не primary.
+Базовые компоненты (подзадача 2, 2026-11-18):
+
+- **Кнопки.** `primary` и `reserve` — сплошной индиго (одна яркая CTA на экран), `secondary` — спокойная фиолетовая заливка с рамкой `accent-border`, новый `outline` — нейтральная с рамкой `border-strong`, `ghost` — прозрачная с текстом `foreground`, `destructive` — коралл. Радиус 8, кольцо фокуса 2 px с отступом 2 px. Новый `IconButton` — иконочная кнопка 44 × 44 с рамкой 1 px (`outline`) или без неё (`plain`). Disabled и busy остаются прежними: 40 % и 60 % непрозрачности с блокировкой hover/press (DECISION 2026-11-10); черновик v8 рисует disabled нейтральной плашкой, но в этой спеке правило про непрозрачность сильнее — менять его отдельным решением.
+- **Поля и выбор.** `input` и `textarea` — радиус 8, рамка `border-strong`, на hover `muted-foreground`, на фокусе `ring` плюс кольцо 2 px с отступом 2 px; ошибка — `destructive` с текстом под полем. `Choice` (строки и чипы) — радиус 8. `Switch` — бегунок `switch-thumb`, светлый в обеих темах.
+- **Слои.** Тултип — мягкая поверхность `surface` с рамкой `border`, тенью `popover`, отступами 8/12 и без стрелки. Диалог — радиус 16 и тень `popover`. Шторка — радиус 20 сверху, `surface-raised` и тень `popover`.
+- **Toast.** Карточка `surface` с рамкой и тенью, действие — `primary`, закрытие — `muted-foreground`; у ошибки коралловые рамка и текст. Раньше это была плотная тёмная (и красная) плашка, поэтому кольцо фокуса вернулось к обычному `ring`. Тоны остались `info | error`: тон виден только через иконку/акцент, а `success` и `warning` требуют своих иконок (`warning` к тому же не должен быть жёлтым) — это отдельная задача.
+- **Статусы и чипы.** `StatusPill` — нейтральная плашка `surface` с рамкой 1 px и точкой 6 px цвета статуса, слово остаётся главным. `VisibilityChip` и `TagChip` — радиус 8; выбранный тег — фиолетовая заливка `accent` с рамкой `accent-border`; свой тег — рамка `accent-border` и звезда `accent-foreground`.
+- **Скелетоны и пустое состояние.** Блоки скелетона — радиус 8 на `muted`, карточка-скелетон — `surface` с рамкой; `EmptyState` уже был на токенах и не менялся (иллюстрация — в подзадаче экранов).
+- **Меню строки.** `OverflowMenu` по умолчанию показывает вертикальное `⋮` вместо `⋯`, кнопка 44 × 44 с радиусом 8, пункты меню подсвечиваются `muted`.
+- **Аватар.** Новый `Avatar` в `packages/ui`: фото или инициалы на `muted` (текст `muted-foreground`, 5.9:1 в светлой и 7.7:1 в тёмной), размеры `avatar-sm` 28 / `avatar-md` 40 / `avatar-lg` 64, необязательная точка статуса с кольцом цвета фона. Слово статуса приходит переведённым (`statusLabel`) и входит в подпись для диктора; рядом с написанным именем аватар помечается `decorative`.
+
+Чего эти подзадачи **не** делают (следующие шаги v8): карточки желания Pinterest с фото 4:5 и сетка 2/3 колонки, магазины-партнёры, «Подборки» варианта A, экраны «Друзья» (мобильный A и веб D), иллюстрация пустого состояния, подключение `Avatar` к экранам и строкам. До них экраны рисуются прежними раскладками, но уже на токенах и компонентах v8.
 
 ## Brand & Style
 
@@ -418,8 +454,9 @@ Gift List — тихий координатор подарков для узко
 Две темы с одинаковым набором ролей: `colors` (светлая) и `colors-dark` (тёмная) во frontmatter. Компоненты берут только `$`-токены, поэтому одна и та же разметка рисуется в обеих темах; тему выбирает приложение (`GiftListProvider`, по умолчанию светлая).
 
 - **Primary Indigo (`{colors.primary}`)** — единственная яркая кнопка экрана, активная навигация, ссылки, фокус (`{colors.ring}`), включённый переключатель. Светлая — `#2B3A7A` (текст `{colors.primary-foreground}` 10.6:1), тёмная — periwinkle `#7C8CFF` с тёмным текстом (6.4:1).
-- **Accent Violet (`{colors.accent}`)** — спокойная secondary: полупрозрачная фиолетовая заливка, текст `{colors.accent-foreground}` (6.1:1 в светлой, 6.6:1 в тёмной) и рамка той же гаммы. Это не «вторая primary»: заливка тише primary и не спорит с ним.
-- **Ring inverse (`{colors.ring-inverse}`)** — кольцо фокуса на тёмных и цветных поверхностях: toast и toast-error. Обычное `{colors.ring}` там не видно.
+- **Accent Violet (`{colors.accent}`)** — спокойная secondary: полупрозрачная фиолетовая заливка, текст `{colors.accent-foreground}` (6.1:1 в светлой, 6.6:1 в тёмной) и рамка `{colors.accent-border}` той же гаммы. Это не «вторая primary»: заливка тише primary и не спорит с ним; в этом же фиолетовом тоне — выбранный чип и «ваша бронь».
+- **Switch thumb (`{colors.switch-thumb}`)** — бегунок переключателя остаётся светлым в обеих темах (в светлой `#FFFFFF`, в тёмной `#F3F1F8`), состояние несёт трек: `{colors.primary}` включён, `{colors.border-strong}` выключен.
+- **Ring inverse (`{colors.ring-inverse}`)** — кольцо фокуса на плотной цветной заливке, где `{colors.ring}` не видно (запас на будущие поверхности; toast в v8 — светлая карточка и берёт обычное `{colors.ring}`).
 - **Background (`{colors.background}`)** — фон всех экранов и шапки приложения: тёплая бумага `#F3F1EC` в светлой, ночной синий `#0E0E20` в тёмной.
 - **Surface / Surface raised (`{colors.surface}`, `{colors.surface-raised}`)** — карточки, вкладки, боковое меню, шторки, диалоги; `surface-raised` — слой над карточкой (поповер, меню, поле на карточке). В светлой оба `#FFFEFB`, в тёмной `#1B1B3A` и `#272642`.
 - **Border / Border-strong.** `{colors.border}` — разделители и контур карточек (декоративный, 1.1–1.2:1). `{colors.border-strong}` — контур того, с чем взаимодействуют: поля, переключатель в выкл., secondary-кнопки, чипы видимости: 3.5:1 к карточке в светлой и 3.5:1 в тёмной (WCAG 1.4.11). На `{colors.muted}` не ставить.
@@ -428,7 +465,7 @@ Gift List — тихий координатор подарков для узко
 - **Scrim (`{colors.scrim}` 40%)** — подложка под шторкой, диалогом и выдвижным меню. Не опускать ниже 40%. Прочие прозрачности: pressed — затемнение 8%, disabled — 40%.
 - **Hover-затемнение кнопок** (v8). Hover кнопки — её фон, затемнённый на 8%: `primary-hover` `#1E2B69` (текст 13.1:1), `accent-hover` `#E5E2F1` (5.6:1), `destructive-hover` `#B1352D` (6.2:1); в тёмной теме — свои hover-значения из `colors-dark`. secondary на hover темнит границу до `{colors.foreground}`, ghost — фон `{colors.muted}`. Значения нормативны; в frontmatter и в `packages/ui/src/tokens.ts` они попадают одной правкой, потому что `tokens.test.ts` сверяет блок `colors` с кодом один в один.
 
-**Контраст (проверено 2026-11-18, обе темы).** Текст ≥ 4.5:1, UI (рамки полей, фокус, иконки) ≥ 3:1, провалов нет. Светлая: foreground на paper 15.0:1, на карточке 16.8:1; muted-foreground на paper 6.5:1, на карточке 7.2:1, на muted 5.9:1; primary на paper 9.4:1; текст на accent 6.1:1; status-open на muted 4.6:1; status-reserved на своём фоне 6.2:1; destructive на карточке 4.8:1; ring-inverse к toast 15.0:1; border-strong к карточке 3.5:1, к paper 3.1:1. Тёмная: foreground на фоне 17.0:1, на карточке 14.8:1; muted-foreground на карточке 8.8:1; primary на фоне 6.4:1; текст на accent 6.6:1; status-reserved на своём фоне 9.2:1; border-strong к карточке 3.5:1. Компромисс v8: белый текст на коралле `#C4473D` — 4.87:1, на грани нормы; темнее цвет делать нельзя, станет «тревожно-красным». `{colors.border}` (1.1:1) не несёт смысла сам по себе — только разделяет. Полная таблица пар — `design-system/tokens/contrast-report.csv` в референсе v8.
+**Контраст (проверено 2026-11-18, обе темы).** Текст ≥ 4.5:1, UI (рамки полей, фокус, иконки) ≥ 3:1, провалов нет. Светлая: foreground на paper 15.0:1, на карточке 16.8:1; muted-foreground на paper 6.5:1, на карточке 7.2:1, на muted 5.9:1; primary на paper 9.4:1; текст на accent 6.1:1; status-open на muted 4.6:1; status-reserved на своём фоне 6.2:1; destructive на карточке 4.8:1; ring-inverse на foreground 15.0:1; border-strong к карточке 3.5:1, к paper 3.1:1. Тёмная: foreground на фоне 17.0:1, на карточке 14.8:1; muted-foreground на карточке 8.8:1; primary на фоне 6.4:1; текст на accent 6.6:1; status-reserved на своём фоне 9.2:1; border-strong к карточке 3.5:1. Компромисс v8: белый текст на коралле `#C4473D` — 4.87:1, на грани нормы; темнее цвет делать нельзя, станет «тревожно-красным». `{colors.border}` (1.1:1) не несёт смысла сам по себе — только разделяет. Полная таблица пар — `design-system/tokens/contrast-report.csv` в референсе v8.
 
 ## Typography
 
@@ -449,7 +486,7 @@ Gift List — тихий координатор подарков для узко
 
 ## Shapes
 
-`{rounded.md}` 8 — кнопки, поля, табы и пункты меню; `{rounded.sm}` 6 — бейджи, чекбоксы, чипы; `{rounded.lg}` 16 — карточки, диалоги, панели Next-страниц; `{rounded.xl}` 20 — верхние углы шторки. `{rounded.full}` — только аватары, switch и бегунок слайдера; кнопки и карточки pill-формой не делать. Статусные pill и бейджи пока остаются круглыми — их перенос на радиус 6 идёт с подзадачей компонентов v8.
+`{rounded.md}` 8 — кнопки, поля, табы, теги и чипы видимости; `{rounded.sm}` 6 — бейджи и статусная pill; `{rounded.lg}` 16 — карточки, диалоги, toast, панели Next-страниц; `{rounded.xl}` 20 — верхние углы шторки. `{rounded.full}` — только аватары, switch и бегунок слайдера; кнопки и карточки pill-формой не делать.
 
 ## Components
 
@@ -458,15 +495,15 @@ Gift List — тихий координатор подарков для узко
 | Компонент | Визуал | Когда |
 |-----------|--------|-------|
 | **Button primary** | `{components.button-primary}` | Сохранить, Войти, Принять, Скопировать ссылку |
-| **Button reserve** | `{components.button-reserve}` | Только «Куплю сам» и «Подтвердить» в confirm брони |
-| **Button secondary / ghost** | `{components.button-secondary}` / `{components.button-ghost}` | Второстепенное; «Отмена» — ghost |
-| **Gift card** (в RN — WishCard) | `{components.gift-card}` | Необязательное фото-превью слева, название (`body-strong`, до 2 строк), опц. цена, status pill, теги, строка брони, у владельца — чип видимости и ⋯ |
+| **Button reserve** | `{components.button-reserve}` — сплошной primary, как у главной | Только «Куплю сам» и «Подтвердить» в confirm брони |
+| **Button secondary / outline / ghost** | `{components.button-secondary}` (спокойная фиолетовая) / `{components.button-outline}` / `{components.button-ghost}` | Второстепенное: «Загадать», «Поделиться», «Отмена» |
+| **Gift card** (в RN — WishCard) | `{components.gift-card}` | Необязательное фото-превью слева, название (`body-strong`, до 2 строк), опц. цена, status pill, теги, строка брони, у владельца — чип видимости и ⋮ |
 | **Wish photo** | `{components.wish-photo}` | Превью `{spacing.photo-thumb}` × `{spacing.photo-thumb}` в карточке, крупно в детали. Нет фото — нет и места под него, без заглушки |
-| **Status pill** | `{components.status-pill-open}` / `-reserved` / `-closed` | Всегда текстом: «Открыт» / «Забронирован» / «Получен» |
+| **Status pill** | `{components.status-pill-open}` / `-reserved` / `-closed`: нейтральная плашка, рамка 1 px и цветная точка 6 px | Всегда текстом: «Открыт» / «Забронирован» / «Получен» |
 | **Visibility chip** | `{components.visibility-chip-public}` / `-friends` / `-secret`; иконка + текст | Только у владельца: «Всем» / «Друзьям» / «Секрет». Различаются иконкой и словом, не только цветом |
 | **Owner action label** | `{components.owner-action-label}` | Внутри карточки владельца: «Ждёт вашего подтверждения», «Срок брони истёк» + до двух кнопок |
 | **Tag chip** | `{components.tag-chip}` | Теги желания: «мечта», «нужно сейчас», «когда-нибудь», свой. Не нажимается в R1 |
-| **Toast** (в т.ч. undo toast) | `{components.toast}`; ошибка — `{components.toast-error}` | Подтверждения, «Отменить», гонка брони, нет сети |
+| **Toast** (в т.ч. undo toast) | `{components.toast}`: карточка `surface` с рамкой, тенью `popover` и действием `primary`; ошибка — `{components.toast-error}` с коралловой рамкой и текстом | Подтверждения, «Отменить», гонка брони, нет сети |
 | **Empty state** | `{components.empty-state}`, один CTA или без него | Пустой вишлист, нет друзей, нет броней, нет уведомлений. Тексты — `EXPERIENCE.md` → Empty states |
 | **List row** | `{components.list-row}` | Друзья, подписки, запросы, поиск, контакты, уведомления |
 | **Reservation card** | `{components.reservation-card}` | «Мои брони» |
@@ -474,7 +511,7 @@ Gift List — тихий координатор подарков для узко
 
 **Состояния кнопок и нажимаемых поверхностей** (DECISION 2026-11-10; одни и те же у Button, Pressable, Choice, TagChip, VisibilityChip и WishCard):
 
-- **hover** — только при указателе: фон кнопки темнее на 8% (`primary-hover`, `accent-hover`, `destructive-hover`, раздел Colors), secondary — граница `{colors.foreground}`, ghost — фон `{colors.muted}`; у полей, чипов, toast и ⋯ вид не меняется, курсор — указатель. disabled и busy не реагируют на hover и press — вид не меняется (DECISION 2026-11-10, t312u).
+- **hover** — только при указателе: фон кнопки темнее на 8% (`primary-hover`, `accent-hover`, `destructive-hover`, раздел Colors), secondary — фон `{colors.accent-hover}`, outline — граница `{colors.foreground}` и фон `{colors.muted}`, ghost — фон `{colors.muted}`; у поля темнеет рамка до `{colors.muted-foreground}`, у чипов, toast и ⋮ вид не меняется, курсор — указатель. disabled и busy не реагируют на hover и press — вид не меняется (DECISION 2026-11-10, t312u).
 - **pressed** — затемнение фона на 8% (в коде это непрозрачность 0.9; отдельных pressed-токенов не вводится, чтобы не удваивать палитру); у ghost — фон `{colors.muted}`.
 - **disabled** — непрозрачность 0.4, `aria-disabled` / `accessibilityState.disabled`, элемент остаётся в порядке фокуса, причина рядом связана с ним (`aria-describedby`) и не бледнеет. Правило одно для кнопок, `Pressable`, радио-строк и чипов: 0.4, не 0.6.
 - **busy** — непрозрачность 0.6, `aria-busy`, нажатие и отправка формы заблокированы, рядом с текстом — индикатор ожидания (спиннер 16 px в `currentColor`, вращение линейное); при `prefers-reduced-motion` спиннер статичный, ожидание объявляется `aria-busy`.
@@ -488,34 +525,34 @@ Gift List — тихий координатор подарков для узко
 
 ### Компоненты на React Native
 
-Каждый интерактивный элемент — компонент `packages/ui` (Tamagui; в браузере — настоящий `<button>`/`<a>`) с ролью и подписью (`role`, `aria-label`), зона касания не меньше `{spacing.touch-target}`. Зона набирается `minHeight` / `minWidth` и прозрачным padding вокруг визуала, не `hitSlop`: в react-native-web он не расширяет зону для мыши и касания. Между соседними целями — не меньше 8. Состояния: hover — по разделу Components; pressed — затемнение фона на 8% (Android ripple допустим); disabled — 40% непрозрачности, `aria-disabled` / `accessibilityState.disabled`, элемент остаётся в порядке фокуса, пояснение рядом связано с ним (`aria-describedby`) и не бледнеет; focus (браузер, внешняя клавиатура) — кольцо 2 px `{colors.ring}` с отступом 2 px, на toast — `{colors.ring-inverse}`. Кольцо получают все интерактивные элементы, включая текстовые ссылки «Назад» и пункты меню (`LinkText`, `NavLink`). На телефоне `:focus-visible` не наступает: состояния «последнее взаимодействие было клавиатурой» там нет, поэтому кольцо рисуется по обычному `focus` — внешняя клавиатура и фокус TalkBack/VoiceOver; на вебе кольцо остаётся только на `:focus-visible`, иначе оно появляется от клика мышью.
+Каждый интерактивный элемент — компонент `packages/ui` (Tamagui; в браузере — настоящий `<button>`/`<a>`) с ролью и подписью (`role`, `aria-label`), зона касания не меньше `{spacing.touch-target}`. Зона набирается `minHeight` / `minWidth` и прозрачным padding вокруг визуала, не `hitSlop`: в react-native-web он не расширяет зону для мыши и касания. Между соседними целями — не меньше 8. Состояния: hover — по разделу Components; pressed — затемнение фона на 8% (Android ripple допустим); disabled — 40% непрозрачности, `aria-disabled` / `accessibilityState.disabled`, элемент остаётся в порядке фокуса, пояснение рядом связано с ним (`aria-describedby`) и не бледнеет; focus (браузер, внешняя клавиатура) — кольцо 2 px `{colors.ring}` с отступом 2 px. Кольцо получают все интерактивные элементы, включая текстовые ссылки «Назад» и пункты меню (`LinkText`, `NavLink`). На телефоне `:focus-visible` не наступает: состояния «последнее взаимодействие было клавиатурой» там нет, поэтому кольцо рисуется по обычному `focus` — внешняя клавиатура и фокус TalkBack/VoiceOver; на вебе кольцо остаётся только на `:focus-visible`, иначе оно появляется от клика мышью.
 
 | Компонент | Анатомия | Размеры и состояния |
 |-----------|----------|---------------------|
-| **WishCard** (Gift card) | Если есть фото — слева превью `{spacing.photo-thumb}` (`object-fit: cover`, `{rounded.md}`), название, цена, pill и теги справа от него. «Куплю сам» и OwnerActionLabel — под фото на всю ширину карточки, как у карточки без фото. Сверху: название (`body-strong`, 2 строки), справа ⋯ (только владелец). Ниже: цена (`label`, `muted-foreground`), status pill, до трёх Tag chip в ряд (остальные — «+N»). Строка брони (`reservation-phase` или «Берёт {имя}», `label`). У владельца внизу слева — VisibilityChip; при `ownerAction` — OwnerActionLabel на всю ширину. **Структура:** карточка — контейнер без `accessible`; внутри три соседних элемента: (1) основная зона — ссылка на деталь (expo-router `<Link asChild>`, в браузере `<a href="/gifts/{id}">`), её подпись — фраза из «Доступность»; (2) VisibilityChip; (3) ⋯. На основной зоне — `accessibilityActions` «Изменить видимость» и «Меню» для ротора VoiceOver и действий TalkBack | Высота по содержимому; в сетке карточки одного ряда растягиваются до самой высокой. Hover (браузер) — `hover-border`. Закрытая — фон `{colors.surface}`, текст `muted-foreground`, pill «Получен»; в ⋯ у владельца — «Вернуть в открытые» (только в окне отмены), «Хочу ещё такой», «Удалить» |
-| **StatusPill** | Текст `caption` в pill, без иконки | `min-height` `{spacing.pill-height}`, padding 0 10. Не нажимается |
+| **WishCard** (Gift card) | Если есть фото — слева превью `{spacing.photo-thumb}` (`object-fit: cover`, `{rounded.md}`), название, цена, pill и теги справа от него. «Куплю сам» и OwnerActionLabel — под фото на всю ширину карточки, как у карточки без фото. Сверху: название (`body-strong`, 2 строки), справа ⋮ (только владелец). Ниже: цена (`label`, `muted-foreground`), status pill, до трёх Tag chip в ряд (остальные — «+N»). Строка брони (`reservation-phase` или «Берёт {имя}», `label`). У владельца внизу слева — VisibilityChip; при `ownerAction` — OwnerActionLabel на всю ширину. **Структура:** карточка — контейнер без `accessible`; внутри три соседних элемента: (1) основная зона — ссылка на деталь (expo-router `<Link asChild>`, в браузере `<a href="/gifts/{id}">`), её подпись — фраза из «Доступность»; (2) VisibilityChip; (3) ⋮. На основной зоне — `accessibilityActions` «Изменить видимость» и «Меню» для ротора VoiceOver и действий TalkBack | Высота по содержимому; в сетке карточки одного ряда растягиваются до самой высокой. Hover (браузер) — `hover-border`. Закрытая — фон `{colors.surface}`, текст `muted-foreground`, pill «Получен»; в ⋮ у владельца — «Вернуть в открытые» (только в окне отмены), «Хочу ещё такой», «Удалить» |
+| **StatusPill** | Плашка `surface` с рамкой 1 px, точка 6 px цвета статуса и текст `caption` (`muted-foreground`) | `min-height` `{spacing.pill-height}`, padding 0 10. Не нажимается; точку читает не диктор — смысл в слове |
 | **VisibilityChip** | Иконка `{spacing.icon-small}` + текст `caption` | У владельца на карточке. У `открыт` и `забронирован` — кнопка (`aria-haspopup="dialog"`, подпись «Видимость: всем. Изменить»), открывает выбор видимости (`radiogroup`, тот же список, что в форме); после сохранения фокус — обратно на чип. У `забронирован` сужение, отнимающее у держателя доступ, открывает confirm «Бронирующий потеряет доступ, бронь снимется» (Подтвердить / Отмена). У `закрыт` и в архиве — не нажимается, только показывает значение (Story 2.3). `min-height` `{spacing.chip-height}` визуально, зона касания 44 за счёт padding |
 | **ReserveButton «Куплю сам»** | `{components.button-reserve}`, на всю ширину в детали | На compact в детали — прилипает к низу над safe area. При `забронирован` / `закрыт` / «Можно дарить снова» кнопки нет, на её месте строка-пояснение `label` («Уже забронирован», «Уже подарено», «Можно дарить без брони»); фокус после брони переходит на эту строку |
 | **ReserveConfirm** | Заголовок `heading` «Забронировать «{название}»?» · поле даты «Подарю до» · Switch «Показать владельцу, что это я» (выкл.) · Switch «Показать другим, кто берёт» (вкл.) · `caption`-подсказка про «Купил» · кнопки «Подтвердить» (reserve) и «Отмена» (ghost) | Compact — BottomSheet, кнопки во всю ширину, «Подтвердить» сверху. Medium+ — Dialog `{spacing.dialog-width}`, кнопки справа в ряд: «Отмена», «Подтвердить». Если деталь уже открыта диалогом (expanded+), confirm — шаг в том же диалоге, а не второй слой. Строки Switch — вся строка нажимается, `min-height` `{spacing.row-height}` |
 | **ReservationPhase** | Иконка `{spacing.icon-small}` + текст `label` `{colors.status-reserved}` | Подписи по фазе и роли — одна таблица в `EXPERIENCE.md` → State Patterns → «Подписи брони». Флаг «Купил» у держателя — отдельный чип «Куплено» рядом. Срок в прошлом — иконка часов, без красного |
-| **OwnerActionLabel** | Полоса accent слева, текст `label`, ниже 1–2 кнопки secondary `min-height` 44 на `{colors.surface}` | «Ждёт вашего подтверждения» → «Получил» / «Не получал»; «Срок брони истёк» → «Получил» / «Не получал, оставить бронь» / «Снять бронь» (третье — в ⋯) |
-| **Toast** | Текст `label` + необязательное действие (`button`, `action-foreground`, подчёркнуто, зона 44×44); кольцо фокуса `ring-inverse` | Один постоянно смонтированный ToastHost (см. Доступность). Compact: снизу, над вкладками и над прилипшей кнопкой, отступ 8, ширина экрана минус gutter. Medium+: снизу по центру области контента, ширина до `{spacing.dialog-width}`. Длительность: обычный — `max(3000 мс, 60 мс × символ)` (DECISION 2026-11-10: на 1 с короче прежней формулы `max(4 с, 1 с + 60 мс × символ)`; короткое подтверждение не мигает); undo toast «Отменить» — 10 с. Появление и уход — fade до 160 мс (раздел Доступность → Движение). Любой toast на паузе при hover и фокусе; при включённом дикторе toast с действием не скрывается сам. «Нет сети» не скрывается сам, пока его не закрыли или не повторили действие. Один toast за раз, новый заменяет старый |
+| **OwnerActionLabel** | Полоса accent слева, текст `label`, ниже 1–2 кнопки secondary `min-height` 44 на `{colors.surface}` | «Ждёт вашего подтверждения» → «Получил» / «Не получал»; «Срок брони истёк» → «Получил» / «Не получал, оставить бронь» / «Снять бронь» (третье — в ⋮) |
+| **Toast** | Карточка `surface` с рамкой и тенью `popover`: текст `label` + необязательное действие (`button`, `primary`, подчёркнуто, зона 44×44); кольцо фокуса `ring`; у ошибки — рамка и текст `destructive` | Один постоянно смонтированный ToastHost (см. Доступность). Compact: снизу, над вкладками и над прилипшей кнопкой, отступ 8, ширина экрана минус gutter. Medium+: снизу по центру области контента, ширина до `{spacing.dialog-width}`. Длительность: обычный — `max(3000 мс, 60 мс × символ)` (DECISION 2026-11-10: на 1 с короче прежней формулы `max(4 с, 1 с + 60 мс × символ)`; короткое подтверждение не мигает); undo toast «Отменить» — 10 с. Появление и уход — fade до 160 мс (раздел Доступность → Движение). Любой toast на паузе при hover и фокусе; при включённом дикторе toast с действием не скрывается сам. «Нет сети» не скрывается сам, пока его не закрыли или не повторили действие. Один toast за раз, новый заменяет старый |
 | **EmptyState** | Заголовок `display-sm`, текст `body` `muted-foreground`, не больше одного CTA primary | По центру области контента, ширина до `{spacing.max-form}`. Иллюстраций в R1 нет |
-| **Форма** | Label (`label`) над полем · поле `{components.input}` · подсказка или ошибка `caption` под полем | `min-height` поля 48; фокус — граница `ring` 2 px; ошибка — граница и текст `destructive` + иконка. Обязательные поля не помечаются; необязательные — «(необязательно)» в подписи. Ошибка и подсказка связаны с полем: в браузере `aria-invalid` + `aria-describedby`, на телефоне — в `accessibilityHint` (на iOS ещё `accessibilityValue`). Кнопка отправки внизу формы; на compact — прилипает к низу над клавиатурой. Валюта — нативный `<select>` в браузере, шторка с радио на телефоне, пять кодов. Видимость — три строки-радио с иконкой и пояснением, по умолчанию «Всем». У `забронирован` видимость меняется; если новый выбор отнимает у держателя доступ, confirm «Бронирующий потеряет доступ, бронь снимется». «Один раз / Можно дарить снова» по-прежнему меняется только у `открыт`: над ним `caption` «Сколько раз можно дарить — меняется только у открытого желания». У `закрыт` и в архиве форма read-only, у обоих один `caption` «Архивное желание можно только просматривать.». **Лимиты полей** (DECISION 2026-11-10): название — до 120 символов, описание — до 2000, ссылка — до 2048, свой тег — до 30 (единственный счётчик, «N из 30»); `maxLength` не ставится — он считает UTF-16 и режет эмодзи, поэтому превышение показывается ошибкой при отправке, а ввод никогда не обрезается молча. **Строка действий на экране правки:** слева «Удалить желание» (destructive), справа «Отмена» и «Сохранить»; деструктивное действие первым — осознанное исключение из правила «деструктивные пункты последними» (оно про меню ⋯ и строку человека, а не про строку формы). На узком экране пара «Отмена»/«Сохранить» переносится под удаление целиком, ничего не обрезается |
+| **Форма** | Label (`label`) над полем · поле `{components.input}` · подсказка или ошибка `caption` под полем | `min-height` поля 48; фокус — граница `ring` 2 px; ошибка — граница и текст `destructive` + иконка. Обязательные поля не помечаются; необязательные — «(необязательно)» в подписи. Ошибка и подсказка связаны с полем: в браузере `aria-invalid` + `aria-describedby`, на телефоне — в `accessibilityHint` (на iOS ещё `accessibilityValue`). Кнопка отправки внизу формы; на compact — прилипает к низу над клавиатурой. Валюта — нативный `<select>` в браузере, шторка с радио на телефоне, пять кодов. Видимость — три строки-радио с иконкой и пояснением, по умолчанию «Всем». У `забронирован` видимость меняется; если новый выбор отнимает у держателя доступ, confirm «Бронирующий потеряет доступ, бронь снимется». «Один раз / Можно дарить снова» по-прежнему меняется только у `открыт`: над ним `caption` «Сколько раз можно дарить — меняется только у открытого желания». У `закрыт` и в архиве форма read-only, у обоих один `caption` «Архивное желание можно только просматривать.». **Лимиты полей** (DECISION 2026-11-10): название — до 120 символов, описание — до 2000, ссылка — до 2048, свой тег — до 30 (единственный счётчик, «N из 30»); `maxLength` не ставится — он считает UTF-16 и режет эмодзи, поэтому превышение показывается ошибкой при отправке, а ввод никогда не обрезается молча. **Строка действий на экране правки:** слева «Удалить желание» (destructive), справа «Отмена» и «Сохранить»; деструктивное действие первым — осознанное исключение из правила «деструктивные пункты последними» (оно про меню ⋮ и строку человека, а не про строку формы). На узком экране пара «Отмена»/«Сохранить» переносится под удаление целиком, ничего не обрезается |
 | **Поле даты** | Телефон — кнопка `accessibilityRole="button"` с подписью «Подарю до, 4 ноября 2026» и hint «Выбрать дату» → системный выбор (iOS — `display="inline"` в шторке). Браузер — `<input type="date">` с `min` и `max` | Под полем `caption` «Не позже {DD.MM}», связанный с полем. Дата вне диапазона — ошибка при отправке «Выберите дату не позже {DD.MM}» |
 | **Поля входа** | Email и пароль; у пароля кнопка «Показать пароль» 44×44 (`accessibilityLabel`, имя не меняется; состояние «нажато» — `aria-pressed` в браузере и `role="button"` + `accessibilityState.checked` на телефоне, DECISION 2026-11-10) | Вставка не блокируется, CAPTCHA нет. Автозаполнение: email — web `type="email"` + `autocomplete="username"`, RN `autoComplete="email"`, `textContentType="username"`, `keyboardType="email-address"`; пароль при входе — `current-password` / `textContentType="password"`; при регистрации и сбросе — `new-password` / `newPassword`; имя — `name`; ник — `nickname`; телефон — `tel`; ДР — `bday-day` / `bday-month` / `bday-year`. iOS — `webcredentials:` в associated domains; Android — Digital Asset Links. Сброс — ссылкой из письма, без ручного кода |
 | **Фото в форме** | Без фото — кнопка secondary «Добавить фото» с иконкой камеры → выбор «Сделать фото» / «Из галереи» (в браузере — выбор файла). С фото — превью 120×120 `{rounded.md}`, рядом «Заменить» и «Убрать» (ghost) | Пока фото ужимается и загружается — превью с индикатором и подписью «Загружаем фото…»; «Сохранить» ждёт загрузку. Ошибка — `caption` `destructive` под превью и «Повторить». Подпись для диктора: «Фото желания. Заменить» |
 | **Фото в детали** | Сверху детали, на всю ширину, соотношение 4:3, `object-fit: contain` на `{colors.muted}`, `{rounded.lg}` | Нажатие — фото на весь экран (только просмотр, закрыть крестиком, Esc, «назад»). `accessibilityLabel` — «Фото: {название}» |
 | **Tag picker** | В форме желания: ряд переключаемых чипов «мечта», «нужно сейчас», «когда-нибудь» + «Свой тег» → поле до 30 символов со счётчиком | Каждый чип — `checkbox` с состоянием; выбранный — заливка `muted`, граница `border-strong`, галочка. Свой тег добавляется чипом с крестиком «Убрать тег {имя}». Ошибка тега (длиннее 30, повтор, тега больше нет в каталоге) видна на самом чипе: рамка `{colors.destructive}` 1 px; текст ошибки рендерит экран рядом с рядом чипов, `aria-invalid` и `accessibilityHint` — в дополнение к видимой рамке, не вместо неё |
 | **Срок желания** | Поле даты «Убрать в архив после» (необязательно) в форме | `caption` «После этой даты желание уйдёт в архив». Не путать со Сроком брони |
-| **Archive section** | У владельца, после «Получено (N)»: свёрнутая секция «Архив (N)» | Карточки как закрытые; в ⋯ — «Вернуть в вишлист» (форма с новой датой или без) и «Скопировать». Зрителям секции нет |
+| **Archive section** | У владельца, после «Получено (N)»: свёрнутая секция «Архив (N)» | Карточки как закрытые; в ⋮ — «Вернуть в вишлист» (форма с новой датой или без) и «Скопировать». Зрителям секции нет |
 | **BottomSheet / Dialog** | Шторка: ручка 32×4 сверху (декоративная, не фокусируется), заголовок `heading`, видимая «Отмена» или «Закрыть» 44×44, содержимое, кнопки внизу. Диалог: заголовок, крестик «Закрыть», содержимое, кнопки справа | Шторка — compact; диалог — medium и шире. Одновременно не больше одного слоя: confirm и «Сохранить изменения?» внутри диалога — шаг в том же слое (содержимое меняется, фокус на новый заголовок, крестик «Закрыть» и Esc возвращают прежний шаг). Закрываются и системной «Назад» на Android |
 | **Badge** | `{components.badge-count}`, число до «99+» | На вкладке, пункте бокового меню, колокольчике. Число входит в подпись элемента («Друзья, 2 запроса») |
-| **PersonRow** (строка человека) | `{components.list-row}`: Avatar `{spacing.avatar-md}` · имя `body-strong` + @ник `caption` `muted-foreground` · справа chip отношения (если есть) · ⋯ 44×44 | Одна строка во всех списках людей: Поиск, Друзья, Подписки, Мои подписчики, Найти знакомых. Chip и пункты ⋯ — по таблице «Отношение → статус и меню» в `EXPERIENCE.md`. Кнопок в строке нет, кроме «Принять» / «Отклонить» во вкладке «Запросы» (под именем на compact, справа от medium). Вся строка, кроме ⋯, — ссылка на профиль. Меню ⋯: на compact — шторка снизу с именем в заголовке, от medium — выпадающее меню `{components.user-menu}`; деструктивные пункты (`destructive`) — последними, после разделителя |
+| **PersonRow** (строка человека) | `{components.list-row}`: Avatar `{spacing.avatar-md}` · имя `body-strong` + @ник `caption` `muted-foreground` · справа chip отношения (если есть) · ⋮ 44×44 | Одна строка во всех списках людей: Поиск, Друзья, Подписки, Мои подписчики, Найти знакомых. Chip и пункты ⋮ — по таблице «Отношение → статус и меню» в `EXPERIENCE.md`. Кнопок в строке нет, кроме «Принять» / «Отклонить» во вкладке «Запросы» (под именем на compact, справа от medium). Вся строка, кроме ⋮, — ссылка на профиль. Меню ⋮: на compact — шторка снизу с именем в заголовке, от medium — выпадающее меню `{components.user-menu}`; деструктивные пункты (`destructive`) — последними, после разделителя |
 | **NotificationRow** | `{components.list-row}`: иконка события `{spacing.icon-inline}` · текст `body` (до 3 строк) · время `caption` · кнопки действий secondary ниже текста | Непрочитанная — точка `unread-indicator` 8 px слева и текст `body-strong`; подпись для диктора начинается с «Новое». Устаревший запрос — «Даритель уже ответил», без кнопок. Нажатие по строке — деталь желания или профиль |
-| **ReservationCard** | `{components.reservation-card}`: название из снимка (`body-strong`) · «у @{ник владельца}» `caption` · Срок «до DD.MM» · ReservationPhase · чип «Куплено» · переключатели видимости свёрнуты в «Кто видит, что это я» | Действия: «Продлить до…», «Купил» (переключатель), «Подарил», «Снять бронь» (в ⋯). Без цены, тегов и остальных желаний (A-14, AD-7). Если доступа к вишлисту нет — без ссылки на деталь |
+| **ReservationCard** | `{components.reservation-card}`: название из снимка (`body-strong`) · «у @{ник владельца}» `caption` · Срок «до DD.MM» · ReservationPhase · чип «Куплено» · переключатели видимости свёрнуты в «Кто видит, что это я» | Действия: «Продлить до…», «Купил» (переключатель), «Подарил», «Снять бронь» (в ⋮). Без цены, тегов и остальных желаний (A-14, AD-7). Если доступа к вишлисту нет — без ссылки на деталь |
 | **CollectionCard** | `{components.collection-card}`: необязательная картинка 16:9 `{rounded.md}` · название подборки `heading` · описание `body` 2 строки · число идей `caption` | Нажатие — подборка; у каждой идеи внутри — «Добавить в мой вишлист» (secondary), после — «Добавлено» (disabled) + toast |
-| **Мелкие элементы** | Switch — трек 52×32, бегунок 28, вся строка нажимается. Avatar — круг `{spacing.avatar-sm}` / `-md` / `-lg`, инициалы на `muted`. Skeleton — блоки `muted` по форме карточки. Сегмент «Друзья · Подписки · Запросы» — текст `label`, выбранный — 600 и подчёркивание 2 px `primary`. OverflowMenu ⋯ — кнопка 44×44, меню `{components.user-menu}`. SearchField — поле с иконкой лупы и крестиком «Очистить». Chip «Куплено» и chip отношения («Друзья», «Зовёт в друзья», «Ожидает ответа», «Вы подписаны», «Подписан на вас», «Взаимная подписка», «Это вы») — как StatusPill: фон `muted`, текст `muted-foreground` (4.9:1); у «Зовёт в друзья» — текст `primary` 600, потому что это ждёт ответа. В списке, где отношение и так ясно («Друзья», «Я подписан»), chip не повторяется. Свёрнутая секция «Получено (N)» / «Уже подарено» / «Архив (N)» — заголовок-кнопка `heading` с шевроном, `aria-expanded` | Зона касания у всего нажимаемого — 44×44 |
+| **Мелкие элементы** | Switch — трек 52×32, бегунок 28 светлый в обеих темах, вся строка нажимается. Avatar — круг `{spacing.avatar-sm}` / `-md` / `-lg`, фото или инициалы на `muted` (`muted-foreground`, 5.9:1), точка статуса с кольцом цвета фона. Skeleton — блоки `muted` по форме карточки. Сегмент «Друзья · Подписки · Запросы» — текст `label`, выбранный — 600 и подчёркивание 2 px `primary`. OverflowMenu ⋮ — вертикальное многоточие, кнопка 44×44, меню `{components.user-menu}`. SearchField — поле с иконкой лупы и крестиком «Очистить». Chip «Куплено» и chip отношения («Друзья», «Зовёт в друзья», «Ожидает ответа», «Вы подписаны», «Подписан на вас», «Взаимная подписка», «Это вы») — как нейтральный чип: фон `muted`, текст `muted-foreground` (5.9:1); у «Зовёт в друзья» — текст `primary` 600, потому что это ждёт ответа. В списке, где отношение и так ясно («Друзья», «Я подписан»), chip не повторяется. Свёрнутая секция «Получено (N)» / «Уже подарено» / «Архив (N)» — заголовок-кнопка `heading` с шевроном, `aria-expanded` | Зона касания у всего нажимаемого — 44×44 |
 
 ### Навигация приложения
 
@@ -565,10 +602,10 @@ UX-A13 (принято Sergey 2026-10-28). Пять разделов и коло
 
 ### Мышь и клавиатура в браузере
 
-- **Hover** (только при указателе, `@media (hover: hover)`): карточка — граница `primary`; пункт меню — фон `{colors.background}`; кнопка — затемнение 8% (`primary-hover`, `accent-hover`, `destructive-hover` из раздела Colors), secondary — граница `{colors.foreground}`, ghost — фон `{colors.muted}`; у полей, чипов, ⋯ и toast вид не меняется, только курсор-указатель. Ничего не прячется за hover: все действия видны и на касании. Пункт меню (боковое меню и навигация) — настоящая ссылка с `hover:`-фоном и кольцом фокуса, а не текст без состояния.
-- **Видимый фокус:** кольцо `{colors.ring}` 2 px с отступом 2 px на всём интерактивном — кнопках, полях, чипах, карточках, пунктах меню и текстовых ссылках (`LinkText`, `NavLink`), в браузере только при навигации с клавиатуры (`:focus-visible`). Отступ — цвет фона под элементом, без него кольцо вокруг primary-кнопки не видно. На тёмных и цветных поверхностях (toast) — `{colors.ring-inverse}`. В Android/iOS с внешней клавиатурой — то же кольцо, но по состоянию `focus`: `:focus-visible` в React Native не наступает; кольцо на клик мышью включается только на вебе.
+- **Hover** (только при указателе, `@media (hover: hover)`): карточка — граница `primary`; пункт меню — фон `{colors.muted}`; кнопка — затемнение 8% (`primary-hover`, `accent-hover`, `destructive-hover` из раздела Colors), secondary — фон `{colors.accent-hover}`, outline — граница `{colors.foreground}` и фон `{colors.muted}`, ghost — фон `{colors.muted}`; у поля темнеет рамка, у чипов, ⋮ и toast вид не меняется, только курсор-указатель. Ничего не прячется за hover: все действия видны и на касании. Пункт меню (боковое меню и навигация) — настоящая ссылка с `hover:`-фоном и кольцом фокуса, а не текст без состояния.
+- **Видимый фокус:** кольцо `{colors.ring}` 2 px с отступом 2 px на всём интерактивном — кнопках, полях, чипах, карточках, пунктах меню и текстовых ссылках (`LinkText`, `NavLink`), в браузере только при навигации с клавиатуры (`:focus-visible`). Отступ — цвет фона под элементом, без него кольцо вокруг primary-кнопки не видно. В Android/iOS с внешней клавиатурой — то же кольцо, но по состоянию `focus`: `:focus-visible` в React Native не наступает; кольцо на клик мышью включается только на вебе.
 - **Фокус не перекрыт (2.4.11):** прокручиваемая область получает `scroll-padding-bottom` / `contentInset` = высота прилипших элементов (вкладки, «Куплю сам», кнопка формы, toast) + 8; элемент в фокусе докручивается в видимую зону (`scrollIntoView({block: 'nearest'})`). Если высота окна < 480 CSS px, шапка, «Куплю сам» и кнопка формы не прилипают и идут в потоке.
-- **Порядок Tab:** ссылка «Перейти к содержимому» (первая, видна при фокусе; на всех ширинах и на Next-страницах) → боковое меню сверху вниз → заголовок и кнопки экрана → карточки слева направо, сверху вниз (внутри карточки: основная зона → чип видимости → ⋯) → правая колонка. На compact в браузере: «Перейти к содержимому» → шапка → контент → вкладки.
+- **Порядок Tab:** ссылка «Перейти к содержимому» (первая, видна при фокусе; на всех ширинах и на Next-страницах) → боковое меню сверху вниз → заголовок и кнопки экрана → карточки слева направо, сверху вниз (внутри карточки: основная зона → чип видимости → ⋮) → правая колонка. На compact в браузере: «Перейти к содержимому» → шапка → контент → вкладки.
 - **Клавиши:** Enter/Space — нажатие; Space — переключатель; стрелки — в меню, радио-группе и сегменте «Друзья · Подписки · Запросы»; Enter в форме — отправка, кроме многострочного поля.
 - **Esc** закрывает верхний слой: меню, шторку, диалог, деталь; внутри диалога сначала возвращает прежний шаг. Фокус возвращается на элемент, который открыл слой, а если его уже нет — по правилу «Куда уходит фокус» в разделе Доступность. Черновик формы при Esc не теряется: если есть изменения — шаг «Сохранить изменения?» с «Сохранить» (сохраняет и уводит; при ошибках форма остаётся с ошибками), «Не сохранять» (уводит без сохранения) и крестиком «Закрыть» (Esc и клик по scrim — то же).
 - **Фокус в слое:** при открытии диалога или шторки фокус на заголовке, Tab не выходит за пределы слоя.
@@ -581,7 +618,7 @@ UX-A13 (принято Sergey 2026-10-28). Пять разделов и коло
 - **Landmarks и заголовки:** шапка — `banner`, меню и вкладки — `nav`, область контента — `main`, правая колонка — `complementary`. `h1` — экран; `h2` (`role="heading"`, `aria-level={2}`) — секции («Получено (N)», «Архив», «Недавние вишлисты»), карточки правой колонки, заголовки диалогов и шторок. В react-native-web `accessibilityRole="header"` по умолчанию даёт `h1`, поэтому уровень задаётся явно.
 - **Куда уходит фокус, если открывший элемент исчез** (закрыли желание, приняли запрос, удалили карточку, забронировали, закрыли подсказку): (а) на «Отменить» в toast, если оно есть; иначе (б) на элемент, который его заменил (строка-пояснение вместо «Куплю сам», pill нового статуса); иначе (в) на следующий элемент списка, если его нет — на предыдущий; иначе (г) на `h1` экрана. Фокус никогда не уходит на `body`.
 - **ToastHost:** постоянно смонтирован, два региона — вежливый и срочный. Браузер — `role="status"` и `role="alert"` (в DOM до появления текста); Android — `accessibilityLiveRegion` на хосте; iOS — ещё `AccessibilityInfo.announceForAccessibility`. Длительность и пауза — строка Toast выше.
-- **Android и iOS:** у каждого интерактивного — `accessibilityRole`, `accessibilityLabel`, состояние (`accessibilityState`: selected, checked, disabled, expanded). Порядок TalkBack/VoiceOver совпадает с визуальным. Основная зона карточки читается одной фразой: «{название}, {цена}, {статус}, {теги}, {строка брони}, видимость {всем}»; превью фото в карточке декоративное (`accessible={false}`, `alt=""`), потому что название уже прочитано; чип и ⋯ — отдельные соседние элементы (см. WishCard). Ориентация не блокируется: `app.json` → `"orientation": "default"`.
+- **Android и iOS:** у каждого интерактивного — `accessibilityRole`, `accessibilityLabel`, состояние (`accessibilityState`: selected, checked, disabled, expanded). Порядок TalkBack/VoiceOver совпадает с визуальным. Основная зона карточки читается одной фразой: «{название}, {цена}, {статус}, {теги}, {строка брони}, видимость {всем}»; превью фото в карточке декоративное (`accessible={false}`, `alt=""`), потому что название уже прочитано; чип и ⋮ — отдельные соседние элементы (см. WishCard). Ориентация не блокируется: `app.json` → `"orientation": "default"`.
 - **Касание:** не меньше `{spacing.touch-target}` × `{spacing.touch-target}` на всех платформах; между соседними целями не меньше 8.
 - **Движение** (DECISION 2026-11-10). Пресеты длительности — `quick` 160 мс и `medium` 240 мс (`packages/ui/src/animations.ts` и `animations.native.ts`). Шторка — сдвиг и fade **до 200 мс** (`quick`) на вебе и на телефоне: длительность задаётся явно, потому что нативный `Sheet` без `transition` берёт пружину ~0.5–0.8 с. Диалог и toast — fade `quick` при появлении и уходе (сейчас оба появляются мгновенно). Смена цвета и прозрачности на hover и press — `quick`; крупных движений нет: ни параллакса, ни scale больше 1.02, ни авто-анимаций, ни confetti. Скелетон статичный и в любом случае не мерцает дольше 5 с. **Правило:** все `transition` и анимации гейтятся «уменьшить движение» — в браузере `prefers-reduced-motion: reduce`, на телефоне `AccessibilityInfo.isReduceMotionEnabled`; в Tamagui это один медиа-ключ `reduce` (`media: { reduce: { prefersReducedMotion: "reduce" } }`), который читает обе платформы: веб — `window.matchMedia`, телефон — `@tamagui/react-native-media-driver` поверх `AccessibilityInfo`. Под `reduce` сдвиг, scale и смена раскладки выключаются, у слоёв остаётся только fade непрозрачности до 100 мс, hover и press меняют цвет мгновенно, индикатор ожидания у busy-кнопки не вращается (ожидание объявляется `aria-busy`).
 - Смысл не передаётся одним цветом: pill — словом, чип видимости — словом и иконкой, ошибка — текстом.

@@ -8,7 +8,7 @@ const mounted = createMount();
 
 function trigger(container: HTMLElement): HTMLElement {
   const node = container.querySelector<HTMLElement>('[aria-label="Действия: Алёна"]');
-  expect(node, "кнопка ⋯").not.toBeNull();
+  expect(node, "кнопка ⋮").not.toBeNull();
   return node as HTMLElement;
 }
 
@@ -26,14 +26,14 @@ const items = [
 function noop() {}
 
 describe("OverflowMenu", () => {
-  it("⋯ — кнопка 44×44 с подписью для диктора и закрытым меню", async () => {
+  it("⋮ — кнопка 44×44 с подписью для диктора и закрытым меню", async () => {
     const { container, render } = mounted();
     await render(<OverflowMenu label="Действия: Алёна" title="Алёна" items={items} />);
 
     const button = trigger(container);
     expect(button.getAttribute("aria-haspopup")).toBe("dialog");
     expect(button.getAttribute("aria-expanded")).toBe("false");
-    expect(button.textContent).toBe("⋯");
+    expect(button.textContent).toBe("⋮");
     expect(declarationsFor(button, "width").map((item) => item.value)).toContain(
       "var(--t-size-touch-target)",
     );

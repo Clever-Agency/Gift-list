@@ -15,7 +15,8 @@ const Chip = styled(View, {
   minHeight: "$chip-height",
   borderWidth: 1,
   borderColor: "$border-strong",
-  borderRadius: "$sm",
+  // v8 chips carry the control radius (8), not the small badge one.
+  borderRadius: "$md",
   paddingHorizontal: "$2",
   variants: {
     tone: {

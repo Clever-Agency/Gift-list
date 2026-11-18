@@ -2,11 +2,11 @@ import { View, styled } from "@tamagui/core";
 import { YStack } from "@tamagui/stacks";
 import { spacing, typography } from "./tokens";
 
-/** A `muted` block (`DESIGN.md` → Мелкие элементы: skeleton). */
+/** A `muted` block (`DESIGN.md` → Мелкие элементы: skeleton), radius 8. */
 export const Skeleton = styled(View, {
   name: "GLSkeleton",
   backgroundColor: "$muted",
-  borderRadius: "$sm",
+  borderRadius: "$md",
 });
 
 export type WishCardSkeletonProps = {

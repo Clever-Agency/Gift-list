@@ -39,7 +39,7 @@ function PhoneFrame({ children }: { children: React.ReactNode }) {
 
 PhoneFrame.displayName = "PhoneFrame";
 
-/** `error` (the default): a red surface with an assertive announcement. */
+/** `error` (the default): a surface card with a coral frame and an assertive announcement. */
 export const Error: Story = {
   render: function ErrorStory(args) {
     return (
@@ -50,7 +50,7 @@ export const Error: Story = {
   },
 };
 
-/** `info`: a dark surface with a polite announcement, e.g. «Желание сохранено». */
+/** `info`: the same surface card with a neutral frame and a polite announcement, e.g. «Желание сохранено». */
 export const Info: Story = {
   args: { tone: "info", message: "Желание сохранено" },
   render: function InfoStory(args) {
@@ -79,7 +79,7 @@ export const WithUndoAction: Story = {
   play: focusAction,
 };
 
-/** Focus and hover pause the countdown; the ring on the dark surface is `ring-inverse`. */
+/** Focus and hover pause the countdown; the ring on the card is the regular `$ring`. */
 function focusAction({ canvasElement }: { canvasElement: HTMLElement }) {
   const action = canvasElement.querySelector<HTMLElement>("[aria-label='Отменить']");
   action?.focus();

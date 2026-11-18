@@ -63,7 +63,7 @@ export const CustomTagEditable: Story = {
 };
 
 /**
- * A tag-specific error (DESIGN.md → Tag picker): the accent frame of the owner's
+ * A tag-specific error (DESIGN.md → Tag picker): the accent border of the owner's
  * tag gives way to the `destructive` one, and the message is rendered once by
  * the screen next to the row — not by the chip. Same 1 px stroke, so the chip
  * does not jump.
@@ -92,9 +92,9 @@ export const TagError: Story = {
 };
 
 /**
- * A selected catalogue chip keeps its `muted` fill, the check and
- * `aria-checked`, and only the frame turns `destructive`; the chip next to it
- * shows the normal `border-strong` frame of a selected tag.
+ * A selected catalogue chip takes the violet `accent` fill, the `accent-border`
+ * frame, the check and `aria-checked`; only the frame turns `destructive` when the
+ * tag has an error, and the chip next to it shows the same selected frame without it.
  */
 export const SelectedTagError: Story = {
   render: function SelectedTagErrorStory() {

@@ -33,6 +33,18 @@ export { focusRing } from "./focus-ring";
 export { Pressable, type PressableProps } from "./pressable";
 export { Switch, type SwitchProps } from "./switch";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
+export {
+  IconButton,
+  type IconButtonProps,
+  type IconButtonVariant,
+} from "./icon-button";
+export { Avatar } from "./avatar";
+export {
+  avatarInitials,
+  type AvatarProps,
+  type AvatarSize,
+  type AvatarStatus,
+} from "./avatar.types";
 export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";
 export {

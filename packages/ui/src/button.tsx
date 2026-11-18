@@ -14,6 +14,7 @@ export const BUTTON_VARIANTS = [
   "primary",
   "reserve",
   "secondary",
+  "outline",
   "ghost",
   "destructive",
 ] as const;
@@ -37,6 +38,7 @@ const BLOCKED_VARIANT = {
   primary: "primaryBlocked",
   reserve: "reserveBlocked",
   secondary: "secondaryBlocked",
+  outline: "outlineBlocked",
   ghost: "ghostBlocked",
   destructive: "destructiveBlocked",
 } as const satisfies Record<ButtonVariant, string>;
@@ -49,9 +51,10 @@ const BLOCKED_VARIANT = {
  */
 const LABEL_COLOR = {
   primary: "primary-foreground",
-  reserve: "accent-foreground",
-  secondary: "foreground",
-  ghost: "primary",
+  reserve: "primary-foreground",
+  secondary: "accent-foreground",
+  outline: "foreground",
+  ghost: "foreground",
   destructive: "destructive-foreground",
 } as const satisfies Record<ButtonVariant, ColorToken>;
 
@@ -78,24 +81,37 @@ const Frame = styled(BehaviorFrame, {
         backgroundColor: "$primary",
       },
       // `button-reserve`: only «Куплю сам» and «Подтвердить» in the reservation confirm.
+      // v8: the reserve action is the primary CTA — solid navy, like `primary`.
       reserve: {
         minHeight: "$control-height",
-        backgroundColor: "$accent hover:$accent-hover",
+        backgroundColor: "$primary hover:$primary-hover",
         opacity: "press:0.9",
       },
       reserveBlocked: {
         minHeight: "$control-height",
-        backgroundColor: "$accent",
+        backgroundColor: "$primary",
       },
+      // `secondary`: the calm violet button of v8 (design-system secondary, not outline).
       secondary: {
         minHeight: "$control-height",
-        backgroundColor: "$surface",
-        borderColor: "$border-strong hover:$foreground",
+        backgroundColor: "$accent hover:$accent-hover",
+        borderColor: "$accent-border",
         opacity: "press:0.9",
       },
       secondaryBlocked: {
         minHeight: "$control-height",
-        backgroundColor: "$surface",
+        backgroundColor: "$accent",
+        borderColor: "$accent-border",
+      },
+      // `outline`: the neutral bordered button (v8 outline) — secondary used to look like this.
+      outline: {
+        minHeight: "$control-height",
+        backgroundColor: "transparent hover:$muted press:$muted",
+        borderColor: "$border-strong hover:$foreground",
+      },
+      outlineBlocked: {
+        minHeight: "$control-height",
+        backgroundColor: "transparent",
         borderColor: "$border-strong",
       },
       ghost: {
@@ -148,6 +164,7 @@ const Label = styled(BehaviorText, {
       primary: { color: `$${LABEL_COLOR.primary}` },
       reserve: { color: `$${LABEL_COLOR.reserve}` },
       secondary: { color: `$${LABEL_COLOR.secondary}` },
+      outline: { color: `$${LABEL_COLOR.outline}` },
       ghost: { color: `$${LABEL_COLOR.ghost}` },
       destructive: { color: `$${LABEL_COLOR.destructive}` },
     },
@@ -227,7 +244,8 @@ export type ButtonProps = {
 
 /**
  * The button of the app and of the Next pages (`DESIGN.md` → components
- * `button-primary`, `button-reserve`, `button-secondary`, `button-ghost`).
+ * `button-primary`, `button-reserve`, `button-secondary`, `button-outline`,
+ * `button-ghost`).
  * On the web it is a real `<button>` with the label as its name (with `href` it is
  * a real `<a href>` with the same look); a disabled one never fires `onPress`.
  *

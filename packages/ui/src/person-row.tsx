@@ -54,7 +54,7 @@ export type PersonRowProps = {
    */
   chip?: ReactNode;
   /**
-   * The row's own controls, e.g. the ⋯ menu. They are siblings of the profile
+   * The row's own controls, e.g. the ⋮ menu. They are siblings of the profile
    * link, never its children, so a press on a control cannot open the profile.
    */
   actions?: ReactNode;

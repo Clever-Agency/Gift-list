@@ -128,6 +128,10 @@ export function Dialog({
           borderWidth={0}
           padding="$card-padding"
           gap="$grid-gap"
+          shadowColor="$scrim"
+          shadowOpacity={0.18}
+          shadowRadius={24}
+          shadowOffset={{ width: 0, height: 12 }}
           opacity={{ default: 1, enter: 0, exit: 0 }}
           transition={motion}
           onOpenAutoFocus={handleOpenAutoFocus}

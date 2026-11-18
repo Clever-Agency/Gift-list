@@ -55,7 +55,7 @@ describe("PersonRow", () => {
     expect(ref.current).toBe(container.querySelector("a"));
   });
 
-  it("чип и ⋯ — рядом со ссылкой, не внутри неё", async () => {
+  it("чип и ⋮ — рядом со ссылкой, не внутри неё", async () => {
     const { container, render } = mounted();
     await render(
       <PersonRow
@@ -64,7 +64,7 @@ describe("PersonRow", () => {
         pressLabel="Открыть профиль: Алёна, @alena, Друзья"
         href="/u/alena"
         chip={<span>Друзья</span>}
-        actions={<button type="button">⋯</button>}
+        actions={<button type="button">⋮</button>}
       />,
     );
 

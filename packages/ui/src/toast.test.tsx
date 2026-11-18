@@ -66,14 +66,15 @@ describe("Toast", () => {
     expect(root().style.transition).not.toContain("translate");
   });
 
-  it("кольцо кнопки — $ring-inverse и только на :focus-visible", async () => {
+  it("кольцо кнопки — $ring и только на :focus-visible", async () => {
     const { render } = mounted();
     await render(<Toast testID="toast" message="Сохранено" closeLabel="Закрыть" onClose={noop} />);
 
     const close = document.querySelector('[aria-label="Закрыть"]') as HTMLElement;
     const keyboard = stateValues(close, "focus-visible", "outline-color");
-    expect(keyboard).toContain("var(--c-ring-inverse)");
-    expect(keyboard).not.toContain("var(--c-ring)");
+    // v8: the toast is a surface card in both themes, so the regular ring shows on it.
+    expect(keyboard).toContain("var(--c-ring)");
+    expect(keyboard).not.toContain("var(--c-ring-inverse)");
     expect(stateValues(close, "focus", "outline-color")).toEqual([]);
   });
 });

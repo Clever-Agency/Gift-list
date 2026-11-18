@@ -128,7 +128,14 @@ describe("Button", () => {
 
   it("у каждого варианта есть кнопка с подписью", async () => {
     const { container, render } = mounted();
-    for (const variant of ["primary", "reserve", "secondary", "ghost", "destructive"] as const) {
+    for (const variant of [
+      "primary",
+      "reserve",
+      "secondary",
+      "outline",
+      "ghost",
+      "destructive",
+    ] as const) {
       await render(<Button label={variant} variant={variant} onPress={vi.fn()} />);
       expect(container.querySelector("button")?.textContent).toBe(variant);
     }
@@ -173,7 +180,8 @@ describe("Button", () => {
    */
   const HOVER_VARIANTS = [
     { variant: "primary", token: "primary", hex: "#1E2B69" },
-    { variant: "reserve", token: "accent", hex: "#E5E2F1" },
+    // v8: the reserve CTA is the primary one — same navy and same hover.
+    { variant: "reserve", token: "primary", hex: "#1E2B69" },
     { variant: "destructive", token: "destructive", hex: "#B1352D" },
   ] as const;
 
@@ -200,18 +208,27 @@ describe("Button", () => {
     });
   }
 
-  it("secondary темнит границу, ghost — фон; фон secondary на hover не меняется", async () => {
+  it("secondary — фиолетовая заливка, outline держит рамку, ghost — фон", async () => {
     const { container, render } = mounted();
 
-    await render(<Button label="Отмена" variant="secondary" onPress={vi.fn()} />);
+    await render(<Button label="Загадать" variant="secondary" onPress={vi.fn()} />);
     const secondary = container.querySelector("button") as HTMLElement;
-    expect(background(secondary).base).toBe("var(--c-surface)");
-    expect(background(secondary).hover).toBeUndefined();
-    expect(declarationsFor(secondary, "border-color", true).map((one) => one.value)).toEqual([
+    expect(background(secondary)).toEqual({
+      base: "var(--c-accent)",
+      hover: "var(--c-accent-hover)",
+    });
+    expect(declarationsFor(secondary, "border-color").map((one) => one.value)).toContain(
+      "var(--c-accent-border)",
+    );
+
+    await render(<Button label="Поделиться" variant="outline" onPress={vi.fn()} />);
+    const outline = container.querySelector("button") as HTMLElement;
+    expect(background(outline)).toEqual({ base: "transparent", hover: "var(--c-muted)" });
+    expect(declarationsFor(outline, "border-color", true).map((one) => one.value)).toEqual([
       "var(--c-foreground)",
     ]);
 
-    await render(<Button label="Поделиться" variant="ghost" onPress={vi.fn()} />);
+    await render(<Button label="Отмена" variant="ghost" onPress={vi.fn()} />);
     const ghost = container.querySelector("button") as HTMLElement;
     expect(background(ghost)).toEqual({ base: "transparent", hover: "var(--c-muted)" });
   });
@@ -228,7 +245,7 @@ describe("Button", () => {
    */
   const POINTER_VARIANTS = [
     { variant: "primary", property: "background-color", base: "var(--c-primary)", hover: "var(--c-primary-hover)" },
-    { variant: "reserve", property: "background-color", base: "var(--c-accent)", hover: "var(--c-accent-hover)" },
+    { variant: "reserve", property: "background-color", base: "var(--c-primary)", hover: "var(--c-primary-hover)" },
     {
       variant: "destructive",
       property: "background-color",
@@ -237,6 +254,12 @@ describe("Button", () => {
     },
     {
       variant: "secondary",
+      property: "background-color",
+      base: "var(--c-accent)",
+      hover: "var(--c-accent-hover)",
+    },
+    {
+      variant: "outline",
       property: "border-color",
       base: "var(--c-border-strong)",
       hover: "var(--c-foreground)",
@@ -513,7 +536,10 @@ describe("Button", () => {
     const { container, render } = mounted();
     const expected = {
       primary: "var(--c-primary-foreground)",
-      reserve: "var(--c-accent-foreground)",
+      reserve: "var(--c-primary-foreground)",
+      secondary: "var(--c-accent-foreground)",
+      outline: "var(--c-foreground)",
+      ghost: "var(--c-foreground)",
       destructive: "var(--c-destructive-foreground)",
     } as const;
 

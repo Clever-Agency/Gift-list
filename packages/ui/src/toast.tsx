@@ -1,6 +1,5 @@
 import { View } from "@tamagui/core";
 import { XStack } from "@tamagui/stacks";
-import { focusRingInverse } from "./focus-ring";
 import { layerFade } from "./motion";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
@@ -98,21 +97,24 @@ export function Toast({
         alignItems="center"
         justifyContent="space-between"
         gap="$2"
-        borderRadius="$md"
+        borderRadius="$lg"
+        borderWidth={1}
+        borderColor={error ? "$destructive" : "$border"}
         paddingHorizontal="$card-padding"
         paddingVertical="$2"
-        backgroundColor={error ? "$destructive" : "$foreground"}
+        backgroundColor="$surface"
+        shadowColor="$scrim"
+        shadowOpacity={0.18}
+        shadowRadius={24}
+        shadowOffset={{ width: 0, height: 12 }}
       >
-        <Text
-          kind="label"
-          flexShrink={1}
-          color={error ? "$destructive-foreground" : "$primary-foreground"}
-        >
+        <Text kind="label" flexShrink={1} color={error ? "$destructive" : "$foreground"}>
           {message}
         </Text>
         {action ? (
           <ToastButton
             label={action.label}
+            tone="action"
             onPress={action.onPress}
             onFocus={handleFocus}
             onBlur={handleBlur}
@@ -120,6 +122,7 @@ export function Toast({
         ) : null}
         <ToastButton
           label={closeLabel}
+          tone="close"
           onPress={onClose}
           onFocus={handleFocus}
           onBlur={handleBlur}
@@ -133,12 +136,14 @@ Toast.displayName = "Toast";
 
 type ToastButtonProps = {
   label: string;
+  /** `action` — the undo/retry verb in `primary`; `close` — the quiet «Закрыть». */
+  tone: "action" | "close";
   onPress: () => void;
   onFocus: () => void;
   onBlur: () => void;
 };
 
-function ToastButton({ label, onPress, onFocus, onBlur }: ToastButtonProps) {
+function ToastButton({ label, tone, onPress, onFocus, onBlur }: ToastButtonProps) {
   return (
     <Pressable
       aria-label={label}
@@ -149,11 +154,12 @@ function ToastButton({ label, onPress, onFocus, onBlur }: ToastButtonProps) {
       minWidth="$touch-target"
       alignItems="center"
       justifyContent="center"
-      // `ring-inverse` on the dark and red surfaces (`DESIGN.md` → toast.focus-ring):
-      // the platform pair keeps the web on `:focus-visible` and the phone on `focus`.
-      {...focusRingInverse}
     >
-      <Text kind="button" color="$background" textDecorationLine="underline">
+      <Text
+        kind="button"
+        color={tone === "action" ? "$primary" : "$muted-foreground"}
+        textDecorationLine="underline"
+      >
         {label}
       </Text>
     </Pressable>

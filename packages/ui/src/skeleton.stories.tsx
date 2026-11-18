@@ -16,7 +16,7 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** A block is any size the content needs; the radius is the small one. */
+/** A block is any size the content needs; the radius is the control one (8). */
 export const Block: Story = {};
 
 /** A card-shaped skeleton: title, price and pill lines, the size a card will take. */

@@ -50,7 +50,7 @@ describe("Switch: состояние и доступность", () => {
 
     expect(control(container).getAttribute("aria-checked")).toBe("true");
     expect(getComputedStyle(track(container)).backgroundColor).toBe("#2B3A7A");
-    expect(getComputedStyle(thumb(container)).backgroundColor).toBe("#FFFEFB");
+    expect(getComputedStyle(thumb(container)).backgroundColor).toBe("#FFFFFF");
   });
 
   it("выключенный трек — border-strong", async () => {

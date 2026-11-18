@@ -43,7 +43,7 @@ describe("SSR на сервере Next (без DOM)", () => {
     const css = testConfig.getCSS();
 
     expect(css).toContain("min-height:var(--t-size-control-height)");
-    expect(css).toContain("background-color:var(--c-accent)");
+    expect(css).toContain("background-color:var(--c-primary)");
     expect(css).toContain(":focus-visible");
     expect(css).toContain("border-radius:var(--t-radius-lg)");
   });

@@ -316,3 +316,12 @@ export const giftUpdateSchema = z
 
     return update;
   });
+
+/** Story 5.1 (AD-9): body of `POST /api/v1/gifts/:id/reserve`. */
+export const giftReserveBodySchema = z.strictObject({
+  dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  holderVisibleToOwner: z.boolean(),
+  holderVisibleToOthers: z.boolean(),
+});
+
+export type GiftReserveBody = z.infer<typeof giftReserveBodySchema>;

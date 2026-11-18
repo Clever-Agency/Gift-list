@@ -75,7 +75,9 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
       ? tWishlist("reservedBy", { name: gift.reservedBy.displayName })
       : null;
     const href =
-      gift.quantity === "SINGLE" && gift.status === "OPEN" ? wishlistPath : null;
+      gift.quantity === "SINGLE" && gift.status === "OPEN" && wishlistPath
+        ? `${wishlistPath}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`
+        : null;
 
     return (
       <YStack

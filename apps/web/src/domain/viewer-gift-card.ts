@@ -4,6 +4,7 @@
 
 import { DEFAULT_LOCALE, type GiftCard, type SupportedLocale } from "@gift-list/contracts";
 import { calendarDay } from "./calendar-day";
+import { addCalendarDays, calendarDayInZone } from "./reservation-due";
 import type { OwnerGiftRow } from "./owner-gift-card";
 import { toGiftTags } from "./tag";
 
@@ -11,6 +12,8 @@ import { toGiftTags } from "./tag";
 export type ViewerGiftRow = OwnerGiftRow & {
   reservationBought: boolean;
   holderVisibleToOthers: boolean;
+  reservationDueAt: Date | null;
+  reservationTimeZone: string | null;
 };
 
 /**
@@ -43,6 +46,27 @@ export function toViewerGiftCard(
     reservedBy: reservedBy(row, viewerId),
     reservationLabel: reservationLabel(row),
     ownerAction: null,
+    reservation: holderReservation(row, viewerId),
+  };
+}
+
+function holderReservation(
+  row: ViewerGiftRow,
+  viewerId: string | null,
+): GiftCard["reservation"] {
+  if (row.status !== "RESERVED" || viewerId === null) return undefined;
+  const holder = row.reservedBy;
+  if (holder === null || holder.id !== viewerId) return undefined;
+  if (row.reservationPhase === null || row.reservationDueAt === null) return undefined;
+
+  const timeZone = row.reservationTimeZone ?? "UTC";
+  const dayAfterDue = calendarDayInZone(row.reservationDueAt, timeZone);
+  return {
+    dueAt: addCalendarDays(dayAfterDue, -1),
+    phase: row.reservationPhase,
+    bought: row.reservationBought,
+    holderVisibleToOwner: row.holderVisibleToOwner,
+    holderVisibleToOthers: row.holderVisibleToOthers,
   };
 }
 

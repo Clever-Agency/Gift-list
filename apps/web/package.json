@@ -15,6 +15,7 @@
     "verify:public-404": "node ./scripts/verify-public-404-http.mjs",
     "verify:disposable-pg": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg.config.ts",
     "verify:friendship-concurrency": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg-friendship.config.ts",
+    "verify:reserve-concurrency": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && vitest run --config vitest.pg-reserve.config.ts",
     "verify:friendship-42-http": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/require-disposable-pg.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./scripts/verify-friendship-42-http.mjs"
   },
   "dependencies": {

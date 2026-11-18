@@ -1,8 +1,11 @@
+import { DocsContainer, type DocsContainerProps } from "@storybook/addon-docs/blocks";
 import type { Decorator, Preview } from "@storybook/react-native-web-vite";
-import type { ReactNode } from "react";
+import type { PropsWithChildren, ReactNode } from "react";
+import { useGlobals } from "storybook/preview-api";
+import { create } from "storybook/theming/create";
 import { IntlProvider } from "use-intl";
 import { getMessages } from "@gift-list/contracts";
-import { createGiftListConfig, GiftListProvider, YStack } from "@gift-list/ui";
+import { colors, colorsDark, createGiftListConfig, GiftListProvider, YStack } from "@gift-list/ui";
 
 // One config per bundle, at module scope, exactly as in `apps/mobile/app/_layout.tsx`
 // and `apps/web/src/app/tamagui-registry.tsx`. The families are the ones the app
@@ -74,18 +77,99 @@ const withStorySurface: Decorator = function withStorySurface(Story, context) {
   );
 };
 
-/** The provider and the catalogue every story gets, like the root of each app. */
+/**
+ * The iframe background: a fixed layer under the story, painted with the `$background`
+ * of the active theme. Without it a dark story would still sit on the light page from
+ * `preview-head.html` whenever the story is narrower than the window.
+ */
+function CanvasBackground() {
+  return (
+    <YStack
+      aria-hidden
+      data-testid="canvas-background"
+      position="fixed"
+      top={0}
+      left={0}
+      right={0}
+      bottom={0}
+      backgroundColor="$background"
+      pointerEvents="none"
+      zIndex={-1}
+    />
+  );
+}
+
+CanvasBackground.displayName = "CanvasBackground";
+
+/**
+ * The provider and the catalogue every story gets, like the root of each app.
+ * The toolbar theme is applied here too, so `$` tokens inside the story follow it.
+ */
 const withGiftListProvider: Decorator = function withGiftListProvider(Story, context) {
   // The toolbar switches the v8 theme; the light one is the app default.
   const theme = context.globals.theme === "dark" ? "dark" : "light";
   return (
     <GiftListProvider config={config} theme={theme}>
       <IntlProvider locale="ru" messages={messages}>
+        <CanvasBackground />
         <Story />
       </IntlProvider>
     </GiftListProvider>
   );
 };
+
+/**
+ * The docs theme of each v8 theme (`DESIGN.md` → v8). Docs pages draw their own
+ * chrome, so passing a `ThemeVars` to Storybook's `DocsContainer` is the only way to
+ * paint them with the catalog palette instead of the default light theme.
+ */
+const DOCS_THEMES = {
+  light: create({
+    base: "light",
+    brandTitle: "Gift List · v8",
+    colorPrimary: colors.primary,
+    colorSecondary: colors.primary,
+    appBg: colors.background,
+    appContentBg: colors.surface,
+    appPreviewBg: colors.background,
+    appBorderColor: colors.border,
+    appBorderRadius: 8,
+    textColor: colors.foreground,
+    textInverseColor: colors["primary-foreground"],
+    barBg: colors.background,
+    barTextColor: colors["muted-foreground"],
+  }),
+  dark: create({
+    base: "dark",
+    brandTitle: "Gift List · v8",
+    colorPrimary: colorsDark.primary,
+    colorSecondary: colorsDark.primary,
+    appBg: colorsDark.background,
+    appContentBg: colorsDark.surface,
+    appPreviewBg: colorsDark.background,
+    appBorderColor: colorsDark.border,
+    appBorderRadius: 8,
+    textColor: colorsDark.foreground,
+    textInverseColor: colorsDark["primary-foreground"],
+    barBg: colorsDark.background,
+    barTextColor: colorsDark["muted-foreground"],
+  }),
+} as const;
+
+/** Storybook's docs page in the theme the toolbar picked. */
+function ThemedDocsContainer({ context, children }: PropsWithChildren<DocsContainerProps>) {
+  // `useGlobals` is the same store the toolbar writes to, so a docs page repaints
+  // when the theme changes instead of only on the next navigation.
+  const [globals] = useGlobals();
+  const theme = globals.theme === "dark" ? DOCS_THEMES.dark : DOCS_THEMES.light;
+  return (
+    <DocsContainer context={context} theme={theme}>
+      {children}
+    </DocsContainer>
+  );
+}
+
+ThemedDocsContainer.displayName = "ThemedDocsContainer";
 
 const preview: Preview = {
   // A later entry wraps the earlier ones: `withGiftListProvider` is the outer
@@ -113,6 +197,10 @@ const preview: Preview = {
     // Storybook's own background presets stay off so a story is painted by `$`
     // tokens of the active theme only.
     backgrounds: { disable: true },
+    docs: {
+      // The docs page follows the toolbar theme: same palette, same Lora/Manrope.
+      container: ThemedDocsContainer,
+    },
     // The window widths `DESIGN.md` → Точки перехода reasons about: 360/390/412 are
     // phones, 768 the tablet portrait (medium), 1280 the wide desktop. The built-in
     // Storybook 10 viewport drives real media queries in the iframe, so a preset

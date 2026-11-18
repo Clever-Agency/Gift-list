@@ -1,7 +1,7 @@
 import { DocsContainer, type DocsContainerProps } from "@storybook/addon-docs/blocks";
 import type { Decorator, Preview } from "@storybook/react-native-web-vite";
-import type { PropsWithChildren, ReactNode } from "react";
-import { useGlobals } from "storybook/preview-api";
+import { useEffect, useState, type PropsWithChildren, type ReactNode } from "react";
+import { GLOBALS_UPDATED } from "storybook/internal/core-events";
 import { create } from "storybook/theming/create";
 import { IntlProvider } from "use-intl";
 import { getMessages } from "@gift-list/contracts";
@@ -156,14 +156,48 @@ const DOCS_THEMES = {
   }),
 } as const;
 
+/** The payload of `GLOBALS_UPDATED` at the level this file needs (`theme` is ours). */
+type GlobalsUpdatedPayload = { globals: { theme?: string } };
+
+/**
+ * The theme a docs entry is drawn in: the globals the preview already holds for its
+ * primary story. A docs container is not a decorator or a story function, so it must
+ * not call preview hooks such as `useGlobals` — Storybook throws «preview hooks can
+ * only be called inside decorators and story functions» and the whole page fails.
+ */
+export function docsThemeName(context: DocsContainerProps["context"]): "light" | "dark" {
+  try {
+    const { globals } = context.getStoryContext(context.storyById());
+    return globals.theme === "dark" ? "dark" : "light";
+  } catch {
+    // An MDX-only docs entry has no primary story; it starts light and the channel
+    // subscription below picks the toolbar theme up.
+    return "light";
+  }
+}
+
 /** Storybook's docs page in the theme the toolbar picked. */
 function ThemedDocsContainer({ context, children }: PropsWithChildren<DocsContainerProps>) {
-  // `useGlobals` is the same store the toolbar writes to, so a docs page repaints
-  // when the theme changes instead of only on the next navigation.
-  const [globals] = useGlobals();
-  const theme = globals.theme === "dark" ? DOCS_THEMES.dark : DOCS_THEMES.light;
+  const [themeName, setThemeName] = useState(() => docsThemeName(context));
+
+  // The container is not a decorator, so it watches the preview channel instead of
+  // calling `useGlobals`: the toolbar writes `GLOBALS_UPDATED` and the page repaints
+  // without a navigation.
+  useEffect(
+    function subscribeToGlobals() {
+      function handleGlobalsUpdated({ globals }: GlobalsUpdatedPayload) {
+        setThemeName(globals.theme === "dark" ? "dark" : "light");
+      }
+      context.channel.on(GLOBALS_UPDATED, handleGlobalsUpdated);
+      return function unsubscribeFromGlobals() {
+        context.channel.off(GLOBALS_UPDATED, handleGlobalsUpdated);
+      };
+    },
+    [context],
+  );
+
   return (
-    <DocsContainer context={context} theme={theme}>
+    <DocsContainer context={context} theme={DOCS_THEMES[themeName]}>
       {children}
     </DocsContainer>
   );

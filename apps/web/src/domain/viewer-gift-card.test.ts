@@ -25,6 +25,8 @@ function row(overrides: Partial<ViewerGiftRow> = {}): ViewerGiftRow {
     reservedBy: HOLDER,
     reservationBought: false,
     holderVisibleToOthers: true,
+    reservationDueAt: null,
+    reservationTimeZone: null,
     tags: [],
     ...overrides,
   };
@@ -187,6 +189,46 @@ describe("toViewerGiftCard", () => {
   });
 
   /** AD-27: the label follows the requested locale, not a caption baked into code. */
+  it("adds reservation facts only for the live holder", () => {
+    const dueAt = new Date("2026-12-08T21:00:00.000Z");
+    const holderCard = toViewerGiftCard(
+      row({
+        reservationDueAt: dueAt,
+        reservationTimeZone: "UTC",
+        reservationPhase: "ACTIVE",
+      }),
+      HOLDER_ID,
+    );
+    const otherViewer = toViewerGiftCard(
+      row({
+        reservationDueAt: dueAt,
+        reservationTimeZone: "UTC",
+        holderVisibleToOwner: false,
+        holderVisibleToOthers: false,
+      }),
+      OTHER_ID,
+    );
+
+    expect(holderCard.reservation).toMatchObject({
+      phase: "ACTIVE",
+      bought: false,
+      holderVisibleToOwner: false,
+      holderVisibleToOthers: true,
+    });
+    expect(holderCard.reservation?.dueAt).toBe("2026-12-07");
+
+    const moscow = toViewerGiftCard(
+      row({
+        reservationDueAt: new Date("2026-12-08T21:00:00.000Z"),
+        reservationTimeZone: "Europe/Moscow",
+      }),
+      HOLDER_ID,
+    );
+    expect(moscow.reservation?.dueAt).toBe("2026-12-08");
+    expect(otherViewer.reservation).toBeUndefined();
+    expect(otherViewer.reservedBy).toBeNull();
+  });
+
   it("uses the requested locale for a fixed tag label", () => {
     const futureLocale = "en" as SupportedLocale;
 

@@ -1,4 +1,4 @@
-import { colors, createGiftListConfig, GiftListProvider } from "@gift-list/ui";
+import { createGiftListConfig, GiftListProvider, useThemeColor } from "@gift-list/ui";
 import { Lora_600SemiBold } from "@expo-google-fonts/lora";
 import {
   Manrope_400Regular,
@@ -33,6 +33,18 @@ SplashScreen.preventAutoHideAsync().catch(function ignoreNoSplash() {
   // Web and fast refresh have no native splash to hold.
 });
 
+/**
+ * The route stack: the page background under every screen comes from the active
+ * Tamagui theme (`DESIGN.md` → v8), not from the light palette; outside a provider
+ * the hook falls back to that palette for the first frame.
+ */
+function RootStack() {
+  const background = useThemeColor("background");
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: background } }} />;
+}
+
+RootStack.displayName = "RootStack";
+
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     Lora: Lora_600SemiBold,
@@ -65,12 +77,7 @@ export default function RootLayout() {
         <IntlProvider locale={locale} messages={getMessages(locale)}>
           <AuthProvider>
             <StatusBar style="dark" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: colors.background },
-              }}
-            />
+            <RootStack />
           </AuthProvider>
         </IntlProvider>
       </SafeAreaProvider>

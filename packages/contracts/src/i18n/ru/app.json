@@ -25,13 +25,15 @@
     "toRegister": "Создать аккаунт",
     "toHome": "На главную",
     "forgot": "Забыли пароль",
-    "invalid": "Неверный email или пароль."
+    "invalid": "Неверный email или пароль.",
+    "forReserve": "Чтобы забронировать «{title}», войдите или зарегистрируйтесь."
   },
   "register": {
     "title": "Регистрация",
     "pageTitle": "Регистрация — {brand}",
     "toLogin": "Войти",
-    "toHome": "На главную"
+    "toHome": "На главную",
+    "forReserve": "Чтобы забронировать «{title}», войдите или зарегистрируйтесь."
   },
   "forgot": {
     "title": "Сброс пароля",
@@ -246,8 +248,35 @@
     "tagsMoreLabel": "Ещё теги ({count}): {tags}",
     "toast": {
       "visibility": "Видимость: {value}",
-      "visibilityReservationCancelled": "Видимость: {value}. Бронь снята"
-    }
+      "visibilityReservationCancelled": "Видимость: {value}. Бронь снята",
+      "reserved": "Желание забронировано"
+    },
+    "reserveCta": "Куплю сам",
+    "reserveNoButton": {
+      "UNLIMITED": "Можно дарить без брони",
+      "RESERVED": "Уже забронирован",
+      "CLOSED": "Уже подарено"
+    },
+    "reserveConfirm": {
+      "title": "Забронировать «{title}»?",
+      "dueLabel": "Подарю до, {date}",
+      "dueHint": "Выбрать дату",
+      "dueCaption": "Не позже {max}",
+      "showOwner": "Показать владельцу, что это я",
+      "showOthers": "Показать другим, кто берёт",
+      "boughtHint": "Если купите заранее, отметьте «Купил» — бронь не снимется сама",
+      "confirm": "Подтвердить",
+      "cancel": "Отмена"
+    },
+    "detail": {
+      "pageTitle": "Желание — {brand}",
+      "loading": "Загружаем желание"
+    },
+    "loadError": "Не получилось загрузить. Проверьте сеть.",
+    "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз.",
+    "retry": "Повторить",
+    "giftNotFound": "Желание не найдено.",
+    "backToList": "К моему вишлисту"
   },
   "toast": {
     "close": "Закрыть"

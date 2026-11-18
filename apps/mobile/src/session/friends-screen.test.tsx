@@ -342,7 +342,11 @@ describe("друзья: вкладки и входящие", () => {
     expect(testId("friends-tabs")?.textContent).toContain("Друзья");
     expect(testId("friends-tabs")?.textContent).toContain("Подписки");
     expect(control("Запросы, 2")).not.toBeNull();
-    expect(testId("friends-row-fedor")?.textContent).toBe("Фёдор@fedor");
+    // v8 row: the decorative avatar adds the initials, then the name and the nick.
+    const row = testId("friends-row-fedor")?.textContent ?? "";
+    expect(row).toBe("ФФёдор@fedor");
+    // No chip in the friends list: only «important» things carry one.
+    expect(testId("friends-row-fedor")?.textContent).not.toContain("Друзья");
   });
 
   it("«Запросы» — входящие сверху, исходящие ниже", async () => {
@@ -544,6 +548,15 @@ describe("друзья: запросы", () => {
     await mount();
     await openTab("Запросы, 1");
 
+    // v8: the answer is an icon button — a 32 px filled circle inside the 44 px target.
+    const accept = control("Принять: Глеб");
+    const visual = accept.querySelector<HTMLElement>("[data-testid='icon-button-visual']");
+    expect(visual).not.toBeNull();
+    expect(getComputedStyle(visual as HTMLElement).width).toBe("32px");
+    expect(getComputedStyle(visual as HTMLElement).backgroundColor).toBe("#2B3A7A");
+    // The decline is the quiet circle next to it, still with its own name.
+    expect(control("Отклонить: Глеб").getAttribute("aria-label")).toBe("Отклонить: Глеб");
+
     await press(control("Принять: Глеб"));
     await settle(0);
 
@@ -591,7 +604,7 @@ describe("друзья: запросы", () => {
   });
 });
 
-describe("друзья: меню ⋯", () => {
+describe("друзья: меню ⋮", () => {
   it("в списке друзей destructive «Удалить из друзей», затем «Заблокировать»", async () => {
     signedIn();
     await mount();
@@ -666,7 +679,7 @@ describe("друзья: удаление из друзей (Story 4.4)", () => {
     return nodes[0];
   }
 
-  /** The ⋯ menu of the friends tab, then the destructive item and its confirm. */
+  /** The ⋮ menu of the friends tab, then the destructive item and its confirm. */
   async function askRemoveFriend(name: string) {
     await openMenu(name);
     await press(openedMenuItem("Удалить из друзей"));
@@ -802,7 +815,7 @@ describe("друзья: блокировка (Story 4.5)", () => {
     return target as HTMLElement;
   }
 
-  /** The friends row's ⋯, then its last item and the confirm it opens. */
+  /** The friends row's ⋮, then its last item and the confirm it opens. */
   async function askBlock(name: string) {
     await openMenu(name);
     await press(menuItem("Заблокировать"));

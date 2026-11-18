@@ -28,7 +28,8 @@
     "reason": {
       "EMAIL_TAKEN": "Этот email уже зарегистрирован.",
       "NICK_TAKEN": "Этот ник уже занят.",
-      "DUE_OUT_OF_RANGE": "Дата вне допустимого диапазона.",
+      "DUE_OUT_OF_RANGE": "Выберите дату не позже {max}.",
+      "RESERVATION_TAKEN": "Кто-то только что забрал этот подарок.",
       "DATES_LIMIT": "Достигнут лимит дат.",
       "RESET_LINK_STALE": "Ссылка устарела. Запросите новую.",
       "INVITE_COOLDOWN": "Можно снова через {hours} ч",

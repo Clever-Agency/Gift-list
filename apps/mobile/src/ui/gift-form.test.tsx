@@ -1577,7 +1577,7 @@ describe("GiftForm: первый невалидный (UI5)", () => {
     expect(document.activeElement).toBe(title);
     expect(title.getAttribute("aria-invalid")).toBe("true");
     expect(fieldText(form.field.title)).toContain(form.error.titleRequired);
-    expect(getComputedStyle(title).borderColor).toBe("#B42318");
+    expect(getComputedStyle(title).borderColor).toBe("#C4473D");
     expect(scrollIntoView).toHaveBeenCalledWith({
       block: "center",
       inline: "nearest",

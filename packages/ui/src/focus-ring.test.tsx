@@ -15,7 +15,7 @@ const mounted = createMount();
  * click focuses a surface too, and a ring after every click is what DESIGN.md
  * forbids. A real Tab press in a browser is not exercised here.
  */
-const RING = ["outline-color:var(--c-ring)", "outline-style:solid", "outline-width:2px"];
+const RING = ["outline-color:var(--ring)", "outline-style:solid", "outline-width:2px"];
 
 /** The `outline*` declarations `element` carries in `state`, as `property:value`. */
 function outline(element: Element, state: string): string[] {

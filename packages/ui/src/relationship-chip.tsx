@@ -7,8 +7,10 @@ const Chip = styled(View, {
   alignSelf: "flex-start",
   minHeight: "$pill-height",
   justifyContent: "center",
-  borderRadius: "$full",
-  // `DESIGN.md` → Мелкие элементы: отношение — как StatusPill, фон `muted`.
+  // v8: chips are rounded rectangles (8), not pills; only avatars, the switch and
+  // the slider thumb are round (`DESIGN.md` → Shapes).
+  borderRadius: "$md",
+  // `DESIGN.md` → Мелкие элементы: отношение — нейтральный чип, фон `muted`.
   paddingHorizontal: spacing["icon-inline"] / 2,
   backgroundColor: "$muted",
 });

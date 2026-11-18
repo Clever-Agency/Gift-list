@@ -19,6 +19,18 @@
 - Node.js 24.22.1+ (линия 24.x, как на Vercel)
 - PostgreSQL 16+ (локально или managed, например Neon)
 
+### uv
+
+`uv` — быстрый менеджер пакетов и окружений Python ([документация Astral](https://docs.astral.sh/uv/)). Приложение Gift List на Python не зависит: сервер на Next.js, клиент на Expo. `uv` нужен только скриптам и воркфлоу BMAD — навыки вызывают `uv run` для `_bmad/scripts/` и скриптов в `.claude/skills/`.
+
+Локально:
+
+- macOS и Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- либо через пакетный менеджер: `brew install uv` (macOS), `winget install --id=astral-sh.uv -e` (Windows)
+
+Облачные агенты Cursor ставят `uv` сами. `.cursor/environment.json` запускает `.cursor/install.sh`: тот же `npm ci`, что в CI (Node.js 24), и установка `uv`. Скрипт делает симлинки в `/usr/local/bin`, потому что неинтерактивный login-shell не видит `~/.local/bin`. Если `sudo` нет, скрипт не падает и добавляет `~/.local/bin` в PATH login-shell.
+
 ### Установка
 
 ```bash

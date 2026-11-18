@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spacing } from "@gift-list/ui";
-import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
+import { cardGrid, cardGridForContent, GRID_COLUMNS, pageGutter } from "@/ui/card-grid";
 
 const gap = spacing["grid-gap"];
 
@@ -8,6 +8,11 @@ const gap = spacing["grid-gap"];
 function contentWidth(windowWidth: number, insets: { left?: number; right?: number } = {}) {
   const available = windowWidth - (insets.left ?? 0) - (insets.right ?? 0);
   return Math.max(0, Math.min(available, spacing["max-wide"]) - pageGutter(windowWidth) * 2);
+}
+
+/** Two cards in the content area the v8 grid gives them. */
+function twoColumns(content: number): number {
+  return (content - gap) / 2;
 }
 
 describe("pageGutter", () => {
@@ -19,55 +24,52 @@ describe("pageGutter", () => {
 });
 
 describe("cardGrid", () => {
-  it("keeps one column on a phone", () => {
-    expect(cardGrid(375)).toEqual({ columns: 1, cardWidth: 343 });
+  it("keeps two columns on a phone", () => {
+    expect(cardGrid(375)).toEqual({ columns: 2, cardWidth: twoColumns(343) });
   });
 
-  it("keeps one column at the 600 breakpoint", () => {
-    expect(cardGrid(600).columns).toBe(1);
+  it("switches to three columns at the 1024 breakpoint", () => {
+    // 1023 − 2·24 = 975 px of content; 1024 − 2·24 = 976 px.
+    expect(cardGrid(1023).columns).toBe(2);
+    expect(cardGrid(1024).columns).toBe(3);
+    expect(cardGrid(600).columns).toBe(2);
   });
 
-  it("fits two columns from 640", () => {
-    expect(cardGrid(640)).toEqual({ columns: 2, cardWidth: 288 });
-  });
-
-  it("stops at three columns and at max-wide", () => {
+  it("stays at three columns and at max-wide", () => {
     expect(cardGrid(1440)).toEqual({ columns: 3, cardWidth: (1120 - 48 - 32) / 3 });
   });
 
   /**
-   * Review m7: the old helper floored the content area at `card-min`, so a 300 px
-   * window drew a 280 px card inside a 268 px content area and overflowed.
+   * Review m7: the card width never goes negative. A very narrow area gets two cards
+   * as wide as it allows instead of a `card-min` card that overflows.
    */
-  it("narrows the single card on a very narrow window instead of overflowing", () => {
-    expect(cardGrid(300)).toEqual({ columns: 1, cardWidth: 268 });
+  it("narrows the two cards on a very narrow window instead of overflowing", () => {
+    expect(cardGrid(300)).toEqual({ columns: 2, cardWidth: twoColumns(268) });
   });
 
-  it("fits a 320 px screen in one or two columns that stay inside the content area", () => {
+  it("fits a 320 px screen in two columns that stay inside the content area", () => {
     const grid = cardGrid(320);
-    expect(grid.columns).toBeGreaterThanOrEqual(1);
-    expect(grid.columns).toBeLessThanOrEqual(2);
+    expect(grid.columns).toBe(2);
     expect(grid.cardWidth * grid.columns + gap * (grid.columns - 1)).toBeLessThanOrEqual(
       contentWidth(320),
     );
   });
 
   it("takes the safe-area insets out of the available width", () => {
-    const notched = cardGrid(640, { left: 44, right: 44 });
-    // The notch pulls the content area under two cards, so the second column goes.
-    expect(notched.columns).toBe(1);
-    expect(notched.cardWidth).toBe(contentWidth(640, { left: 44, right: 44 }));
-    expect(notched.cardWidth).toBeLessThan(contentWidth(640));
-    // Where the column count holds, the cards themselves get narrower.
-    // From `max-wide` the insets stop mattering once the window is wider than the cap
-    // plus the insets, so 1150 is still inside the range where they do.
-    expect(cardGrid(1150, { left: 44, right: 44 }).cardWidth).toBeLessThan(
-      cardGrid(1150).cardWidth,
+    const notched = cardGrid(1200, { left: 44, right: 44 });
+    // The notch narrows the column (1112 px, below the max-wide cap), so the cards get
+    // narrower; the 3-column count holds at 1064 px of content.
+    expect(notched.columns).toBe(3);
+    expect(notched.cardWidth).toBeLessThan(cardGrid(1200).cardWidth);
+    // A notch on a tablet keeps the two columns but narrows them.
+    expect(cardGrid(768, { left: 44, right: 44 }).columns).toBe(2);
+    expect(cardGrid(768, { left: 44, right: 44 }).cardWidth).toBeLessThan(
+      cardGrid(768).cardWidth,
     );
   });
 
   it("never returns a negative card width, even when insets exceed the window", () => {
-    expect(cardGrid(320, { left: 200, right: 200 })).toEqual({ columns: 1, cardWidth: 0 });
+    expect(cardGrid(320, { left: 200, right: 200 })).toEqual({ columns: 2, cardWidth: 0 });
   });
 
   it("keeps every column count inside the content area across widths and insets", () => {
@@ -81,14 +83,18 @@ describe("cardGrid", () => {
       for (const inset of insets) {
         const grid = cardGrid(windowWidth, inset);
         const content = contentWidth(windowWidth, inset);
-        expect(grid.columns).toBeGreaterThanOrEqual(1);
-        expect(grid.columns).toBeLessThanOrEqual(3);
+        expect(grid.columns).toBeGreaterThanOrEqual(GRID_COLUMNS.compact);
+        expect(grid.columns).toBeLessThanOrEqual(GRID_COLUMNS.wide);
         expect(grid.cardWidth).toBeGreaterThanOrEqual(0);
         expect(
           grid.cardWidth * grid.columns + gap * (grid.columns - 1),
         ).toBeLessThanOrEqual(content + 1e-9);
-        // Every card but the one-column case still honors the design minimum.
-        if (grid.columns > 1) expect(grid.cardWidth).toBeGreaterThanOrEqual(spacing["card-min"]);
+        // The third column appears exactly from the content width of an `expanded` window.
+        expect(grid.columns).toBe(
+          content >= spacing["bp-expanded"] - spacing["page-gutter-lg"] * 2
+            ? GRID_COLUMNS.wide
+            : GRID_COLUMNS.compact,
+        );
       }
     }
   });
@@ -99,19 +105,23 @@ describe("cardGrid", () => {
  * from the window. The boundaries are the ones the coordinator measured in a browser:
  * a 600 px window with a classic ~15 px scrollbar leaves a 585 px column, so the cards
  * get 585 − 2·24 = 537 px; the same window without a scrollbar leaves 552 px.
+ *
+ * v8: the column count no longer follows `card-min`; the content area only decides
+ * between two and three columns (`GRID_COLUMNS`).
  */
 describe("cardGridForContent", () => {
+  const WIDE = spacing["bp-expanded"] - spacing["page-gutter-lg"] * 2;
+
   it.each([
-    // Content width → what the cards get from it (gap 16, card-min 280).
-    { content: 328, columns: 1 }, // 360 window, 16 px gutter
-    { content: 537, columns: 1 }, // 600 window with a scrollbar: 585 − 2·24
-    { content: 552, columns: 1 }, // 600 window, no scrollbar: 600 − 2·24
-    { content: 575, columns: 1 }, // one px under two cards + a gap
-    { content: 576, columns: 2 }, // two cards at `card-min` and one gap
-    { content: 976, columns: 3 }, // 1024 window − 2·24
+    // Content width → what the cards get from it (gap 16).
+    { content: 328, columns: 2 }, // 360 window, 16 px gutter
+    { content: 537, columns: 2 }, // 600 window with a scrollbar: 585 − 2·24
+    { content: 552, columns: 2 }, // 600 window, no scrollbar
+    { content: WIDE - 1, columns: 2 }, // 975: one px under the third column
+    { content: WIDE, columns: 3 }, // 976: the content area of an expanded window
     { content: 1072, columns: 3 }, // 1280 window capped at max-wide − 2·24
   ])(
-    "$content px: $columns колонка(и), ряд не шире области контента",
+    "$content px: $columns колонки, ряд не шире области контента",
     ({ content, columns }) => {
       const grid = cardGridForContent(content);
 
@@ -120,15 +130,13 @@ describe("cardGridForContent", () => {
       expect(grid.cardWidth * grid.columns + gap * (grid.columns - 1)).toBeLessThanOrEqual(
         content + 1e-9,
       );
-      // Every card but the one-column case still honors the design minimum.
-      if (columns > 1) expect(grid.cardWidth).toBeGreaterThanOrEqual(spacing["card-min"]);
     },
   );
 
-  it("narrows the single card instead of overflowing when the area is tiny", () => {
-    expect(cardGridForContent(200)).toEqual({ columns: 1, cardWidth: 200 });
-    expect(cardGridForContent(0)).toEqual({ columns: 1, cardWidth: 0 });
-    expect(cardGridForContent(-10)).toEqual({ columns: 1, cardWidth: 0 });
+  it("narrows the two cards instead of overflowing when the area is tiny", () => {
+    expect(cardGridForContent(200)).toEqual({ columns: 2, cardWidth: twoColumns(200) });
+    expect(cardGridForContent(0)).toEqual({ columns: 2, cardWidth: 0 });
+    expect(cardGridForContent(-10)).toEqual({ columns: 2, cardWidth: 0 });
   });
 
   /**
@@ -146,4 +154,3 @@ describe("cardGridForContent", () => {
     }
   });
 });
-

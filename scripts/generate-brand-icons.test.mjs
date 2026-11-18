@@ -129,8 +129,8 @@ describe("generate-brand-icons", () => {
   it("пишет manifest с именем, цветами и иконками", () => {
     const manifest = JSON.parse(readFileSync(path.join(generatedDir, "site.webmanifest"), "utf8"));
     assert.equal(manifest.name, PRODUCT_NAME);
-    assert.equal(manifest.theme_color, "#F4F1EA");
-    assert.equal(manifest.background_color, "#F4F1EA");
+    assert.equal(manifest.theme_color, "#F3F1EC");
+    assert.equal(manifest.background_color, "#F3F1EC");
     assert.deepEqual(
       manifest.icons.map((icon) => [icon.src, icon.sizes, icon.purpose]),
       [
@@ -175,7 +175,7 @@ describe("generate-brand-icons", () => {
       '<link rel="icon" type="image/svg+xml" href="/favicon.svg" />',
       '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />',
       '<link rel="manifest" href="/site.webmanifest" />',
-      '<meta name="theme-color" content="#F4F1EA" />',
+      '<meta name="theme-color" content="#F3F1EC" />',
     ]) {
       assert.ok(html.includes(link), link);
     }

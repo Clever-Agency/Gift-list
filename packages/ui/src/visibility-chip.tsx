@@ -2,6 +2,7 @@ import { View, styled } from "@tamagui/core";
 import { forwardRef, type ComponentRef, type ReactNode } from "react";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
+import { useThemeColor } from "./theme-color";
 import { colors, spacing } from "./tokens";
 
 const Chip = styled(View, {
@@ -14,7 +15,8 @@ const Chip = styled(View, {
   minHeight: "$chip-height",
   borderWidth: 1,
   borderColor: "$border-strong",
-  borderRadius: "$sm",
+  // v8 chips carry the control radius (8), not the small badge one.
+  borderRadius: "$md",
   paddingHorizontal: "$2",
   variants: {
     tone: {
@@ -27,12 +29,24 @@ const Chip = styled(View, {
 
 export type VisibilityTone = "public" | "friends" | "secret";
 
-/** The text/icon colour of each tone (`DESIGN.md` → components `visibility-chip-*`). */
+/**
+ * The text/icon colour of each tone (`DESIGN.md` → components `visibility-chip-*`),
+ * the light palette. For an icon drawn outside Tamagui (`tintColor`, an SVG
+ * `stroke`) take `useVisibilityChipColors` instead: it follows the active theme.
+ */
 export const visibilityChipColors = {
   public: colors.primary,
   friends: colors.foreground,
   secret: colors["muted-foreground"],
 } as const satisfies Record<VisibilityTone, string>;
+
+/** The same three colours from the active theme (v8: light or dark). */
+export function useVisibilityChipColors(): Record<VisibilityTone, string> {
+  const primary = useThemeColor("primary");
+  const foreground = useThemeColor("foreground");
+  const muted = useThemeColor("muted-foreground");
+  return { public: primary, friends: foreground, secret: muted };
+}
 
 const TEXT_TONES = {
   public: "primary",

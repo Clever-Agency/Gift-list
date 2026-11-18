@@ -7,7 +7,6 @@ import {
   EmptyState,
   Heading,
   LinkText,
-  Screen,
   StatusPill,
   TagChipList,
   Text,
@@ -15,7 +14,7 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { PublicPageFooter } from "@/components/public-page-footer";
+import { PublicPageFrame } from "@/components/public-page-frame";
 import type { LinkView } from "./link-page";
 
 export type PublicWishlistData = Extract<LinkView, { kind: "gifts" }>;
@@ -76,7 +75,9 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
       ? tWishlist("reservedBy", { name: gift.reservedBy.displayName })
       : null;
     const href =
-      gift.quantity === "SINGLE" && gift.status === "OPEN" ? wishlistPath : null;
+      gift.quantity === "SINGLE" && gift.status === "OPEN" && wishlistPath
+        ? `${wishlistPath}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`
+        : null;
 
     return (
       <YStack
@@ -124,28 +125,25 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
   }
 
   return (
-    <Screen>
-      <YStack flexGrow={1} role="main">
-        <Column size="wide" flexGrow={1} paddingVertical="$section-gap" gap="$section-gap">
-          <YStack gap="$1">
-            <Heading level={1} kind="display-sm">
-              {view.owner.displayName}
-            </Heading>
-            <Text kind="caption" tone="muted">
-              {t("nick", { nick: view.owner.nick })}
-            </Text>
-          </YStack>
-          {view.gifts.length === 0 ? (
-            <EmptyState title={t("emptyTitle")} />
-          ) : (
-            <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
-              {view.gifts.map(renderGift)}
-            </XStack>
-          )}
-        </Column>
-      </YStack>
-      <PublicPageFooter locale={locale} />
-    </Screen>
+    <PublicPageFrame locale={locale}>
+      <Column size="wide" flexGrow={1} paddingVertical="$section-gap" gap="$section-gap">
+        <YStack gap="$1">
+          <Heading level={1} kind="display-sm">
+            {view.owner.displayName}
+          </Heading>
+          <Text kind="caption" tone="muted">
+            {t("nick", { nick: view.owner.nick })}
+          </Text>
+        </YStack>
+        {view.gifts.length === 0 ? (
+          <EmptyState title={t("emptyTitle")} />
+        ) : (
+          <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
+            {view.gifts.map(renderGift)}
+          </XStack>
+        )}
+      </Column>
+    </PublicPageFrame>
   );
 }
 

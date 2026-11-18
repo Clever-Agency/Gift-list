@@ -1,9 +1,12 @@
 import type { CircleCard, Me } from "@gift-list/contracts";
 import {
   Button,
+  Check,
+  Close,
   Column,
   EmptyState,
   Heading,
+  IconButton,
   OverflowMenu,
   PageContainer,
   PageScroll,
@@ -20,6 +23,7 @@ import {
   XStack,
   YStack,
   restoreFocus,
+  useThemeColor,
   type FocusTarget,
   type OverflowMenuItem,
 } from "@gift-list/ui";
@@ -93,7 +97,7 @@ type InvitesState =
 
 /**
  * Story 4.5: the person a block confirm would take away and the rows around them
- * in the list the press came from, so focus lands on the neighbour's ⋯.
+ * in the list the press came from, so focus lands on the neighbour's ⋮.
  */
 type BlockTarget = { card: CircleCard; rows: readonly CircleCard[] };
 
@@ -194,7 +198,7 @@ function FriendsContent({
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
   const [blockBusy, setBlockBusy] = useState(false);
 
-  // Focus: the ⋯ of each row, so an action can put focus back; the page title is
+  // Focus: the ⋮ of each row, so an action can put focus back; the page title is
   // the last resort of «Куда уходит фокус».
   const menuNodes = useRef(new Map<string, FocusTarget | null>());
   const headingNode = useRef<FocusTarget | null>(null);
@@ -577,7 +581,7 @@ function FriendsContent({
     void loadMoreInvites();
   }
 
-  /** The neighbour's ⋯ gets focus after a row disappears, else the page title. */
+  /** The neighbour's ⋮ gets focus after a row disappears, else the page title. */
   function focusAfterRemoval(items: readonly CircleCard[], nick: string) {
     const next = focusNeighbour(
       items.map((item) => item.nick),
@@ -588,7 +592,7 @@ function FriendsContent({
     }, 0);
   }
 
-  /** A row that stays puts focus back on its own ⋯. */
+  /** A row that stays puts focus back on its own ⋮. */
   function focusSameRow(nick: string) {
     setTimeout(function moveFocus() {
       restoreFocus(menuNodes.current.get(nick));
@@ -748,7 +752,7 @@ function FriendsContent({
     return state.status === "ready" ? state.items : [];
   }
 
-  /** The ⋯ item of every person row: «Заблокировать» last, after the divider. */
+  /** The ⋮ item of every person row: «Заблокировать» last, after the divider. */
   function blockItem(card: CircleCard, rows: readonly CircleCard[]): OverflowMenuItem {
     return {
       key: "block",
@@ -1002,7 +1006,7 @@ function FriendsContent({
   }
 
   /**
-   * The ⋯ of «Друзья» (`EXPERIENCE.md` → Отношение → статус и меню): «Открыть
+   * The ⋮ of «Друзья» (`EXPERIENCE.md` → Отношение → статус и меню): «Открыть
    * профиль», then the destructive «Удалить из друзей» and «Заблокировать» with
    * their confirms.
    */
@@ -1022,7 +1026,7 @@ function FriendsContent({
     ];
   }
 
-  /** The ⋯ of «Я подписан»: the table minus «Удалить из друзей». */
+  /** The ⋮ of «Я подписан»: the table minus «Удалить из друзей». */
   function subscribedItems(card: CircleCard): OverflowMenuItem[] {
     const items = [openProfileItem(card)];
     if (card.relationship === "NONE") {
@@ -1045,7 +1049,7 @@ function FriendsContent({
     return items;
   }
 
-  /** The ⋯ of «Мои подписчики»: the subscription back and the removal with confirm. */
+  /** The ⋮ of «Мои подписчики»: the subscription back and the removal with confirm. */
   function subscriberItems(card: CircleCard): OverflowMenuItem[] {
     const items = [openProfileItem(card)];
     if (card.relationship === "NONE") {
@@ -1417,14 +1421,15 @@ function FriendsPanel({
         )
       ) : (
         <>
-          <YStack role="list" gap="$2">
-            {list.items.map(function renderFriend(card) {
+          <YStack role="list">
+            {list.items.map(function renderFriend(card, index) {
               return (
                 <PersonItem
                   key={card.nick}
                   card={card}
                   menu={menuFor(card)}
                   onMenuNode={onMenuNode}
+                  divider={index > 0}
                 />
               );
             })}
@@ -1514,8 +1519,8 @@ function SubscriptionsPanel({
         />
       ) : (
         <>
-          <YStack role="list" gap="$2">
-            {state.items.map(function renderSubscriber(card) {
+          <YStack role="list">
+            {state.items.map(function renderSubscriber(card, index) {
               if (view === "subscribed") {
                 return (
                   <PersonItem
@@ -1523,6 +1528,7 @@ function SubscriptionsPanel({
                     card={card}
                     menu={subscribedMenuFor(card)}
                     onMenuNode={onMenuNode}
+                    divider={index > 0}
                   />
                 );
               }
@@ -1536,6 +1542,7 @@ function SubscriptionsPanel({
                   chip={chip}
                   menu={subscriberMenuFor(card)}
                   onMenuNode={onMenuNode}
+                  divider={index > 0}
                 />
               );
             })}
@@ -1575,22 +1582,32 @@ function RequestsPanel({
 }: RequestsPanelProps) {
   const friends = useTranslations("app.friends");
   const profile = useTranslations("app.profile");
+  // The icons take plain colours (React Native has no `currentColor`): the filled
+  // accept takes the primary text, the quiet decline the foreground.
+  const acceptInk = useThemeColor("primary-foreground");
+  const declineInk = useThemeColor("foreground");
 
   /** The whole half-pair as one list: the focus rule walks it in reading order. */
   function allRows(): CircleCard[] {
     return invites.status === "ready" ? [...invites.incoming, ...invites.outgoing] : [];
   }
 
-  function incomingRow(card: CircleCard) {
+  function incomingRow(card: CircleCard, divider: boolean) {
     function blockThisRow() {
       onBlock(card, allRows());
     }
 
     return (
-      <YStack role="listitem" key={card.nick} gap="$2">
+      <YStack
+        role="listitem"
+        borderTopWidth={divider ? 1 : 0}
+        borderColor="$border"
+        paddingVertical="$1"
+      >
         <PersonRow
           displayName={card.displayName}
           nick={card.nick}
+          variant="row"
           pressLabel={friends("openProfileChipLabel", {
             name: card.displayName,
             nick: card.nick,
@@ -1603,28 +1620,33 @@ function RequestsPanel({
             />
           }
           actions={
-            <XStack gap="$2" flexWrap="wrap">
-              <Button
-                ref={function setActionNode(node) {
-                  onRowNode(card.nick, node);
-                }}
-                label={friends("actions.accept")}
-                ariaLabel={`${friends("actions.accept")}: ${card.displayName}`}
-                busy={pendingNick === card.nick}
-                onPress={function accept() {
-                  onAccept(card);
-                }}
-                testID={`friends-accept-${card.nick}`}
-              />
-              <Button
-                label={friends("actions.reject")}
-                ariaLabel={`${friends("actions.reject")}: ${card.displayName}`}
-                variant="ghost"
-                busy={pendingNick === card.nick}
+            <XStack gap="$2" alignItems="center">
+              {/* v8: the answer to a request is a 32 px circle in a 44 px target. */}
+              <IconButton
+                size="sm"
+                shape="round"
+                label={`${friends("actions.reject")}: ${card.displayName}`}
+                icon={<Close size={16} color={declineInk} />}
+                disabled={pendingNick === card.nick}
                 onPress={function reject() {
                   onReject(card);
                 }}
                 testID={`friends-reject-${card.nick}`}
+              />
+              <IconButton
+                ref={function setActionNode(node) {
+                  onRowNode(card.nick, node);
+                }}
+                size="sm"
+                shape="round"
+                variant="primary"
+                label={`${friends("actions.accept")}: ${card.displayName}`}
+                icon={<Check size={16} color={acceptInk} />}
+                disabled={pendingNick === card.nick}
+                onPress={function accept() {
+                  onAccept(card);
+                }}
+                testID={`friends-accept-${card.nick}`}
               />
               <Button
                 label={friends("menu.block")}
@@ -1641,16 +1663,22 @@ function RequestsPanel({
     );
   }
 
-  function outgoingRow(card: CircleCard) {
+  function outgoingRow(card: CircleCard, divider: boolean) {
     function blockThisRow() {
       onBlock(card, allRows());
     }
 
     return (
-      <YStack role="listitem" key={card.nick} gap="$2">
+      <YStack
+        role="listitem"
+        borderTopWidth={divider ? 1 : 0}
+        borderColor="$border"
+        paddingVertical="$1"
+      >
         <PersonRow
           displayName={card.displayName}
           nick={card.nick}
+          variant="row"
           pressLabel={friends("openProfileChipLabel", {
             name: card.displayName,
             nick: card.nick,
@@ -1658,7 +1686,7 @@ function RequestsPanel({
           })}
           chip={<RelationshipChip label={profile("relationship.chips.OUTGOING_PENDING")} />}
           actions={
-            <XStack gap="$2" flexWrap="wrap">
+            <XStack gap="$2" alignItems="center">
               <Button
                 ref={function setActionNode(node) {
                   onRowNode(card.nick, node);
@@ -1705,8 +1733,10 @@ function RequestsPanel({
               <Heading level={2} kind="heading">
                 {friends("requests.incoming")}
               </Heading>
-              <YStack role="list" gap="$2">
-                {invites.incoming.map(incomingRow)}
+              <YStack role="list">
+                {invites.incoming.map(function renderIncoming(card, index) {
+                  return incomingRow(card, index > 0);
+                })}
               </YStack>
             </YStack>
           ) : null}
@@ -1715,8 +1745,10 @@ function RequestsPanel({
               <Heading level={2} kind="heading">
                 {friends("requests.outgoing")}
               </Heading>
-              <YStack role="list" gap="$2">
-                {invites.outgoing.map(outgoingRow)}
+              <YStack role="list">
+                {invites.outgoing.map(function renderOutgoing(card, index) {
+                  return outgoingRow(card, index > 0);
+                })}
               </YStack>
             </YStack>
           ) : null}
@@ -1743,19 +1775,21 @@ type PersonItemProps = {
   card: CircleCard;
   /** The relation or subscription chip, already translated; `undefined` hides it. */
   chip?: string;
-  /** The ⋯ actions of the row; `undefined` renders the row without a menu. */
+  /** The ⋮ actions of the row; `undefined` renders the row without a menu. */
   menu?: OverflowMenuItem[];
-  /** Stores the ⋯ trigger of this row, so an action can put focus back on it. */
+  /** Stores the ⋮ trigger of this row, so an action can put focus back on it. */
   onMenuNode: (nick: string, node: FocusTarget | null) => void;
+  /** v8 list: a hairline above this row (every row but the first). */
+  divider?: boolean;
 };
 
 /**
- * `DESIGN.md` → PersonRow in a circle list: the name, `@ник`, one optional chip
- * and the ⋯ menu beside the profile link. The chip is part of the paragraph the
- * reader announces (`EXPERIENCE.md` → подпись строки); ⋯ is a sibling of the
- * link, never its child.
+ * `DESIGN.md` → PersonRow in a circle list: the avatar, the name, `@ник`, one
+ * optional chip and the ⋮ menu beside the profile link. The chip is part of the
+ * paragraph the reader announces (`EXPERIENCE.md` → подпись строки); ⋮ is a sibling
+ * of the link, never its child. v8 draws the row as plain list content with dividers.
  */
-function PersonItem({ card, chip, menu, onMenuNode }: PersonItemProps) {
+function PersonItem({ card, chip, menu, onMenuNode, divider = false }: PersonItemProps) {
   const friends = useTranslations("app.friends");
   const route = profileRoute(card.nick);
   const pressLabel =
@@ -1767,6 +1801,7 @@ function PersonItem({ card, chip, menu, onMenuNode }: PersonItemProps) {
     <PersonRow
       displayName={card.displayName}
       nick={card.nick}
+      variant="row"
       pressLabel={pressLabel}
       chip={chip === undefined ? undefined : <RelationshipChip label={chip} />}
       actions={
@@ -1787,7 +1822,12 @@ function PersonItem({ card, chip, menu, onMenuNode }: PersonItemProps) {
   );
 
   return (
-    <YStack role="listitem" gap="$2">
+    <YStack
+      role="listitem"
+      borderTopWidth={divider ? 1 : 0}
+      borderColor="$border"
+      paddingVertical="$1"
+    >
       {route === null ? (
         row
       ) : (

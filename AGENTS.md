@@ -60,6 +60,10 @@
 
 <!-- /bmad:context -->
 
+## uv для воркфлоу BMAD
+
+`uv` — быстрый менеджер пакетов и окружений Python. Он нужен только скриптам и воркфлоу BMAD (`uv run` для `_bmad/scripts/` и скриптов навыков). Приложение на Python не зависит. Локальная установка (Windows, macOS, Linux) — в README, раздел «uv». Облачные агенты получают `uv` через `.cursor/environment.json`: `install` вызывает `.cursor/install.sh` (`npm ci` и `uv` в `/usr/local/bin`).
+
 ## Code style: named functions
 
 - **Компоненты React — только именованные функции.** `export function WishCard() {}`, `export default function Screen() {}`. Анонимные компоненты запрещены: никаких `const X = () => <…/>`, `export default () => <…/>`, `memo(() => …)`, `forwardRef((props, ref) => …)` — передавайте именованную функцию: `forwardRef(function GhostButton(props, ref) {…})`.

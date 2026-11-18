@@ -59,7 +59,7 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
       minHeight="$touch-target"
       minWidth={row ? undefined : "$touch-target"}
       borderWidth={1}
-      borderRadius="$sm"
+      borderRadius="$md"
       paddingHorizontal="$3"
       {...(row
         ? {
@@ -155,7 +155,7 @@ export function ChoiceList({
             ? {
                 borderWidth: 1,
                 borderColor: "$destructive",
-                borderRadius: "$sm",
+                borderRadius: "$md",
                 padding: "$2",
               }
             : null)}

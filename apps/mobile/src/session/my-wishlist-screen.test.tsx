@@ -230,6 +230,16 @@ async function press(label: string) {
   await settle(10);
 }
 
+/** The toast's close cross: an icon button, so its name comes from `aria-label`. */
+async function dismissToast() {
+  const target = container.querySelector<HTMLElement>('[aria-label="Закрыть"]');
+  expect(target).not.toBeNull();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
 /** The icon-only «Что видно по ссылке» control next to the copy button. */
 function infoTrigger(): HTMLElement | null {
   return container.querySelector('[data-testid="wishlist-copy-link-info"]');
@@ -762,7 +772,7 @@ describe("мой вишлист: список", () => {
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(button("Повторить")).toBeDefined();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс), экран убирает его после анимации.
     await settle(300);
     expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
@@ -1421,7 +1431,7 @@ describe("мой вишлист: весточка от формы создани
     // `setParams({ toast: undefined })` drops the param (expo-router does) and the
     // screen re-renders on «Закрыть»: the notice and its value are both gone.
     search.params = {};
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
@@ -1440,7 +1450,7 @@ describe("мой вишлист: весточка от формы создани
     respond(giftsAnswer([gift()]));
     await mount();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
@@ -1484,7 +1494,7 @@ describe("мой вишлист: весточка от формы редакти
     respond(giftsAnswer([gift()]));
     await mount();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Изменения сохранены.");
@@ -2216,9 +2226,10 @@ describe("W12.19: главный экран на медиа-пропсах", () 
   });
 
   it.each([
-    { width: 360, columns: 1 },
-    { width: 599, columns: 1 },
-    { width: 600, columns: 1 },
+    { width: 360, columns: 2 },
+    { width: 599, columns: 2 },
+    { width: 600, columns: 2 },
+    { width: 1023, columns: 2 },
     { width: 1024, columns: 3 },
     { width: 1280, columns: 3 },
   ])(
@@ -2297,29 +2308,30 @@ describe("W12.19: главный экран на медиа-пропсах", () 
   /**
    * W12.23: the grid follows the measured content area, not the window. A 600 px window
    * with a classic ~15 px scrollbar leaves a 585 px column, so the cards get
-   * 585 − 2·24 = 537 px instead of the 552 px `cardGrid(600)` drew — the right gutter is
-   * 24 px again. Without a scrollbar the content area is the window minus the gutter and
-   * the numbers are the ones W12.19–W12.21 pinned.
+   * 585 − 2·24 = 537 px of content; v8 puts two cards in it, and the right gutter is
+   * 24 px again. Without a scrollbar the numbers are the ones the width tests pinned.
    */
   describe("W12.23: сетка по ширине контента", () => {
-    it("окно 600 px, колонка 537 px: карточка 537 px и ряд влезает в колонку", async () => {
+    it("окно 600 px, колонка 537 px: две карточки, ряд влезает в колонку", async () => {
       await mountAt(600);
       await measuredLayout.measure(537);
 
       const cssGutter = paintedSpace(pageColumn(), "padding-inline", 600) ?? 0;
       const cardWidth = paintedWidth(gridCard(), 600);
+      const gap = spacing["grid-gap"];
 
       expect(cssGutter).toBe(spacing["page-gutter-lg"]);
       expect(cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 5);
-      expect(cardWidth).toBe(537);
-      // 537 px of cards plus two 24 px gutters is exactly the 585 px column, so the
-      // right edge of the last card sits on the 24 px gutter and not 9 px from it.
-      expect(cardWidth + cssGutter * 2).toBe(585);
+      expect(cardGridForContent(537).columns).toBe(2);
+      // Two cards and the gap fill the 537 px column exactly, so the right edge of the
+      // last card sits on the 24 px gutter and not 9 px from it.
+      expect(cardWidth * 2 + gap).toBeCloseTo(537, 5);
+      expect(cardWidth * 2 + gap + cssGutter * 2).toBe(585);
     });
 
     it.each([
-      { width: 360, columns: 1, card: 328 },
-      { width: 600, columns: 1, card: 552 },
+      { width: 360, columns: 2, card: 156 },
+      { width: 600, columns: 2, card: 268 },
       { width: 1024, columns: 3, card: 314.67 },
       { width: 1280, columns: 3, card: 346.67 },
     ])(

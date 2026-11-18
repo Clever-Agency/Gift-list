@@ -67,7 +67,8 @@ export function Switch({ label, hint, checked, disabled, onChange, testID }: Swi
           width={THUMB_SIZE}
           height={THUMB_SIZE}
           borderRadius="$full"
-          backgroundColor="$surface"
+          // v8 keeps the thumb light in both themes; the track carries the state.
+          backgroundColor="$switch-thumb"
         />
       </View>
       <YStack flex={1} gap="$1">

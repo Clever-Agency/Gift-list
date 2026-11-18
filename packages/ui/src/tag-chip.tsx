@@ -117,7 +117,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
   ref,
 ) {
   const theme = useTheme();
-  const accent = theme.accent;
+  const accent = theme["accent-foreground"];
   const accentValue =
     accent && typeof accent.get === "function" ? accent.get("web") : undefined;
   const starColor = typeof accentValue === "string" ? accentValue : undefined;
@@ -137,7 +137,7 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
         minHeight="$chip-height"
         borderWidth={1}
         borderColor="$border"
-        borderRadius="$sm"
+        borderRadius="$md"
         backgroundColor="$background"
         paddingHorizontal="$2"
       >
@@ -158,8 +158,8 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
         gap="$1"
         maxWidth="100%"
         borderWidth={1}
-        borderColor={error ? "$destructive" : custom ? "$accent" : "$border"}
-        borderRadius="$sm"
+        borderColor={error ? "$destructive" : custom ? "$accent-border" : "$border"}
+        borderRadius="$md"
         backgroundColor={custom ? "$surface" : "$background"}
         paddingLeft="$2"
       >
@@ -230,10 +230,16 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
       maxWidth="100%"
       borderWidth={1}
       borderColor={
-        error ? "$destructive" : custom ? "$accent" : selected ? "$border-strong" : "$border"
+        error
+          ? "$destructive"
+          : custom
+            ? "$accent-border"
+            : selected
+              ? "$accent-border"
+              : "$border"
       }
-      borderRadius="$sm"
-      backgroundColor={custom ? "$surface" : selected ? "$muted" : "$background"}
+      borderRadius="$md"
+      backgroundColor={custom ? "$surface" : selected ? "$accent" : "$background"}
       paddingHorizontal="$2"
     >
       {custom ? star(spacing["icon-small"], starColor, testID) : null}

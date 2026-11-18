@@ -69,12 +69,18 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("Плед");
     expect(html).toContain("мечта");
     expect(html).toContain("Открыт");
+    // The shared shell: the skip link first, the one main landmark with its id.
+    expect(html.indexOf('href="#main-content"')).toBeLessThan(html.indexOf("<main"));
+    expect(html).toContain('href="#main-content"');
+    expect(html.match(/<main/g)).toHaveLength(1);
+    expect(html).toContain('id="main-content"');
+    expect(html).toContain('tabindex="-1"');
     // No visibility chip and no hidden count on the public page.
     expect(html).not.toContain("Видимость");
     expect(html).not.toContain("Секрет");
     // Tamagui CSS is part of this server render, not a client-only shell.
     expect(html).toContain("<style");
-    expect(html).toContain("--c-primary:#2F5D3A");
+    expect(html).toContain("--primary");
   });
 
   it("links «Куплю сам» only for a SINGLE and OPEN wish, relative to the SPA", () => {
@@ -88,7 +94,9 @@ describe("PublicWishlistView: link page HTML", () => {
       ],
     });
 
-    expect(html).toContain('href="/wishlist/tok-1"');
+    expect(html).toContain(
+      'href="/wishlist/tok-1?reserve=g-open&amp;title=%D0%9F%D0%BB%D0%B5%D0%B4"',
+    );
     expect(html).toContain('aria-label="Куплю сам: Плед"');
     expect(html).not.toContain("Куплю сам: Свитер");
     expect(html).not.toContain("Куплю сам: Наушники");

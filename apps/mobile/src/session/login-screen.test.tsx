@@ -147,8 +147,8 @@ describe("вход: сообщение об истёкшей сессии", () =
     search.params = { next: "/", reason: "session_expired" };
     await mount();
 
-    const dismiss = controlByText("Закрыть", container);
-    expect(dismiss).toBeDefined();
+    const dismiss = container.querySelector<HTMLElement>('[aria-label="Закрыть"]');
+    expect(dismiss).not.toBeNull();
     await click(dismiss);
     // Тост уходит с fade (160 мс), экран убирает его после анимации.
     await settle(300);

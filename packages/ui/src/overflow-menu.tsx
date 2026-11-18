@@ -5,7 +5,7 @@ import { BottomSheet } from "./bottom-sheet";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 
-/** One row of the ⋯ menu. `destructive` is drawn red and goes after the divider. */
+/** One row of the ⋮ menu. `destructive` is drawn red and goes after the divider. */
 export type OverflowMenuItem = {
   key: string;
   /** The visible text and the accessible name of the action. */
@@ -17,29 +17,30 @@ export type OverflowMenuItem = {
 export type OverflowMenuProps = {
   /**
    * The accessible name of the trigger, e.g. «Действия: Алёна» (`EXPERIENCE.md`
-   * → подпись ⋯ для диктора). The visible glyph is only the ellipsis.
+   * → подпись ⋮ для диктора). The visible glyph is only the ellipsis.
    */
   label: string;
   /** The heading of the opened layer, e.g. the person's name. */
   title: string;
   items: OverflowMenuItem[];
-  /** The visible glyph of the trigger; `⋯` by default (`DESIGN.md` → Мелкие элементы). */
+  /** The visible glyph of the trigger; vertical `⋮` by default (`DESIGN.md` → v8). */
   glyph?: string;
   testID?: string;
 };
 
 /**
- * `DESIGN.md` → PersonRow / Мелкие элементы: the ⋯ trigger is a 44 × 44 control
- * and the menu itself is `{components.user-menu}`. A phone shows the actions in a
- * bottom sheet with the person's name in the heading; a divider separates the
- * destructive actions and they stay last, whatever order the caller passes.
+ * `DESIGN.md` → PersonRow / Мелкие элементы: the `⋮` trigger is a 44 × 44 control
+ * (v8: the dots stand in a column) and the menu itself is `{components.user-menu}`.
+ * A phone shows the actions in a bottom sheet with the person's name in the heading;
+ * a divider separates the destructive actions and they stay last, whatever order the
+ * caller passes.
  *
- * The trigger is a sibling of the profile link, never its child: a press on ⋯
+ * The trigger is a sibling of the profile link, never its child: a press on `⋮`
  * must not open the profile. `forwardRef` reaches the trigger, so a screen can
  * put focus back on it after an action.
  */
 export const OverflowMenu = forwardRef<ComponentRef<typeof Pressable>, OverflowMenuProps>(
-  function OverflowMenu({ label, title, items, glyph = "⋯", testID }, ref) {
+  function OverflowMenu({ label, title, items, glyph = "⋮", testID }, ref) {
     const [open, setOpen] = useState(false);
     const ordered = [
       ...items.filter((item) => !item.destructive),
@@ -73,10 +74,10 @@ export const OverflowMenu = forwardRef<ComponentRef<typeof Pressable>, OverflowM
           height="$touch-target"
           alignItems="center"
           justifyContent="center"
-          borderRadius="$full"
+          borderRadius="$md"
           testID={testID}
         >
-          <Text kind="heading" tone="muted" aria-hidden>
+          <Text kind="body" tone="muted" aria-hidden>
             {glyph}
           </Text>
         </Pressable>
@@ -100,7 +101,7 @@ export const OverflowMenu = forwardRef<ComponentRef<typeof Pressable>, OverflowM
                     paddingHorizontal="$3"
                     justifyContent="center"
                     borderRadius="$md"
-                    backgroundColor="hover:$background press:$muted"
+                    backgroundColor="hover:$muted press:$muted"
                   >
                     <Text kind="body" tone={item.destructive ? "destructive" : "default"}>
                       {item.label}

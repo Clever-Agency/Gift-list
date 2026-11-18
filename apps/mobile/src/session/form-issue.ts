@@ -50,7 +50,8 @@ export function issueFromError(
     error.reason === "NICK_TAKEN" ||
     error.reason === "PASSWORD_TOO_SHORT" ||
     error.reason === "PASSWORD_TOO_LONG" ||
-    error.reason === "PASSWORD_PWNED"
+    error.reason === "PASSWORD_PWNED" ||
+    error.reason === "PASSWORD_REUSED"
   ) {
     return {
       field: error.field,

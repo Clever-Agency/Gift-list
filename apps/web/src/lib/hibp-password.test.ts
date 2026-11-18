@@ -8,11 +8,19 @@ vi.mock("better-auth/plugins/haveibeenpwned", () => ({
   isPasswordCompromised: compromised,
 }));
 
+const rejectReusedPassword = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/password-reuse", () => ({
+  rejectReusedPassword,
+}));
+
 import { runWithEndpointContext } from "@better-auth/core/context";
 import { haveIBeenPwnedPlugin, isPasswordPwnedFailOpen } from "@/lib/hibp-password";
 
 afterEach(() => {
   compromised.mockReset();
+  rejectReusedPassword.mockReset();
+  rejectReusedPassword.mockResolvedValue(undefined);
   vi.useRealTimers();
 });
 
@@ -56,7 +64,20 @@ describe("haveIBeenPwnedPlugin hash hook", () => {
       return `hashed:${password}`;
     });
     const plugin = haveIBeenPwnedPlugin();
-    return { hash, guarded: plugin.init({ password: { hash } }).context.password.hash };
+  const verify = vi.fn(async function verifyPassword() {
+    return true;
+  });
+    return {
+      hash,
+      guarded: plugin.init({
+        password: {
+          hash,
+          verify,
+          config: { minPasswordLength: 12, maxPasswordLength: 128 },
+          checkPassword: vi.fn(),
+        },
+      } as never).context.password.hash,
+    };
   }
 
   it("does not consult HIBP when the endpoint is sign-in or there is no endpoint", async () => {
@@ -88,4 +109,23 @@ describe("haveIBeenPwnedPlugin hash hook", () => {
       expect(hash).not.toHaveBeenCalled();
     },
   );
+
+  it("checks reuse before HIBP and does not hash on PASSWORD_REUSED", async () => {
+    const reuse = Object.assign(new Error("Password reused"), {
+      body: { code: "PASSWORD_REUSED" },
+    });
+    rejectReusedPassword.mockRejectedValue(reuse);
+    compromised.mockResolvedValue(true);
+    const { hash, guarded } = wrappedHash();
+
+    await expect(
+      runWithEndpointContext({ path: "/reset-password" } as never, async function reusedPassword() {
+        await guarded("same-secret-12");
+      }),
+    ).rejects.toMatchObject({ body: { code: "PASSWORD_REUSED" } });
+
+    expect(rejectReusedPassword).toHaveBeenCalledWith("same-secret-12", expect.any(Object));
+    expect(compromised).not.toHaveBeenCalled();
+    expect(hash).not.toHaveBeenCalled();
+  });
 });

@@ -68,8 +68,13 @@ export const getInvitePage = cache(loadInvitePage);
  * Story 4.7: preview metadata names only the inviter and the product (the same
  * shape as `/l`). The token, the nick and the viewer's relation never reach it,
  * so a `not_found` metadata is indistinguishable for unknown, malformed and
- * blocked tokens. Next applies this page metadata on the 404 response and
- * injects `noindex` itself, so the title stays `Приглашение не найдено — {brand}`.
+ * blocked tokens.
+ *
+ * A 404 is answered from Next's not-found recovery document, and Next builds that
+ * document's `<head>` from the segment `not-found.tsx`, not from this page
+ * (`app-render`: `errorType: 'not-found'`). The boundary calls this builder with
+ * `{ kind: "not_found" }`, so both the found page and the 404 keep the same
+ * closed `Приглашение не найдено — {brand}` title; Next injects `noindex` itself.
  */
 export function buildInviteMetadata(page: InvitePage, brand: string): Metadata {
   const messages = getMessages(page.locale);

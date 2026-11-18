@@ -1,5 +1,6 @@
 {
   "description": "Персональные вишлисты подарков",
+  "skipToContent": "Перейти к содержимому",
   "wishlist": {
     "pageTitle": "Вишлист {name} — {brand}",
     "notFound": "Список не найден.",

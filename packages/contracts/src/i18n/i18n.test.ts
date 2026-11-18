@@ -119,6 +119,35 @@ describe("not-found copy", () => {
   });
 });
 
+describe("public shell copy", () => {
+  /**
+   * CLE-105: the skip link is the first stop of the Tab order on `/l` and `/i`
+   * (`DESIGN.md` → Порядок Tab, Next-страницы). One sentence in the catalog, so
+   * the shell never hard-codes the label.
+   */
+  it("names the skip link «Перейти к содержимому» without a final period", () => {
+    const { skipToContent } = getMessages("ru").web;
+
+    expect(skipToContent).toBe("Перейти к содержимому");
+    expect(skipToContent.endsWith(".")).toBe(false);
+  });
+});
+
+describe("invite confirmation copy", () => {
+  /**
+   * CLE-73 followup: the name is not declined (AD-24), so the sentence names
+   * «пользователя» and keeps the display name in «ёлочки», the same way the
+   * catalog quotes `{char}` and `{query}`.
+   */
+  it("quotes the display name and substitutes it unchanged", () => {
+    const text = getMessages("ru").app.invite.addTitle;
+
+    expect(text).toBe("Добавить пользователя «{name}» в друзья?");
+    expect(text.match(/\{name\}/g)).toHaveLength(1);
+    expect(text.replace("{name}", "Сергей")).toBe("Добавить пользователя «Сергей» в друзья?");
+  });
+});
+
 describe("error catalog", () => {
   it("covers every error code and reason with non-empty text", () => {
     const { code, reason } = getMessages("ru").common.errors;

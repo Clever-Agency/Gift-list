@@ -2,8 +2,8 @@
 
 import { createTranslator } from "next-intl";
 import { getMessages, type SupportedLocale } from "@gift-list/contracts";
-import { Button, Column, Heading, Screen, Text, XStack, YStack } from "@gift-list/ui";
-import { PublicPageFooter } from "@/components/public-page-footer";
+import { Button, Column, Heading, Text, XStack, YStack } from "@gift-list/ui";
+import { PublicPageFrame } from "@/components/public-page-frame";
 import type { InviteView } from "./invite-page";
 
 export type InvitePreviewData = Extract<InviteView, { kind: "invite" }>;
@@ -64,57 +64,51 @@ export function InvitePreviewView({ view, locale, brand }: InvitePreviewViewProp
     </XStack>
   );
 
-  const footer = <PublicPageFooter locale={locale} />;
-
   return (
-    <Screen>
-      {header}
-      <YStack flexGrow={1} role="main">
-        <Column size="wide" flexGrow={1} paddingVertical="$section-gap" alignItems="center">
+    <PublicPageFrame locale={locale} header={header}>
+      <Column size="wide" flexGrow={1} paddingVertical="$section-gap" alignItems="center">
+        <YStack
+          width="100%"
+          maxWidth="$dialog-width"
+          alignItems="center"
+          gap="$grid-gap"
+          backgroundColor="$surface"
+          borderWidth={1}
+          borderColor="$border"
+          borderRadius="$lg"
+          padding="$section-gap"
+        >
           <YStack
-            width="100%"
-            maxWidth="$dialog-width"
+            width="$avatar-lg"
+            height="$avatar-lg"
             alignItems="center"
-            gap="$grid-gap"
-            backgroundColor="$surface"
-            borderWidth={1}
-            borderColor="$border"
-            borderRadius="$lg"
-            padding="$section-gap"
+            justifyContent="center"
+            backgroundColor="$muted"
+            borderRadius="$full"
+            aria-hidden
           >
-            <YStack
-              width="$avatar-lg"
-              height="$avatar-lg"
-              alignItems="center"
-              justifyContent="center"
-              backgroundColor="$muted"
-              borderRadius="$full"
-              aria-hidden
-            >
-              <Text kind="heading" tone="muted">
-                {initials(view.inviter.displayName)}
-              </Text>
-            </YStack>
-            <Heading level={1} kind="display-sm" textAlign="center">
-              {t("title", { name: view.inviter.displayName })}
-            </Heading>
-            <Text kind="body" textAlign="center">
-              {t("body")}
+            <Text kind="heading" tone="muted">
+              {initials(view.inviter.displayName)}
             </Text>
-            <YStack width="100%" gap="$2">
-              <Button fullWidth label={t("accept")} href={`/register?next=${view.to}`} />
-              <Button
-                fullWidth
-                variant="ghost"
-                label={t("haveAccount")}
-                href={`/login?next=${view.to}`}
-              />
-            </YStack>
           </YStack>
-        </Column>
-      </YStack>
-      {footer}
-    </Screen>
+          <Heading level={1} kind="display-sm" textAlign="center">
+            {t("title", { name: view.inviter.displayName })}
+          </Heading>
+          <Text kind="body" textAlign="center">
+            {t("body")}
+          </Text>
+          <YStack width="100%" gap="$2">
+            <Button fullWidth label={t("accept")} href={`/register?next=${view.to}`} />
+            <Button
+              fullWidth
+              variant="ghost"
+              label={t("haveAccount")}
+              href={`/login?next=${view.to}`}
+            />
+          </YStack>
+        </YStack>
+      </Column>
+    </PublicPageFrame>
   );
 }
 

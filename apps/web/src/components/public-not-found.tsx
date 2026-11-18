@@ -1,8 +1,8 @@
 "use client";
 
 import type { SupportedLocale } from "@gift-list/contracts";
-import { Column, Heading, Screen, YStack } from "@gift-list/ui";
-import { PublicPageFooter } from "@/components/public-page-footer";
+import { Column, Heading } from "@gift-list/ui";
+import { PublicPageFrame } from "@/components/public-page-frame";
 
 export type PublicNotFoundProps = {
   locale: SupportedLocale;
@@ -16,21 +16,21 @@ export type PublicNotFoundProps = {
  * and renders this frame: the same `h1` sentence from i18n and the same full
  * `PublicPageFooter` as the found page, no owner, no wishes and no actions.
  *
- * The document title stays the segment's `notFoundTitle` from `generateMetadata`;
- * Next injects `noindex` into every 404 itself.
+ * The document title stays the segment's `notFoundTitle`, produced by the
+ * segment `not-found.tsx` `generateMetadata` because Next builds the 404
+ * document's `<head>` from that boundary; Next injects `noindex` into every 404
+ * itself. The frame itself is painted after hydration: Next 16 keeps the body of
+ * the first 404 HTML empty.
  */
 export function PublicNotFound({ locale, message }: PublicNotFoundProps) {
   return (
-    <Screen>
-      <YStack flexGrow={1} role="main">
-        <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
-          <Heading level={1} kind="display-sm" textAlign="center">
-            {message}
-          </Heading>
-        </Column>
-      </YStack>
-      <PublicPageFooter locale={locale} />
-    </Screen>
+    <PublicPageFrame locale={locale}>
+      <Column size="wide" flexGrow={1} paddingVertical="$section-gap">
+        <Heading level={1} kind="display-sm" textAlign="center">
+          {message}
+        </Heading>
+      </Column>
+    </PublicPageFrame>
   );
 }
 

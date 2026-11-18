@@ -157,4 +157,27 @@ describe("updateNick", () => {
       reason: "NICK_TAKEN",
     });
   });
+
+  /** CLE-94: the action normalizes on its own, not only through the body schema. */
+  it("normalizes a nick the caller passed padded and in another case", async () => {
+    const result = await updateNick({ nick: " NewNick " }, headers);
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { nickNormalized: "newnick", id: { not: "u1" } },
+      select: { id: true },
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { nick: "newnick", nickNormalized: "newnick" },
+    });
+    expect(result).toMatchObject({ ok: true, data: { nick: "newnick" } });
+  });
+
+  it("treats another case of the user's own nick as no change", async () => {
+    const result = await updateNick({ nick: "ANNA" }, headers);
+
+    expect(result).toMatchObject({ ok: true, data: { nick: "anna" } });
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
 });

@@ -69,6 +69,12 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("Плед");
     expect(html).toContain("мечта");
     expect(html).toContain("Открыт");
+    // The shared shell: the skip link first, the one main landmark with its id.
+    expect(html.indexOf('href="#main-content"')).toBeLessThan(html.indexOf("<main"));
+    expect(html).toContain('href="#main-content"');
+    expect(html.match(/<main/g)).toHaveLength(1);
+    expect(html).toContain('id="main-content"');
+    expect(html).toContain('tabindex="-1"');
     // No visibility chip and no hidden count on the public page.
     expect(html).not.toContain("Видимость");
     expect(html).not.toContain("Секрет");

@@ -1,8 +1,7 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
-import { Button, LinkText, TagChipList, WishCard as UiWishCard, YStack } from "@gift-list/ui";
+import { Button, TagChipList, Text, WishCard as UiWishCard, YStack } from "@gift-list/ui";
 import { router } from "expo-router";
 import { useLocale, useTranslations } from "use-intl";
-import { useAuth } from "@/session/auth-context";
 import { StatusPill } from "@/ui/status-pill";
 
 /**
@@ -30,7 +29,6 @@ export function PublicGiftCard({
   const tGift = useTranslations("app.gift");
   const tWeb = useTranslations("web.wishlist");
   const locale = useLocale();
-  const auth = useAuth();
   const price =
     gift.priceAmount !== null && gift.priceCurrency !== null
       ? formatPrice(gift.priceAmount, gift.priceCurrency, locale)
@@ -56,23 +54,21 @@ export function PublicGiftCard({
   const showReserve =
     gift.quantity === "SINGLE" && gift.status === "OPEN";
 
+  function detailParams(openReserve: boolean) {
+    return {
+      id: gift.id,
+      ...(listToken ? { listToken } : {}),
+      title: gift.title,
+      ...(openReserve ? { openReserve: "1" } : {}),
+    };
+  }
+
   function openDetail() {
-    router.push(`/gifts/${gift.id}`);
+    router.push({ pathname: "/gifts/[id]", params: detailParams(false) });
   }
 
   function openReserveFlow() {
-    const reservePath = listToken
-      ? `/wishlist/${listToken}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`
-      : `/gifts/${gift.id}?openReserve=1`;
-    if (auth.state.status !== "ready") {
-      router.push({ pathname: "/login", params: { next: reservePath } });
-      return;
-    }
-    if (listToken) {
-      router.push(reservePath);
-      return;
-    }
-    router.push({ pathname: "/gifts/[id]", params: { id: gift.id, openReserve: "1" } });
+    router.push({ pathname: "/gifts/[id]", params: detailParams(true) });
   }
 
   return (
@@ -94,16 +90,24 @@ export function PublicGiftCard({
         }
         reservation={reservation}
         width={width}
+        pressLabel={gift.title}
         onPress={openDetail}
       />
       {showReserve ? (
         <Button
-          label={tWeb("buyMyselfLabel", { title: gift.title })}
+          label={tWeb("buyMyself")}
+          ariaLabel={tWeb("buyMyselfLabel", { title: gift.title })}
           variant="reserve"
           onPress={openReserveFlow}
         />
       ) : gift.quantity === "UNLIMITED" ? (
-        <LinkText>{tGift("reserveNoButton.UNLIMITED")}</LinkText>
+        <Text kind="label" tone="muted">
+          {tGift("reserveNoButton.UNLIMITED")}
+        </Text>
+      ) : gift.status === "RESERVED" || gift.status === "CLOSED" ? (
+        <Text kind="label" tone="muted">
+          {tGift(`reserveNoButton.${gift.status}`)}
+        </Text>
       ) : null}
     </YStack>
   );

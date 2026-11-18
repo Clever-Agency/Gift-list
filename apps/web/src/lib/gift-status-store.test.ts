@@ -51,7 +51,19 @@ describe("giftStatusTransaction.releaseReservation", () => {
     await expect(tx.reserveGift("g1", data)).resolves.toBe("lost");
     expect(updateMany).toHaveBeenNthCalledWith(1, {
       where: { id: "g1", status: "OPEN", quantity: "SINGLE", archivedAt: null },
-      data: expect.objectContaining({ status: "RESERVED", reservedById: "u2" }),
+      data: {
+        status: "RESERVED",
+        reservedById: "u2",
+        reservedAt: at,
+        titleSnapshotOnReserve: "Gift",
+        reservationDueAt: data.reservationDueAt,
+        reservationTimeZone: "UTC",
+        reservationPhase: "ACTIVE",
+        reservationPhaseAt: at,
+        reservationBought: false,
+        holderVisibleToOwner: false,
+        holderVisibleToOthers: true,
+      },
     });
   });
 

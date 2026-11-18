@@ -20,6 +20,7 @@ describe("reservation due calendar rules", () => {
     expect(isDueOnInRange(addCalendarDays(maxReserveDueOn(zone, now), 1), zone, now)).toBe(
       false,
     );
+    expect(isDueOnInRange("2026-06-31", zone, now)).toBe(false);
   });
 
   it("stores the first instant of the day after the chosen due day", () => {

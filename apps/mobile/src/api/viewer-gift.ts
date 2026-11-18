@@ -1,7 +1,6 @@
 import {
   giftCardSchema,
   giftReserveBodySchema,
-  isNotFound,
   type GiftCard,
   type GiftReserveBody,
 } from "@gift-list/contracts";
@@ -17,9 +16,16 @@ export type ReserveGiftResult =
   | { ok: false; invalid: true }
   | Exclude<ClientResult<unknown>, { ok: true }>;
 
+function withListToken(path: string, listToken?: string): string {
+  if (!listToken) return path;
+  return `${path}?listToken=${encodeURIComponent(listToken)}`;
+}
+
 /** Story 5.1: read one foreign wish for the detail and reserve UI. */
-export async function fetchViewerGift(id: string): Promise<ViewerGiftResult> {
-  const result = await apiRequest<unknown>(`/api/v1/gifts/${encodeURIComponent(id)}`);
+export async function fetchViewerGift(id: string, listToken?: string): Promise<ViewerGiftResult> {
+  const result = await apiRequest<unknown>(
+    withListToken(`/api/v1/gifts/${encodeURIComponent(id)}`, listToken),
+  );
   if (!result.ok) return result;
 
   const parsed = giftCardSchema.safeParse(result.data);
@@ -32,12 +38,13 @@ export async function fetchViewerGift(id: string): Promise<ViewerGiftResult> {
 export async function reserveGift(
   id: string,
   body: GiftReserveBody,
+  listToken?: string,
 ): Promise<ReserveGiftResult> {
   const payload = giftReserveBodySchema.safeParse(body);
   if (!payload.success) return { ok: false, invalid: true };
 
   const result = await apiRequest<unknown>(
-    `/api/v1/gifts/${encodeURIComponent(id)}/reserve`,
+    withListToken(`/api/v1/gifts/${encodeURIComponent(id)}/reserve`, listToken),
     { method: "POST", body: payload.data },
   );
   if (!result.ok) return result;

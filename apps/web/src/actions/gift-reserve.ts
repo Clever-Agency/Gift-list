@@ -67,8 +67,13 @@ const reserveSelect = {
     select: { tagId: true, customText: true, tag: { select: { labels: true, slug: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   },
-  list: { select: { ownerId: true } },
+  list: { select: { ownerId: true, publicToken: true } },
 } satisfies Prisma.GiftSelect;
+
+/** The list link is a capability the caller already holds; a mismatch stays invisible. */
+function arrivedViaList(listToken: string | null | undefined, publicToken: string): boolean {
+  return typeof listToken === "string" && listToken.length > 0 && listToken === publicToken;
+}
 
 function requestLocale(headers: Headers): SupportedLocale {
   return negotiateLocale(preferredFromAcceptLanguage(headers.get("accept-language")));
@@ -91,6 +96,7 @@ export async function reserveGift(
   headers: Headers,
   giftId: string,
   body: unknown,
+  listToken?: string | null,
 ): Promise<ActionResult<GiftCard>> {
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
@@ -99,7 +105,7 @@ export async function reserveGift(
   if (!parsed.success) return validation(firstIssueField(parsed.error));
 
   const row = await prisma.gift.findFirst({
-    where: { id: giftId, archivedAt: null },
+    where: { id: giftId },
     select: reserveSelect,
   });
   if (!row) return notFound;
@@ -109,9 +115,8 @@ export async function reserveGift(
 
   const relations = {
     ...(await relationshipReader.relationsBetween(session.user.id, ownerId)),
-    viaListToken: false,
+    viaListToken: arrivedViaList(listToken, row.list.publicToken),
   };
-  if (relations.blocked) return notFound;
 
   const visible = VisibilityPolicy.canSee({ id: session.user.id }, relations, {
     ownerId,
@@ -135,6 +140,10 @@ export async function reserveGift(
   }
 
   if (row.status === "RESERVED") {
+    if (row.reservedBy?.id === session.user.id) {
+      const card = toViewerGiftCard(row, session.user.id, requestLocale(headers));
+      return { ok: true, data: giftCardSchema.parse(card) };
+    }
     return {
       ok: false,
       code: "CONFLICT",
@@ -182,11 +191,12 @@ export async function reserveGift(
   });
 
   if (outcome === "lost") {
-    const after = await prisma.gift.findUnique({
+    const after = await prisma.gift.findFirst({
       where: { id: giftId },
       select: { status: true },
     });
-    if (after?.status === "RESERVED") {
+    if (!after) return notFound;
+    if (after.status === "RESERVED") {
       return {
         ok: false,
         code: "CONFLICT",

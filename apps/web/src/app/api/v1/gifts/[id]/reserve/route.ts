@@ -9,7 +9,8 @@ export async function POST(
   const { id } = await params;
   const parsed = await parseJson(request);
   if (!parsed.ok) return toResponse(parsed);
-  return toResponse(await reserveGift(request.headers, id, parsed.data));
+  const listToken = new URL(request.url).searchParams.get("listToken");
+  return toResponse(await reserveGift(request.headers, id, parsed.data, listToken));
 }
 
 export const GET = notFoundResponse;

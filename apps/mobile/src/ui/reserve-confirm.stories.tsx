@@ -4,10 +4,8 @@ import { ReserveConfirm } from "./reserve-confirm";
 const meta = {
   title: "App/ReserveConfirm",
   component: ReserveConfirm,
-  parameters: {
-    layout: "fullscreen",
-    viewport: { defaultViewport: "compact360" },
-  },
+  parameters: { layout: "fullscreen" },
+  globals: { viewport: { value: "w360" } },
 } satisfies Meta<typeof ReserveConfirm>;
 
 export default meta;
@@ -25,6 +23,22 @@ export const Normal: Story = {
 };
 
 export const Busy: Story = {
+  args: {
+    ...Normal.args,
+    busy: true,
+  },
+};
+
+/** Дата вне диапазона: ошибка под полем, кнопки ещё можно нажать. */
+export const Error: Story = {
+  args: {
+    ...Normal.args,
+    dateError: "Выберите дату не позже 18.12.",
+  },
+};
+
+/** Подтверждение уже ушло: кнопки недоступны. */
+export const Disabled: Story = {
   args: {
     ...Normal.args,
     busy: true,

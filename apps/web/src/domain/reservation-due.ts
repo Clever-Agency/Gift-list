@@ -65,7 +65,7 @@ export function minReserveDueOn(timeZone: string, now = new Date()): string {
 
 /** Whether `dueOn` sits in [today, today+30] in the donor's zone. */
 export function isDueOnInRange(dueOn: string, timeZone: string, now = new Date()): boolean {
-  if (!ISO_DAY.test(dueOn)) return false;
+  if (!ISO_DAY.test(dueOn) || addCalendarDays(dueOn, 0) !== dueOn) return false;
   const min = minReserveDueOn(timeZone, now);
   const max = maxReserveDueOn(timeZone, now);
   return dueOn >= min && dueOn <= max;

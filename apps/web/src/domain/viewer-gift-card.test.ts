@@ -216,6 +216,15 @@ describe("toViewerGiftCard", () => {
       holderVisibleToOthers: true,
     });
     expect(holderCard.reservation?.dueAt).toBe("2026-12-07");
+
+    const moscow = toViewerGiftCard(
+      row({
+        reservationDueAt: new Date("2026-12-08T21:00:00.000Z"),
+        reservationTimeZone: "Europe/Moscow",
+      }),
+      HOLDER_ID,
+    );
+    expect(moscow.reservation?.dueAt).toBe("2026-12-08");
     expect(otherViewer.reservation).toBeUndefined();
     expect(otherViewer.reservedBy).toBeNull();
   });

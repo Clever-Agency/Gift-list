@@ -7,7 +7,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  return toResponse(await getViewerGift(request.headers, id));
+  const listToken = new URL(request.url).searchParams.get("listToken");
+  return toResponse(await getViewerGift(request.headers, id, listToken));
 }
 
 export const POST = notFoundResponse;

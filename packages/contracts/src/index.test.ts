@@ -133,7 +133,10 @@ const GIFT_CARD_FIELDS = [
   "reservedBy",
   "reservationLabel",
   "ownerAction",
+  "reservation",
 ] as const;
+
+const OPTIONAL_GIFT_CARD_FIELDS = new Set<string>(["reservation"]);
 
 describe("giftCardSchema", () => {
   it("accepts an AD-12 gift card with nullable fields", () => {
@@ -170,13 +173,16 @@ describe("giftCardSchema", () => {
     expect([...GIFT_CARD_FIELDS].sort()).toEqual(Object.keys(giftCardSchema.shape).sort());
   });
 
-  it.each(GIFT_CARD_FIELDS)("requires the %s field of the closed set", (field) => {
-    const withoutField = Object.fromEntries(Object.entries(giftCard).filter(([key]) => key !== field));
-    const result = giftCardSchema.safeParse(withoutField);
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.path[0])).toContain(field);
-  });
+  it.each(GIFT_CARD_FIELDS.filter((field) => !OPTIONAL_GIFT_CARD_FIELDS.has(field)))(
+    "requires the %s field of the closed set",
+    (field) => {
+      const withoutField = Object.fromEntries(Object.entries(giftCard).filter(([key]) => key !== field));
+      const result = giftCardSchema.safeParse(withoutField);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.issues.map((issue) => issue.path[0])).toContain(field);
+    },
+  );
 
   it("rejects statuses and labels outside the closed sets", () => {
     expect(giftCardSchema.safeParse({ ...giftCard, status: "COLLECTION" }).success).toBe(false);

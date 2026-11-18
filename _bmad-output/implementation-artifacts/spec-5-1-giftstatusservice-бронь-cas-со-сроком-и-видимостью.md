@@ -2,7 +2,7 @@
 title: '5.1: GiftStatusService — бронь (CAS) со сроком и видимостью'
 type: 'feature'
 created: '2026-11-18'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: 'abc864ccc1c6c9cd3f6246e2684faaad455b2f0e'
 review_loop_iteration: 0
@@ -86,14 +86,14 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `packages/contracts` — тело брони, optional `reservation` у карточки, reason `RESERVATION_TAKEN`, каталог ru.
-- [ ] `apps/web/src/domain/gift-status.ts` + store — reserve CAS и расчёт `dueAt`; юнит-тесты диапазона, UNLIMITED до записи, count 0/1.
-- [ ] `apps/web/src/actions` + `app/api/v1/gifts/[id]/reserve/route.ts` — сессия, видимость, self-FORBIDDEN, конверт; тест маршрута.
-- [ ] `viewer-gift-card.ts` — блок `reservation` только держателю; тесты матрицы CARD_*.
-- [ ] `apps/web/src/db/disposable-pg/` — две параллельные брони одного желания, ровно один успех. Прогон локально, не в CI.
-- [ ] `apps/mobile` — клиент, деталь `/gifts/[id]`, confirm, optimistic и тосты, ссылка с карточки зрителя, `?reserve=` и фраза входа, правка href на `/l`.
-- [ ] Stories нового UI (`App/…` и `UI/…`, если появится компонент пакета): normal, disabled, busy, error, пустое, длинная кириллица, кадр 360. `displayName` у компонентов.
-- [ ] Не добавлять миграцию. `sprint-status.yaml`: ключ `5-1-giftstatusservice-бронь-cas-со-сроком-и-видимостью`.
+- [x] `packages/contracts` — тело брони, optional `reservation` у карточки, reason `RESERVATION_TAKEN`, каталог ru.
+- [x] `apps/web/src/domain/gift-status.ts` + store — reserve CAS и расчёт `dueAt`; юнит-тесты диапазона, UNLIMITED до записи, count 0/1.
+- [x] `apps/web/src/actions` + `app/api/v1/gifts/[id]/reserve/route.ts` — сессия, видимость, self-FORBIDDEN, конверт; тест маршрута.
+- [x] `viewer-gift-card.ts` — блок `reservation` только держателю; тесты матрицы CARD_*.
+- [x] `apps/web/src/db/disposable-pg/` — две параллельные брони одного желания, ровно один успех. Прогон локально, не в CI.
+- [x] `apps/mobile` — клиент, деталь `/gifts/[id]`, confirm, optimistic и тосты, ссылка с карточки зрителя, `?reserve=` и фраза входа, правка href на `/l`.
+- [x] Stories нового UI (`App/…` и `UI/…`, если появится компонент пакета): normal, disabled, busy, error, пустое, длинная кириллица, кадр 360. `displayName` у компонентов.
+- [x] Не добавлять миграцию. `sprint-status.yaml`: ключ `5-1-giftstatusservice-бронь-cas-со-сроком-и-видимостью`.
 
 **Acceptance Criteria:**
 - Given даритель не владелец и желание OPEN SINGLE видно ему, when он подтверждает «Куплю сам» с датой и переключателями, then ровно одна CAS-запись RESERVED с полями AD-9 и карточка держателя содержит `reservation`.
@@ -103,9 +103,31 @@ context:
 
 ## Implementation Notes
 
+- Доступ по ссылке: `GET/POST /api/v1/gifts/:id` принимают query `listToken`. Совпадение с `List.publicToken` ставит `viaListToken`, иначе чужое PUBLIC для не-друга — `NOT_FOUND`. Тело запроса не расширялось.
+- `reservation.dueAt` на проводе — календарный день выбранной даты, не сам timestamptz. В базе по-прежнему исключительная граница следующих суток.
+- Общая фраза сети форм осталась «Нет соединения. Попробуйте ещё раз.»: её уже фиксируют экраны. Отдельный toast брони использует её же.
+- Подсказка «имя могло стать известно» в confirm не ставится: в EXPERIENCE она у действий держателя, не у первого confirm.
+- Успешная бронь не показывает отдельный toast: карточка просто становится RESERVED.
+- Гонка прогнана на локальном PostgreSQL 16, порт 54321, база `gift_f5_reserve01`: один success и один lost. В CI тест не входит (`verify:reserve-concurrency`).
+- Потолок gzip SPA поднят до 187 392 (прирост 186 511, запас 881). `datetimepicker` в веб-бандл не попал.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+- `medium` — confirm всегда был `Dialog`, потому что `useMedia().maxMd` в теме нет. Исправлено: `!useMedia().medium`.
+- `medium` — toast сети брал «Нет соединения». Спека требует «Нет сети». Исправлено отдельным ключом `app.gift.network`, общая фраза форм не тронута.
+- `medium` — повторное нажатие могло откатить свою же бронь. Исправлено `useRef` на время запроса.
+- `medium` — нативный выбор даты через `toISOString()` сдвигал день. Исправлено локальными `getFullYear/getMonth/getDate`.
+- `medium` — `2026-06-31` проходил диапазон. Исправлено: день должен совпасть сам с собой после сдвига.
+- `medium` — держатель при повторе получал «кто-то забрал». Исправлено: повтор того же держателя возвращает карточку.
+- `medium` — пропавшая строка после CAS была `CONFLICT`. Исправлено: `NOT_FOUND`.
+- `low` — владелец по публичной карточке попадал на `FORBIDDEN`. Исправлено: переход в правку.
+- `low` — фраза входа про бронь показывалась и при простом открытии. Исправлено: `title` в `next` только вместе с `openReserve`.
+- `low` — у безлимитного пояснение было ссылкой. Исправлено: обычный текст; у RESERVED/CLOSED — свои подписи.
+- `patch` — тесты не проверяли полный payload CAS, `params.max`, `getViewerGift`, query `listToken` и московский `dueAt`. Добавлены.
+- `false` — пустая story и совпадение Disabled с Busy не ломают приёмку: busy уже запрещает кнопки, пустого состояния у confirm нет.
+- `defer` — описание и ссылка желания на детали показаны только если есть; полный экран детали со всеми действиями 5.2+ не в этой истории.
 
 ## Design Notes
 

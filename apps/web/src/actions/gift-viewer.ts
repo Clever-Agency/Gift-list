@@ -11,7 +11,7 @@ import {
 import { prisma } from "@/db/client";
 import type { Prisma } from "@/db/generated/client";
 import { toViewerGiftCard } from "@/domain/viewer-gift-card";
-import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
+import { VisibilityPolicy } from "@/domain/visibility";
 import { auth } from "@/lib/auth";
 import { relationshipReader } from "@/lib/relationships";
 
@@ -56,8 +56,12 @@ const viewerGiftSelect = {
     select: { tagId: true, customText: true, tag: { select: { labels: true, slug: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   },
-  list: { select: { ownerId: true } },
+  list: { select: { ownerId: true, publicToken: true } },
 } satisfies Prisma.GiftSelect;
+
+function arrivedViaList(listToken: string | null | undefined, publicToken: string): boolean {
+  return typeof listToken === "string" && listToken.length > 0 && listToken === publicToken;
+}
 
 function requestLocale(headers: Headers): SupportedLocale {
   return negotiateLocale(preferredFromAcceptLanguage(headers.get("accept-language")));
@@ -67,12 +71,16 @@ function requestLocale(headers: Headers): SupportedLocale {
  * Story 5.1: a signed-in non-owner reads one visible wish for the detail screen
  * and the reserve flow. The owner uses `GET /api/v1/me/gifts/:id` instead.
  */
-export async function getViewerGift(headers: Headers, giftId: string): Promise<ActionResult<GiftCard>> {
+export async function getViewerGift(
+  headers: Headers,
+  giftId: string,
+  listToken?: string | null,
+): Promise<ActionResult<GiftCard>> {
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
   const row = await prisma.gift.findFirst({
-    where: { id: giftId, archivedAt: null },
+    where: { id: giftId },
     select: viewerGiftSelect,
   });
   if (!row) return notFound;
@@ -82,9 +90,8 @@ export async function getViewerGift(headers: Headers, giftId: string): Promise<A
 
   const relations = {
     ...(await relationshipReader.relationsBetween(session.user.id, ownerId)),
-    viaListToken: false,
+    viaListToken: arrivedViaList(listToken, row.list.publicToken),
   };
-  if (relations.blocked) return notFound;
 
   const visible = VisibilityPolicy.canSee({ id: session.user.id }, relations, {
     ownerId,

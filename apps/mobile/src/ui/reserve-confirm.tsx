@@ -1,16 +1,16 @@
 import { formatDate, type GiftReserveBody } from "@gift-list/contracts";
 import { BottomSheet, Button, Dialog, Switch, Text, YStack } from "@gift-list/ui";
 import { useMedia } from "@tamagui/core";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useMemo, useState } from "react";
-import { Platform } from "react-native";
 import { useLocale, useTranslations } from "use-intl";
+import { ReserveDateField } from "@/reserve/reserve-date-field";
 
 export type ReserveConfirmProps = {
   open: boolean;
   title: string;
   timeZone: string;
   busy?: boolean;
+  dateError?: string;
   onClose: () => void;
   onClosed?: () => void;
   onConfirm: (body: GiftReserveBody) => void;
@@ -21,8 +21,7 @@ function addCalendarDays(ymd: string, days: number): string {
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 }
 
-function defaultDueOn(timeZone: string): string {
-  const now = new Date();
+export function defaultDueOn(timeZone: string, now = new Date()): string {
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -30,19 +29,6 @@ function defaultDueOn(timeZone: string): string {
     day: "2-digit",
   }).format(now);
   return addCalendarDays(today, 7);
-}
-
-function ymdToDate(ymd: string): Date {
-  return new Date(`${ymd}T12:00:00.000Z`);
-}
-
-function dateToYmd(value: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(value);
 }
 
 /**
@@ -54,17 +40,17 @@ export function ReserveConfirm({
   title,
   timeZone,
   busy,
+  dateError,
   onClose,
   onClosed,
   onConfirm,
 }: ReserveConfirmProps) {
   const t = useTranslations("app.gift.reserveConfirm");
   const locale = useLocale();
-  const compact = useMedia().maxMd;
+  const compact = !useMedia().medium;
   const [dueOn, setDueOn] = useState(() => defaultDueOn(timeZone));
   const [holderVisibleToOwner, setHolderVisibleToOwner] = useState(false);
   const [holderVisibleToOthers, setHolderVisibleToOthers] = useState(true);
-  const [showPicker, setShowPicker] = useState(false);
 
   const minDue = useMemo(function computeMin() {
     const now = new Date();
@@ -80,6 +66,9 @@ export function ReserveConfirm({
     return addCalendarDays(minDue, 30);
   }, [minDue]);
 
+  const dueLabelDate = /^\d{4}-\d{2}-\d{2}$/.test(dueOn)
+    ? formatDate(dueOn, locale, { timeZone })
+    : dueOn;
   const maxCaption = formatDate(maxDue, locale, { timeZone });
 
   function handleConfirm() {
@@ -92,60 +81,26 @@ export function ReserveConfirm({
 
   const body = (
     <YStack gap="$4">
-      {Platform.OS === "web" ? (
-        <YStack gap="$1">
-          <Text kind="label">{t("dueLabel", { date: formatDate(dueOn, locale, { timeZone }) })}</Text>
-          <input
-            type="date"
-            value={dueOn}
-            min={minDue}
-            max={maxDue}
-            aria-label={t("dueHint")}
-            onChange={function handleWebDate(event) {
-              setDueOn(event.target.value);
-            }}
-          />
-          <Text kind="caption" tone="muted">
-            {t("dueCaption", { max: maxCaption })}
-          </Text>
-        </YStack>
-      ) : (
-        <YStack gap="$1">
-          <Button
-            label={t("dueLabel", { date: formatDate(dueOn, locale, { timeZone }) })}
-            variant="ghost"
-            onPress={function openPicker() {
-              setShowPicker(true);
-            }}
-          />
-          <Text kind="caption" tone="muted">
-            {t("dueCaption", { max: maxCaption })}
-          </Text>
-          {showPicker ? (
-            <DateTimePicker
-              value={ymdToDate(dueOn)}
-              mode="date"
-              minimumDate={ymdToDate(minDue)}
-              maximumDate={ymdToDate(maxDue)}
-              onChange={function handleNativeDate(_event, value) {
-                setShowPicker(Platform.OS === "ios");
-                if (value) setDueOn(dateToYmd(value, timeZone));
-              }}
-            />
-          ) : null}
-        </YStack>
-      )}
+      <ReserveDateField
+        dueOn={dueOn}
+        minDue={minDue}
+        maxDue={maxDue}
+        label={t("dueLabel", { date: dueLabelDate })}
+        hint={t("dueHint")}
+        caption={t("dueCaption", { max: maxCaption })}
+        dateError={dateError}
+        onChange={setDueOn}
+      />
       <Switch
         label={t("showOwner")}
         checked={holderVisibleToOwner}
+        disabled={busy}
         onChange={setHolderVisibleToOwner}
       />
-      <Text kind="caption" tone="muted">
-        {t("showOwnerHint")}
-      </Text>
       <Switch
         label={t("showOthers")}
         checked={holderVisibleToOthers}
+        disabled={busy}
         onChange={setHolderVisibleToOthers}
       />
       <Text kind="caption" tone="muted">

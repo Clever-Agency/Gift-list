@@ -11,9 +11,9 @@ import {
   Text,
   YStack,
 } from "@gift-list/ui";
-import { formatPrice } from "@gift-list/contracts";
+import { formatDate, formatPrice } from "@gift-list/contracts";
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { fetchViewerGift, reserveGift } from "@/api/viewer-gift";
 import { getBrandName } from "@/config/env";
@@ -35,36 +35,52 @@ type ScreenState =
   | { status: "error"; kind: "network" | "generic" };
 
 export default function GiftDetailScreen() {
-  const t = useTranslations("app");
   const tGift = useTranslations("app.gift");
   const common = useTranslations("common");
   const locale = useLocale();
   const brand = getBrandName();
   const auth = useAuth();
-  const params = useLocalSearchParams<{ id?: string; openReserve?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    openReserve?: string;
+    listToken?: string;
+    title?: string;
+  }>();
   const id = paramValue(params.id);
+  const listToken = paramValue(params.listToken);
+  const wishTitle = paramValue(params.title);
   const openReserve = paramValue(params.openReserve) === "1";
   const [state, setState] = useState<ScreenState>(
     id ? { status: "loading" } : { status: "missing" },
   );
+  const [attempt, setAttempt] = useState(0);
   const [gift, setGift] = useState<GiftCard | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [reserveBusy, setReserveBusy] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const reserveInFlight = useRef(false);
   const timeZone =
     auth.state.status === "ready" ? auth.state.user.timeZone ?? "UTC" : "UTC";
 
   useEffect(function loadGift() {
     if (!id || auth.state.status === "loading") return;
     if (auth.state.status === "anonymous") {
-      router.replace({ pathname: "/login", params: { next: `/gifts/${id}` } });
+      const nextQuery = new URLSearchParams();
+      if (listToken) nextQuery.set("listToken", listToken);
+      if (openReserve) {
+        nextQuery.set("openReserve", "1");
+        if (wishTitle) nextQuery.set("title", wishTitle);
+      }
+      const suffix = nextQuery.size > 0 ? `?${nextQuery.toString()}` : "";
+      router.replace({ pathname: "/login", params: { next: `/gifts/${id}${suffix}` } });
       return;
     }
     let cancelled = false;
 
     async function requestGift() {
       if (!id) return;
-      const result = await fetchViewerGift(id);
+      const result = await fetchViewerGift(id, listToken);
       if (cancelled) return;
       if (result.ok) {
         setGift(result.gift);
@@ -82,6 +98,10 @@ export default function GiftDetailScreen() {
         setState({ status: "missing" });
         return;
       }
+      if ("code" in result && result.code === "FORBIDDEN") {
+        router.replace({ pathname: "/gifts/[id]/edit", params: { id } });
+        return;
+      }
       setState({ status: "error", kind: "network" in result ? "network" : "generic" });
     }
 
@@ -89,7 +109,7 @@ export default function GiftDetailScreen() {
     return function stopLoad() {
       cancelled = true;
     };
-  }, [auth.state.status, id, openReserve]);
+  }, [attempt, auth.state.status, id, listToken, openReserve, wishTitle]);
 
   if (!id) return <NotFoundScreen />;
 
@@ -104,7 +124,8 @@ export default function GiftDetailScreen() {
       : null;
 
   async function submitReserve(body: Parameters<typeof reserveGift>[1]) {
-    if (!id || !current) return;
+    if (!id || !current || reserveInFlight.current) return;
+    reserveInFlight.current = true;
     setReserveBusy(true);
     const optimistic: GiftCard = {
       ...current,
@@ -119,29 +140,32 @@ export default function GiftDetailScreen() {
           : current.reservedBy,
     };
     setGift(optimistic);
-    const result = await reserveGift(id, body);
+    setDateError(null);
+    const result = await reserveGift(id, body, listToken);
+    reserveInFlight.current = false;
     setReserveBusy(false);
     if (result.ok) {
       setGift(result.gift);
       setConfirmOpen(false);
-      setToast(tGift("toast.reserved"));
       return;
     }
     setGift(current);
     if ("network" in result && result.network) {
-      setToast(t("form.network"));
+      setToast(tGift("network"));
+      return;
+    }
+    if (!("code" in result)) {
+      setToast(common("errors.generic"));
       return;
     }
     if ("code" in result) {
-      if (result.reason === "DUE_OUT_OF_RANGE" && result.params?.max) {
-        setToast(
-          common("errors.reason.DUE_OUT_OF_RANGE", {
-            max: String(result.params.max),
-          }),
-        );
-      } else {
-        setToast(mutationErrorMessage(result, common));
+      if (result.reason === "DUE_OUT_OF_RANGE") {
+        const max = result.params?.max ? String(result.params.max) : "";
+        setDateError(common("errors.reason.DUE_OUT_OF_RANGE", { max }));
+        return;
       }
+      setToast(mutationErrorMessage(result, common));
+      if (result.reason === "RESERVATION_TAKEN") setConfirmOpen(false);
     }
   }
 
@@ -161,14 +185,15 @@ export default function GiftDetailScreen() {
               {state.status === "loading" ? (
                 <Text kind="body">{tGift("detail.loading")}</Text>
               ) : state.status === "missing" ? (
-                <EmptyState title={t("giftNotFound")} />
+                <EmptyState title={tGift("giftNotFound")} />
               ) : state.status === "error" ? (
                 <YStack gap="$3">
                   <Text kind="body">
-                    {state.kind === "network" ? t("loadError") : t("loadErrorGeneric")}
+                    {state.kind === "network" ? tGift("loadError") : tGift("loadErrorGeneric")}
                   </Text>
-                  <PrimaryButton label={t("retry")} onPress={function retry() {
+                  <PrimaryButton label={tGift("retry")} onPress={function retry() {
                     setState({ status: "loading" });
+                    setAttempt((value) => value + 1);
                   }} />
                 </YStack>
               ) : current ? (
@@ -176,6 +201,14 @@ export default function GiftDetailScreen() {
                   <Heading level={1} kind="display-sm">
                     {current.title}
                   </Heading>
+                  {current.description ? <Text kind="body">{current.description}</Text> : null}
+                  {current.reservation ? (
+                    <Text kind="label">
+                      {tGift("reserveConfirm.dueLabel", {
+                        date: formatDate(current.reservation.dueAt, locale),
+                      })}
+                    </Text>
+                  ) : null}
                   {current.priceAmount !== null && current.priceCurrency !== null ? (
                     <Text kind="label" tone="muted">
                       {formatPrice(current.priceAmount, current.priceCurrency, locale)}
@@ -206,7 +239,7 @@ export default function GiftDetailScreen() {
                       {reserveHint}
                     </Text>
                   ) : null}
-                  <NavLink href="/">{t("backToList")}</NavLink>
+                  <NavLink href="/">{tGift("backToList")}</NavLink>
                 </YStack>
               ) : null}
             </Column>
@@ -214,11 +247,14 @@ export default function GiftDetailScreen() {
         </PageScroll>
         {current ? (
           <ReserveConfirm
+            key={confirmOpen ? "open" : "closed"}
             open={confirmOpen}
             title={current.title}
             timeZone={timeZone}
             busy={reserveBusy}
+            dateError={dateError ?? undefined}
             onClose={function closeConfirm() {
+              setDateError(null);
               setConfirmOpen(false);
             }}
             onConfirm={submitReserve}

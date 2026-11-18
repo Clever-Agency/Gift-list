@@ -3,8 +3,8 @@ import { notFoundResponse, toResponse } from "@/lib/api-v1";
 
 /**
  * Story 4.7 (FR-47, AD-21): `GET /api/v1/me/invite-link` — the session user's one
- * immutable invite token, issued lazily for an account created before the story.
- * Signed-in only; the action owns the session and the repair.
+ * immutable invite token from storage. Signed-in only; the action owns the session
+ * and a read-only lookup.
  *
  * `toResponse` sets `Cache-Control: private, no-store`, so one user's link is
  * never served from a shared cache to another.

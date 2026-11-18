@@ -4,7 +4,7 @@ import type { Prisma } from "@/db/generated/client";
 vi.mock("server-only", () => ({}));
 
 const {
-  inviteLinkCreate,
+  inviteLinkFindUniqueOrThrow,
   inviteLinkFindUnique,
   blockFindFirst,
   friendshipFindUnique,
@@ -12,20 +12,17 @@ const {
   friendshipInviteDeleteMany,
   executeRaw,
   transaction,
-  PrismaClientKnownRequestError,
+  RecordNotFoundError,
 } = vi.hoisted(() => {
-  /** Stands in for the generated class, so a test can shape the `code`. */
-  class PrismaClientKnownRequestError extends Error {
-    code: string;
-
-    constructor(message: string, { code }: { code: string }) {
-      super(message);
-      this.code = code;
+  class RecordNotFoundError extends Error {
+    code = "P2025";
+    constructor() {
+      super("An operation failed because it depends on one or more records that were required but not found.");
     }
   }
 
   return {
-    inviteLinkCreate: vi.fn(),
+    inviteLinkFindUniqueOrThrow: vi.fn(),
     inviteLinkFindUnique: vi.fn(),
     blockFindFirst: vi.fn(),
     friendshipFindUnique: vi.fn(),
@@ -33,7 +30,7 @@ const {
     friendshipInviteDeleteMany: vi.fn(),
     executeRaw: vi.fn(),
     transaction: vi.fn(),
-    PrismaClientKnownRequestError,
+    RecordNotFoundError,
   };
 });
 
@@ -52,32 +49,18 @@ function asTransactionClient(client: typeof tx): Prisma.TransactionClient {
 
 vi.mock("@/db/client", () => ({
   prisma: {
-    inviteLink: { create: inviteLinkCreate, findUnique: inviteLinkFindUnique },
+    inviteLink: { findUniqueOrThrow: inviteLinkFindUniqueOrThrow, findUnique: inviteLinkFindUnique },
     block: { findFirst: blockFindFirst },
     friendship: { findUnique: friendshipFindUnique, create: friendshipCreate },
     friendshipInvite: { deleteMany: friendshipInviteDeleteMany },
     $transaction: transaction,
   },
 }));
-vi.mock("@/db/generated/client", () => ({
-  Prisma: {
-    PrismaClientKnownRequestError,
-    TransactionIsolationLevel: { ReadCommitted: "ReadCommitted" },
-  },
-}));
 
-import {
-  ensureInviteLink,
-  inviteLinkStore,
-  inviteLinkTransaction,
-} from "./invite-link-store";
-
-function p2002() {
-  return new PrismaClientKnownRequestError("Unique constraint failed", { code: "P2002" });
-}
+import { inviteLinkStore, inviteLinkTransaction, readInviteLinkToken } from "./invite-link-store";
 
 beforeEach(() => {
-  inviteLinkCreate.mockReset();
+  inviteLinkFindUniqueOrThrow.mockReset();
   inviteLinkFindUnique.mockReset();
   blockFindFirst.mockReset();
   friendshipFindUnique.mockReset();
@@ -86,7 +69,7 @@ beforeEach(() => {
   executeRaw.mockReset();
   transaction.mockReset();
 
-  inviteLinkCreate.mockResolvedValue({ token: "stored_token" });
+  inviteLinkFindUniqueOrThrow.mockResolvedValue({ token: "stored_token" });
   inviteLinkFindUnique.mockResolvedValue(null);
   blockFindFirst.mockResolvedValue(null);
   friendshipFindUnique.mockResolvedValue(null);
@@ -96,60 +79,23 @@ beforeEach(() => {
   transaction.mockImplementation(async (work: (client: typeof tx) => Promise<unknown>) => work(tx));
 });
 
-describe("ensureInviteLink", () => {
-  it("creates the missing link with a fresh token for the given user", async () => {
-    inviteLinkCreate.mockResolvedValue({ token: "fresh_token" });
+describe("readInviteLinkToken", () => {
+  it("returns the stored token for the user and never writes", async () => {
+    inviteLinkFindUniqueOrThrow.mockResolvedValue({ token: "live_token" });
 
-    await expect(ensureInviteLink("u1")).resolves.toBe("fresh_token");
+    await expect(readInviteLinkToken("u1")).resolves.toBe("live_token");
 
-    expect(inviteLinkCreate).toHaveBeenCalledWith({
-      data: { userId: "u1", token: expect.any(String) },
-      select: { token: true },
-    });
-    const token = inviteLinkCreate.mock.calls[0][0].data.token as string;
-    expect(token).toMatch(/^[a-z0-9]{20,}$/);
-    expect(inviteLinkFindUnique).not.toHaveBeenCalled();
-  });
-
-  it("keeps the winner's token when a concurrent repair created the link first", async () => {
-    const rows: { userId: string; token: string }[] = [];
-    inviteLinkCreate.mockImplementation(
-      async ({ data }: { data: { userId: string; token: string } }) => {
-        if (rows.length > 0) throw p2002();
-        rows.push({ userId: data.userId, token: data.token });
-        return { token: data.token };
-      },
-    );
-    inviteLinkFindUnique.mockImplementation(async ({ where }: { where: { userId: string } }) => {
-      const row = rows.find((candidate) => candidate.userId === where.userId);
-      return row === undefined ? null : { token: row.token };
-    });
-
-    const tokens = await Promise.all([ensureInviteLink("u1"), ensureInviteLink("u1")]);
-
-    expect(rows).toHaveLength(1);
-    expect(tokens).toEqual([rows[0].token, rows[0].token]);
-    expect(inviteLinkCreate).toHaveBeenCalledTimes(2);
-    expect(inviteLinkFindUnique).toHaveBeenCalledTimes(1);
-    expect(inviteLinkFindUnique).toHaveBeenCalledWith({
+    expect(inviteLinkFindUniqueOrThrow).toHaveBeenCalledWith({
       where: { userId: "u1" },
       select: { token: true },
     });
+    expect(inviteLinkFindUniqueOrThrow).toHaveBeenCalledTimes(1);
   });
 
-  it("rethrows a unique failure that did not leave a link row", async () => {
-    inviteLinkCreate.mockRejectedValue(p2002());
-    inviteLinkFindUnique.mockResolvedValue(null);
+  it("refuses when the row is missing instead of creating one", async () => {
+    inviteLinkFindUniqueOrThrow.mockRejectedValue(new RecordNotFoundError());
 
-    await expect(ensureInviteLink("u1")).rejects.toBeInstanceOf(PrismaClientKnownRequestError);
-  });
-
-  it("does not hide unrelated database failures", async () => {
-    const failure = new Error("database unavailable");
-    inviteLinkCreate.mockRejectedValue(failure);
-
-    await expect(ensureInviteLink("u1")).rejects.toBe(failure);
-    expect(inviteLinkFindUnique).not.toHaveBeenCalled();
+    await expect(readInviteLinkToken("u1")).rejects.toBeInstanceOf(RecordNotFoundError);
   });
 });
 

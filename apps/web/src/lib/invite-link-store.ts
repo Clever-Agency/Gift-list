@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createId } from "@paralleldrive/cuid2";
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
 import type {
@@ -14,36 +13,17 @@ import { transactionAdapter } from "@/lib/friendship-store";
 type TransactionClient = Prisma.TransactionClient;
 
 /**
- * AD-21: one immutable invite token per user, created lazily when the profile or
- * the settings screen first asks for the link. Historical rows (users created
- * before Story 4.7.1) have no link, so the caller repairs instead of showing an
- * empty value.
- *
- * `InviteLink.userId` is the primary key, so a concurrent repair loses with
- * P2002 and keeps the winner's token; an existing token is never rewritten. A
- * P2002 on `token` (an impossible CUID2 collision) is rethrown when no link
- * exists: the caller must not report a link that was not created. The answer is
- * the live token, so the caller never reads the row a second time.
+ * AD-21: the session user's stored invite token. Registration and the deploy
+ * backfill are the only writers; this path never creates or updates a row. A
+ * missing row after backfill is a broken invariant and surfaces as a Prisma
+ * not-found error to the route (the client shows one error toast).
  */
-export async function ensureInviteLink(userId: string): Promise<string> {
-  try {
-    const created = await prisma.inviteLink.create({
-      data: { userId, token: createId() },
-      select: { token: true },
-    });
-    return created.token;
-  } catch (error) {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) {
-      throw error;
-    }
-
-    const existing = await prisma.inviteLink.findUnique({
-      where: { userId },
-      select: { token: true },
-    });
-    if (existing === null) throw error;
-    return existing.token;
-  }
+export async function readInviteLinkToken(userId: string): Promise<string> {
+  const row = await prisma.inviteLink.findUniqueOrThrow({
+    where: { userId },
+    select: { token: true },
+  });
+  return row.token;
 }
 
 /** The token owner as the link shows it: id, display name and nick only. */

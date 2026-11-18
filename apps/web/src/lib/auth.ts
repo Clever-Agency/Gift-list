@@ -63,11 +63,18 @@ function createAuth() {
     // паттерн кастомной схемы без хоста совпадает с любым хостом и портом
     // (Better Auth matchesOriginPattern), поэтому в проде их быть не должно.
     trustedOrigins: ["giftlist://", ...env.AUTH_DEV_TRUSTED_ORIGINS],
-    // Клиент и сброс ходят в `/api/v1` и `auth.api.*`. Эти HTTP-пути обошли бы
-    // счётчики Postgres (вход, регистрация, письмо) и упёрлись бы только в
-    // лимитер Better Auth в памяти процесса. `disabledPaths` отвечает 404 до
-    // этого лимитера и до обработчика; `auth.api.*` не затрагивается.
-    disabledPaths: ["/sign-in/email", "/sign-up/email", "/request-password-reset"],
+    // Клиент и сброс ходят в `/api/v1` и `auth.api.*`. Сырые
+    // `/sign-in/email`, `/sign-up/email` и `/request-password-reset` обошли бы
+    // счётчики Postgres и упёрлись бы только в лимитер Better Auth в памяти
+    // процесса. `/update-user` пишет `name` и `image` мимо `nameNormalized`
+    // (CLE-109): поиск читает нормализованное имя. `disabledPaths` отвечает
+    // 404 до лимитера и до обработчика; `auth.api.*` не затрагивается.
+    disabledPaths: [
+      "/sign-in/email",
+      "/sign-up/email",
+      "/request-password-reset",
+      "/update-user",
+    ],
     // bearer() accepts `Authorization: Bearer` and adds `set-auth-token` to cookie-setting
     // responses; the /api/auth route strips that header for non-native requests.
     // nextCookies must stay last so Server Actions can set the session cookie.

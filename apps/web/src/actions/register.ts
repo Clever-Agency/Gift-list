@@ -47,7 +47,11 @@ function validation(field?: string, reason?: "EMAIL_TAKEN" | "NICK_TAKEN"): Acti
  * together, so a failed friendship write leaves no account either. An unknown
  * token or a `Block` is a closed refusal of the domain that registration ignores
  * — the account is still created without a friendship, and the answer is the
- * same as a registration without a token. A `next` pointing at `/l/:token` never
+ * same as a registration with an unknown token (CLE-99, AD-21). When that body
+ * carried `inviteToken`, a `next` pointing at the invite screen is replaced with
+ * `/` («Мой вишлист»): opening that screen would show «Приглашение не найдено.»,
+ * and a different `next` for a `Block` would reveal it. A body without
+ * `inviteToken` keeps the requested path. A `next` pointing at `/l/:token` never
  * creates a friendship or a subscription, even when the body carries a token
  * (AD-15-11).
  */
@@ -75,11 +79,12 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
   const userId = createId();
   const locale = negotiateLocale(preferredFromAcceptLanguage(headers.get("accept-language")));
   const passwordHash = await hashPassword(password);
-  const next = safeNextPath(input.next);
+  const requestedNext = safeNextPath(input.next);
   // AD-15-11: a registration that came through a list link `/l/:token` never
   // creates a friendship, even if a body also carries an invite token — only the
   // `/i/` path does. `safeNextPath` has already rewritten `/l/x` to `/wishlist/x`.
-  const inviteToken = next.startsWith("/wishlist/") ? undefined : input.inviteToken;
+  const inviteToken = requestedNext.startsWith("/wishlist/") ? undefined : input.inviteToken;
+  let joined = false;
   try {
     await prisma.$transaction(
       async function createAccount(tx) {
@@ -115,7 +120,8 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
         });
 
         if (owner !== null) {
-          await acceptInviteLinkInTransaction({ viewerId: userId, owner }, invite);
+          const accepted = await acceptInviteLinkInTransaction({ viewerId: userId, owner }, invite);
+          joined = accepted.ok;
         }
       },
       // The accept takes the same pair lock as every friendship write, so the
@@ -152,7 +158,7 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
   };
   const result: ActionResult<AuthPayload> = {
     ok: true,
-    data: { user, next },
+    data: { user, next: nextAfterClosedInvite(requestedNext, joined, inviteToken !== undefined) },
   };
   if (!session.ok) {
     return {
@@ -160,6 +166,21 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
     };
   }
   return { result, session };
+}
+
+/**
+ * CLE-99: a registration that tried an invite token and did not create the
+ * friendship must not return to `/invite/:token`. That screen answers a block
+ * and an unknown token with the same «not found». Both refusals therefore share
+ * `next: "/"` («Мой вишлист»). A created friendship keeps the requested path,
+ * including a query. A body without `inviteToken` keeps it too — the screen can
+ * still offer «Добавить». Every other path, including `/wishlist/:token`, is
+ * unchanged. A different `next` for a block alone would reveal it (AD-21).
+ */
+function nextAfterClosedInvite(requested: string, joined: boolean, attempted: boolean): string {
+  if (joined || !attempted) return requested;
+  const path = requested.split(/[?#]/, 1)[0] ?? requested;
+  return /^\/invite\/[^/]+$/.test(path) ? "/" : requested;
 }
 
 function conflict(emailTaken: boolean, nickTaken: boolean): ActionResult<AuthPayload> {

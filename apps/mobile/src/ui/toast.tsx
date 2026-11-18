@@ -1,4 +1,4 @@
-import { Toast } from "@gift-list/ui";
+import { Toast, type ToastTone } from "@gift-list/ui";
 import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo } from "react-native";
 import { useTranslations } from "use-intl";
@@ -53,14 +53,19 @@ function screenReaderApi(): ScreenReaderApi | null {
  */
 export function ToastHost({
   message,
+  title,
   tone = "error",
   onDismiss,
   offsetBottom = 0,
   persistent,
   action,
+  loading,
+  dismissible,
 }: {
   message: string;
-  tone?: "info" | "error";
+  /** An optional title: the toast becomes a two-line card (title + description). */
+  title?: string;
+  tone?: ToastTone;
   onDismiss: () => void;
   /**
    * Height of a sticky bottom control the toast must not cover — the screen lifts
@@ -69,11 +74,15 @@ export function ToastHost({
   offsetBottom?: number;
   /**
    * Keep the toast until it is dismissed, without a countdown. Defaults to `true`
-   * for `error` — «Нет сети» stays — and to `false` for `info`.
+   * for `error` — «Нет сети» stays — and to `false` for the other tones.
    */
   persistent?: boolean;
   /** Undo and retry (`DESIGN.md` → Toast: «необязательное действие»). */
   action?: { label: string; onPress: () => void };
+  /** The action is running: a spinner instead of the tone icon, the card is busy. */
+  loading?: boolean;
+  /** Show the close button. Defaults to `true`. */
+  dismissible?: boolean;
 }) {
   const t = useTranslations("app.toast");
   const stays = persistent ?? tone === "error";
@@ -198,10 +207,13 @@ export function ToastHost({
     <Toast
       testID="toast-host"
       message={message}
+      title={title}
       tone={tone}
       closeLabel={t("close")}
       onClose={handleClose}
       action={action}
+      loading={loading}
+      dismissible={dismissible}
       offsetBottom={offsetBottom}
       visible={!leaving}
       onHoverChange={setHovered}

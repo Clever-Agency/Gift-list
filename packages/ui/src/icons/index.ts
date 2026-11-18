@@ -1,4 +1,7 @@
+export { AlertTriangle } from "./AlertTriangle";
 export { Check } from "./Check";
+export { CheckCircle } from "./CheckCircle";
+export { CircleAlert } from "./CircleAlert";
 export { Close } from "./Close";
 export { Eye } from "./Eye";
 export { EyeOff } from "./EyeOff";

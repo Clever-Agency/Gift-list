@@ -40,7 +40,7 @@ export {
   type IconButtonSize,
   type IconButtonVariant,
 } from "./icon-button";
-export { Check, Close, Eye, EyeOff, Info, Moon, Search, Star } from "./icons";
+export { AlertTriangle, Check, CheckCircle, CircleAlert, Close, Eye, EyeOff, Info, Moon, Search, Star } from "./icons";
 export { Photo, type PhotoProps } from "./photo";
 export { PhotoPlaceholder, type PhotoPlaceholderProps } from "./photo-placeholder";
 export {

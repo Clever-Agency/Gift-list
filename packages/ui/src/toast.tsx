@@ -1,21 +1,51 @@
 import { View } from "@tamagui/core";
-import { XStack } from "@tamagui/stacks";
+import { XStack, YStack } from "@tamagui/stacks";
+import { AlertTriangle, CheckCircle, CircleAlert, Close, Info } from "./icons";
 import { layerFade } from "./motion";
 import { Pressable } from "./pressable";
+import { Spinner } from "./spinner";
 import { Text } from "./text";
-import { spacing } from "./tokens";
+import { useThemeColor } from "./theme-color";
+import { spacing, type ColorToken } from "./tokens";
 import { useReduceMotion } from "./use-reduce";
 
-export type ToastTone = "info" | "error";
+export type ToastTone = "info" | "success" | "warning" | "error";
+
+/** The glyph of each tone: shape as well as colour, so the meaning is never colour alone. */
+const TONE_ICONS = {
+  info: Info,
+  success: CheckCircle,
+  warning: AlertTriangle,
+  error: CircleAlert,
+} as const;
+
+/** The calm v8 ink of each tone (`DESIGN.md` → Colors: info, success, warning, destructive). */
+const TONE_INK = {
+  info: "primary",
+  success: "success",
+  warning: "warning",
+  error: "destructive",
+} as const satisfies Record<ToastTone, ColorToken>;
 
 export type ToastProps = {
+  /** The line of the toast; with `title` it becomes the description under it. */
   message: string;
+  /** An optional title: the toast then becomes a two-line card. */
+  title?: string;
+  /** `info` (default), `success`, `warning` or `error`. */
   tone?: ToastTone;
-  /** The close button's text and name, e.g. «Закрыть». */
+  /** The close button's accessible name, e.g. «Закрыть». */
   closeLabel: string;
   onClose: () => void;
-  /** Undo and retry (`DESIGN.md` → Toast: «необязательное действие»). */
+  /**
+   * The action of the toast (undo, retry). It is a text button under the message, so a
+   * long action label wraps with the text instead of squeezing it.
+   */
   action?: { label: string; onPress: () => void };
+  /** The action is running: a spinner replaces the tone icon and the card is announced busy. */
+  loading?: boolean;
+  /** Show the close button. Defaults to `true`; a blocking toast can hide it. */
+  dismissible?: boolean;
   /**
    * Height of a sticky bottom control the toast must not cover: the screen lifts
    * the toast above it (`DESIGN.md` → Toast: «над вкладками и над прилипшей кнопкой»).
@@ -35,8 +65,11 @@ export type ToastProps = {
 
 /**
  * The look of a toast (`DESIGN.md` → components `toast`, `toast-error`): the host
- * decides when to show and hide it. An error is announced assertively
- * (`role="alert"`), an info toast politely (`role="status"`). The overlay lets
+ * decides when to show and hide it. The card is `surface` with radius 16, a 1 px
+ * frame and the card elevation (the dark theme takes its highlight from the theme);
+ * the tone is carried by a small icon and its calm ink, the text stays neutral, so
+ * every pair keeps AA contrast. `error` and `warning` are announced assertively
+ * (`role="alert"`), `info` and `success` politely (`role="status"`). The overlay lets
  * touches through; only the toast itself takes them.
  *
  * `DESIGN.md` → Движение: it fades in with `quick` (160 ms) and fades out the same
@@ -44,17 +77,23 @@ export type ToastProps = {
  */
 export function Toast({
   message,
+  title,
   tone = "error",
   closeLabel,
   onClose,
   action,
+  loading = false,
+  dismissible = true,
   offsetBottom = 0,
   onHoverChange,
   onFocusChange,
   visible = true,
   testID,
 }: ToastProps) {
-  const error = tone === "error";
+  const assertive = tone === "error" || tone === "warning";
+  const ink = useThemeColor(TONE_INK[tone]);
+  const closeInk = useThemeColor("muted-foreground");
+  const Icon = TONE_ICONS[tone];
   const reduce = useReduceMotion();
 
   function handlePointerEnter() {
@@ -87,83 +126,76 @@ export function Toast({
       transition={layerFade(reduce)}
     >
       <XStack
-        role={error ? "alert" : "status"}
-        aria-live={error ? "assertive" : "polite"}
+        role={assertive ? "alert" : "status"}
+        aria-live={assertive ? "assertive" : "polite"}
+        aria-busy={loading || undefined}
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
         width="100%"
         maxWidth="$dialog-width"
-        minHeight="$control-height"
-        alignItems="center"
-        justifyContent="space-between"
+        alignItems="flex-start"
         gap="$2"
         borderRadius="$lg"
         borderWidth={1}
-        borderColor={error ? "$destructive" : "$border"}
+        borderColor="$border"
         paddingHorizontal="$card-padding"
-        paddingVertical="$2"
+        paddingVertical="$3"
         backgroundColor="$surface"
-        shadowColor="$scrim"
-        shadowOpacity={0.18}
-        shadowRadius={24}
-        shadowOffset={{ width: 0, height: 12 }}
+        boxShadow="$shadow-card"
       >
-        <Text kind="label" flexShrink={1} color={error ? "$destructive" : "$foreground"}>
-          {message}
-        </Text>
-        {action ? (
-          <ToastButton
-            label={action.label}
-            tone="action"
-            onPress={action.onPress}
+        <View
+          width="$icon-inline"
+          height="$icon-inline"
+          marginTop={2}
+          flexShrink={0}
+          alignItems="center"
+          justifyContent="center"
+        >
+          {loading ? (
+            <Spinner size={spacing["icon-inline"]} color={ink} />
+          ) : (
+            <Icon size={spacing["icon-inline"]} color={ink} testID={testID ? `${testID}-icon` : undefined} />
+          )}
+        </View>
+        <YStack flex={1} minWidth={0} gap="$1">
+          {title ? <Text kind="body-strong">{title}</Text> : null}
+          <Text kind="label" tone={title ? "muted" : "default"} flexShrink={1}>
+            {message}
+          </Text>
+          {action ? (
+            <Pressable
+              role="button"
+              aria-label={action.label}
+              onPress={action.onPress}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              alignSelf="flex-start"
+              minHeight="$touch-target"
+              justifyContent="center"
+            >
+              <Text kind="button" color="$primary" textDecorationLine="underline">
+                {action.label}
+              </Text>
+            </Pressable>
+          ) : null}
+        </YStack>
+        {dismissible ? (
+          <Pressable
+            aria-label={closeLabel}
+            onPress={onClose}
             onFocus={handleFocus}
             onBlur={handleBlur}
-          />
+            minHeight="$touch-target"
+            minWidth="$touch-target"
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Close size={spacing["icon-small"]} color={closeInk} />
+          </Pressable>
         ) : null}
-        <ToastButton
-          label={closeLabel}
-          tone="close"
-          onPress={onClose}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-        />
       </XStack>
     </View>
   );
 }
 
 Toast.displayName = "Toast";
-
-type ToastButtonProps = {
-  label: string;
-  /** `action` — the undo/retry verb in `primary`; `close` — the quiet «Закрыть». */
-  tone: "action" | "close";
-  onPress: () => void;
-  onFocus: () => void;
-  onBlur: () => void;
-};
-
-function ToastButton({ label, tone, onPress, onFocus, onBlur }: ToastButtonProps) {
-  return (
-    <Pressable
-      aria-label={label}
-      onPress={onPress}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      minHeight="$touch-target"
-      minWidth="$touch-target"
-      alignItems="center"
-      justifyContent="center"
-    >
-      <Text
-        kind="button"
-        color={tone === "action" ? "$primary" : "$muted-foreground"}
-        textDecorationLine="underline"
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-ToastButton.displayName = "ToastButton";

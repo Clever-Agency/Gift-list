@@ -230,6 +230,16 @@ async function press(label: string) {
   await settle(10);
 }
 
+/** The toast's close cross: an icon button, so its name comes from `aria-label`. */
+async function dismissToast() {
+  const target = container.querySelector<HTMLElement>('[aria-label="Закрыть"]');
+  expect(target).not.toBeNull();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
 /** The icon-only «Что видно по ссылке» control next to the copy button. */
 function infoTrigger(): HTMLElement | null {
   return container.querySelector('[data-testid="wishlist-copy-link-info"]');
@@ -762,7 +772,7 @@ describe("мой вишлист: список", () => {
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(button("Повторить")).toBeDefined();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс), экран убирает его после анимации.
     await settle(300);
     expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
@@ -1421,7 +1431,7 @@ describe("мой вишлист: весточка от формы создани
     // `setParams({ toast: undefined })` drops the param (expo-router does) and the
     // screen re-renders on «Закрыть»: the notice and its value are both gone.
     search.params = {};
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
@@ -1440,7 +1450,7 @@ describe("мой вишлист: весточка от формы создани
     respond(giftsAnswer([gift()]));
     await mount();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
@@ -1484,7 +1494,7 @@ describe("мой вишлист: весточка от формы редакти
     respond(giftsAnswer([gift()]));
     await mount();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Изменения сохранены.");

@@ -44,4 +44,15 @@
     color: #1c1a2e;
     font-family: "Manrope", system-ui, sans-serif;
   }
+
+  /*
+   * The themed surface of every story (`CatalogSurface` in preview.tsx) fills its
+   * parent block: the preview block of a docs page and the canvas. Without these
+   * rules the docs zoom wrapper and `#storybook-root` shrink to the sample, so the
+   * `$background` behind the sample stops at the content width.
+   */
+  .docs-story > div,
+  #storybook-root {
+    width: 100%;
+  }
 </style>

@@ -143,6 +143,45 @@ describe("nickUpdateBodySchema", () => {
   });
 });
 
+describe("nick uniqueness (CLE-94)", () => {
+  function body(nick: string) {
+    return { email: "a@example.com", password: "password1", displayName: "Анна", nick };
+  }
+
+  it("maps every case and padding variant onto one stored value", () => {
+    // AD-13: uniqueness is case-insensitive, so the stored `nick` must already be
+    // the canonical form — otherwise the unique index on `nickNormalized` would
+    // accept "Anna" beside "anna".
+    for (const nick of ["anna", "Anna", "ANNA", "  Anna\t", "\u00a0anna\u00a0"]) {
+      expect(registerBodySchema.parse(body(nick)).nick, JSON.stringify(nick)).toBe("anna");
+      expect(nickUpdateBodySchema.parse({ nick }).nick, JSON.stringify(nick)).toBe("anna");
+    }
+  });
+
+  it("refuses look-alikes that do not fold onto the ASCII pattern", () => {
+    // Full width, a Cyrillic homoglyph, a combining accent, a zero-width space
+    // and mathematical bold: none of them can become a second "anna".
+    const rejected = ["ａｎｎａ", "аnna", "anna\u0301", "an\u200bna", "𝐚𝐧𝐧𝐚"];
+    for (const nick of rejected) {
+      expect(nickUpdateBodySchema.safeParse({ nick }).success, JSON.stringify(nick)).toBe(false);
+      expect(registerBodySchema.safeParse(body(nick)).success, JSON.stringify(nick)).toBe(false);
+    }
+  });
+
+  it("folds a Unicode letter whose lower case is ASCII onto that ASCII nick", () => {
+    // KELVIN SIGN lower-cases to "k": the value can only land on the one nick "ank".
+    expect(registerBodySchema.parse(body("An\u212a")).nick).toBe("ank");
+  });
+
+  it("strips a nickNormalized the client tries to preset", () => {
+    const register = registerBodySchema.parse({ ...body("anna"), nickNormalized: "free" });
+    expect(register).not.toHaveProperty("nickNormalized");
+    expect(nickUpdateBodySchema.parse({ nick: "anna", nickNormalized: "free" })).toEqual({
+      nick: "anna",
+    });
+  });
+});
+
 describe("nickIssue", () => {
   it("names Cyrillic before anything else, mixed with Latin too", () => {
     expect(nickIssue("аня")).toEqual({ code: "cyrillic" });

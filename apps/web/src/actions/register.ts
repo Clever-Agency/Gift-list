@@ -15,6 +15,7 @@ import {
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
 import { acceptInviteLinkInTransaction } from "@/domain/invite-link";
+import { normalizeNick } from "@/domain/nick";
 import { auth } from "@/lib/auth";
 import { inviteLinkTransaction } from "@/lib/invite-link-store";
 import { authRateLimit, clientIp, consumeRateLimit } from "@/lib/rate-limit";
@@ -58,7 +59,11 @@ export async function registerUser(input: RegisterBody, headers: Headers): Promi
     };
   }
 
-  const { email, password, displayName, nick } = input;
+  const { email, password, displayName } = input;
+  // AD-13: `nick` is stored only in its canonical form, and the lookup below
+  // uses the same value, so a case or padding variant can never slip past the
+  // unique index even if the caller skipped the body schema.
+  const nick = normalizeNick(input.nick);
   const existing = await prisma.user.findFirst({
     where: { OR: [{ email }, { nickNormalized: nick }] },
     select: { email: true, nickNormalized: true },

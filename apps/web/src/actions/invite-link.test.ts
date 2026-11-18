@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, ensureInviteLink, store, writes } = vi.hoisted(() => ({
+const { getSession, readInviteLinkToken, store, writes } = vi.hoisted(() => ({
   getSession: vi.fn(),
-  ensureInviteLink: vi.fn(),
+  readInviteLinkToken: vi.fn(),
   writes: [] as string[],
   store: {
     findOwnerByToken: vi.fn(),
@@ -18,7 +18,7 @@ const { getSession, ensureInviteLink, store, writes } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
-vi.mock("@/lib/invite-link-store", () => ({ ensureInviteLink, inviteLinkStore: store }));
+vi.mock("@/lib/invite-link-store", () => ({ readInviteLinkToken, inviteLinkStore: store }));
 
 import { acceptInviteByToken, getInvitePreview, getMyInviteLink } from "./invite-link";
 
@@ -36,7 +36,7 @@ const forbidden = { ok: false, code: "FORBIDDEN", message: "Forbidden" };
 
 beforeEach(() => {
   getSession.mockReset();
-  ensureInviteLink.mockReset();
+  readInviteLinkToken.mockReset();
   writes.length = 0;
   for (const [name, method] of Object.entries(store)) {
     method.mockReset();
@@ -55,7 +55,7 @@ beforeEach(() => {
   }
 
   getSession.mockResolvedValue(session);
-  ensureInviteLink.mockResolvedValue("cu2token");
+  readInviteLinkToken.mockResolvedValue("cu2token");
   store.findOwnerByToken.mockResolvedValue(anna);
   store.hasBlockBetween.mockResolvedValue(false);
   store.findFriendship.mockResolvedValue(false);
@@ -69,15 +69,23 @@ describe("getMyInviteLink (Story 4.7)", () => {
     getSession.mockResolvedValue(null);
 
     await expect(getMyInviteLink(new Headers())).resolves.toEqual(unauthenticated);
-    expect(ensureInviteLink).not.toHaveBeenCalled();
+    expect(readInviteLinkToken).not.toHaveBeenCalled();
   });
 
-  it("issues the session user's lazy token and carries nothing else", async () => {
+  it("returns the session user's stored token and carries nothing else", async () => {
     await expect(getMyInviteLink(new Headers())).resolves.toEqual({
       ok: true,
       data: { token: "cu2token" },
     });
-    expect(ensureInviteLink).toHaveBeenCalledWith(viewer.id);
+    expect(readInviteLinkToken).toHaveBeenCalledWith(viewer.id);
+  });
+
+  it("does not invent a token when the stored row is missing", async () => {
+    const missing = new Error("record required but not found");
+    readInviteLinkToken.mockRejectedValue(missing);
+
+    await expect(getMyInviteLink(new Headers())).rejects.toBe(missing);
+    expect(readInviteLinkToken).toHaveBeenCalledWith(viewer.id);
   });
 });
 
@@ -144,7 +152,7 @@ describe("getInvitePreview (Story 4.7)", () => {
     await getInvitePreview("cu2token", new Headers());
 
     expect(store.transaction).not.toHaveBeenCalled();
-    expect(ensureInviteLink).not.toHaveBeenCalled();
+    expect(readInviteLinkToken).not.toHaveBeenCalled();
     expect(writes).toEqual([]);
   });
 });

@@ -128,10 +128,22 @@ export default function LoginScreen() {
   const registerHref = { pathname: "/register" as const, params: nextParams };
   const forgotHref = { pathname: "/forgot" as const, params: nextParams };
 
+  function reserveTitleFromNext(path: string): string | null {
+    const query = path.split("?")[1];
+    if (!query) return null;
+    const title = new URLSearchParams(query).get("title");
+    return title && title.trim() !== "" ? title : null;
+  }
+
+  const reserveTitle = next !== "/" ? reserveTitleFromNext(next) : null;
+
   return (
     <>
       <Stack.Screen options={{ title: t("login.pageTitle", { brand }) }} />
       <AnonymousScreen title={t("login.title")}>
+        {reserveTitle ? (
+          <Text kind="body">{t("login.forReserve", { title: reserveTitle })}</Text>
+        ) : null}
         {issue && !issue.field ? (
           <Text role="alert" aria-live="polite">
             {issue.text}

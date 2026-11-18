@@ -25,5 +25,29 @@ export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusT
       });
       return count === 1;
     },
+    async reserveGift(giftId, data) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "OPEN",
+          quantity: "SINGLE",
+          archivedAt: null,
+        },
+        data: {
+          status: "RESERVED",
+          reservedById: data.reservedById,
+          reservedAt: data.reservedAt,
+          titleSnapshotOnReserve: data.titleSnapshotOnReserve,
+          reservationDueAt: data.reservationDueAt,
+          reservationTimeZone: data.reservationTimeZone,
+          reservationPhase: "ACTIVE",
+          reservationPhaseAt: data.reservationPhaseAt,
+          reservationBought: false,
+          holderVisibleToOwner: data.holderVisibleToOwner,
+          holderVisibleToOthers: data.holderVisibleToOthers,
+        },
+      });
+      return count === 1 ? "success" : "lost";
+    },
   };
 }

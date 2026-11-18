@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-11-16'
+last_updated: '2026-11-18'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -76,8 +76,8 @@ development_status:
   4-7-ссылка-приглашение-i-token: review # CLE-73: 4.7.1–4.7.4 готовы (схема InviteLink + миграция + домен 490cb44, API и клиент d956499, Next-страница /i/[token] c355b55, экран приглашения/регистрация/«Скопировать ссылку-приглашение» 4b461a5); 4.7.5 — независимое ревью диффа против AC/AD-21 без исправлений, typecheck/lint/test/build exit 0 и measure-web-size в бюджете (прирост 184266 из 184320, запас 54) на 8a58bb4 2026-11-16; тесты: mobile 1365, web 1244, contracts 315, ui 261, скрипты 21; потолок поднимался дважды: 181248 → 182272 (78e0954) и → 184320 (8a58bb4), новых зависимостей и библиотек нет; миграция 20261116150000_invite_link создана только файлом, ни к какой БД не применялась; живой HTTP на PostgreSQL отложен (Docker Desktop не запускался); не done: ручной/нативный просмотр не делался, App Links /i/* не настроены, приёмка человеком
   epic-4-retrospective: optional
 
-  epic-5: backlog
-  5-1-giftstatusservice-бронь-cas-со-сроком-и-видимостью: backlog
+  epic-5: in-progress
+  5-1-giftstatusservice-бронь-cas-со-сроком-и-видимостью: review # CLE-111: typecheck/lint/test зелёные, гонка на одноразовой PostgreSQL 16; не done до приёмки человеком
   5-2-снятие-брони-держателем-и-владельцем: backlog
   5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой: backlog
   5-4-удаление-и-правка-забронированного-желания: backlog

@@ -11,7 +11,9 @@ body {
 body {
   display: flex;
   flex-direction: column;
-  background: var(--c-background);
+  /* The v8 light paper: the page paints its own `$background` inside the provider,
+     this is only the shell behind it before the first paint. */
+  background: #F3F1EC;
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }

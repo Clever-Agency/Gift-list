@@ -88,10 +88,10 @@ describe("IconButton: иконка без текста", () => {
       "var(--t-radius-full)",
     );
     expect(declarationsFor(visual(container), "background-color").map((one) => one.value)).toContain(
-      "var(--c-primary)",
+      "var(--primary)",
     );
     expect(declarationsFor(visual(container), "color").map((one) => one.value)).toContain(
-      "var(--c-primary-foreground)",
+      "var(--primary-foreground)",
     );
   });
 });

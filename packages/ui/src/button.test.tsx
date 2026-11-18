@@ -29,13 +29,6 @@ function background(element: Element): { base?: string; hover?: string } {
   };
 }
 
-/** The colour a `--c-…` custom property of the token block resolves to, e.g. `#1E2B69`. */
-function tokenValue(property: string): string | undefined {
-  return allDeclarations().find(
-    (declaration) => declaration.selector.startsWith(":root") && declaration.property === property,
-  )?.value;
-}
-
 describe("Button", () => {
   it("на вебе это настоящий <button> с подписью как именем", async () => {
     const { container, render } = mounted();
@@ -175,35 +168,30 @@ describe("Button", () => {
 
   /**
    * `DESIGN.md` → Colors, «Hover-затемнение кнопок» (v8): the hover background is the
-   * token of the variant darkened by 8%, and the contrast pairs (text on hover) are
-   * the approved ones — 13.1 / 5.6 / 6.2:1.
+   * theme value of the variant. The actual hexes are pinned by `tokens.test.ts`
+   * (palette ↔ DESIGN.md) and by `theme.test.tsx` (light and dark values).
    */
   const HOVER_VARIANTS = [
-    { variant: "primary", token: "primary", hex: "#1E2B69" },
+    { variant: "primary", token: "primary" },
     // v8: the reserve CTA is the primary one — same navy and same hover.
-    { variant: "reserve", token: "primary", hex: "#1E2B69" },
-    { variant: "destructive", token: "destructive", hex: "#B1352D" },
+    { variant: "reserve", token: "primary" },
+    { variant: "destructive", token: "destructive" },
   ] as const;
 
-  for (const { variant, token, hex } of HOVER_VARIANTS) {
+  for (const { variant, token } of HOVER_VARIANTS) {
     it(`${variant}: фон на hover — ${token}-hover, базовый фон прежний`, async function hoverTest() {
       const { container, render } = mounted();
       await render(<Button label="Кнопка" variant={variant} onPress={vi.fn()} />);
       const button = container.querySelector("button") as HTMLElement;
 
-      // Only the hover state changes: the resting background keeps its token.
+      // Only the hover state changes: the resting background keeps its theme value.
       expect(background(button)).toEqual({
-        base: `var(--c-${token})`,
-        hover: `var(--c-${token}-hover)`,
+        base: `var(--${token})`,
+        hover: `var(--${token}-hover)`,
       });
       // The hover rule is a media-query state, so a touch screen never paints it.
       expect(declarationsFor(button).filter((one) => one.selector.includes(":hover") && !one.hover)).toEqual(
         [],
-      );
-      // The token itself resolves to the approved value of DESIGN.md.
-      expect(tokenValue(`--c-${token}-hover`)).toBe(hex);
-      expect(tokenValue(`--c-${token}`)).toBe(
-        { primary: "#2B3A7A", accent: "#EDEBF4", destructive: "#C4473D" }[token],
       );
     });
   }
@@ -213,24 +201,26 @@ describe("Button", () => {
 
     await render(<Button label="Загадать" variant="secondary" onPress={vi.fn()} />);
     const secondary = container.querySelector("button") as HTMLElement;
+    // v8: a translucent violet fill, not a solid one — it reads over the page and over
+    // a card (`DESIGN.md` → Colors, secondary).
     expect(background(secondary)).toEqual({
-      base: "var(--c-accent)",
-      hover: "var(--c-accent-hover)",
+      base: "var(--accent-soft)",
+      hover: "var(--accent-soft-hover)",
     });
     expect(declarationsFor(secondary, "border-color").map((one) => one.value)).toContain(
-      "var(--c-accent-border)",
+      "var(--accent-border)",
     );
 
     await render(<Button label="Поделиться" variant="outline" onPress={vi.fn()} />);
     const outline = container.querySelector("button") as HTMLElement;
-    expect(background(outline)).toEqual({ base: "transparent", hover: "var(--c-muted)" });
+    expect(background(outline)).toEqual({ base: "transparent", hover: "var(--muted)" });
     expect(declarationsFor(outline, "border-color", true).map((one) => one.value)).toEqual([
-      "var(--c-foreground)",
+      "var(--foreground)",
     ]);
 
     await render(<Button label="Отмена" variant="ghost" onPress={vi.fn()} />);
     const ghost = container.querySelector("button") as HTMLElement;
-    expect(background(ghost)).toEqual({ base: "transparent", hover: "var(--c-muted)" });
+    expect(background(ghost)).toEqual({ base: "transparent", hover: "var(--muted)" });
   });
 
   /**
@@ -244,27 +234,27 @@ describe("Button", () => {
    * media query `(hover: hover)` are not exercised here.
    */
   const POINTER_VARIANTS = [
-    { variant: "primary", property: "background-color", base: "var(--c-primary)", hover: "var(--c-primary-hover)" },
-    { variant: "reserve", property: "background-color", base: "var(--c-primary)", hover: "var(--c-primary-hover)" },
+    { variant: "primary", property: "background-color", base: "var(--primary)", hover: "var(--primary-hover)" },
+    { variant: "reserve", property: "background-color", base: "var(--primary)", hover: "var(--primary-hover)" },
     {
       variant: "destructive",
       property: "background-color",
-      base: "var(--c-destructive)",
-      hover: "var(--c-destructive-hover)",
+      base: "var(--destructive)",
+      hover: "var(--destructive-hover)",
     },
     {
       variant: "secondary",
       property: "background-color",
-      base: "var(--c-accent)",
-      hover: "var(--c-accent-hover)",
+      base: "var(--accent-soft)",
+      hover: "var(--accent-soft-hover)",
     },
     {
       variant: "outline",
       property: "border-color",
-      base: "var(--c-border-strong)",
-      hover: "var(--c-foreground)",
+      base: "var(--border-strong)",
+      hover: "var(--foreground)",
     },
-    { variant: "ghost", property: "background-color", base: "transparent", hover: "var(--c-muted)" },
+    { variant: "ghost", property: "background-color", base: "transparent", hover: "var(--muted)" },
   ] as const;
 
   for (const { variant, property, base, hover } of POINTER_VARIANTS) {
@@ -305,7 +295,7 @@ describe("Button", () => {
     await render(<Button label="Поделиться" variant="ghost" onPress={vi.fn()} />);
     expect(
       stateValues(container.querySelector("button") as HTMLElement, "press", "background-color"),
-    ).toEqual(["var(--c-muted)"]);
+    ).toEqual(["var(--muted)"]);
   });
 
   it("disabled с focusableWhenDisabled тоже не реагирует на hover, но остаётся в Tab-порядке", async () => {
@@ -318,7 +308,7 @@ describe("Button", () => {
     expect(button.tabIndex).toBe(0);
     expect(stateValues(button, "hover", "background-color")).toEqual([]);
     expect(stateValues(button, "press", "opacity")).toEqual([]);
-    expect(stateValues(button, "base", "background-color")).toEqual(["var(--c-primary)"]);
+    expect(stateValues(button, "base", "background-color")).toEqual(["var(--primary)"]);
   });
 
   it("каждый вариант: обычная кнопка нажимается, disabled и busy — нет", async () => {
@@ -408,7 +398,10 @@ describe("Button", () => {
 
   /** A CSS length from a token custom property of the emitted `:root`, in px. */
   function tokenPx(property: string): number {
-    return Number.parseFloat(tokenValue(property) ?? "");
+    const value = allDeclarations().find(
+      (declaration) => declaration.selector.startsWith(":root") && declaration.property === property,
+    )?.value;
+    return Number.parseFloat(value ?? "");
   }
 
   /**
@@ -535,12 +528,12 @@ describe("Button", () => {
   it("подпись не меняет цвет: текст остаётся foreground-токеном своего варианта", async () => {
     const { container, render } = mounted();
     const expected = {
-      primary: "var(--c-primary-foreground)",
-      reserve: "var(--c-primary-foreground)",
-      secondary: "var(--c-accent-foreground)",
-      outline: "var(--c-foreground)",
-      ghost: "var(--c-foreground)",
-      destructive: "var(--c-destructive-foreground)",
+      primary: "var(--primary-foreground)",
+      reserve: "var(--primary-foreground)",
+      secondary: "var(--accent-foreground)",
+      outline: "var(--foreground)",
+      ghost: "var(--foreground)",
+      destructive: "var(--destructive-foreground)",
     } as const;
 
     for (const [variant, color] of Object.entries(expected)) {

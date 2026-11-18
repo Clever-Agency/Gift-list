@@ -29,9 +29,11 @@ describe("SSR на сервере Next (без DOM)", () => {
     expect(html).toContain("Плед");
     expect(html).toContain("<button");
     expect(html).toContain("<style");
-    // Токены темы приходят CSS-переменными, а не инлайном в каждом узле.
-    expect(html).toContain("--c-primary:#2B3A7A");
-    expect(html).toContain("--c-accent:#EDEBF4");
+    // Цвета приходят CSS-переменными темы (light/dark), а не инлайном в каждом узле.
+    expect(html).toContain("--primary");
+    expect(html).toContain("--background");
+    expect(html).toContain("t_light");
+    expect(html).toContain("t_dark");
     expect(html).toContain("--t-size-control-height:48px");
     // Шрифты Next приходят CSS-переменными из next/font.
     expect(html).toContain("--f-family:var(--font-sans)");
@@ -43,7 +45,7 @@ describe("SSR на сервере Next (без DOM)", () => {
     const css = testConfig.getCSS();
 
     expect(css).toContain("min-height:var(--t-size-control-height)");
-    expect(css).toContain("background-color:var(--c-primary)");
+    expect(css).toContain("background-color:var(--primary)");
     expect(css).toContain(":focus-visible");
     expect(css).toContain("border-radius:var(--t-radius-lg)");
   });

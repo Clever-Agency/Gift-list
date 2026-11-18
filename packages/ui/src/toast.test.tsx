@@ -73,8 +73,8 @@ describe("Toast", () => {
     const close = document.querySelector('[aria-label="Закрыть"]') as HTMLElement;
     const keyboard = stateValues(close, "focus-visible", "outline-color");
     // v8: the toast is a surface card in both themes, so the regular ring shows on it.
-    expect(keyboard).toContain("var(--c-ring)");
-    expect(keyboard).not.toContain("var(--c-ring-inverse)");
+    expect(keyboard).toContain("var(--ring)");
+    expect(keyboard).not.toContain("var(--ring-inverse)");
     expect(stateValues(close, "focus", "outline-color")).toEqual([]);
   });
 });

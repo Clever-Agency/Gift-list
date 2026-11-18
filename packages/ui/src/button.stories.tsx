@@ -12,9 +12,10 @@ function noop() {}
  * button, hold it, press Tab. A mouse click leaves no ring (`:focus-visible` only);
  * a phone paints the same `$ring` on `focus` (W12.9). On hover the fill of `primary`,
  * `reserve` and `destructive` darkens by 8% (`primary-hover`, `accent-hover`,
- * `destructive-hover` in `DESIGN.md` → Colors); `secondary` is the calm violet fill
- * (`accent` → `accent-hover`) with its `accent-border` frame, `outline` takes the
- * `muted` fill and a `foreground` frame, `ghost` takes the `muted` fill. A disabled or
+ * `destructive-hover` in `DESIGN.md` → Colors); `secondary` is the calm violet fill —
+ * a translucent `accent-soft` (18 % of accent.8) that lifts to `accent-soft-hover`
+ * (27 %) with its `accent-border` frame; `outline` takes the `muted` fill and a
+ * `foreground` frame, `ghost` takes the `muted` fill. A disabled or
  * busy button keeps its 40% / 60% dim and does not react to hover or press at all
  * (`DESIGN.md` → Состояния кнопок, DECISION 2026-11-10): it is painted by a variant
  * value without those states. A busy button also shows the 16 px spinner
@@ -57,7 +58,7 @@ The shared button of the app and the Next pages. On the web it is a real \`<butt
 | --- | --- | --- | --- |
 | \`primary\` | \`$primary\` fill | \`$primary-hover\` (8% darker) | 90% opacity |
 | \`reserve\` | \`$primary\` fill (the same CTA as primary in v8) | \`$primary-hover\` | 90% opacity |
-| \`secondary\` | \`$accent\` fill, \`$accent-border\` frame | \`$accent-hover\` | 90% opacity |
+| \`secondary\` | \`$accent-soft\` translucent fill, \`$accent-border\` frame | \`$accent-soft-hover\` | 90% opacity |
 | \`outline\` | transparent, \`$border-strong\` frame | \`$muted\` fill, \`$foreground\` frame | \`$muted\` fill |
 | \`ghost\` | transparent | \`$muted\` fill | \`$muted\` fill |
 | \`destructive\` | \`$destructive\` fill | \`$destructive-hover\` | 90% opacity |

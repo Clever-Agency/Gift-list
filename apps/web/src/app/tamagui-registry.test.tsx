@@ -53,7 +53,7 @@ describe("TamaguiRegistry", () => {
   });
 
   it("в первом ответе есть CSS темы", () => {
-    expect(request(4)).toContain("--c-primary");
+    expect(request(4)).toContain("--primary");
   });
 
   it("пустой тег не выдаётся", () => {

@@ -72,8 +72,16 @@ function spaceTokens(): Record<string, number> {
   return { ...sizeTokens(), 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32 };
 }
 
+/**
+ * Size, space, radius and zIndex are static, so they are tokens. **Colours are not
+ * tokens on purpose**: Tamagui resolves `$name` of a colour property to a token
+ * before it looks at the theme (`getSplitStyles`: `tokensParsed[category]` wins), so a
+ * `color` token named `primary` would freeze every `$primary` to the light value —
+ * the dark theme would never paint. Colour names live in the two themes below, and
+ * `colors` / `colorsDark` stay the JS palette (theme seeds and plain values for the
+ * few native props that cannot take a theme token).
+ */
 const tokens = createTokens({
-  color: colors,
   space: spaceTokens(),
   size: sizeTokens(),
   radius: { 0: 0, ...rounded },

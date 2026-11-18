@@ -91,16 +91,18 @@ const Frame = styled(BehaviorFrame, {
         minHeight: "$control-height",
         backgroundColor: "$primary",
       },
-      // `secondary`: the calm violet button of v8 (design-system secondary, not outline).
+      // `secondary`: the calm violet button of v8 (design-system secondary, not
+      // outline): a translucent violet fill over whatever is behind it (`accent-soft`,
+      // 18 % of accent.8) with a 1 px frame and accent text.
       secondary: {
         minHeight: "$control-height",
-        backgroundColor: "$accent hover:$accent-hover",
+        backgroundColor: "$accent-soft hover:$accent-soft-hover",
         borderColor: "$accent-border",
         opacity: "press:0.9",
       },
       secondaryBlocked: {
         minHeight: "$control-height",
-        backgroundColor: "$accent",
+        backgroundColor: "$accent-soft",
         borderColor: "$accent-border",
       },
       // `outline`: the neutral bordered button (v8 outline) — secondary used to look like this.

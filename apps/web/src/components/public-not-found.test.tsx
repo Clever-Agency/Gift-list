@@ -37,7 +37,7 @@ describe("PublicNotFound: shared page-level 404", () => {
     expect(html).toContain('role="main"');
     // Server HTML with the Tamagui CSS, not a client-only shell.
     expect(html).toContain("<style");
-    expect(html).toContain("--c-primary:#2B3A7A");
+    expect(html).toContain("--primary");
   });
 
   it("shows exactly the sentence it is given and no owner, wishes or actions", () => {

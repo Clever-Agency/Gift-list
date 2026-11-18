@@ -40,7 +40,7 @@ describe("Toast (native): кольцо по focus", () => {
     const button = closeButton(container);
 
     expect(outline(button, "focus")).toEqual(
-      ["outline-color:var(--c-ring)", "outline-style:solid", "outline-width:2px"].sort(),
+      ["outline-color:var(--ring)", "outline-style:solid", "outline-width:2px"].sort(),
     );
     expect(outline(button, "focus-visible")).toEqual([]);
     expect(declarationsFor(button, "outline-offset").map((one) => one.value)).toEqual(["2px"]);

@@ -55,7 +55,7 @@ describe("Avatar: фото и инициалы", () => {
     expect(dot).not.toBeNull();
     expect(dot.getAttribute("aria-hidden")).toBe("true");
     expect(declarationsFor(dot, "background-color").map((one) => one.value)).toContain(
-      "var(--c-status-open)",
+      "var(--status-open)",
     );
   });
 

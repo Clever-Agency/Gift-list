@@ -33,7 +33,7 @@ export const Busy: Story = {
 export const Error: Story = {
   args: {
     ...Normal.args,
-    dateError: "Выберите дату не позже 18.12.",
+    dateError: "Выберите дату не позже 18.12.2026.",
   },
 };
 

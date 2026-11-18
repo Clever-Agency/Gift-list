@@ -36,6 +36,7 @@ type ScreenState =
 
 export default function GiftDetailScreen() {
   const tGift = useTranslations("app.gift");
+  const tForm = useTranslations("app.form");
   const common = useTranslations("common");
   const locale = useLocale();
   const brand = getBrandName();
@@ -151,7 +152,7 @@ export default function GiftDetailScreen() {
     }
     setGift(current);
     if ("network" in result && result.network) {
-      setToast(tGift("network"));
+      setToast(tForm("network"));
       return;
     }
     if (!("code" in result)) {

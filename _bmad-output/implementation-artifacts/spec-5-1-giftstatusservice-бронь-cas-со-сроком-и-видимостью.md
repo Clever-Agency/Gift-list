@@ -30,7 +30,7 @@ context:
 - Вместе с бронью: `reservedById`, `reservedAt=now`, `titleSnapshotOnReserve=title`, `reservationPhase=ACTIVE`, `reservationPhaseAt=now`, `reservationBought=false`, переключатели из тела. Таблиц Reservation и Payment нет. Новой миграции нет: колонки уже в `schema.prisma`.
 - Успех — `200` и viewer-`GiftCard`. Держателю (и только ему, пока `status=RESERVED`) добавляется `reservation`; владельцу и остальным ключ отсутствует. Правила `reservedBy` / `reservationLabel` / `ownerAction` не менять.
 - Конфликт «уже забронировано» (статус стал `RESERVED` или CAS проиграл) — `CONFLICT` + `reason: RESERVATION_TAKEN`. `CLOSED` — `CONFLICT` без этого reason. Дата вне диапазона — `VALIDATION` + `DUE_OUT_OF_RANGE`.
-- Тексты интерфейса только из каталога, дословно из EXPERIENCE/DESIGN. `errors.reason.DUE_OUT_OF_RANGE` заменить на «Выберите дату не позже {max}.»; `RESERVATION_TAKEN` — «Кто-то только что забрал этот подарок.» Сеть — «Нет сети. Попробуйте ещё раз.»
+- Тексты интерфейса только из каталога, дословно из EXPERIENCE/DESIGN. `errors.reason.DUE_OUT_OF_RANGE` — «Выберите дату не позже {max}.», `{max}` в виде `DD.MM.YYYY`. `RESERVATION_TAKEN` — «Кто-то только что забрал этот подарок.» Сеть на подтверждении брони — общая фраза формы «Нет соединения. Попробуйте ещё раз.» (DECISION 2026-11-18).
 - Маршрут: `POST /api/v1/gifts/:id/reserve`. Тело: `{ dueOn: "YYYY-MM-DD", holderVisibleToOwner: boolean, holderVisibleToOthers: boolean }`. Прочие методы — `notFoundResponse`.
 
 **Never:**
@@ -105,18 +105,20 @@ context:
 
 - Доступ по ссылке: `GET/POST /api/v1/gifts/:id` принимают query `listToken`. Совпадение с `List.publicToken` ставит `viaListToken`, иначе чужое PUBLIC для не-друга — `NOT_FOUND`. Тело запроса не расширялось.
 - `reservation.dueAt` на проводе — календарный день выбранной даты, не сам timestamptz. В базе по-прежнему исключительная граница следующих суток.
-- Общая фраза сети форм осталась «Нет соединения. Попробуйте ещё раз.»: её уже фиксируют экраны. Отдельный toast брони использует её же.
+- Toast брони при обрыве сети — `app.form.network`, «Нет соединения. Попробуйте ещё раз.» (DECISION 2026-11-18). Отдельный ключ `app.gift.network` убран.
 - Подсказка «имя могло стать известно» в confirm не ставится: в EXPERIENCE она у действий держателя, не у первого confirm.
 - Успешная бронь не показывает отдельный toast: карточка просто становится RESERVED.
 - Гонка прогнана на локальном PostgreSQL 16, порт 54321, база `gift_f5_reserve01`: один success и один lost. В CI тест не входит (`verify:reserve-concurrency`).
-- Потолок gzip SPA поднят до 187 392 (прирост 186 511, запас 881). `datetimepicker` в веб-бандл не попал.
+- Потолок gzip SPA: 191 488 при замере 186 706 (запас 4 782 байта). `datetimepicker` в веб-бандл не попал.
 
 ## Spec Change Log
+
+- 2026-11-18, решение владельца: toast брони при обрыве сети — «Нет соединения. Попробуйте ещё раз.», не «Нет сети…». Граница даты — «Выберите дату не позже {DD.MM.YYYY}», год обязателен. Потолок gzip поднят с запасом, без отдельного PR.
 
 ## Review Triage Log
 
 - `medium` — confirm всегда был `Dialog`, потому что `useMedia().maxMd` в теме нет. Исправлено: `!useMedia().medium`.
-- `medium` — toast сети брал «Нет соединения». Спека требует «Нет сети». Исправлено отдельным ключом `app.gift.network`, общая фраза форм не тронута.
+- `medium` — toast сети. Сначала вынесен в «Нет сети», затем владелец продукта вернул общую фразу формы «Нет соединения. Попробуйте ещё раз.» (DECISION 2026-11-18).
 - `medium` — повторное нажатие могло откатить свою же бронь. Исправлено `useRef` на время запроса.
 - `medium` — нативный выбор даты через `toISOString()` сдвигал день. Исправлено локальными `getFullYear/getMonth/getDate`.
 - `medium` — `2026-06-31` проходил диапазон. Исправлено: день должен совпасть сам с собой после сдвига.
@@ -133,7 +135,7 @@ context:
 
 `dueAt` хранится как исключительная граница следующих суток, чтобы весь выбранный календарный день входил в срок и почасовой cron (5.6) сравнивал `reservationDueAt <= now` без «дырки» в 23:59:59.999. Пояс фиксируется в строке, даже если профиль потом сменит `User.timeZone` (колонка профиля сегодня не перезаписывается, но снимок всё равно обязателен AD-9).
 
-Confirm — один компонент: `BottomSheet` при ширине compact (&lt; 600) и `Dialog` иначе. Дата: браузер — `input type="date"` с min/max; телефон — системный выбор (`@react-native-community/datetimepicker` версии Expo SDK 58, ставить в `@gift-list/mobile`). Подпись кнопки даты «Подарю до, {дата}», hint «Выбрать дату», caption «Не позже {DD.MM}». Подтвердить — `variant="reserve"`, отмена — ghost.
+Confirm — один компонент: `BottomSheet` при ширине compact (&lt; 600) и `Dialog` иначе. Дата: браузер — `input type="date"` с min/max; телефон — системный выбор (`@react-native-community/datetimepicker` версии Expo SDK 58, ставить в `@gift-list/mobile`). Подпись кнопки даты «Подарю до, {дата}», hint «Выбрать дату», caption «Не позже {DD.MM.YYYY}». Ошибка диапазона — «Выберите дату не позже {DD.MM.YYYY}». Подтвердить — `variant="reserve"`, отмена — ghost.
 
 На `/l` название в query нужно только фразе экрана входа. Бронь всегда читает название из строки `Gift`.
 

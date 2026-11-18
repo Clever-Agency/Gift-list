@@ -213,3 +213,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-99-регистрация-по-приглашению-при-block.md`
   summary: EXPERIENCE Flow 15 и тексты историй по-прежнему говорят, что после блока или невалидного токена человек видит «Приглашение не найдено», а успешная регистрация по `/i` возвращает на приглашение.
   evidence: Решение CLE-99 меняет только послерегистрационный `next`, когда токен был в теле и дружба не создана. `EXPERIENCE.md` Flow 15 и Story 4.7 в `epics.md` правятся через `bmad-correct-course`, не в этом фиксе. Повторное открытие ссылки и вход существующим аккаунтом текст «Приглашение не найдено.» сохраняют.
+
+## Deferred from: контакт автора support@ (2026-11-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-support-email-author-contact.md`
+  summary: Нет истории и маршрута для веб-страницы, где можно запросить удаление аккаунта без приложения (Google Play, Data safety): D-48 и п. 6 чеклиста требуют раздел политики с `privacy@wishmoon.clever-agency.dev`, но страницы политики нет ни в эпиках, ни в списке путей Next в AD-26.
+  evidence: Путь не входит в `/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known` (AD-26), поэтому без решения его отдаст SPA-fallback с рендером только на клиенте. Нужен `bmad-correct-course` вместе с пунктом 4 чеклиста (политика конфиденциальности) до публикации в Google Play.
+- source_spec: `_bmad-output/implementation-artifacts/spec-support-email-author-contact.md`
+  summary: Письма уходят с `noreply@` без `Reply-To`, поэтому ответ пользователя на письмо теряется; стоит ставить `Reply-To: AUTHOR_EMAIL` (`support@`) или явно решить, что ответы не поддерживаются.
+  evidence: D-48 и `docs/deployment-environments.md` фиксируют отправителя `noreply@` и что ответы на него не читаются; ни один документ не требует `Reply-To`. Поведение было и до смены контакта.

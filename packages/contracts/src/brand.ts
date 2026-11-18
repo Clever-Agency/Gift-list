@@ -1,5 +1,5 @@
 /**
- * Product identity and the public author contact (AD-24, D-35).
+ * Product identity and the public support contact (AD-24, D-35, D-48).
  *
  * The one source of the displayed product name and the author address: `apps/web`
  * and `apps/mobile` fall back to these constants when their brand variable is
@@ -10,8 +10,8 @@
  */
 export const PRODUCT_NAME = "WishMoon";
 
-/** Public contact of the author; owner's decision 2026-11-10, not a secret. */
-export const AUTHOR_EMAIL = "clever.web.agency@gmail.com";
+/** Product support mailbox behind «Написать автору»; owner's decision 2026-11-18 (D-35, D-48), not a secret. */
+export const AUTHOR_EMAIL = "support@wishmoon.clever-agency.dev";
 
 /** `mailto:` link without a subject; derived, so the address is edited once. */
 export const AUTHOR_MAILTO = `mailto:${AUTHOR_EMAIL}`;

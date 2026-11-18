@@ -9,7 +9,7 @@ import { wishlistShareLink } from "@/wishlist/share-link";
 export type CopyShareLinkResult = "copied" | "failed";
 
 /**
- * Builds `{origin}/l/{publicToken}` and copies it (AD-6, Q-2). A `null` link is
+ * Builds `{origin}/l/{publicToken}` and copies it (AD-6, D-48). A `null` link is
  * never copied: the caller shows the error toast instead of a broken string.
  * A refused write and a platform exception are the same `failed`: the link did
  * not reach the clipboard, so the screen must never claim success.

@@ -2,7 +2,7 @@
 name: Gift List
 status: final
 created: 2026-09-30
-updated: 2026-11-10
+updated: 2026-11-18
 language: ru
 workflow: bmad-ux
 round: 1
@@ -354,7 +354,7 @@ Behavioral; контраст и размеры — `DESIGN.md` → Colors и App
 |---------|------------|
 | Accessibility | Floor выше |
 | Platforms | Одно приложение Expo: Android, iOS, браузер (D-40) + серверные страницы Next.js |
-| Brand | Provisional DESIGN.md; Q-2 open to confirm |
+| Brand | DESIGN.md; имя WishMoon (D-35), домен `wishmoon.clever-agency.dev` (D-48) |
 | Motion | Сдвиг и fade шторки ≤ 200 мс, fade диалога и toast, смена цвета на hover/press; все переходы гейтятся «уменьшить движение» (медиа-ключ `reduce`), под ним — без сдвига, только fade. Без confetti при брони |
 | i18n | Пилот RU; кириллица + латиница заложены (D-46, раздел «Локализация») |
 | Dark mode | Нет (UX-A8) |
@@ -556,7 +556,7 @@ Behavioral; контраст и размеры — `DESIGN.md` → Colors и App
 |----|------|--------------|----------------------|
 | UX-A1 | Стек UI | Пересмотрено D-47: один пакет `packages/ui` на Tamagui для приложения и Next-страниц | Нет |
 | UX-A2 / Q-1 | Жалобы | В MVP нет (D-34). «Написать автору» остаётся. Закон — чеклист перед публикацией | Нет для MVP |
-| UX-A3 / Q-2 | Бренд / палитра | Имя WishMoon (2026-11-10, D-35); домен открыт (Q-2); **палитра C Forest Paper locked** | Домен — да; имя и палитра — нет |
+| UX-A3 / Q-2 | Бренд / палитра | Имя WishMoon (2026-11-10, D-35); домен `wishmoon.clever-agency.dev` (D-48); **палитра C Forest Paper locked** | Нет |
 | UX-A4 / Q-3 | Удаление аккаунта | Кнопка в настройках обязательна (D-33). Что хранить после — Q-3 | Срок — да; кнопка — нет |
 | UX-A5 / Q-6 | Цена | Необязательна, валюта из пяти кодов, по умолчанию USD (D-36, D-37) | Нет |
 | UX-A6 | Правила ника | 3–24 `[a-z0-9_]` | Желательно |

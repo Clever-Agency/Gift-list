@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { XStack } from "@tamagui/stacks";
 import { IconButton } from "./icon-button";
-import { Info, Star } from "./icons";
+import { Check, Close, Info, Star } from "./icons";
 
 /**
  * `IconButton` is the icon-only control of v8: 44 × 44, radius 8, 1 px frame. Hover
@@ -58,4 +58,30 @@ export const RowNarrow: Story = {
     );
   },
   globals: { viewport: { value: "w360" } },
+};
+
+/**
+ * The answer to a friends request: 32 px circles in the same 44 px target — the
+ * filled accept and the quiet decline. The accessible names are the row's labels.
+ */
+export const RequestActions: Story = {
+  render: function RequestActionsStory() {
+    return (
+      <XStack gap="$2" alignItems="center">
+        <IconButton
+          label="Отклонить: Екатерина Шереметьева"
+          size="sm"
+          shape="round"
+          icon={<Close size={16} />}
+        />
+        <IconButton
+          label="Принять: Екатерина Шереметьева"
+          size="sm"
+          shape="round"
+          variant="primary"
+          icon={<Check size={16} />}
+        />
+      </XStack>
+    );
+  },
 };

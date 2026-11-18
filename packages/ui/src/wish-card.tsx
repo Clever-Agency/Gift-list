@@ -1,10 +1,9 @@
 import { View, styled } from "@tamagui/core";
 import { YStack } from "@tamagui/stacks";
 import type { ReactNode } from "react";
-import { Moon } from "./icons";
+import { PhotoPlaceholder } from "./photo-placeholder";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
-import { useThemeColor } from "./theme-color";
 
 /**
  * `DESIGN.md` → WishCard: the v8 vertical Pinterest card. There is no frame around
@@ -40,49 +39,12 @@ const Photo = styled(YStack, {
   } as const,
 });
 
-/** Two calm tints of the placeholder, picked from the title, never at random. */
-const PLACEHOLDER_TINTS = ["$accent", "$muted"] as const;
-
-function placeholderTint(title: string): string {
-  const sum = Array.from(title).reduce(function codePoint(total, char) {
-    return total + (char.codePointAt(0) ?? 0);
-  }, 0);
-  return PLACEHOLDER_TINTS[sum % PLACEHOLDER_TINTS.length] ?? PLACEHOLDER_TINTS[0];
-}
-
 /**
  * No photo yet: the v8 placeholder (`blocks/14-photo-placeholders.png`) — a calm
  * themed panel with a soft light spot and the moon of the product, no text and no
  * image. Its tint is derived from the title, so the same wish always looks the same
  * and a grid of placeholders never flashes one colour.
  */
-function WishPhotoPlaceholder({ title, testID }: { title: string; testID?: string }) {
-  const moon = useThemeColor("accent-foreground");
-  return (
-    <YStack
-      testID={testID}
-      width="100%"
-      height="100%"
-      alignItems="center"
-      justifyContent="center"
-      backgroundColor={placeholderTint(title)}
-    >
-      <View
-        position="absolute"
-        width={72}
-        height={72}
-        borderRadius="$full"
-        backgroundColor="$surface"
-        opacity={0.6}
-        aria-hidden
-      />
-      <Moon size={28} color={moon} />
-    </YStack>
-  );
-}
-
-WishPhotoPlaceholder.displayName = "WishPhotoPlaceholder";
-
 export type WishCardProps = {
   title: string;
   /** A closed wish reads as muted. */
@@ -142,7 +104,7 @@ export function WishCard({
   const content = (
     <>
       <Photo interactive={Boolean(onPress)} testID={testID ? `${testID}-photo` : undefined}>
-        <WishPhotoPlaceholder title={title} />
+        <PhotoPlaceholder seed={title} />
       </Photo>
       <YStack gap="$1" paddingTop="$2" paddingHorizontal="$1">
         <Text kind="body-strong" tone={closed ? "muted" : "default"} numberOfLines={2}>

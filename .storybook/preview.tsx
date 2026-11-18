@@ -75,9 +75,11 @@ const withStorySurface: Decorator = function withStorySurface(Story, context) {
 };
 
 /** The provider and the catalogue every story gets, like the root of each app. */
-const withGiftListProvider: Decorator = function withGiftListProvider(Story) {
+const withGiftListProvider: Decorator = function withGiftListProvider(Story, context) {
+  // The toolbar switches the v8 theme; the light one is the app default.
+  const theme = context.globals.theme === "dark" ? "dark" : "light";
   return (
-    <GiftListProvider config={config}>
+    <GiftListProvider config={config} theme={theme}>
       <IntlProvider locale="ru" messages={messages}>
         <Story />
       </IntlProvider>
@@ -90,11 +92,26 @@ const preview: Preview = {
   // decorator and `withStorySurface` the inner one, so every story renders inside
   // both (DOM: `#storybook-root > span display:contents > ScreenFrame`).
   decorators: [withStorySurface, withGiftListProvider],
+  // The toolbar theme of the catalog (`DESIGN.md` → v8: light and dark share one set
+  // of tokens, so every story can be checked in both without a second story).
+  globalTypes: {
+    theme: {
+      description: "Тема v8",
+      toolbar: {
+        title: "Тема",
+        icon: "mirror",
+        items: [
+          { value: "light", title: "Светлая" },
+          { value: "dark", title: "Тёмная" },
+        ],
+        dynamicTitle: true,
+      },
+    },
+  },
   parameters: {
     layout: "centered",
-    // The catalog runs the light theme (the provider default, `DESIGN.md` → v8: the
-    // theme is chosen by the app, there is no in-app switch yet); Storybook's own
-    // background presets stay off so a story is painted by `$` tokens only.
+    // Storybook's own background presets stay off so a story is painted by `$`
+    // tokens of the active theme only.
     backgrounds: { disable: true },
     // The window widths `DESIGN.md` → Точки перехода reasons about: 360/390/412 are
     // phones, 768 the tablet portrait (medium), 1280 the wide desktop. The built-in
@@ -136,6 +153,7 @@ const preview: Preview = {
   // Start in the tool's responsive mode; component stories pin a preset via
   // `globals: { viewport: { value: "w360" } }` where the narrow width is the point.
   initialGlobals: {
+    theme: "light",
     viewport: { value: "responsive" },
   },
 };

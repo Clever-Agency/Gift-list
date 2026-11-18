@@ -2,7 +2,7 @@
 import { act, createRef, type ComponentRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { PersonRow } from "./person-row";
-import { createMount } from "./test-utils";
+import { createMount, declarationsFor } from "./test-utils";
 
 const mounted = createMount();
 
@@ -17,6 +17,30 @@ describe("PersonRow", () => {
     expect(container.querySelectorAll("button")).toHaveLength(0);
     expect(container.querySelectorAll("a")).toHaveLength(0);
     expect(container.querySelectorAll('[role="link"]')).toHaveLength(0);
+  });
+
+  it("v8: аватар 40 с инициалами — декоративный, имя остаётся текстом строки", async () => {
+    const { container, render } = mounted();
+    await render(<PersonRow displayName="Анна Ковалёва" nick="anna" testID="row" />);
+
+    const avatar = container.querySelector<HTMLElement>("[data-testid='row-avatar']");
+    expect(avatar).not.toBeNull();
+    expect(avatar?.getAttribute("aria-hidden")).toBe("true");
+    expect(avatar?.textContent).toBe("АК");
+    // The name and the nick are the visible, readable text of the row.
+    expect(container.textContent).toContain("Анна Ковалёва");
+    expect(container.textContent).toContain("@anna");
+  });
+
+  it("v8: вариант row — без карточки (нет рамки и фона surface)", async () => {
+    const { container, render } = mounted();
+    await render(<PersonRow displayName="Алёна" nick="alena" variant="row" testID="row" />);
+
+    const row = container.querySelector<HTMLElement>("[data-testid='row']") as HTMLElement;
+    const background = declarationsFor(row, "background-color").map((one) => one.value);
+    expect(background).toContain("transparent");
+    // No frame of the card variant: Tamagui drops the zero width, so the rule is absent.
+    expect(declarationsFor(row, "border-top-width").map((one) => one.value)).not.toContain("1px");
   });
 
   it("с href — ровно одна настоящая ссылка с понятным именем", async () => {

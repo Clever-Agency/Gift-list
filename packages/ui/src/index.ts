@@ -36,8 +36,23 @@ export { Button, type ButtonProps, type ButtonVariant } from "./button";
 export {
   IconButton,
   type IconButtonProps,
+  type IconButtonShape,
+  type IconButtonSize,
   type IconButtonVariant,
 } from "./icon-button";
+export { Check, Close, Eye, EyeOff, Info, Moon, Search, Star } from "./icons";
+export { Photo, type PhotoProps } from "./photo";
+export { PhotoPlaceholder, type PhotoPlaceholderProps } from "./photo-placeholder";
+export {
+  PartnerStoreCard,
+  type PartnerStoreCardProps,
+} from "./partner-store-card";
+export {
+  PartnerStoreRail,
+  type PartnerStoreRailProps,
+} from "./partner-store-rail";
+export { CollectionCard, type CollectionCardProps } from "./collection-card";
+export { FriendsTwoPane, type FriendsTwoPaneProps } from "./friends-two-pane";
 export { Avatar } from "./avatar";
 export {
   avatarInitials,

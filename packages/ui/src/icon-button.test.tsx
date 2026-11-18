@@ -15,20 +15,27 @@ function button(container: HTMLElement): HTMLElement {
   return node as HTMLElement;
 }
 
+function visual(container: HTMLElement): HTMLElement {
+  const node = container.querySelector<HTMLElement>("[data-testid='icon-button-visual']");
+  expect(node, "визуал кнопки").not.toBeNull();
+  return node as HTMLElement;
+}
+
 describe("IconButton: иконка без текста", () => {
-  it("44 × 44, радиус 8 и подпись для диктора", async () => {
+  it("зона 44 × 44, визуал 44 с радиусом 8 и подпись для диктора", async () => {
     const { container, render } = mounted();
     await render(<IconButton label="Поделиться" icon={<Star size={20} />} onPress={noop} />);
 
     const target = button(container);
     expect(target.getAttribute("role")).toBe("button");
-    expect(declarationsFor(target, "width").map((one) => one.value)).toContain(
+    expect(declarationsFor(target, "min-width").map((one) => one.value)).toContain(
       "var(--t-size-touch-target)",
     );
-    expect(declarationsFor(target, "height").map((one) => one.value)).toContain(
+    expect(declarationsFor(target, "min-height").map((one) => one.value)).toContain(
       "var(--t-size-touch-target)",
     );
-    expect(declarationsFor(target, "border-radius").map((one) => one.value)).toContain(
+    expect(declarationsFor(visual(container), "width").map((one) => one.value)).toContain("44px");
+    expect(declarationsFor(visual(container), "border-radius").map((one) => one.value)).toContain(
       "var(--t-radius-md)",
     );
   });
@@ -57,10 +64,34 @@ describe("IconButton: иконка без текста", () => {
     const { container, render } = mounted();
     await render(<IconButton label="Поделиться" icon={<Star size={20} />} variant="plain" />);
 
-    const target = button(container);
-    expect(declarationsFor(target, "border-color").map((one) => one.value)).toContain("transparent");
-    expect(declarationsFor(target, "width").map((one) => one.value)).toContain(
+    expect(declarationsFor(visual(container), "border-color").map((one) => one.value)).toContain(
+      "transparent",
+    );
+    expect(declarationsFor(button(container), "min-width").map((one) => one.value)).toContain(
       "var(--t-size-touch-target)",
+    );
+  });
+
+  it("size=sm: круг 32 px внутри зоны 44, primary — заливка primary", async () => {
+    const { container, render } = mounted();
+    await render(
+      <IconButton label="Поделиться" icon={<Star size={16} />} size="sm" shape="round" variant="primary" />,
+    );
+
+    const target = button(container);
+    expect(declarationsFor(target, "min-width").map((one) => one.value)).toContain(
+      "var(--t-size-touch-target)",
+    );
+    expect(declarationsFor(visual(container), "width").map((one) => one.value)).toContain("32px");
+    expect(declarationsFor(visual(container), "height").map((one) => one.value)).toContain("32px");
+    expect(declarationsFor(visual(container), "border-radius").map((one) => one.value)).toContain(
+      "var(--t-radius-full)",
+    );
+    expect(declarationsFor(visual(container), "background-color").map((one) => one.value)).toContain(
+      "var(--c-primary)",
+    );
+    expect(declarationsFor(visual(container), "color").map((one) => one.value)).toContain(
+      "var(--c-primary-foreground)",
     );
   });
 });

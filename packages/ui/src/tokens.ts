@@ -114,6 +114,13 @@ export const typography = {
     lineHeight: 24,
     letterSpacing: 0,
   },
+  "body-sm": {
+    fontFamily: "Manrope",
+    fontSize: 13,
+    fontWeight: "400",
+    lineHeight: 18,
+    letterSpacing: 0,
+  },
   button: {
     fontFamily: "Manrope",
     fontSize: 14,

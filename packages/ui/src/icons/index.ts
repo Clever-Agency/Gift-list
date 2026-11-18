@@ -1,3 +1,4 @@
+export { Check } from "./Check";
 export { Close } from "./Close";
 export { Eye } from "./Eye";
 export { EyeOff } from "./EyeOff";

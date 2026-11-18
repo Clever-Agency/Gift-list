@@ -79,6 +79,14 @@ describe("getMyInviteLink (Story 4.7)", () => {
     });
     expect(readInviteLinkToken).toHaveBeenCalledWith(viewer.id);
   });
+
+  it("does not invent a token when the stored row is missing", async () => {
+    const missing = new Error("record required but not found");
+    readInviteLinkToken.mockRejectedValue(missing);
+
+    await expect(getMyInviteLink(new Headers())).rejects.toBe(missing);
+    expect(readInviteLinkToken).toHaveBeenCalledWith(viewer.id);
+  });
 });
 
 describe("getInvitePreview (Story 4.7)", () => {

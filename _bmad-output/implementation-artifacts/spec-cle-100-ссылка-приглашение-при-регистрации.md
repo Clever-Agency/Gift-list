@@ -50,16 +50,20 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `apps/web/src/db/migrations/20261118163100_invite_link_backfill/migration.sql` — `INSERT` `replace(gen_random_uuid()::text, '-', '')` для `User` без строки, `ON CONFLICT ("userId") DO NOTHING`. Без `UPDATE`/`DELETE`.
-- [ ] `apps/web/src/db/invite-link-backfill-migration.test.ts` — файл позже `20261116150000`; вставляет только отсутствующие; известный токен не меняет; другие таблицы не трогает.
-- [ ] `invite-link-store.ts` и его тест — `findUniqueOrThrow` по `userId`, `select: { token }`; нет строки — отказ без `create`.
-- [ ] `invite-link.ts` и `invite-link.test.ts` — `getMyInviteLink` только читает; без сессии не читает; превью не пишет.
-- [ ] Комментарии `route.ts` и модели — убрать «выдаётся лениво».
+- [x] `apps/web/src/db/migrations/20261118163100_invite_link_backfill/migration.sql` — `INSERT` `replace(gen_random_uuid()::text, '-', '')` для `User` без строки, `ON CONFLICT ("userId") DO NOTHING`. Без `UPDATE`/`DELETE`.
+- [x] `apps/web/src/db/invite-link-backfill-migration.test.ts` — файл позже `20261116150000`; вставляет только отсутствующие; известный токен не меняет; другие таблицы не трогает.
+- [x] `invite-link-store.ts` и его тест — `findUniqueOrThrow` по `userId`, `select: { token }`; нет строки — отказ без `create`.
+- [x] `invite-link.ts` и `invite-link.test.ts` — `getMyInviteLink` только читает; без сессии не читает; превью не пишет.
+- [x] Комментарии `route.ts` и модели — убрать «выдаётся лениво».
 
 **Acceptance Criteria:**
 - Given код после фикса, when ищешь создание `InviteLink` вне `registerUser` и миграции `20261118163100_invite_link_backfill`, then такой ветки нет.
 
 ## Implementation Notes
+
+- `ensureInviteLink` удалён. `readInviteLinkToken` читает `findUniqueOrThrow` и ничего не пишет. Регистрация по-прежнему создаёт ссылку nested-записью.
+- Бэкфилл — новый файл `20261118163100_invite_link_backfill`. Старый DDL не менялся. На одноразовом PostgreSQL 16 (loopback, каталог `/tmp`, затем удалён): пользователь без строки получил 32 hex, известный токен не изменился, повторный прогон вставил 0 строк. К живым БД не применялось.
+- `typecheck`, `test` (mobile 1368, web 1273, contracts 324, ui 261, scripts 21), `lint`, `build` — exit 0 на Node 24.22.3.
 
 ## Spec Change Log
 

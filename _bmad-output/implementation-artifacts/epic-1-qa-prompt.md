@@ -23,7 +23,7 @@
 ## Шаг 0. Подготовка
 
 1. `npm ci` из корня.
-2. PostgreSQL 16+ локально (например `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16`), база `gift_list`. Если Docker и PostgreSQL не установлены, подними временный кластер пакетом `embedded-postgres` в отдельной папке вне репозитория. Не подключайся к базе из чужого `.env` (Supabase, Neon): это не локальная БД.
+2. PostgreSQL 16+ локально (например `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16`), база `gift_list`. Если Docker и PostgreSQL не установлены, подними временный кластер пакетом `embedded-postgres` в отдельной папке вне репозитория. Не подключайся к базе из чужого `.env` (Neon): это не локальная БД.
 3. `apps/web/.env` по образцу; `BETTER_AUTH_URL=http://localhost:3000`; для Expo web раскомментируй `AUTH_DEV_TRUSTED_ORIGINS` с `http://localhost:8081`. `RESEND_API_KEY` не задавай (письмо не уходит) — ссылку сброса бери из логов сервера или из таблицы `verification` в БД.
 4. `npm exec -w @gift-list/web -- prisma migrate deploy`.
 

@@ -124,6 +124,19 @@ describe("config: темы", () => {
     expect(themeValue(dark, "color")).toBe(colorsDark.foreground);
   });
 
+  it("тема несёт тень карточки v8 как одно значение", () => {
+    for (const name of ["light", "dark"] as const) {
+      const theme = config.themes[name] as unknown as Record<string, unknown>;
+      // The highlight and the two card layers of the `effects` block, one string.
+      expect(themeValue(theme, "shadow-card")).toBe(
+        [highlights[name].card, shadows[name].card].join(", "),
+      );
+      expect(themeValue(theme, "shadow-card-hover")).toBe(
+        [highlights[name].card, shadows[name].cardHover].join(", "),
+      );
+    }
+  });
+
   it("в теме есть ключи, которых ждут Dialog и Sheet", () => {
     for (const themeName of ["light", "dark"] as const) {
       const theme = config.themes[themeName] as unknown as Record<string, unknown>;

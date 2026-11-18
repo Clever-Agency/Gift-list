@@ -4,10 +4,13 @@ import {
   breakpoints,
   colors,
   colorsDark,
+  highlights,
   rounded,
+  shadows,
   spacing,
   typography,
   type ThemeColors,
+  type ThemeName,
   type TypographyRole,
 } from "./tokens";
 
@@ -82,13 +85,19 @@ const tokens = createTokens({
  * DESIGN.md colors it carries the keys the Tamagui components in use ask for
  * (`tamagui/dialog`, `tamagui/sheet` manifests): `color`, `color-5`, `shadow-color`,
  * `border-color*`, `outline-color`.
+ *
+ * `shadow-card` and `shadow-card-hover` are the v8 elevation as one CSS value per
+ * theme (the top-edge highlight plus the card layers of `effects`), so a component
+ * writes `boxShadow="$shadow-card"` and never branches on the theme name.
  */
-function createTheme(palette: ThemeColors) {
+function createTheme(palette: ThemeColors, theme: ThemeName) {
   return {
     ...palette,
     color: palette.foreground,
     "color-5": palette["border-strong"],
     "shadow-color": palette.scrim,
+    "shadow-card": [highlights[theme].card, shadows[theme].card].join(", "),
+    "shadow-card-hover": [highlights[theme].card, shadows[theme].cardHover].join(", "),
     "background-hover": palette.muted,
     "background-press": palette.muted,
     "border-color": palette.border,
@@ -98,8 +107,8 @@ function createTheme(palette: ThemeColors) {
   } as const;
 }
 
-const light = createTheme(colors);
-const dark = createTheme(colorsDark);
+const light = createTheme(colors, "light");
+const dark = createTheme(colorsDark, "dark");
 
 export function createGiftListConfig(families: FontFamilies) {
   const faces = families.bodyFaces;

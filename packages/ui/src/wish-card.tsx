@@ -1,30 +1,93 @@
 import { View, styled } from "@tamagui/core";
 import { YStack } from "@tamagui/stacks";
 import type { ReactNode } from "react";
+import { Moon } from "./icons";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
+import { useThemeColor } from "./theme-color";
 
+/**
+ * `DESIGN.md` → WishCard: the v8 vertical Pinterest card. There is no frame around
+ * the whole cell — the photo plate carries radius 16 and the elevation, and the text
+ * stands on the page background under it. The card is the `listitem`; the whole cell
+ * is the press zone when the caller passes `onPress`.
+ */
 const Card = styled(View, {
   name: "GLWishCard",
   // The chip layer is positioned against the card (the web needs it spelled out).
   position: "relative",
-  backgroundColor: "$surface",
-  borderWidth: 1,
-  borderColor: "$border",
+});
+
+/**
+ * The 4:5 photo plate: radius 16, the v8 card elevation from the theme
+ * (`$shadow-card`: two soft layers in the light theme, tone plus top-edge highlight
+ * in the dark one). A pressable card lifts the plate's shadow on hover.
+ */
+const Photo = styled(YStack, {
+  name: "GLWishCardPhoto",
+  width: "100%",
+  aspectRatio: 4 / 5,
+  overflow: "hidden",
   borderRadius: "$lg",
+  backgroundColor: "$muted",
+  alignItems: "center",
+  justifyContent: "center",
+  boxShadow: "$shadow-card",
   variants: {
-    // Only a card you can press lights up on hover.
     interactive: {
-      true: { borderColor: "$border hover:$primary" },
+      true: { boxShadow: "$shadow-card hover:$shadow-card-hover" },
     },
   } as const,
 });
+
+/** Two calm tints of the placeholder, picked from the title, never at random. */
+const PLACEHOLDER_TINTS = ["$accent", "$muted"] as const;
+
+function placeholderTint(title: string): string {
+  const sum = Array.from(title).reduce(function codePoint(total, char) {
+    return total + (char.codePointAt(0) ?? 0);
+  }, 0);
+  return PLACEHOLDER_TINTS[sum % PLACEHOLDER_TINTS.length] ?? PLACEHOLDER_TINTS[0];
+}
+
+/**
+ * No photo yet: the v8 placeholder (`blocks/14-photo-placeholders.png`) — a calm
+ * themed panel with a soft light spot and the moon of the product, no text and no
+ * image. Its tint is derived from the title, so the same wish always looks the same
+ * and a grid of placeholders never flashes one colour.
+ */
+function WishPhotoPlaceholder({ title, testID }: { title: string; testID?: string }) {
+  const moon = useThemeColor("accent-foreground");
+  return (
+    <YStack
+      testID={testID}
+      width="100%"
+      height="100%"
+      alignItems="center"
+      justifyContent="center"
+      backgroundColor={placeholderTint(title)}
+    >
+      <View
+        position="absolute"
+        width={72}
+        height={72}
+        borderRadius="$full"
+        backgroundColor="$surface"
+        opacity={0.6}
+        aria-hidden
+      />
+      <Moon size={28} color={moon} />
+    </YStack>
+  );
+}
+
+WishPhotoPlaceholder.displayName = "WishPhotoPlaceholder";
 
 export type WishCardProps = {
   title: string;
   /** A closed wish reads as muted. */
   closed?: boolean;
-  /** Formatted price, e.g. «12 000 ₽». */
+  /** Formatted price, e.g. «12 000 ₽»: the v8 card shows the price without a store. */
   price?: string | null;
   /** The StatusPill. */
   status: ReactNode;
@@ -52,9 +115,15 @@ export type WishCardProps = {
 /**
  * `DESIGN.md` → WishCard (AD-12). Presentational: the app builds the status pill,
  * the chip and the texts from its data. The card is a list item; the press zone of
- * an owner card is the whole card (body, the footer area reserved under it and the
- * padding), and the chip is a later sibling drawn over the reserved footer, never
- * inside the button: nothing is nested and Tab reaches the card first, the chip second.
+ * an owner card is the whole card (photo, body, the footer area reserved under it
+ * and the gaps), and the chip is a later sibling drawn over the reserved footer,
+ * never inside the button: nothing is nested and Tab reaches the card first, the
+ * chip second.
+ *
+ * v8 layout: the 4:5 photo plate on top (placeholder until a wish has a photo),
+ * then the title (two lines, ellipsis), the price, the status pill, the tags and the
+ * reservation line — all below the photo on the page background, never as text on
+ * the photo. There is no heart and no gifted-progress bar.
  */
 export function WishCard({
   title,
@@ -72,12 +141,15 @@ export function WishCard({
 }: WishCardProps) {
   const content = (
     <>
-      <YStack gap="$2">
+      <Photo interactive={Boolean(onPress)} testID={testID ? `${testID}-photo` : undefined}>
+        <WishPhotoPlaceholder title={title} />
+      </Photo>
+      <YStack gap="$1" paddingTop="$2" paddingHorizontal="$1">
         <Text kind="body-strong" tone={closed ? "muted" : "default"} numberOfLines={2}>
           {title}
         </Text>
         {price ? (
-          <Text kind="label" tone="muted">
+          <Text kind="label" fontWeight="600" tone={closed ? "muted" : "default"}>
             {price}
           </Text>
         ) : null}
@@ -91,29 +163,24 @@ export function WishCard({
       </YStack>
       {/* The footer area, reserved so the chip layer has room and the empty space
           next to the chip belongs to the card button. */}
-      <View marginTop="$3" height="$chip-height" />
+      <View marginTop="$2" height="$chip-height" />
     </>
   );
 
   return (
-    <Card role="listitem" width={width} testID={testID} interactive={Boolean(onPress)}>
+    <Card role="listitem" width={width} testID={testID}>
       {onPress ? (
-        <Pressable
-          aria-label={pressLabel}
-          onPress={onPress}
-          padding="$card-padding"
-          borderRadius="$lg"
-        >
+        <Pressable aria-label={pressLabel} onPress={onPress} borderRadius="$lg">
           {content}
         </Pressable>
       ) : (
-        <View padding="$card-padding">{content}</View>
+        <View>{content}</View>
       )}
       {chip ? (
         <View
           position="absolute"
-          left="$card-padding"
-          bottom="$card-padding"
+          left={0}
+          bottom={0}
           zIndex="$base"
           // `box-none`: presses outside an interactive chip reach the card button
           // underneath; a chip without a button lets every press through.

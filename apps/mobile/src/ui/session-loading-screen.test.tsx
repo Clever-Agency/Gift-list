@@ -323,7 +323,7 @@ describe("W12.15: SessionLoadingScreen на медиа-пропсах", () => {
 });
 
 describe("W12.23: широкий скелетон по ширине контента", () => {
-  it("окно 600 px, колонка 537 px: скелетон 537 px и ряд влезает в колонку", async () => {
+  it("окно 600 px, колонка 537 px: две карточки скелетона, ряд влезает в колонку", async () => {
     await mountAt(600, "wide");
     await measuredLayout.measure(537);
 
@@ -332,9 +332,10 @@ describe("W12.23: широкий скелетон по ширине контен
 
     expect(cssGutter).toBe(spacing["page-gutter-lg"]);
     expect(cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 5);
-    expect(cardWidth).toBe(537);
-    // 537 px of cards plus two 24 px gutters is exactly the 585 px column.
-    expect(cardWidth + cssGutter * 2).toBe(585);
+    expect(cardGridForContent(537).columns).toBe(2);
+    // Two cards and the gap fill the 537 px column exactly.
+    expect(cardWidth * 2 + spacing["grid-gap"]).toBeCloseTo(537, 5);
+    expect(cardWidth * 2 + spacing["grid-gap"] + cssGutter * 2).toBe(585);
   });
 
   it.each([

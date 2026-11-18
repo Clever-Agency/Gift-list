@@ -1,14 +1,20 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { YStack } from "@tamagui/stacks";
+import { XStack, YStack } from "@tamagui/stacks";
+import { WishCardSkeleton } from "./skeleton";
 import { StatusPill } from "./status-pill";
 import { TagChipList } from "./tag-chip";
 import { VisibilityChip } from "./visibility-chip";
 import { WishCard } from "./wish-card";
 
 /**
- * `WishCard` is the presentational gift card: the app builds the status pill, the
- * tag row and the visibility chip. With `onPress` the whole card is a button and
- * the border turns primary on hover; the chip is a later sibling, never inside it.
+ * `WishCard` is the presentational gift card of v8: a vertical Pinterest card with a
+ * 4:5 photo plate (the moon placeholder until a wish has a photo), the title and the
+ * price under it on the page background, then the status pill, tags and the
+ * reservation line. There is no frame around the cell and no text on the photo.
+ *
+ * With `onPress` the whole card is a button and the photo plate's shadow lifts on
+ * hover; the visibility chip is a later sibling, never inside the button. The app
+ * builds the status pill, the tag row and the chip.
  */
 const meta = {
   title: "UI/WishCard",
@@ -34,23 +40,35 @@ type Story = StoryObj<typeof meta>;
 
 function noop() {}
 
-/** The list wrapper the app paints cards in: the card itself is a `listitem`. */
-function CardList({ children }: { children: React.ReactNode }) {
+/** The grid wrapper the app paints cards in: the card itself is a `listitem`. */
+function CardGrid({ children }: { children: React.ReactNode }) {
   return (
-    <YStack role="list" gap="$3" width={320}>
+    <XStack role="list" flexWrap="wrap" gap="$grid-gap" width={328}>
       {children}
-    </YStack>
+    </XStack>
   );
 }
 
-CardList.displayName = "CardList";
+CardGrid.displayName = "CardGrid";
 
 export const Open: Story = {
   render: function OpenStory(args) {
     return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
+    );
+  },
+};
+
+/** No photo yet: the v8 placeholder — a calm tinted plate with the moon, no text. */
+export const NoPhotoPlaceholder: Story = {
+  render: function NoPhotoPlaceholderStory(args) {
+    return (
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+        <WishCard {...args} title="Настольная лампа" width="calc(50% - 8px)" />
+      </CardGrid>
     );
   },
 };
@@ -63,14 +81,14 @@ export const Reserved: Story = {
   },
   render: function ReservedStory(args) {
     return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
     );
   },
 };
 
-/** A closed wish reads as muted all the way down. */
+/** A closed wish reads as muted all the way down; its status is «Получен». */
 export const Closed: Story = {
   args: {
     closed: true,
@@ -79,9 +97,9 @@ export const Closed: Story = {
   },
   render: function ClosedStory(args) {
     return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
     );
   },
 };
@@ -91,9 +109,9 @@ export const WithoutPrice: Story = {
   args: { price: null },
   render: function WithoutPriceStory(args) {
     return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
     );
   },
 };
@@ -108,9 +126,9 @@ export const OwnerWithChip: Story = {
   },
   render: function OwnerWithChipStory(args) {
     return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
     );
   },
 };
@@ -131,10 +149,62 @@ export const LongTitleNarrow: Story = {
   },
   render: function LongTitleNarrowStory(args) {
     return (
-      <YStack role="list" gap="$3" width={328}>
-        <WishCard {...args} />
-      </YStack>
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
     );
   },
   globals: { viewport: { value: "w360" } },
+};
+
+/** The loading state has the same shape as the card: plate, two lines, chip footer. */
+export const LoadingSkeleton: Story = {
+  render: function LoadingSkeletonStory() {
+    return (
+      <CardGrid>
+        <WishCardSkeleton width="calc(50% - 8px)" />
+        <WishCardSkeleton width="calc(50% - 8px)" />
+      </CardGrid>
+    );
+  },
+};
+
+/** Two columns at 360 px, the width the phone grid uses (`cardGrid`). */
+export const PhoneGrid: Story = {
+  render: function PhoneGridStory(args) {
+    const cards = [
+      { key: "open", status: <StatusPill status="open" label="Открыт" /> },
+      { key: "reserved", status: <StatusPill status="reserved" label="Забронирован" /> },
+    ];
+    return (
+      <CardGrid>
+        {cards.map(function card(item) {
+          return (
+            <WishCard
+              key={item.key}
+              {...args}
+              title={item.key === "open" ? "Плед из шерсти мериноса" : "Керамическая кружка"}
+              status={item.status}
+              width="calc(50% - 8px)"
+            />
+          );
+        })}
+      </CardGrid>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
+/** Three columns from the `medium` breakpoint (a desktop window). */
+export const DesktopGrid: Story = {
+  render: function DesktopGridStory(args) {
+    return (
+      <YStack role="list" flexDirection="row" flexWrap="wrap" gap="$grid-gap" width={1072}>
+        <WishCard {...args} width="calc(33.333% - 11px)" />
+        <WishCard {...args} title="Керамическая кружка" width="calc(33.333% - 11px)" />
+        <WishCard {...args} title="Настольная лампа" width="calc(33.333% - 11px)" />
+      </YStack>
+    );
+  },
+  globals: { viewport: { value: "w1280" } },
 };

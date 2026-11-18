@@ -92,9 +92,9 @@ describe("useCardGrid (native)", () => {
       await mountAt(width);
 
       expect(grid()).toEqual(cardGrid(width));
-      // The explicit numbers of the phone build: one column on a 360 phone, three
-      // from a 1024 tablet.
-      expect(grid().columns).toBe(width < 1024 ? 1 : 3);
+      // The explicit numbers of the phone build: two columns up to the expanded
+      // breakpoint, three from it.
+      expect(grid().columns).toBe(width < 1024 ? 2 : 3);
     },
   );
 

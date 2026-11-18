@@ -3,7 +3,7 @@ import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { StatusPill } from "./status-pill";
 import { TagChipList } from "./tag-chip";
-import { createMount } from "./test-utils";
+import { createMount, declarationsFor } from "./test-utils";
 import { VisibilityChip } from "./visibility-chip";
 import { WishCard } from "./wish-card";
 
@@ -120,6 +120,43 @@ describe("WishCard", () => {
 
     expect(container.querySelector("[role='button']")).toBeNull();
     expect(container.textContent).toBe("Секрет");
+  });
+
+  it("v8: фото-плитка 4:5 с радиусом 16 и тенью карточки, текст под фото", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        testID="card"
+        title="Плед"
+        price="2 500 ₽"
+        status={<StatusPill status="open" label="Открыт" />}
+      />,
+    );
+
+    const photo = container.querySelector<HTMLElement>("[data-testid='card-photo']");
+    expect(photo).not.toBeNull();
+    expect(declarationsFor(photo as Element, "border-radius").map((one) => one.value)).toContain(
+      "var(--t-radius-lg)",
+    );
+    // The theme carries the v8 elevation as one value (`$shadow-card`): the plate
+    // takes it as the `--shadow-card` variable of the active theme.
+    const shadow = declarationsFor(photo as Element, "box-shadow").map((one) => one.value).join(" ");
+    expect(shadow).toContain("var(--shadow-card)");
+
+    // The placeholder is a picture: the moon is decorative and no text sits on the photo.
+    expect(photo?.querySelector("svg")).not.toBeNull();
+    expect(photo?.textContent).toBe("");
+    // The title is the first text of the card, after the photo plate.
+    expect(container.querySelector("[role='listitem']")?.textContent?.startsWith("Плед")).toBe(true);
+  });
+
+  it("v8: без onPress тень не поднимается на hover", async () => {
+    const { container, render } = mounted();
+    await render(<WishCard testID="card" title="Плед" status={<StatusPill status="open" label="Открыт" />} />);
+
+    const photo = container.querySelector<HTMLElement>("[data-testid='card-photo']") as HTMLElement;
+    const hoverShadows = declarationsFor(photo, "box-shadow", true);
+    expect(hoverShadows).toEqual([]);
   });
 
   it("StatusPill — подпись словом, не кнопка", async () => {

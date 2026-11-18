@@ -6,6 +6,7 @@ import {
   NICK_MAX,
   NICK_MIN,
   NICK_PATTERN,
+  newPasswordLengthReason,
   PASSWORD_MAX,
   PASSWORD_MIN,
   loginBodySchema,
@@ -51,7 +52,7 @@ describe("registerBodySchema", () => {
   it("normalizes email and nick", () => {
     const parsed = registerBodySchema.parse({
       email: "  A@Example.com ",
-      password: "password1",
+      password: "password1234",
       displayName: " Анна ",
       nick: " Anna_1 ",
     });
@@ -63,7 +64,7 @@ describe("registerBodySchema", () => {
   it("rejects a nick outside the pattern", () => {
     const parsed = registerBodySchema.safeParse({
       email: "a@example.com",
-      password: "password1",
+      password: "password1234",
       displayName: "Анна",
       nick: "ан",
     });
@@ -75,7 +76,7 @@ describe("registerBodySchema", () => {
     // business — a stale or foreign value must never fail the registration.
     const withToken = registerBodySchema.parse({
       email: "a@example.com",
-      password: "password1",
+      password: "password1234",
       displayName: "Анна",
       nick: "anna",
       inviteToken: "  tok_1  ",
@@ -84,7 +85,7 @@ describe("registerBodySchema", () => {
 
     const oddToken = registerBodySchema.safeParse({
       email: "a@example.com",
-      password: "password1",
+      password: "password1234",
       displayName: "Анна",
       nick: "anna",
       inviteToken: "../не-токен",
@@ -93,7 +94,7 @@ describe("registerBodySchema", () => {
 
     const withoutToken = registerBodySchema.parse({
       email: "a@example.com",
-      password: "password1",
+      password: "password1234",
       displayName: "Анна",
       nick: "anna",
     });
@@ -102,7 +103,7 @@ describe("registerBodySchema", () => {
     expect(
       registerBodySchema.safeParse({
         email: "a@example.com",
-        password: "password1",
+        password: "password1234",
         displayName: "Анна",
         nick: "anna",
         inviteToken: "a".repeat(INVITE_TOKEN_MAX),
@@ -111,7 +112,7 @@ describe("registerBodySchema", () => {
     expect(
       registerBodySchema.safeParse({
         email: "a@example.com",
-        password: "password1",
+        password: "password1234",
         displayName: "Анна",
         nick: "anna",
         inviteToken: "a".repeat(INVITE_TOKEN_MAX + 1),
@@ -145,7 +146,7 @@ describe("nickUpdateBodySchema", () => {
 
 describe("nick uniqueness (CLE-94)", () => {
   function body(nick: string) {
-    return { email: "a@example.com", password: "password1", displayName: "Анна", nick };
+    return { email: "a@example.com", password: "password1234", displayName: "Анна", nick };
   }
 
   it("maps every case and padding variant onto one stored value", () => {
@@ -267,7 +268,7 @@ describe("loginBodySchema", () => {
   it("does not cap the length of a stored address, so an older account is never locked out", () => {
     // Registration caps a new address at EMAIL_MAX; sign-in only looks one up.
     const legacy = emailOfLength(EMAIL_MAX + 40);
-    const parsed = loginBodySchema.safeParse({ email: legacy, password: "password1" });
+    const parsed = loginBodySchema.safeParse({ email: legacy, password: "password1234" });
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.email).toBe(legacy);
   });
@@ -285,11 +286,22 @@ describe("passwordForgotBodySchema", () => {
   });
 });
 
+describe("newPasswordLengthReason", () => {
+  it("classifies short, long and acceptable lengths in UTF-16 units", () => {
+    expect(newPasswordLengthReason("x".repeat(PASSWORD_MIN - 1))).toBe("PASSWORD_TOO_SHORT");
+    expect(newPasswordLengthReason("x".repeat(PASSWORD_MIN))).toBe(null);
+    expect(newPasswordLengthReason("x".repeat(PASSWORD_MAX))).toBe(null);
+    expect(newPasswordLengthReason("x".repeat(PASSWORD_MAX + 1))).toBe("PASSWORD_TOO_LONG");
+    expect(newPasswordLengthReason("😀".repeat(64))).toBe(null);
+    expect(newPasswordLengthReason("😀".repeat(65))).toBe("PASSWORD_TOO_LONG");
+  });
+});
+
 describe("passwordResetBodySchema", () => {
-  it("accepts a token and a password of 8 to 128 characters", () => {
-    expect(passwordResetBodySchema.parse({ token: "tok", password: "12345678" })).toEqual({
+  it("accepts a token and a password of 12 to 128 characters", () => {
+    expect(passwordResetBodySchema.parse({ token: "tok", password: "password1234" })).toEqual({
       token: "tok",
-      password: "12345678",
+      password: "password1234",
     });
     expect(
       passwordResetBodySchema.safeParse({ token: "tok", password: "x".repeat(PASSWORD_MAX) }).success,
@@ -318,7 +330,7 @@ describe("passwordResetBodySchema", () => {
   });
 
   it("rejects a missing or blank token before the password", () => {
-    for (const body of [{ password: "password1" }, { token: "  ", password: "short" }, {}]) {
+    for (const body of [{ password: "password1234" }, { token: "  ", password: "short" }, {}]) {
       const parsed = passwordResetBodySchema.safeParse(body);
       expect(parsed.success).toBe(false);
       if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["token"]);
@@ -336,7 +348,7 @@ describe("registration caps", () => {
   function body(overrides: Partial<Record<string, string>> = {}) {
     return {
       email: "a@example.com",
-      password: "password1",
+      password: "password1234",
       displayName: "Анна",
       nick: "anna",
       ...overrides,

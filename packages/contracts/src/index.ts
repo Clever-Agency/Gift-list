@@ -65,6 +65,22 @@ export const ERROR_REASONS = [
    * (Story 5.1, AD-9). Always rides with `code: "CONFLICT"`.
    */
   "RESERVATION_TAKEN",
+  /**
+   * A registration or reset password is shorter than `PASSWORD_MIN` (UTF-16).
+   * Always rides with `code: "VALIDATION"` and `field: "password"`.
+   */
+  "PASSWORD_TOO_SHORT",
+  /**
+   * A registration or reset password is longer than `PASSWORD_MAX` (UTF-16).
+   * Always rides with `code: "VALIDATION"` and `field: "password"`.
+   */
+  "PASSWORD_TOO_LONG",
+  /**
+   * Have I Been Pwned flagged the password during registration or reset. Always
+   * rides with `code: "VALIDATION"` and `field: "password"`; the reset token is
+   * not spent.
+   */
+  "PASSWORD_PWNED",
 ] as const;
 
 /** Closed set of machine-readable causes; the client maps them to `errors.reason.<REASON>`. */
@@ -268,6 +284,7 @@ export {
   PASSWORD_MIN,
   hideFromSearchUpdateBodySchema,
   loginBodySchema,
+  newPasswordLengthReason,
   nickIssue,
   nickUpdateBodySchema,
   passwordForgotBodySchema,
@@ -277,6 +294,7 @@ export {
   timeZoneBodySchema,
   type HideFromSearchUpdateBody,
   type LoginBody,
+  type NewPasswordLengthReason,
   type NickIssue,
   type NickUpdateBody,
   type PasswordForgotBody,

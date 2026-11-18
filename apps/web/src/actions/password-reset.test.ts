@@ -87,7 +87,10 @@ beforeAll(async () => {
   const api = auth.api as { resetPassword: typeof auth.api.resetPassword };
   api.resetPassword = (async ({ body }: { body: { newPassword: string; token: string } }) => {
     providerCalls += 1;
-    if (body.newPassword.length < 8) {
+    if (body.newPassword === "pwned-password-1") {
+      throw Object.assign(new Error("Password compromised"), { body: { code: "PASSWORD_COMPROMISED" } });
+    }
+    if (body.newPassword.length < 12) {
       throw Object.assign(new Error("Password too short"), { body: { code: "PASSWORD_TOO_SHORT" } });
     }
     if (body.newPassword.length > 128) {
@@ -123,11 +126,11 @@ afterAll(() => {
 
 describe("resetPassword outstanding links", () => {
   it("rejects T1 after a successful reset via T2", async () => {
-    const saved = await resetPassword({ token: "T2", password: "password1" });
+    const saved = await resetPassword({ token: "T2", password: "password1234" });
     expect(saved).toEqual({ ok: true, data: { saved: true } });
     expect(identifiers()).toEqual(["email-verification:abc", "reset-password:T3"]);
 
-    const again = await resetPassword({ token: "T1", password: "password2" });
+    const again = await resetPassword({ token: "T1", password: "password12345" });
     expect(again).toEqual({
       ok: false,
       code: "VALIDATION",
@@ -136,21 +139,21 @@ describe("resetPassword outstanding links", () => {
     });
     expect(identifiers()).toEqual(["email-verification:abc", "reset-password:T3"]);
 
-    const otherUser = await resetPassword({ token: "T3", password: "password3" });
+    const otherUser = await resetPassword({ token: "T3", password: "password12346" });
     expect(otherUser).toEqual({ ok: true, data: { saved: true } });
     expect(identifiers()).toEqual(["email-verification:abc"]);
   });
 
   it("leaves a live sibling when the used link is expired or unknown", async () => {
     seed({ T2: new Date(Date.now() - 60_000) });
-    const expired = await resetPassword({ token: "T2", password: "password1" });
+    const expired = await resetPassword({ token: "T2", password: "password1234" });
     expect(expired).toMatchObject({ ok: false, reason: "RESET_LINK_STALE" });
     expect(identifiers()).toContain("reset-password:T1");
     expect(identifiers()).not.toContain("reset-password:T2");
 
     providerCalls = 0;
     seed();
-    const unknown = await resetPassword({ token: "missing", password: "password1" });
+    const unknown = await resetPassword({ token: "missing", password: "password1234" });
     expect(unknown).toMatchObject({ ok: false, reason: "RESET_LINK_STALE" });
     expect(providerCalls).toBe(1);
     expect(identifiers()).toEqual([
@@ -160,21 +163,37 @@ describe("resetPassword outstanding links", () => {
       "reset-password:T3",
     ]);
 
-    const saved = await resetPassword({ token: "T1", password: "password1" });
+    const saved = await resetPassword({ token: "T1", password: "password1234" });
     expect(saved).toEqual({ ok: true, data: { saved: true } });
     expect(identifiers()).not.toContain("reset-password:T2");
   });
 
   it("does not spend sibling links when the password is rejected or the token is blank", async () => {
     const short = await resetPassword({ token: "T1", password: "short" });
-    expect(short).toMatchObject({ ok: false, code: "VALIDATION", field: "password" });
-    expect(short).not.toHaveProperty("reason");
+    expect(short).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "password",
+      reason: "PASSWORD_TOO_SHORT",
+    });
+    expect(providerCalls).toBe(0);
+    expect(identifiers()).toContain("reset-password:T1");
+    expect(identifiers()).toContain("reset-password:T2");
+
+    providerCalls = 0;
+    const leaked = await resetPassword({ token: "T1", password: "pwned-password-1" });
+    expect(leaked).toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "password",
+      reason: "PASSWORD_PWNED",
+    });
     expect(providerCalls).toBe(1);
     expect(identifiers()).toContain("reset-password:T1");
     expect(identifiers()).toContain("reset-password:T2");
 
     providerCalls = 0;
-    const blank = await resetPassword({ token: "   ", password: "password1" });
+    const blank = await resetPassword({ token: "   ", password: "password1234" });
     expect(blank).toMatchObject({ ok: false, reason: "RESET_LINK_STALE" });
     expect(providerCalls).toBe(0);
     expect(identifiers()).toContain("reset-password:T1");

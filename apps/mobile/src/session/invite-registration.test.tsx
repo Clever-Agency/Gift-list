@@ -148,8 +148,8 @@ afterEach(async () => {
 
 async function createAccount() {
   await fill("Email", "a@b.test");
-  await fill("Пароль", "password1");
-  await fill("Повторите пароль", "password1");
+  await fill("Пароль", "password1234");
+  await fill("Повторите пароль", "password1234");
   await fill("Имя", "Анна");
   await fill("Ник", "anna");
   const submit = controlByText("Зарегистрироваться", container);

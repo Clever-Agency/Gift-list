@@ -1,4 +1,10 @@
-import { notFoundError, type ActionResult, type ErrorCode } from "@gift-list/contracts";
+import {
+  newPasswordLengthReason,
+  notFoundError,
+  type ActionResult,
+  type ErrorCode,
+  type ErrorReason,
+} from "@gift-list/contracts";
 import type { z } from "zod";
 
 const STATUS: Record<ErrorCode, number> = {
@@ -60,13 +66,19 @@ export const MAX_JSON_BYTES = 32 * 1024;
 
 type InvalidBody = Extract<ActionResult<never>, { ok: false }>;
 
-function invalid(field?: string): InvalidBody {
+function invalid(field?: string, reason?: ErrorReason): InvalidBody {
   return {
     ok: false,
     code: "VALIDATION",
     message: "Invalid input",
     ...(field ? { field } : {}),
+    ...(reason ? { reason } : {}),
   };
+}
+
+function passwordFieldReason(value: unknown): ErrorReason | undefined {
+  if (typeof value !== "string") return undefined;
+  return newPasswordLengthReason(value) ?? undefined;
 }
 
 /**
@@ -185,16 +197,31 @@ export async function guardRequestBody(
   };
 }
 
-/** Parses the JSON body with a contracts schema; failure is a VALIDATION result. */
+/**
+ * Parses the JSON body with a contracts schema; failure is a VALIDATION result.
+ * `newPassword` attaches the set-password length reason. Sign-in must leave it
+ * off: an empty password is not "shorter than 12".
+ */
 export async function parseJsonBody<S extends z.ZodType>(
   request: Request,
   schema: S,
+  options?: { newPassword?: boolean },
 ): Promise<{ ok: true; data: z.output<S> } | InvalidBody> {
   const parsed = await parseJson(request);
   if (!parsed.ok) return parsed;
   const result = schema.safeParse(parsed.data);
   if (!result.success) {
-    return invalid(firstIssueField(result.error));
+    const field = firstIssueField(result.error);
+    if (
+      options?.newPassword &&
+      field === "password" &&
+      parsed.data !== null &&
+      typeof parsed.data === "object"
+    ) {
+      const reason = passwordFieldReason((parsed.data as Record<string, unknown>).password);
+      if (reason) return invalid(field, reason);
+    }
+    return invalid(field);
   }
   return { ok: true, data: result.data };
 }

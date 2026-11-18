@@ -6,7 +6,9 @@ import { expo } from "@better-auth/expo";
 import { nextCookies } from "better-auth/next-js";
 import { bearer } from "better-auth/plugins";
 import { createId } from "@paralleldrive/cuid2";
+import { PASSWORD_MAX, PASSWORD_MIN } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
+import { haveIBeenPwnedPlugin } from "@/lib/hibp-password";
 import { getEnv } from "@/lib/env";
 import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
 import { invalidateOutstandingPasswordResets } from "@/lib/password-reset-tokens";
@@ -26,6 +28,8 @@ function createAuth() {
     },
     emailAndPassword: {
       enabled: true,
+      minPasswordLength: PASSWORD_MIN,
+      maxPasswordLength: PASSWORD_MAX,
       // Sign-up goes through `registerUser` so the user and the single list
       // are created in one transaction (AD-6); the raw endpoint stays closed.
       disableSignUp: true,
@@ -78,7 +82,7 @@ function createAuth() {
     // bearer() accepts `Authorization: Bearer` and adds `set-auth-token` to cookie-setting
     // responses; the /api/auth route strips that header for non-native requests.
     // nextCookies must stay last so Server Actions can set the session cookie.
-    plugins: [expo(), bearer(), nextCookies()],
+    plugins: [expo(), bearer(), haveIBeenPwnedPlugin(), nextCookies()],
   });
 }
 

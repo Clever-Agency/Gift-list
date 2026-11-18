@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PRODUCT_NAME } from "../brand";
-import { ERROR_CODES, ERROR_REASONS } from "../index";
+import { ERROR_CODES, ERROR_REASONS, PASSWORD_MAX, PASSWORD_MIN } from "../index";
 import {
   compareForSort,
   formatDate,
@@ -156,5 +156,9 @@ describe("error catalog", () => {
     for (const text of [...Object.values(code), ...Object.values(reason)]) {
       expect(text.length).toBeGreaterThan(0);
     }
+    const app = getMessages("ru").app.form;
+    expect(app.passwordRules).toContain(String(PASSWORD_MIN));
+    expect(reason.PASSWORD_TOO_SHORT).toBe(app.passwordRules);
+    expect(reason.PASSWORD_TOO_LONG).toContain(String(PASSWORD_MAX));
   });
 });

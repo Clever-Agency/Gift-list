@@ -7,7 +7,9 @@ import LoginScreen from "../../app/(auth)/login";
 import RegisterScreen from "../../app/(auth)/register";
 import ResetScreen from "../../app/(auth)/reset";
 
-const RULE = "Минимум 8 символов";
+const RULE = "Минимум 12 символов";
+const PWNED = "Этот пароль встречается в утечках. Выберите другой.";
+const LONG_ENOUGH = "123456789012";
 const TOO_LONG = "Пароль — до 128 символов.";
 const GENERIC = "Проверьте введённые данные.";
 
@@ -227,7 +229,7 @@ describe("требование к паролю", () => {
     );
   });
 
-  it("на регистрации пароль из 8 символов прячет подсказку, а VALIDATION сервера не называет минимум", async () => {
+  it("на регистрации пароль из 12 символов прячет подсказку, а VALIDATION сервера не называет минимум", async () => {
     api.apiRequest.mockResolvedValue({
       ok: false,
       code: "VALIDATION",
@@ -236,8 +238,8 @@ describe("требование к паролю", () => {
     });
     await mount("register");
     await fill("Email", "a@b.test");
-    await fill("Пароль", "12345678");
-    await fill("Повторите пароль", "12345678");
+    await fill("Пароль", LONG_ENOUGH);
+    await fill("Повторите пароль", LONG_ENOUGH);
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
     expect(toneText("hint")).not.toContain(RULE);
@@ -246,6 +248,47 @@ describe("требование к паролю", () => {
     expect(api.apiRequest).toHaveBeenCalled();
     expect(toneText("error")).toContain(GENERIC);
     expect(toneText("error")).not.toContain(RULE);
+  });
+
+  it("на регистрации утёкший пароль называется у поля", async () => {
+    api.apiRequest.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+      reason: "PASSWORD_PWNED",
+    });
+    await mount("register");
+    await fill("Email", "a@b.test");
+    await fill("Пароль", LONG_ENOUGH);
+    await fill("Повторите пароль", LONG_ENOUGH);
+    await fill("Имя", "Анна");
+    await fill("Ник", "anna");
+
+    await press("Зарегистрироваться");
+
+    expect(toneText("error")).toContain(PWNED);
+    expect(toneText("hint")).not.toContain(PWNED);
+    expect(describedBy("Пароль")).toBe(PWNED);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(PWNED);
+  });
+
+  it("на новом пароле утёкший пароль называется у поля", async () => {
+    api.apiRequest.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+      reason: "PASSWORD_PWNED",
+    });
+    await mount("reset");
+    await fill("Пароль", LONG_ENOUGH);
+    await fill("Повторите пароль", LONG_ENOUGH);
+
+    await press("Сохранить пароль");
+
+    expect(toneText("error")).toContain(PWNED);
+    expect(describedBy("Пароль")).toBe(PWNED);
   });
 
   it("на новом пароле короткий пароль показывает подсказку и ошибку, а длинный ответ сервера — общий текст", async () => {
@@ -267,8 +310,8 @@ describe("требование к паролю", () => {
       message: "Invalid input",
       field: "password",
     });
-    await fill("Пароль", "12345678");
-    await fill("Повторите пароль", "12345678");
+    await fill("Пароль", LONG_ENOUGH);
+    await fill("Повторите пароль", LONG_ENOUGH);
     expect(toneText("hint")).not.toContain(RULE);
     await press("Сохранить пароль");
     expect(toneText("error")).toContain(GENERIC);

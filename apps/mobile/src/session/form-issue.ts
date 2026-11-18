@@ -22,7 +22,6 @@ type Translate = (key: string, values?: Record<string, string | number>) => stri
 /**
  * Maps an API error onto catalog copy.
  * NOTE FOR UX: пустое имя и формат email не имеют отдельных строк в EXPERIENCE — на поле показывается errors.code.VALIDATION.
- * Длины пароля в «Ошибки форм» нет: короткий пароль на регистрации и новом пароле показывает form.passwordRules (passwordFieldIssue).
  */
 export function formIssue(
   result: Exclude<ClientResult<unknown>, { ok: true }>,
@@ -46,7 +45,13 @@ export function issueFromError(
   if (error.reason === "RESET_LINK_STALE" || error.reason === "PAYLOAD_TOO_LARGE") {
     return { reason: error.reason, text: common(`errors.reason.${error.reason}`) };
   }
-  if (error.reason === "EMAIL_TAKEN" || error.reason === "NICK_TAKEN") {
+  if (
+    error.reason === "EMAIL_TAKEN" ||
+    error.reason === "NICK_TAKEN" ||
+    error.reason === "PASSWORD_TOO_SHORT" ||
+    error.reason === "PASSWORD_TOO_LONG" ||
+    error.reason === "PASSWORD_PWNED"
+  ) {
     return {
       field: error.field,
       reason: error.reason,
@@ -100,9 +105,15 @@ function rateLimitValues(
  * measured: it is never trimmed or normalised here.
  */
 export function passwordFieldIssue(password: string, t: Translate, common: Translate): FormIssue {
-  if (password.length < PASSWORD_MIN) return { field: "password", text: t("form.passwordRules") };
+  if (password.length < PASSWORD_MIN) {
+    return { field: "password", reason: "PASSWORD_TOO_SHORT", text: t("form.passwordRules") };
+  }
   if (password.length > PASSWORD_MAX) {
-    return { field: "password", text: t("form.passwordTooLong", { max: PASSWORD_MAX }) };
+    return {
+      field: "password",
+      reason: "PASSWORD_TOO_LONG",
+      text: t("form.passwordTooLong", { max: PASSWORD_MAX }),
+    };
   }
   return { field: "password", text: common("errors.code.VALIDATION") };
 }

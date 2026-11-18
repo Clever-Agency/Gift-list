@@ -50,6 +50,15 @@ beforeEach(() => {
 });
 
 describe("POST /api/v1/session", () => {
+  it("does not call an empty password a new-password minimum", async () => {
+    const res = await POST(post({ email: "a@example.com", password: "" }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toMatchObject({ ok: false, code: "VALIDATION", field: "password" });
+    expect(body.reason).toBeUndefined();
+    expect(signInEmail).not.toHaveBeenCalled();
+  });
+
   it("opens a session while both counters allow it", async () => {
     signInEmail.mockResolvedValue(new Response(null, { status: 200 }));
     const res = await POST(post({ email: "  A@Example.com ", password: "password1", next: "/l/tok_1" }));

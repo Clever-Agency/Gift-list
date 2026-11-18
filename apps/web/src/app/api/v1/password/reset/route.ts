@@ -10,7 +10,7 @@ const staleLink = {
 };
 
 export async function POST(request: Request) {
-  const parsed = await parseJsonBody(request, passwordResetBodySchema);
+  const parsed = await parseJsonBody(request, passwordResetBodySchema, { newPassword: true });
   if (!parsed.ok) {
     if (parsed.field === "token") return toResponse(staleLink);
     return toResponse(parsed);

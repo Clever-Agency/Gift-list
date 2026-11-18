@@ -30,8 +30,8 @@ describe("SSR на сервере Next (без DOM)", () => {
     expect(html).toContain("<button");
     expect(html).toContain("<style");
     // Токены темы приходят CSS-переменными, а не инлайном в каждом узле.
-    expect(html).toContain("--c-primary:#2F5D3A");
-    expect(html).toContain("--c-accent:#D4A017");
+    expect(html).toContain("--c-primary:#2B3A7A");
+    expect(html).toContain("--c-accent:#EDEBF4");
     expect(html).toContain("--t-size-control-height:48px");
     // Шрифты Next приходят CSS-переменными из next/font.
     expect(html).toContain("--f-family:var(--font-sans)");

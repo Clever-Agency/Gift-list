@@ -2,7 +2,7 @@ import type { Decorator, Preview } from "@storybook/react-native-web-vite";
 import type { ReactNode } from "react";
 import { IntlProvider } from "use-intl";
 import { getMessages } from "@gift-list/contracts";
-import { colors, createGiftListConfig, GiftListProvider } from "@gift-list/ui";
+import { createGiftListConfig, GiftListProvider, YStack } from "@gift-list/ui";
 
 // One config per bundle, at module scope, exactly as in `apps/mobile/app/_layout.tsx`
 // and `apps/web/src/app/tamagui-registry.tsx`. The families are the ones the app
@@ -17,19 +17,15 @@ const config = createGiftListConfig({ body: "Manrope", heading: "Lora" });
 // as props, so the provider changes nothing for the `UI/*` section.
 const messages = getMessages("ru");
 
-/** The page the catalog draws on: the app background, outside the theme. */
+/**
+ * The page the catalog draws on: the app background, outside the theme. `$` tokens,
+ * not `colors.*`: the surface follows the active theme (v8: light and dark).
+ */
 function CatalogSurface({ children }: { children: ReactNode }) {
   return (
-    <div
-      style={{
-        boxSizing: "border-box",
-        padding: 24,
-        backgroundColor: colors.background,
-        color: colors.foreground,
-      }}
-    >
+    <YStack padding={24} backgroundColor="$background" color="$foreground">
       {children}
-    </div>
+    </YStack>
   );
 }
 
@@ -46,20 +42,13 @@ CatalogSurface.displayName = "CatalogSurface";
  *
  * This frame is the viewport column instead, full bleed (the app page paints its
  * own background, so the catalog's padding and surface would only fake a border).
+ * Colours are `$` tokens, so the frame follows the theme the provider is given.
  */
 function ScreenFrame({ children }: { children: ReactNode }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        minWidth: 0,
-        backgroundColor: colors.background,
-        color: colors.foreground,
-      }}
-    >
+    <YStack minWidth={0} backgroundColor="$background" color="$foreground">
       {children}
-    </div>
+    </YStack>
   );
 }
 
@@ -103,8 +92,9 @@ const preview: Preview = {
   decorators: [withStorySurface, withGiftListProvider],
   parameters: {
     layout: "centered",
-    // The catalog is the light theme only (UX-A8); a dark variant would show colors
-    // the app never paints.
+    // The catalog runs the light theme (the provider default, `DESIGN.md` → v8: the
+    // theme is chosen by the app, there is no in-app switch yet); Storybook's own
+    // background presets stay off so a story is painted by `$` tokens only.
     backgrounds: { disable: true },
     // The window widths `DESIGN.md` → Точки перехода reasons about: 360/390/412 are
     // phones, 768 the tablet portrait (medium), 1280 the wide desktop. The built-in

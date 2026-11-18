@@ -49,8 +49,8 @@ describe("Switch: состояние и доступность", () => {
     await render(<Switch label="Скрыть из поиска" checked onChange={noop} />);
 
     expect(control(container).getAttribute("aria-checked")).toBe("true");
-    expect(getComputedStyle(track(container)).backgroundColor).toBe("#2F5D3A");
-    expect(getComputedStyle(thumb(container)).backgroundColor).toBe("#FFFFFF");
+    expect(getComputedStyle(track(container)).backgroundColor).toBe("#2B3A7A");
+    expect(getComputedStyle(thumb(container)).backgroundColor).toBe("#FFFEFB");
   });
 
   it("выключенный трек — border-strong", async () => {
@@ -58,7 +58,7 @@ describe("Switch: состояние и доступность", () => {
     await render(<Switch label="Скрыть из поиска" checked={false} onChange={noop} />);
 
     expect(control(container).getAttribute("aria-checked")).toBe("false");
-    expect(getComputedStyle(track(container)).backgroundColor).toBe("#8F8673");
+    expect(getComputedStyle(track(container)).backgroundColor).toBe("#89888F");
   });
 
   it("размеры трека и бегунка по DESIGN.md: 52×32 и 28", async () => {

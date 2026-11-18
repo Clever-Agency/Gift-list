@@ -5,7 +5,8 @@ import { fontFor } from "./font-style";
 import { focusRing } from "./focus-ring";
 import { layerFade } from "./motion";
 import { Spinner } from "./spinner";
-import { colors, type ColorToken } from "./tokens";
+import { useThemeColor } from "./theme-color";
+import type { ColorToken } from "./tokens";
 import { useReduceMotion } from "./use-reduce";
 
 /** The public variants, in the order the catalog shows them. */
@@ -277,6 +278,9 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
   // «Уменьшить движение»: the spinner slot fades in with the project's fade, 100 ms
   // instead of 160 ms (`motion.ts`), the same rule the layers follow.
   const reduce = useReduceMotion();
+  // The spinner needs a plain colour on a phone (no `currentColor`); the token is
+  // the label's, so the arc matches its text in both themes (v8).
+  const spinnerColor = useThemeColor(LABEL_COLOR[variant]);
   return (
     <Frame
       ref={ref}
@@ -311,7 +315,7 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
         // block-level `div`. On a phone there are no tags and the slot stays a view.
         render={<span />}
       >
-        {busy ? <Spinner color={colors[LABEL_COLOR[variant]]} /> : null}
+        {busy ? <Spinner color={spinnerColor} /> : null}
       </SpinnerSlot>
     </Frame>
   );

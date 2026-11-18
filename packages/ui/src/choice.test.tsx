@@ -35,7 +35,7 @@ describe("ChoiceList: ошибка и описание группы", () => {
     expect(error?.textContent).toBe("Выберите видимость");
     expect(error?.getAttribute("role")).toBe("alert");
     // UI5: the invalid group also has the visible red outline.
-    expect(getComputedStyle(radiogroup).borderColor).toBe("#B42318");
+    expect(getComputedStyle(radiogroup).borderColor).toBe("#C4473D");
   });
 
   it("без ошибки группа валидна и не ссылается на отсутствующий текст", async () => {

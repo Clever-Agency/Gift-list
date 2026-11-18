@@ -1,4 +1,4 @@
-import { Button, Dialog, colors, spacing, type FocusTarget } from "@gift-list/ui";
+import { Button, Dialog, spacing, useThemeColor, type FocusTarget } from "@gift-list/ui";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import { useEffect, useRef } from "react";
 
@@ -91,6 +91,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   const { visible, title, busy = false, onClosed } = props;
   const discard = props.variant === "discard";
   const cancelRef = useRef<FocusTarget>(null);
+  const iconColor = useThemeColor("foreground");
   // One answer per opening. `busy` follows a state update that lands after the
   // handler, so two taps in the same frame would both reach `onConfirm`.
   const answered = useRef(false);
@@ -136,7 +137,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
                 <SymbolView
                   name={CLOSE_ICON}
                   size={spacing["icon-nav"]}
-                  tintColor={colors.foreground}
+                  tintColor={iconColor}
                   // Decorative: the button's label is the accessible name.
                   aria-hidden
                   accessibilityElementsHidden

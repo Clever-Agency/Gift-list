@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createGiftListConfig } from "./config";
-import { colors, rounded, spacing, typography } from "./tokens";
+import { colors, colorsDark, highlights, rounded, shadows, spacing, typography } from "./tokens";
 
 const DESIGN = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -31,6 +31,20 @@ function frontmatterBlock(name: string): Record<string, string> {
   return block;
 }
 
+/** `cardHover` → `card-hover`, the spelling of the frontmatter keys. */
+function kebab(name: string): string {
+  return name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+/** A theme entry as a plain value: Tamagui hands colours as variables (`.val`). */
+function themeValue(theme: Record<string, unknown>, name: string): unknown {
+  const value = theme[name];
+  if (typeof value === "object" && value !== null && "val" in value) {
+    return (value as { val: unknown }).val;
+  }
+  return value;
+}
+
 describe("tokens: значения DESIGN.md", () => {
   it("цвета совпадают с frontmatter", () => {
     const expected = frontmatterBlock("colors");
@@ -38,11 +52,32 @@ describe("tokens: значения DESIGN.md", () => {
     expect(colors).toEqual(expected);
   });
 
+  it("тёмная палитра: те же ключи, значения из блока colors-dark", () => {
+    const expected = frontmatterBlock("colors-dark");
+    expect(Object.keys(expected).length).toBeGreaterThan(15);
+    expect(Object.keys(expected).sort()).toEqual(Object.keys(colors).sort());
+    expect(colorsDark).toEqual(expected);
+  });
+
   it("радиусы совпадают с frontmatter", () => {
     const expected = Object.fromEntries(
       Object.entries(frontmatterBlock("rounded")).map(([key, value]) => [key, parseInt(value, 10)]),
     );
     expect(rounded).toEqual(expected);
+  });
+
+  it("тени и блики совпадают с блоком effects", () => {
+    const expected = frontmatterBlock("effects");
+    const actual: Record<string, string> = {};
+    for (const theme of ["light", "dark"] as const) {
+      for (const [name, value] of Object.entries(shadows[theme])) {
+        actual[`shadow-${kebab(name)}-${theme}`] = value;
+      }
+      for (const [name, value] of Object.entries(highlights[theme])) {
+        actual[`highlight-${name}-${theme}`] = value;
+      }
+    }
+    expect(actual).toEqual(expected);
   });
 
   it("отступы и размеры совпадают с frontmatter", () => {
@@ -67,28 +102,41 @@ describe("tokens: значения DESIGN.md", () => {
   });
 });
 
-describe("config: тема", () => {
+describe("config: темы", () => {
   const config = createGiftListConfig({ body: "Manrope", heading: "Lora" });
 
-  it("одна светлая тема со всеми цветами DESIGN.md", () => {
-    expect(Object.keys(config.themes)).toEqual(["light"]);
-    const light = config.themes.light as unknown as Record<string, { val?: string } | string>;
+  it("светлая и тёмная темы со всеми цветами DESIGN.md", () => {
+    expect(Object.keys(config.themes)).toEqual(["light", "dark"]);
+    const light = config.themes.light as unknown as Record<string, unknown>;
+    const dark = config.themes.dark as unknown as Record<string, unknown>;
     for (const name of Object.keys(colors)) {
-      expect(light[name], name).toBeDefined();
+      expect(light[name], `light: ${name}`).toBeDefined();
+      expect(dark[name], `dark: ${name}`).toBeDefined();
     }
+    expect(Object.keys(dark).sort()).toEqual(Object.keys(light).sort());
+  });
+
+  it("тёмная тема берёт значения блока colors-dark", () => {
+    const dark = config.themes.dark as unknown as Record<string, unknown>;
+    expect(themeValue(dark, "background")).toBe(colorsDark.background);
+    expect(themeValue(dark, "surface")).toBe(colorsDark.surface);
+    expect(themeValue(dark, "primary")).toBe(colorsDark.primary);
+    expect(themeValue(dark, "color")).toBe(colorsDark.foreground);
   });
 
   it("в теме есть ключи, которых ждут Dialog и Sheet", () => {
-    const light = config.themes.light as unknown as Record<string, unknown>;
-    for (const key of [
-      "background",
-      "border-color",
-      "color-5",
-      "shadow-color",
-      "color",
-      "outline-color",
-    ]) {
-      expect(light[key], key).toBeDefined();
+    for (const themeName of ["light", "dark"] as const) {
+      const theme = config.themes[themeName] as unknown as Record<string, unknown>;
+      for (const key of [
+        "background",
+        "border-color",
+        "color-5",
+        "shadow-color",
+        "color",
+        "outline-color",
+      ]) {
+        expect(theme[key], `${themeName}: ${key}`).toBeDefined();
+      }
     }
   });
 

@@ -29,7 +29,7 @@ function background(element: Element): { base?: string; hover?: string } {
   };
 }
 
-/** The colour a `--c-…` custom property of the token block resolves to, e.g. `#2B5635`. */
+/** The colour a `--c-…` custom property of the token block resolves to, e.g. `#1E2B69`. */
 function tokenValue(property: string): string | undefined {
   return allDeclarations().find(
     (declaration) => declaration.selector.startsWith(":root") && declaration.property === property,
@@ -167,14 +167,14 @@ describe("Button", () => {
   });
 
   /**
-   * `DESIGN.md` → Colors, «Hover-затемнение кнопок» (DECISION 2026-11-10): the hover
-   * background is the token of the variant darkened by 8%, and the contrast pairs
-   * (text on hover) are the approved ones — 8.04 / 5.65 / 7.40:1.
+   * `DESIGN.md` → Colors, «Hover-затемнение кнопок» (v8): the hover background is the
+   * token of the variant darkened by 8%, and the contrast pairs (text on hover) are
+   * the approved ones — 13.1 / 5.6 / 6.2:1.
    */
   const HOVER_VARIANTS = [
-    { variant: "primary", token: "primary", hex: "#2B5635" },
-    { variant: "reserve", token: "accent", hex: "#C39315" },
-    { variant: "destructive", token: "destructive", hex: "#A62016" },
+    { variant: "primary", token: "primary", hex: "#1E2B69" },
+    { variant: "reserve", token: "accent", hex: "#E5E2F1" },
+    { variant: "destructive", token: "destructive", hex: "#B1352D" },
   ] as const;
 
   for (const { variant, token, hex } of HOVER_VARIANTS) {
@@ -195,7 +195,7 @@ describe("Button", () => {
       // The token itself resolves to the approved value of DESIGN.md.
       expect(tokenValue(`--c-${token}-hover`)).toBe(hex);
       expect(tokenValue(`--c-${token}`)).toBe(
-        { primary: "#2F5D3A", accent: "#D4A017", destructive: "#B42318" }[token],
+        { primary: "#2B3A7A", accent: "#EDEBF4", destructive: "#C4473D" }[token],
       );
     });
   }

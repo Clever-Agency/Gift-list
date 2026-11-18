@@ -2,7 +2,7 @@ import type { GiftCard } from "@gift-list/contracts";
 import {
   VisibilityChip as UiVisibilityChip,
   spacing,
-  visibilityChipColors,
+  useVisibilityChipColors,
   type VisibilityTone,
 } from "@gift-list/ui";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
@@ -40,6 +40,9 @@ export function VisibilityChip({
   const tLower = useTranslations("app.gift.visibilityLower");
   const tGift = useTranslations("app.gift");
   const tone = TONES[visibility];
+  // Icons take a plain colour, not a `$token`: the hook hands the active theme's
+  // (v8: light or dark) instead of the light palette.
+  const chipColors = useVisibilityChipColors();
 
   return (
     <UiVisibilityChip
@@ -52,7 +55,7 @@ export function VisibilityChip({
         <SymbolView
           name={ICONS[visibility]}
           size={spacing["icon-small"]}
-          tintColor={visibilityChipColors[tone]}
+          tintColor={chipColors[tone]}
         />
       }
     />

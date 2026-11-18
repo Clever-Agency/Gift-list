@@ -8,7 +8,8 @@ import { Close, Eye, EyeOff, Search } from "./icons";
 import { passwordToggleA11yProps } from "./password-toggle-a11y";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
-import { colors, spacing } from "./tokens";
+import { useThemeColor } from "./theme-color";
+import { spacing } from "./tokens";
 
 const inputSkin = {
   ...fontFor("body"),
@@ -270,6 +271,8 @@ export const SearchField = forwardRef<FieldInputRef, SearchFieldProps>(function 
 ) {
   const id = useId();
   const canClear = value.length > 0;
+  const mutedIcon = useThemeColor("muted-foreground");
+  const clearIcon = useThemeColor("foreground");
 
   function clear() {
     onChangeText("");
@@ -309,7 +312,7 @@ export const SearchField = forwardRef<FieldInputRef, SearchFieldProps>(function 
           justifyContent="center"
           pointerEvents="none"
         >
-          <Search size={spacing["icon-inline"]} color={colors["muted-foreground"]} />
+          <Search size={spacing["icon-inline"]} color={mutedIcon} />
         </YStack>
         {canClear ? (
           <Pressable
@@ -325,7 +328,7 @@ export const SearchField = forwardRef<FieldInputRef, SearchFieldProps>(function 
             justifyContent="center"
             color="$foreground"
           >
-            <Close size={spacing["icon-inline"]} color={colors.foreground} />
+            <Close size={spacing["icon-inline"]} color={clearIcon} />
           </Pressable>
         ) : null}
       </YStack>

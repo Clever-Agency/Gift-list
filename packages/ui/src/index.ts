@@ -4,12 +4,19 @@
 export {
   breakpoints,
   colors,
+  colorsDark,
+  highlights,
   rounded,
+  shadows,
   spacing,
   typography,
   SCRIM_OPACITY,
   type ColorToken,
+  type HighlightToken,
+  type ShadowToken,
   type SpacingToken,
+  type ThemeColors,
+  type ThemeName,
   type TypographyRole,
 } from "./tokens";
 export { createGiftListConfig, type FontFamilies, type GiftListConfig } from "./config";
@@ -53,6 +60,7 @@ export { RelationshipChip, type RelationshipChipProps } from "./relationship-chi
 export {
   VisibilityChip,
   visibilityChipColors,
+  useVisibilityChipColors,
   type VisibilityChipProps,
   type VisibilityTone,
 } from "./visibility-chip";
@@ -76,5 +84,6 @@ export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
 export { useReduceMotion } from "./use-reduce";
+export { useThemeColor } from "./theme-color";
 export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";

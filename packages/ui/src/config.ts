@@ -3,9 +3,11 @@ import { animations } from "./animations";
 import {
   breakpoints,
   colors,
+  colorsDark,
   rounded,
   spacing,
   typography,
+  type ThemeColors,
   type TypographyRole,
 } from "./tokens";
 
@@ -76,22 +78,28 @@ const tokens = createTokens({
 });
 
 /**
- * The only theme (`light`, UX-A8). Besides the DESIGN.md colors it carries the
- * keys the Tamagui components in use ask for (`tamagui/dialog`, `tamagui/sheet`
- * manifests): `color`, `color-5`, `shadow-color`, `border-color*`, `outline-color`.
+ * One theme from one palette (v8: `light` and `dark`, the same keys). Besides the
+ * DESIGN.md colors it carries the keys the Tamagui components in use ask for
+ * (`tamagui/dialog`, `tamagui/sheet` manifests): `color`, `color-5`, `shadow-color`,
+ * `border-color*`, `outline-color`.
  */
-const light = {
-  ...colors,
-  color: colors.foreground,
-  "color-5": colors["border-strong"],
-  "shadow-color": colors.scrim,
-  "background-hover": colors.muted,
-  "background-press": colors.muted,
-  "border-color": colors.border,
-  "border-color-hover": colors["border-strong"],
-  "border-color-focus": colors.ring,
-  "outline-color": colors.ring,
-};
+function createTheme(palette: ThemeColors) {
+  return {
+    ...palette,
+    color: palette.foreground,
+    "color-5": palette["border-strong"],
+    "shadow-color": palette.scrim,
+    "background-hover": palette.muted,
+    "background-press": palette.muted,
+    "border-color": palette.border,
+    "border-color-hover": palette["border-strong"],
+    "border-color-focus": palette.ring,
+    "outline-color": palette.ring,
+  } as const;
+}
+
+const light = createTheme(colors);
+const dark = createTheme(colorsDark);
 
 export function createGiftListConfig(families: FontFamilies) {
   const faces = families.bodyFaces;
@@ -125,7 +133,7 @@ export function createGiftListConfig(families: FontFamilies) {
     tokens,
     animations,
     fonts: { body, heading, "body-500": body500, "body-600": body600, display },
-    themes: { light },
+    themes: { light, dark },
     media: {
       medium: { minWidth: breakpoints.medium },
       expanded: { minWidth: breakpoints.expanded },

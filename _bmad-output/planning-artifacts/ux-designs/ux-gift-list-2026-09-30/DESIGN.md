@@ -1,76 +1,112 @@
 ---
 name: Gift List
-description: "Вишлист с видимостью на каждом желании и бронью «Куплю сам». Одно приложение Expo (React Native + react-native-web) на Android, iOS и в браузере — раздел App; четыре серверные страницы Next.js (/l, /i, /unsubscribe, /admin) — раздел Next-страницы. Компоненты и токены — один пакет packages/ui на Tamagui (AD-2), только светлая тема. Пилот на русском, мультиязычность заложена (кириллица + латиница)."
+description: "Вишлист с видимостью на каждом желании и бронью «Куплю сам». Одно приложение Expo (React Native + react-native-web) на Android, iOS и в браузере — раздел App; четыре серверные страницы Next.js (/l, /i, /unsubscribe, /admin) — раздел Next-страницы. Компоненты и токены — один пакет packages/ui на Tamagui (AD-2), светлая и тёмная темы (дизайн-система v8 «Ночное небо»; прежнее ограничение «только светлая тема», UX-A8, снято владельцем 2026-11-18). Пилот на русском, мультиязычность заложена (кириллица + латиница)."
 status: final
 created: 2026-09-30
-updated: 2026-11-10
+updated: 2026-11-18
 language: ru
 workflow: bmad-ux
 round: 1
-palette: forest-paper
+palette: night-sky
 sources:
   - "{planning_artifacts}/prds/prd-gift-list-2026-09-30/prd.md"
   - "{planning_artifacts}/architecture/architecture-gift-list-2026-09-30/ARCHITECTURE-SPINE.md"
   - "{planning_artifacts}/epics/epics-gift-list-2026-09-30/epics.md"
   - "{planning_artifacts}/briefs/brief-gift-list-2026-09-29/brief.md"
 colors:
-  # Locked: вариант C «Forest Paper» (подтверждено Sergey 2026-09-30).
-  # Значения переносятся в тему Tamagui в packages/ui и больше нигде в коде не повторяются (AD-2).
-  # [DECISION 2026-11-10, sprint-change-proposal-2026-11-10-ui-polish.md §4.1.1] Hover кнопок — фон на 8% темнее:
-  # primary-hover, accent-hover, destructive-hover стоят рядом с базовыми цветами, текст на них 8.04 / 5.65 / 7.40:1 (AA).
-  primary: '#2F5D3A'
-  primary-hover: '#2B5635'
-  primary-foreground: '#F7FAF7'
-  accent: '#D4A017'
-  accent-hover: '#C39315'
-  accent-foreground: '#1E241F'
-  background: '#F4F1EA'
-  foreground: '#1E241F'
-  surface: '#FFFFFF'
-  muted: '#E8E4DA'
-  muted-foreground: '#5C6358'
-  border: '#D9D3C6'
-  # UX-A14 (принято Sergey 2026-10-28). Граница полей ввода, переключателей и чекбоксов: 3.6:1 к белому (WCAG 1.4.11).
-  border-strong: '#8F8673'
-  ring: '#2F5D3A'
-  # Кольцо фокуса на тёмных и цветных поверхностях (toast, toast-error): 14.0:1 к foreground, 5.8:1 к destructive.
-  ring-inverse: '#F4F1EA'
-  # Семантические статусы желания (не brand-chrome)
-  status-open: '#2F5D3A'
-  # UX-A14 (принято Sergey 2026-10-28). Было #9A7609 — 3.4:1 на #F5E6B8, не проходит AA для 12px. Стало 4.9:1.
-  status-reserved: '#7A5E07'
-  status-reserved-bg: '#F5E6B8'
-  status-closed: '#5C6358'
-  destructive: '#B42318'
-  destructive-hover: '#A62016'
+  # v8 «Ночное небо» (2026-11-18, владелец): светлая тема. Значения переносятся в
+  # тему Tamagui в packages/ui и больше нигде в коде не повторяются (AD-2).
+  # Тёмная тема — блок colors-dark ниже; ключи в обоих блоках совпадают один в один,
+  # поэтому компоненты берут $токены и о теме не думают.
+  # Primary — сплошной индиго (#2B3A7A), единственная яркая кнопка экрана.
+  # accent — спокойная secondary: полупрозрачный фиолетовый фон, текст accent.11.
+  # Жёлтого и золотого в палитре нет ни в одной роли.
+  primary: '#2B3A7A'
+  primary-hover: '#1E2B69'
+  primary-foreground: '#FFFFFF'
+  accent: '#EDEBF4'
+  accent-hover: '#E5E2F1'
+  accent-foreground: '#5B4C97'
+  background: '#F3F1EC'
+  foreground: '#1C1A2E'
+  surface: '#FFFEFB'
+  surface-raised: '#FFFEFB'
+  muted: '#ECE7DF'
+  muted-foreground: '#56565C'
+  border: '#DAD6CE'
+  border-strong: '#89888F'
+  ring: '#2B3A7A'
+  # Кольцо фокуса на тёмных и цветных поверхностях (toast): 15.0:1 к foreground.
+  ring-inverse: '#F3F1EC'
+  # Семантические статусы желания (не brand-chrome). Бронь — фиолетовый accent.11
+  # на accent.3: жёлтой пары status-reserved/status-reserved-bg больше нет.
+  status-open: '#2C7352'
+  status-reserved: '#5B4C97'
+  status-reserved-bg: '#EEEDFD'
+  status-closed: '#56565C'
+  destructive: '#C4473D'
+  destructive-hover: '#B1352D'
   destructive-foreground: '#FFFFFF'
-  scrim: '#1E241F'
+  scrim: '#1C1A2E'
+colors-dark:
+  # v8 «Ночное небо» (2026-11-18, владелец): тёмная тема. Те же ключи, что в colors.
+  # Объём дают разница тонов слоёв и блик по верхней грани (блок effects), а не
+  # большие тени; primary — periwinkle, текст на нём тёмный.
+  primary: '#7C8CFF'
+  primary-hover: '#8FA0FE'
+  primary-foreground: '#0E0E20'
+  accent: '#373458'
+  accent-hover: '#413E64'
+  accent-foreground: '#C6BCEB'
+  background: '#0E0E20'
+  foreground: '#F3F1F8'
+  surface: '#1B1B3A'
+  surface-raised: '#272642'
+  muted: '#272642'
+  muted-foreground: '#BABBD4'
+  border: '#302F4B'
+  border-strong: '#717289'
+  ring: '#7C8CFF'
+  ring-inverse: '#0E0E20'
+  status-open: '#A1D1B6'
+  status-reserved: '#C6BCEB'
+  status-reserved-bg: '#211E2A'
+  status-closed: '#BABBD4'
+  destructive: '#EE8A80'
+  destructive-hover: '#FC9C91'
+  destructive-foreground: '#0E0E20'
+  scrim: '#06041A'
 typography:
   # D-46 (Sergey 2026-10-28): Lora 600 + Manrope 400, 500, 600 — оба с кириллицей и латиницей (Google Fonts, OFL;
   # подмножества latin, latin-ext, cyrillic, cyrillic-ext). Fraunces и DM Sans заменены: в них нет кириллицы.
+  # v8 (2026-11-18): заголовки — Lora 600 (display, display-sm, heading), интерфейс — Manrope.
+  # Имена ролей прежние, значения — из v8-шкалы: display 34, h2 → display-sm 22,
+  # h3 → heading 18, h4 → body-strong 15, bodyLg → body 16, button 14/500,
+  # label 13/500, caption 12. Новых имён не заводим, чтобы экраны не переписывать.
   # В React Native lineHeight задаётся в px: fontSize × множитель, округлить до целого.
   display:
     fontFamily: 'Lora'
-    fontSize: 36px
+    fontSize: 34px
     fontWeight: '600'
-    lineHeight: '1.15'
-    letterSpacing: '-0.01em'
+    lineHeight: '1.24'
+    letterSpacing: '-0.018em'
   display-sm:
     fontFamily: 'Lora'
-    fontSize: 24px
+    fontSize: 22px
     fontWeight: '600'
-    lineHeight: '1.2'
-    letterSpacing: '0'
+    lineHeight: '1.27'
+    letterSpacing: '-0.018em'
   heading:
-    fontFamily: 'Manrope'
+    fontFamily: 'Lora'
     fontSize: 18px
     fontWeight: '600'
-    lineHeight: '1.3'
+    lineHeight: '1.33'
+    letterSpacing: '-0.006em'
   body-strong:
     fontFamily: 'Manrope'
-    fontSize: 16px
+    fontSize: 15px
     fontWeight: '600'
-    lineHeight: '1.4'
+    lineHeight: '1.47'
   body:
     fontFamily: 'Manrope'
     fontSize: 16px
@@ -78,25 +114,42 @@ typography:
     lineHeight: '1.5'
   button:
     fontFamily: 'Manrope'
-    fontSize: 15px
-    fontWeight: '600'
-    lineHeight: '1.2'
-  label:
-    fontFamily: 'Manrope'
     fontSize: 14px
     fontWeight: '500'
-    lineHeight: '1.4'
+    lineHeight: '1.43'
+  label:
+    fontFamily: 'Manrope'
+    fontSize: 13px
+    fontWeight: '500'
+    lineHeight: '1.38'
   caption:
     fontFamily: 'Manrope'
     fontSize: 12px
     fontWeight: '400'
-    lineHeight: '1.35'
+    lineHeight: '1.33'
 rounded:
+  # v8 (2026-11-18): 8 — кнопки и поля, 16 — карточки и диалоги, 20 — шторка.
+  # 6 — бейджи, чекбоксы, чипы. Круглыми остаются только аватары, switch и бегунок.
   sm: 6px
-  md: 10px
-  lg: 14px
+  md: 8px
+  lg: 16px
   xl: 20px
   full: 9999px
+effects:
+  # v8 (2026-11-18): объём. Светлая — двухслойная мягкая тень; тёмная — разница тонов
+  # слоёв и блик по верхней грани, больших теней нет. Градиентов, glow и стекла нет.
+  shadow-card-light: '0 1px 3px rgba(40,35,25,0.08), 0 12px 28px -4px rgba(40,35,25,0.08)'
+  shadow-card-hover-light: '0 2px 4px rgba(40,35,25,0.10), 0 18px 36px -6px rgba(40,35,25,0.12)'
+  shadow-popover-light: '0 2px 6px rgba(40,35,25,0.08), 0 24px 48px -12px rgba(40,35,25,0.18)'
+  shadow-card-dark: '0 1px 2px rgba(4,4,20,0.4), 0 8px 24px -8px rgba(4,4,20,0.5)'
+  shadow-card-hover-dark: '0 12px 32px -8px rgba(4,4,20,0.6)'
+  shadow-popover-dark: '0 18px 48px -12px rgba(4,4,20,0.7)'
+  highlight-card-light: 'inset 0 1px 0 rgba(255,255,255,1)'
+  highlight-modal-light: 'inset 0 1px 0 rgba(255,255,255,1)'
+  highlight-button-light: 'inset 0 1px 0 rgba(255,255,255,0.22)'
+  highlight-card-dark: 'inset 0 1px 0 rgba(255,255,255,0.15)'
+  highlight-modal-dark: 'inset 0 1px 0 rgba(255,255,255,0.18)'
+  highlight-button-dark: 'inset 0 1px 0 rgba(255,255,255,0.15)'
 spacing:
   # 4-кратная шкала; в RN — dp/pt, в браузере — CSS px.
   page-gutter: 16px
@@ -198,7 +251,7 @@ components:
   owner-action-label:
     background: '{colors.muted}'
     foreground: '{colors.foreground}'
-    border-left: '3px solid {colors.accent}'
+    border-left: '3px solid {colors.accent-foreground}'
     radius: '{rounded.md}'
     padding: '12px'
   reservation-phase:
@@ -329,38 +382,58 @@ components:
 
 # Gift List — Design Spine
 
-> **[DECISION] Палитра C — Forest Paper** подтверждена Sergey (2026-09-30). Имя продукта выбрано 2026-11-10 — **WishMoon** (D-35); домен остаётся открытым (Q-2). Имя на экранах — константа `PRODUCT_NAME` из `packages/contracts`, переопределяемая `BRAND_NAME` / `EXPO_PUBLIC_BRAND_NAME` (AD-24); в макетах — только плейсхолдер. «Написать автору» — `mailto:` на `AUTHOR_EMAIL` из того же файла (AD-24).
+> **[DECISION] Палитра C — Forest Paper** подтверждена Sergey (2026-09-30); **заменена дизайн-системой v8 «Ночное небо» 2026-11-18**. Имя продукта выбрано 2026-11-10 — **WishMoon** (D-35); домен остаётся открытым (Q-2). Имя на экранах — константа `PRODUCT_NAME` из `packages/contracts`, переопределяемая `BRAND_NAME` / `EXPO_PUBLIC_BRAND_NAME` (AD-24); в макетах — только плейсхолдер. «Написать автору» — `mailto:` на `AUTHOR_EMAIL` из того же файла (AD-24).
 > **[DECISION] D-40 (2026-10-28).** Один клиент — приложение Expo на Android, iOS и в браузере; дизайн приложения один, с адаптивными раскладками (раздел **App**). Next.js отдаёт только `/l`, `/i`, `/unsubscribe`, `/admin` (раздел **Next-страницы**).
-> [ASSUMPTION: UX-A8] Только светлая тема. **[DECISION] D-46:** пилот на русском, мультиязычность заложена — кириллица и латиница, слева направо (`EXPERIENCE.md` → Локализация).
-> Spines главнее макетов. Ключевые экраны приложения (телефон и широкий браузер) — [`mockups/app-key-screens.html`](mockups/app-key-screens.html). `prototype/index.html` устарел (см. `EXPERIENCE.md` → Foundation).
+> **[DECISION] v8 (2026-11-18, владелец).** Дизайн-система **v8 «Ночное небо»**: светлая и тёмная темы, сплошной индиго primary, спокойная фиолетовая secondary, никакого жёлтого/золотого, радиусы 8/16/20. Прежнее ограничение **[ASSUMPTION: UX-A8] «только светлая тема» снято**: обе темы обязательны и равноправны; компоненты берут `$`-токены и о теме не думают, тему выбирает приложение (по умолчанию — светлая). Какие изменения уже в коде, а какие в следующих подзадачах — раздел **v8 (2026-11-18)** ниже. **[DECISION] D-46:** пилот на русском, мультиязычность заложена — кириллица и латиница, слева направо (`EXPERIENCE.md` → Локализация).
+
+Spines главнее макетов. Ключевые экраны приложения (телефон и широкий браузер) — [`mockups/app-key-screens.html`](mockups/app-key-screens.html). `prototype/index.html` устарел (см. `EXPERIENCE.md` → Foundation).
+
+## v8 (2026-11-18)
+
+Владелец утвердил дизайн-систему **v8 «Ночное небо»** и отменил правило «только светлая тема» (UX-A8). Референс (вне репозитория, только для чтения): `D:\Clever\wishmoon-v8-ref\` — `design-system/README.md` (спека v8 и правила состояний), `design-system/tokens/wishmoon-tokens.json`, `design-system/tokens/contrast-report.csv`, `design-system/previews/` и `blocks/` (светлая и тёмная), `OPENCODE-BRIEF.md` (общие правила и обязательные решения v8). Референс — источник вида, но не код: токены живут только здесь, в frontmatter, и в `packages/ui/src/tokens.ts`.
+
+Что изменилось в этой подзадаче (токены и темы):
+
+- **Две палитры.** `colors` — светлая (`#F3F1EC` фон, `#FFFEFB` карточки), `colors-dark` — тёмная (`#0E0E20` фон, `#1B1B3A` карточки, `#272642` слой выше). Ключи в блоках совпадают один в один; тема Tamagui собирается из блоков в `packages/ui/src/config.ts` (`light` и `dark`).
+- **Primary вместо Forest.** Сплошной индиго `#2B3A7A` (тёмная — periwinkle `#7C8CFF`), hover темнее на 8 %. Градиентного CTA нет.
+- **Secondary — фиолетовая.** `accent` теперь не жёлтая заливка, а спокойная secondary: фон `#EDEBF4`, текст `#5B4C97`. Жёлтого/золотого (`#D4A017`) в палитре нет ни в одной роли; старые `#D4A017`/`#C39315` из темы ушли.
+- **Статус брони — фиолетовый.** Жёлтая пара `status-reserved` / `status-reserved-bg` (`#7A5E07` на `#F5E6B8`) заменена на `#5B4C97` на `#EEEDFD` (6.21:1); `status-open` — зелёный `#2C7352` на `muted`, `status-closed` — серый. `status-open`/`status-reserved`/`status-closed` не меняют имён, меняют значения.
+- **Типографика.** Заголовки — Lora 600: `display` 34/42, `display-sm` 22/28, `heading` 18/24 (`heading` перешёл с Manrope на Lora). Интерфейс — Manrope: `body-strong` 15/22, `body` 16/24, `button` 14/20/500, `label` 13/18/500, `caption` 12/16. Имена ролей прежние.
+- **Радиусы.** `sm` 6 (бейджи, чипы, чекбоксы), `md` 8 (кнопки и поля), `lg` 16 (карточки и диалоги), `xl` 20 (шторка). Круглыми остаются только аватары, switch и бегунок (`full`).
+- **Объём (блок `effects`).** Светлая — двухслойная мягкая тень `card`, усиленная `card-hover`, и `popover` для слоёв; тёмная — то же плюс блик по верхней грани `inset 0 1px 0 rgba(255,255,255,0.15)`, объём даёт разница тонов слоёв. Тени, блики и `surface-raised` уже в токенах; стекла, blur, glow и scrim-постера нет.
+- **Контраст.** Все пары текста и фона проверены в обеих темах: текст ≥ 4.5:1, UI (рамки полей, фокус, иконки) ≥ 3:1, провалов нет; сводная таблица — `design-system/tokens/contrast-report.csv` в референсе. Исключение, как и в v8: белый текст на коралловом `#C4473D` — 4.87:1.
+
+Чего эта подзадача **не** делает (следующие подзадачи v8): перекраска компонентов под новые состояния (кнопки, поля, чипы, toast), вертикальное ⋮ в меню строк, карточки желания Pinterest с фото 4:5 и сетка 2/3 колонки, магазины-партнёры, «Подборки» варианта A, экраны «Друзья» (мобильный A и веб D), аватары с фото и статусом, пустые состояния с иллюстрацией. До них компоненты рисуются прежними вариантами, но уже на токенах v8: статусные pill и бейджи пока остаются круглыми, `Button variant="reserve"` пока берёт спокойную `accent`, а не primary.
 
 ## Brand & Style
 
-Gift List — тихий координатор подарков для узкого круга: ясность статуса важнее праздничного шума. Визуальный тон — «домашний вишлист на бумаге»: forest green (`{colors.primary}`) для доверия и навигации; mustard gold (`{colors.accent}`) — только сигнал «занято / бронь», не декор. Фон `{colors.background}` — тёплый бумажный; карточки белые (`{colors.surface}`), чтобы список читался как записи на листе.
+Gift List — тихий координатор подарков для узкого круга: ясность статуса важнее праздничного шума. Визуальный тон v8 «Ночное небо»: индиго (`{colors.primary}`) — главное действие, навигация, фокус; спокойная фиолетовая `{colors.accent}` — secondary и «ваша бронь»; коралловый `{colors.destructive}` — только удаление и ошибки. Фон `{colors.background}` — тёплая бумага в светлой теме и ночной синий `colors-dark` в тёмной; карточки — `{colors.surface}`, чтобы список читался как записи на листе.
 
 Один визуальный язык на всех поверхностях: приложение на телефоне, то же приложение в браузере и четыре Next-страницы. Приложение не копирует Material или iOS-стиль: системные только жесты, шторки, выбор даты и клавиатура. Next-страницы собраны из тех же компонентов `packages/ui`, что приложение.
 
-Избегать: фиолетовых градиентов, glow, emoji в chrome, многослойных теней, pill-кластеров на hero, terracotta как второго brand-цвета.
+Избегать: градиентного CTA, glow, стекла и blur, жёлтого и золотого, emoji в chrome, pill-кластеров на hero, второго яркого brand-цвета рядом с primary.
 
 ## Colors
 
-- **Primary Forest (`{colors.primary}`)** — бренд и доверие. Primary-кнопки, активная навигация, ссылки, фокус (`{colors.ring}`), включённый переключатель.
-- **Ring inverse (`{colors.ring-inverse}`)** — кольцо фокуса на тёмных и цветных поверхностях: toast и toast-error. Обычное `{colors.ring}` там даёт 2.1:1 и 1.2:1.
-- **Reserve Mustard (`{colors.accent}`)** — только бронь: CTA «Куплю сам», кнопка подтверждения брони, полоса метки действия владельца. Не для hover, навигации, логотипа, пустых состояний.
-- **Background (`{colors.background}`)** — тёплая бумага; фон всех экранов и шапки приложения.
-- **Surface (`{colors.surface}`)** — белый: карточки, вкладки, боковое меню, шторки, диалоги.
-- **Border / Border-strong.** `{colors.border}` — разделители и контур карточек (декоративный). `{colors.border-strong}` — контур того, с чем взаимодействуют: поля, переключатель в выкл., secondary-кнопки, чипы видимости (UX-A14, принято). На `{colors.muted}` и `{colors.status-reserved-bg}` не ставить (2.8:1 и 2.9:1): кнопки внутри OwnerActionLabel — на `{colors.surface}`.
-- **Статусы:** `открыт` → `{colors.status-open}` на `{colors.muted}`; `забронирован` → `{colors.status-reserved}` на `{colors.status-reserved-bg}`; `закрыт` → `{colors.status-closed}` на `{colors.muted}` (приглушённо, не как ошибка).
-- **Destructive (`{colors.destructive}`)** — удаление желания, блок, снятие чужой брони, «Выйти», «Удалить аккаунт», toast «Нет сети». Не для `закрыт`.
-- **Scrim (`{colors.scrim}` 40%)** — подложка под шторкой, диалогом и выдвижным меню. Не опускать ниже 40%. Прочие прозрачности: pressed — затемнение 8%, disabled — 40%.
-- **Hover-затемнение кнопок** (DECISION 2026-11-10). Hover кнопки — её фон, затемнённый на 8%: `primary-hover` `#2B5635` (текст `{colors.primary-foreground}` — 8.04:1), `accent-hover` `#C39315` (текст `{colors.accent-foreground}` — 5.65:1), `destructive-hover` `#A62016` (текст `{colors.destructive-foreground}` — 7.40:1). Все три пары проходят AA для текста 15 px/600; secondary на hover темнит границу до `{colors.foreground}`, ghost — фон `{colors.muted}`. Значения нормативны; в frontmatter и в `packages/ui/src/tokens.ts` они попадают одной правкой вместе с кодом кнопок (W12.5), потому что `tokens.test.ts` сверяет блок `colors` с кодом один в один. Новых цветов для чипов, полей и toast hover не добавляет.
+Две темы с одинаковым набором ролей: `colors` (светлая) и `colors-dark` (тёмная) во frontmatter. Компоненты берут только `$`-токены, поэтому одна и та же разметка рисуется в обеих темах; тему выбирает приложение (`GiftListProvider`, по умолчанию светлая).
 
-**Контраст (проверено 2026-10-28):** primary на paper 6.8:1, на белом 7.6:1; текст на accent 6.7:1; muted-foreground на paper 5.5:1, на muted 4.9:1; status-reserved на своём фоне 4.9:1; destructive на белом 6.6:1; primary-foreground на primary 7.3:1; status-open на muted 6.0:1; toast 15:1; ring-inverse к toast 14.0:1; border-strong к белому 3.6:1, к paper 3.2:1. `{colors.border}` (1.5:1) не несёт смысла сам по себе — только разделяет. Accent-заливка к paper 2.1:1 — допустимо, кнопку определяет текст (6.7:1). Полная таблица пар — `review-accessibility.md`. История выбора палитры — `.working/color-themes-1.html`.
+- **Primary Indigo (`{colors.primary}`)** — единственная яркая кнопка экрана, активная навигация, ссылки, фокус (`{colors.ring}`), включённый переключатель. Светлая — `#2B3A7A` (текст `{colors.primary-foreground}` 10.6:1), тёмная — periwinkle `#7C8CFF` с тёмным текстом (6.4:1).
+- **Accent Violet (`{colors.accent}`)** — спокойная secondary: полупрозрачная фиолетовая заливка, текст `{colors.accent-foreground}` (6.1:1 в светлой, 6.6:1 в тёмной) и рамка той же гаммы. Это не «вторая primary»: заливка тише primary и не спорит с ним.
+- **Ring inverse (`{colors.ring-inverse}`)** — кольцо фокуса на тёмных и цветных поверхностях: toast и toast-error. Обычное `{colors.ring}` там не видно.
+- **Background (`{colors.background}`)** — фон всех экранов и шапки приложения: тёплая бумага `#F3F1EC` в светлой, ночной синий `#0E0E20` в тёмной.
+- **Surface / Surface raised (`{colors.surface}`, `{colors.surface-raised}`)** — карточки, вкладки, боковое меню, шторки, диалоги; `surface-raised` — слой над карточкой (поповер, меню, поле на карточке). В светлой оба `#FFFEFB`, в тёмной `#1B1B3A` и `#272642`.
+- **Border / Border-strong.** `{colors.border}` — разделители и контур карточек (декоративный, 1.1–1.2:1). `{colors.border-strong}` — контур того, с чем взаимодействуют: поля, переключатель в выкл., secondary-кнопки, чипы видимости: 3.5:1 к карточке в светлой и 3.5:1 в тёмной (WCAG 1.4.11). На `{colors.muted}` не ставить.
+- **Статусы:** `открыт` → `{colors.status-open}` на `{colors.muted}`; `забронирован` → фиолетовый `{colors.status-reserved}` на `{colors.status-reserved-bg}` (6.2:1 светлая, 9.2:1 тёмная); `закрыт` → `{colors.status-closed}` на `{colors.muted}` (приглушённо, не как ошибка). Жёлтой пары у брони больше нет.
+- **Destructive (`{colors.destructive}`)** — удаление желания, блок, снятие чужой брони, «Выйти», «Удалить аккаунт», toast «Нет сети». Не для `закрыт`. Коралл `#C4473D` в светлой, `#EE8A80` в тёмной.
+- **Scrim (`{colors.scrim}` 40%)** — подложка под шторкой, диалогом и выдвижным меню. Не опускать ниже 40%. Прочие прозрачности: pressed — затемнение 8%, disabled — 40%.
+- **Hover-затемнение кнопок** (v8). Hover кнопки — её фон, затемнённый на 8%: `primary-hover` `#1E2B69` (текст 13.1:1), `accent-hover` `#E5E2F1` (5.6:1), `destructive-hover` `#B1352D` (6.2:1); в тёмной теме — свои hover-значения из `colors-dark`. secondary на hover темнит границу до `{colors.foreground}`, ghost — фон `{colors.muted}`. Значения нормативны; в frontmatter и в `packages/ui/src/tokens.ts` они попадают одной правкой, потому что `tokens.test.ts` сверяет блок `colors` с кодом один в один.
+
+**Контраст (проверено 2026-11-18, обе темы).** Текст ≥ 4.5:1, UI (рамки полей, фокус, иконки) ≥ 3:1, провалов нет. Светлая: foreground на paper 15.0:1, на карточке 16.8:1; muted-foreground на paper 6.5:1, на карточке 7.2:1, на muted 5.9:1; primary на paper 9.4:1; текст на accent 6.1:1; status-open на muted 4.6:1; status-reserved на своём фоне 6.2:1; destructive на карточке 4.8:1; ring-inverse к toast 15.0:1; border-strong к карточке 3.5:1, к paper 3.1:1. Тёмная: foreground на фоне 17.0:1, на карточке 14.8:1; muted-foreground на карточке 8.8:1; primary на фоне 6.4:1; текст на accent 6.6:1; status-reserved на своём фоне 9.2:1; border-strong к карточке 3.5:1. Компромисс v8: белый текст на коралле `#C4473D` — 4.87:1, на грани нормы; темнее цвет делать нельзя, станет «тревожно-красным». `{colors.border}` (1.1:1) не несёт смысла сам по себе — только разделяет. Полная таблица пар — `design-system/tokens/contrast-report.csv` в референсе v8.
 
 ## Typography
 
-- **Display (`Lora`)** — редкий акцент: заголовок пустого состояния, имя владельца на вишлисте и профиле, приветствие на `/i`. Один display на экран. Не для body, кнопок, навигации.
-- **UI (`Manrope`)** — всё остальное. `heading` — заголовок экрана в шапке и заголовки секций; `body-strong` — название желания в карточке; `button` — текст кнопок; `label` — подписи полей, пункты меню; `caption` — вспомогательный текст, pill, подписи вкладок.
+- **Display (`Lora`, 600)** — заголовки. `display` 34/42 — редкий акцент: заголовок пустого состояния, имя владельца на вишлисте и профиле, приветствие на `/i`; один display на экран. `display-sm` 22/28 — заголовки Next-страниц и логотип. `heading` 18/24 — заголовок экрана в шапке, заголовки секций и слоёв. Lora не используется для body, кнопок и навигации.
+- **UI (`Manrope`)** — всё остальное: `body-strong` 15/600 — название желания и имена в строках списков; `body` 16/24 — основной текст; `button` 14/20/500 — текст кнопок; `label` 13/18/500 — подписи полей, пункты меню, строка брони; `caption` 12/16 — вспомогательный текст, pill, подписи вкладок.
 - Цена — цифры lining tabular, код валюты после неразрывного пробела.
 - Масштаб шрифта системы (Dynamic Type, «Размер шрифта» Android, zoom браузера) не отключается. Раскладка выдерживает 200%: строки переносятся, кнопки растут по высоте, текст не обрезается многоточием в действиях. Поэтому высоты в токенах — `min-height`, не фиксированные. Исключение одно: подписи нижних вкладок ограничены `maxFontSizeMultiplier = 1.5`; на iOS при долгом нажатии — Large Content Viewer. Проверка: 200% Android, AX3 iOS, zoom 200% и 400% в браузере.
 - Логотип в боковом меню и шапках Next-страниц — `display-sm`.
@@ -372,11 +445,11 @@ Gift List — тихий координатор подарков для узко
 
 ## Elevation & Depth
 
-Минимум. Карточки — border + белый fill, без теней. Тень одна, мягкая, только у плавающего: шторка, диалог, toast, меню пользователя. Hover на карточке — граница `{colors.primary}`, без подъёма.
+Мягкий объём из двух слоёв (v8). Светлая тема: карточка — двухслойная тень `{effects.shadow-card-light}`, hover — `{effects.shadow-card-hover-light}`, плавающее (шторка, диалог, toast, меню пользователя) — `{effects.shadow-popover-light}`; блик по верхней грани `{effects.highlight-card-light}`. Тёмная тема: больших теней нет — объём даёт разница тонов слоёв (`surface` над `background`, `surface-raised` над `surface`) и блик `{effects.highlight-card-dark}`, у кнопок — `{effects.highlight-button-dark}`. Hover карточки — граница `{colors.primary}` и (на вебе) усиленная тень, без подъёма на 4 px. Градиентов, glow, стекла и blur нет ни в одной теме.
 
 ## Shapes
 
-`{rounded.sm}` — поля, чипы видимости; `{rounded.md}` — кнопки, пункты меню, toast; `{rounded.lg}` — карточки, диалоги, панели Next-страниц; `{rounded.xl}` — верхние углы шторки. `{rounded.full}` — только status pill и badge счётчика. Кнопки не делать pill.
+`{rounded.md}` 8 — кнопки, поля, табы и пункты меню; `{rounded.sm}` 6 — бейджи, чекбоксы, чипы; `{rounded.lg}` 16 — карточки, диалоги, панели Next-страниц; `{rounded.xl}` 20 — верхние углы шторки. `{rounded.full}` — только аватары, switch и бегунок слайдера; кнопки и карточки pill-формой не делать. Статусные pill и бейджи пока остаются круглыми — их перенос на радиус 6 идёт с подзадачей компонентов v8.
 
 ## Components
 
@@ -531,8 +604,8 @@ Next.js + компоненты `packages/ui` с серверным рендер�
 | Do | Don't |
 |----|-------|
 | Один primary action на экран | Стек CTA «оплатить / скинуться / куплю» в R1 |
-| Accent только для брони | Accent на навигации, логотипе, пустых состояниях |
-| Lora — точечно, один раз на экран | Body в serif «для уюта» |
+| Accent — спокойная secondary и «ваша бронь» | Accent на навигации, логотипе, пустых состояниях |
+| Lora — заголовки, точечно в теле экрана | Body в serif «для уюта» |
 | На широком экране — меню, сетка, правая колонка, диалог по центру | Растянутый на 1440 px телефон с нижними вкладками |
 | Зона касания 44×44 везде, фокус виден везде | Действия, доступные только по hover; `hitSlop` вместо настоящей зоны |
 | Выбранный раздел — полоса, вес и цвет | Выбранный раздел только цветом |
@@ -540,6 +613,6 @@ Next.js + компоненты `packages/ui` с серверным рендер�
 | Скрытые желания просто отсутствуют | «Ещё 3 желания скрыты», gate-панель, 404 вместо пустого |
 | Копирование ссылки + toast «Ссылка скопирована» | Share-sheet, QR, ссылка на отдельное желание |
 | Приглушать `закрыт` | Показывать `закрыт` как ошибку |
-| Paper-фон + белые карточки | Dark mode, фиолетовые градиенты, glow |
+| Светлая и тёмная темы на одних токенах | Жёлтый/золотой акцент, градиентный CTA, glow, стекло |
 | Подсказка установить приложение — одна, закрывается | Баннер на каждом экране, модалка «Скачайте приложение» |
 | Системные шторки, выбор даты, жесты «назад» | Самодельный выбор даты на телефоне |

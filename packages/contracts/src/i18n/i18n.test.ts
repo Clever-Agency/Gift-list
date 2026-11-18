@@ -119,6 +119,20 @@ describe("not-found copy", () => {
   });
 });
 
+describe("public shell copy", () => {
+  /**
+   * CLE-105: the skip link is the first stop of the Tab order on `/l` and `/i`
+   * (`DESIGN.md` → Порядок Tab, Next-страницы). One sentence in the catalog, so
+   * the shell never hard-codes the label.
+   */
+  it("names the skip link «Перейти к содержимому» without a final period", () => {
+    const { skipToContent } = getMessages("ru").web;
+
+    expect(skipToContent).toBe("Перейти к содержимому");
+    expect(skipToContent.endsWith(".")).toBe(false);
+  });
+});
+
 describe("invite confirmation copy", () => {
   /**
    * CLE-73 followup: the name is not declined (AD-24), so the sentence names

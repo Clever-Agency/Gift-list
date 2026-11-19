@@ -42,20 +42,39 @@ README, «Деплой вне Vercel»): `prisma migrate deploy` с `DATABASE_UR
 Ночное архивирование желаний (Story 2.6) требует ручных шагов:
 
 - `CRON_SECRET` (не короче 32 символов) задаётся в env хоста каждого окружения
-  (без него `getEnv()` не даёт стартовать серверу) и в секрете GitHub Actions
-  `CRON_SECRET`; значения хоста и секрета совпадают;
+  (без него `getEnv()` не даёт стартовать серверу) и в GitHub Actions; значения
+  хоста и секрета совпадают. В Vercel переменная Sensitive, её значение не
+  прочитать: чтобы сменить секрет, сгенерируйте новый, запишите его в оба места
+  и передеплойте окружение;
 - миграция `20261110180000_gift_expiry_index` применяется `prisma migrate deploy`
   в общем порядке (после мержа в `staging` и до проверки на staging, на прод-базу —
   при продвижении в `main`); без неё выборка кандидатов идёт без индекса;
-- `.github/workflows/wish-expiry.yml` по `schedule` запускается только с
-  default-ветки, а `workflow_dispatch` читает тот же единственный секрет
-  `APP_URL`, поэтому для staging он не подходит. Архивирование на staging
-  запускается вручную:
+- `.github/workflows/wish-expiry.yml` раз в час вызывает оба окружения, каждое
+  через свой GitHub Environment:
 
-  ```bash
-  curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
-    https://staging.wishmoon.clever-agency.dev/api/cron/wish-expiry
-  ```
+  | Environment | `APP_URL` | `CRON_SECRET` |
+  | --- | --- | --- |
+  | `cron-production` | секрет репозитория `APP_URL` = прод-домен | секрет репозитория = переменной Vercel Production |
+  | `cron-staging` | секрет окружения `APP_URL` = `https://staging.wishmoon.clever-agency.dev` | секрет окружения = Preview-переменной Vercel, ограниченной веткой `staging` |
+
+  У `cron-production` своих секретов нет: job берёт секреты репозитория, а
+  секрет окружения с тем же именем их перекрывает. Если у `cron-staging`
+  пропадёт секрет, job получит прод-значение, поэтому workflow падает, когда
+  `APP_URL` у `cron-staging` не начинается с `https://staging.`. Deployment
+  branches у обоих окружений — No restriction: секреты репозитория и так видны
+  любому workflow этого репозитория, ограничение веткой их не закроет. Падение
+  одного окружения не отменяет другое. Каждый запуск оставляет запись во
+  вкладке Deployments: это шум, принятый сознательно. Ручной запуск
+  (Actions → Wish expiry → Run workflow) позволяет выбрать `all`, `production`
+  или `staging`. Если Actions недоступен, то же делает
+  `curl -X POST -H "Authorization: Bearer $CRON_SECRET" <домен>/api/cron/wish-expiry`.
+- Смена `CRON_SECRET`: сначала новое значение в Vercel и Redeploy окружения,
+  потом тот же секрет в GitHub (`cron-staging` или секрет репозитория для
+  прода). Между шагами запуски получают 401, и это безопасно: пропущенный
+  запуск только откладывает архивирование (ARCH-A15).
+- Расписание берёт файл из default-ветки, то есть из `staging`. Правка
+  `wish-expiry.yml`, влитая в `staging`, сразу действует и на прод, ещё до
+  выкладки в `main`. Код эндпоинта прода при этом остаётся из `main`.
 
 ### Хотфикс
 
@@ -103,9 +122,13 @@ Contents и Pull requests на запись только для этого ре�
   этим workflow, потом правка ruleset для `main`.
 - Actions → General → Workflow permissions: включено Allow GitHub Actions to
   create and approve pull requests — если `BACK_MERGE_TOKEN` не задан.
-- Если основной веткой (default branch) сделать `staging`, PR по умолчанию пойдут
-  в неё. `wish-expiry.yml` по расписанию тогда запускается из `staging`, но бьёт
-  по-прежнему в `APP_URL`, то есть в прод.
+- Основная ветка (default branch) — `staging`: в неё по умолчанию идут PR, от
+  неё стартуют агенты. Поэтому ruleset для `main` нацелен на `refs/heads/main`,
+  а не на Default branch: иначе при смене основной ветки защита переехала бы
+  на неё.
+- Environments `cron-production` и `cron-staging` для `wish-expiry.yml` (см.
+  «Порядок выкладки»). `Production` и `Preview` создаёт Vercel под свои деплои,
+  их не трогать.
 
 ## Production
 
@@ -114,8 +137,9 @@ Contents и Pull requests на запись только для этого ре�
 - `EMAIL_FROM`: `WishMoon <noreply@wishmoon.clever-agency.dev>`.
 - Ключ Resend — продовый, только на отправку и только для продового домена.
 - `BETTER_AUTH_URL=https://wishmoon.clever-agency.dev`.
-- `CRON_SECRET` (≥ 32 символа) — тот же, что в секрете GitHub Actions; `APP_URL`
-  в секретах Actions указывает на этот домен: по расписанию работает только он.
+- `CRON_SECRET` (≥ 32 символа) — тот же, что в секрете репозитория GitHub
+  Actions; секрет репозитория `APP_URL` указывает на этот домен (Environment
+  `cron-production`).
 
 ## Staging
 
@@ -130,8 +154,8 @@ Contents и Pull requests на запись только для этого ре�
   `EXPO_PUBLIC_API_BASE_URL=https://staging.wishmoon.clever-agency.dev`.
 - Ключ Resend — staging, только на отправку и только для staging-домена.
 - `CRON_SECRET` (≥ 32 символа) — Preview-переменная, ограниченная веткой
-  `staging`. Расписание сюда не стучится (`APP_URL` один): архивирование на
-  staging — вручную, см. «Порядок выкладки».
+  `staging`; то же значение — секрет `CRON_SECRET` в Environment `cron-staging`.
+  Расписание вызывает staging так же раз в час.
 
 ## Preview (`*.vercel.app`, остальные ветки)
 

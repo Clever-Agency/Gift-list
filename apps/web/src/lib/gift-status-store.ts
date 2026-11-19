@@ -3,9 +3,32 @@ import "server-only";
 import type { Prisma, PrismaClient } from "@/db/generated/client";
 import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
-import { RESERVATION_RELEASE_DATA, type GiftStatusTransaction } from "@/domain/gift-status";
+import { RESERVATION_RELEASE_DATA, type GiftStatusEvent, type GiftStatusTransaction } from "@/domain/gift-status";
 
 type GiftDb = Pick<PrismaClient, "gift">;
+
+/**
+ * The single seam of NFR-6 (Story 5.2/5.3, variant A): one structured audit line
+ * per successful transition — identifiers and the transition only, without
+ * names, nicks, emails or titles (FR-31), so the line is not a leak channel.
+ *
+ * Variant B (a `Notification` row with `deliverAfter` from Epic 6) replaces only
+ * this body: the CAS methods, the use-cases and the routes keep calling
+ * `recordGiftEvent` and do not change. `kind` and `at` are already in the event
+ * for that future record; the log line keeps the format the spec fixes.
+ */
+export function recordGiftEvent(event: GiftStatusEvent): void {
+  console.info(
+    JSON.stringify({
+      event: "gift.status",
+      giftId: event.giftId,
+      actorId: event.actorId,
+      from: event.from,
+      to: event.to,
+      at: event.at.toISOString(),
+    }),
+  );
+}
 
 /**
  * Prisma adapter of `GiftStatusService` (AD-8 / AD-9). This is the only place
@@ -18,6 +41,13 @@ type GiftDb = Pick<PrismaClient, "gift">;
  *
  * The CAS on `status: "RESERVED"` means a row that changed status in the
  * meantime is left untouched; `false` says the reservation was already gone.
+ *
+ * Story 5.2 adds the holder's and the owner's releases. Both are CAS writes, so
+ * of two simultaneous releases exactly one succeeds; the one that succeeded
+ * reports the transition to {@link recordGiftEvent}, a lost CAS reports nothing
+ * (NFR-6). The audit line is written from inside the transaction, so a rolled
+ * back transaction keeps a log line — variant A accepts that: the log is not a
+ * source the application reads back.
  */
 export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusTransaction {
   return {
@@ -51,6 +81,38 @@ export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusT
         },
       });
       return count === 1 ? "success" : "lost";
+    },
+    async releaseReservationByHolder(giftId, actorId, at) {
+      const { count } = await tx.gift.updateMany({
+        where: { id: giftId, status: "RESERVED", reservedById: actorId },
+        data: RESERVATION_RELEASE_DATA,
+      });
+      if (count !== 1) return "lost";
+      recordGiftEvent({
+        giftId,
+        actorId,
+        from: "RESERVED",
+        to: "OPEN",
+        at,
+        kind: "RESERVATION_RELEASED_BY_HOLDER",
+      });
+      return "success";
+    },
+    async releaseReservationByOwner(giftId, actorId, at) {
+      const { count } = await tx.gift.updateMany({
+        where: { id: giftId, status: "RESERVED", list: { ownerId: actorId } },
+        data: RESERVATION_RELEASE_DATA,
+      });
+      if (count !== 1) return "lost";
+      recordGiftEvent({
+        giftId,
+        actorId,
+        from: "RESERVED",
+        to: "OPEN",
+        at,
+        kind: "RESERVATION_RELEASED_BY_OWNER",
+      });
+      return "success";
     },
   };
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   RESERVATION_RELEASE_DATA,
   hasActiveReservation,
+  reservationWarning,
   visibilityChangeDropsReservation,
   type HolderAccessInput,
 } from "./gift-status";
@@ -137,5 +138,29 @@ describe("the RESERVED → OPEN release", () => {
     expect(hasActiveReservation({ status: "RESERVED" })).toBe(true);
     expect(hasActiveReservation({ status: "OPEN" })).toBe(false);
     expect(hasActiveReservation({ status: "CLOSED" })).toBe(false);
+  });
+});
+
+/** Story 5.2 (FR-31, AD-12): the owner's preflight of a foreign reservation. */
+describe("reservationWarning", () => {
+  it("warns BOUGHT when the holder marked the gift as bought", () => {
+    expect(reservationWarning({ status: "RESERVED", reservationBought: true })).toBe("BOUGHT");
+  });
+
+  it("answers null when the holder marked nothing", () => {
+    expect(reservationWarning({ status: "RESERVED", reservationBought: false })).toBeNull();
+  });
+
+  /** PREFLIGHT_STALE: the preflight only reads, so a stale state warns about nothing. */
+  it.each(["OPEN", "CLOSED"] as const)("answers null for a %s wish", (status) => {
+    expect(reservationWarning({ status, reservationBought: true })).toBeNull();
+  });
+
+  /** `GIVEN` is a Story 5.7 branch: 5.2 has no row with that phase and no branch for it. */
+  it("never answers GIVEN in Story 5.2", () => {
+    const answers = [true, false].map((reservationBought) =>
+      reservationWarning({ status: "RESERVED", reservationBought }),
+    );
+    expect(answers).not.toContain("GIVEN");
   });
 });

@@ -58,6 +58,57 @@ export function hasActiveReservation(row: GiftStatusRow): boolean {
   return row.status === "RESERVED";
 }
 
+/** The columns the owner's release preflight reads (Story 5.2). */
+export type ReservationWarningRow = {
+  readonly status: GiftStatusRow["status"];
+  readonly reservationBought: boolean;
+};
+
+/**
+ * Story 5.2 (FR-31, AD-12): the owner's answer before releasing someone else's
+ * reservation. `BOUGHT` says the holder marked the gift as bought, so releasing
+ * it lets somebody else buy it again. The `GIVEN` branch belongs to Story 5.7 —
+ * no row carries that phase yet — so this slice answers `BOUGHT` or `null` only.
+ *
+ * A wish that is no longer `RESERVED` warns about nothing: the preflight only
+ * reads and never argues with a stale state, the `DELETE` decides.
+ */
+export function reservationWarning(row: ReservationWarningRow): "BOUGHT" | null {
+  if (row.status !== "RESERVED") return null;
+  return row.reservationBought ? "BOUGHT" : null;
+}
+
+/**
+ * Story 5.2/5.3 (NFR-6): the transitions the one seam reports. The list is
+ * shared, so 5.2 and 5.3 cannot write the same event differently.
+ */
+export type GiftStatusEventKind =
+  | "RESERVATION_RELEASED_BY_HOLDER"
+  | "RESERVATION_RELEASED_BY_OWNER"
+  | "WISH_CLOSED"
+  | "WISH_REOPENED";
+
+/**
+ * The payload of {@link RecordGiftEvent}: identifiers and the transition only —
+ * no names, nicks, emails or titles (FR-31).
+ */
+export type GiftStatusEvent = {
+  readonly giftId: string;
+  readonly actorId: string;
+  readonly from: GiftStatusRow["status"];
+  readonly to: GiftStatusRow["status"];
+  readonly at: Date;
+  readonly kind: GiftStatusEventKind;
+};
+
+/**
+ * The single seam of NFR-6 that the store implements (Story 5.2 declares it,
+ * Story 5.3 reuses it). Today the implementation writes one audit line
+ * (variant A); a `Notification` row (variant B) replaces only that body, so no
+ * caller or CAS method changes.
+ */
+export type RecordGiftEvent = (event: GiftStatusEvent) => void;
+
 /**
  * One `RESERVED → OPEN` write (AD-9). The adapter implements it with Prisma; the
  * caller supplies the transaction so the release shares it with the field write,
@@ -74,6 +125,28 @@ export interface GiftStatusTransaction {
    * no longer matches the predicate is left untouched and answers `lost`.
    */
   reserveGift(giftId: string, data: ReserveGiftWrite): Promise<"success" | "lost">;
+  /**
+   * Story 5.2: CAS `RESERVED → OPEN` for the holder of the reservation. The
+   * predicate carries `reservedById`, so a wish held by someone else, released
+   * in the meantime or not reserved at all is left untouched and answers `lost`.
+   * Visibility is deliberately not part of the predicate: after an unfriend or a
+   * block the holder keeps control of the reservation (A-14, FR-25).
+   */
+  releaseReservationByHolder(
+    giftId: string,
+    actorId: string,
+    at: Date,
+  ): Promise<"success" | "lost">;
+  /**
+   * Story 5.2: CAS `RESERVED → OPEN` for the owner of the list the wish belongs
+   * to. The predicate carries ownership, so a foreign wish, a closed wish or a
+   * reservation already gone is left untouched and answers `lost`.
+   */
+  releaseReservationByOwner(
+    giftId: string,
+    actorId: string,
+    at: Date,
+  ): Promise<"success" | "lost">;
 }
 
 /** Only a single open wish can be reserved; unlimited gifts are rejected upstream. */

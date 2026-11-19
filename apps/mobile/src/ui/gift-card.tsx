@@ -1,6 +1,6 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
+import type { ReactNode, Ref } from "react";
 import { TagChipList, WishCard as UiWishCard, type FocusTarget } from "@gift-list/ui";
-import type { Ref } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { StatusPill } from "@/ui/status-pill";
 import { VisibilityChip, type VisibilityChipRef } from "@/ui/visibility-chip";
@@ -53,6 +53,8 @@ export function WishCard({
   onVisibilityPress,
   visibilityChipRef,
   pressRef,
+  menu,
+  closed = false,
 }: {
   gift: GiftCardData;
   width: number;
@@ -63,6 +65,10 @@ export function WishCard({
   onVisibilityPress?: () => void;
   /** Where focus returns when the visibility layer closes (Story 2.3). */
   visibilityChipRef?: VisibilityChipRef;
+  /** Archive menu, drawn as a sibling of the card button (Story 2.6). */
+  menu?: ReactNode;
+  /** Archive cards read as closed even while the stored status stays OPEN. */
+  closed?: boolean;
 }) {
   const t = useTranslations("app.myWishlist");
   const tGift = useTranslations("app.gift");
@@ -121,7 +127,7 @@ export function WishCard({
   return (
     <UiWishCard
       title={gift.title}
-      closed={gift.status === "CLOSED"}
+      closed={closed || gift.status === "CLOSED"}
       price={price}
       status={<StatusPill status={gift.status} />}
       tags={
@@ -147,6 +153,7 @@ export function WishCard({
       pressLabel={pressLabel}
       pressRef={pressRef as never}
       width={width}
+      menu={menu}
     />
   );
 }

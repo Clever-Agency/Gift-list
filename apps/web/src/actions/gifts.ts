@@ -15,6 +15,7 @@ import {
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { Prisma } from "@/db/generated/client";
+import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
 import { hasActiveReservation, visibilityChangeDropsReservation } from "@/domain/gift-status";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
@@ -80,7 +81,7 @@ const visibilityRaceConflict = {
 };
 
 /** Columns the owner card reads; the same shape the list read selects (AD-12). */
-const ownerGiftSelect = {
+export const ownerGiftSelect = {
   id: true,
   title: true,
   description: true,
@@ -111,7 +112,8 @@ const formGiftSelect = {
 
 /**
  * Stored values the edit rules read: AD-25 (price pair), Story 2.5 (`quantity`),
- * AD-8 (status and archive) and CLE-82 (`visibility`, holder).
+ * AD-8 (status and archive), CLE-82 (`visibility`, holder) and Story 2.6
+ * (`expiresOn` plus the owner's zone).
  */
 const storedGiftSelect = {
   priceAmount: true,
@@ -121,6 +123,8 @@ const storedGiftSelect = {
   quantity: true,
   archivedAt: true,
   reservedById: true,
+  expiresOn: true,
+  list: { select: { owner: { select: { timeZone: true } } } },
 } satisfies Prisma.GiftSelect;
 
 /** What the visibility preflight reads; nothing else is needed to answer it. */
@@ -137,6 +141,16 @@ function validation(field?: string): ActionResult<GiftCard> {
     code: "VALIDATION",
     message: "Invalid input",
     ...(field ? { field } : {}),
+  };
+}
+
+/** The wire day is a string; the column is a date. An unchanged field is absent. */
+function toStoredGiftFields<T extends { expiresOn?: string | null }>(fields: T) {
+  if (fields.expiresOn === undefined) return fields;
+  const { expiresOn, ...rest } = fields;
+  return {
+    ...rest,
+    expiresOn: expiresOn === null ? null : calendarDayToDate(expiresOn),
   };
 }
 
@@ -373,9 +387,18 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   // creating a gift in an unexpected list.
   const list = await prisma.list.findUnique({
     where: { ownerId: session.user.id },
-    select: { id: true },
+    select: { id: true, owner: { select: { timeZone: true } } },
   });
   if (!list) return { ok: false, code: "NOT_FOUND", message: "Wishlist not found" };
+
+  // Story 2.6: a new date before the owner's local today is rejected. Today is
+  // allowed. An omitted date stays unset and is not checked.
+  if (
+    parsed.data.expiresOn !== null &&
+    isBeforeLocalToday(parsed.data.expiresOn, new Date(), list.owner?.timeZone ?? null)
+  ) {
+    return validation("expiresOn");
+  }
 
   const tags = parsed.data.tags;
   const missingTagIndex = await firstMissingFixedTagIndex(prisma, tags);
@@ -393,6 +416,8 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
         linkUrl: parsed.data.linkUrl,
         visibility: parsed.data.visibility,
         quantity: parsed.data.quantity,
+        expiresOn:
+          parsed.data.expiresOn === null ? null : calendarDayToDate(parsed.data.expiresOn),
         status: "OPEN",
         // An absent key keeps the create identical to a body without tags.
         ...(tagRows.length > 0 ? { tags: { create: tagRows } } : {}),
@@ -558,6 +583,20 @@ export async function updateGift(
           }
         }
 
+        // Story 2.6: resending the stored day is not a new date, even when that
+        // day is already in the past. Only a different day is checked.
+        if (fields.expiresOn !== undefined) {
+          const next = fields.expiresOn ?? null;
+          if (next === calendarDay(stored.expiresOn)) {
+            delete fields.expiresOn;
+          } else if (
+            next !== null &&
+            isBeforeLocalToday(next, new Date(), stored.list.owner.timeZone)
+          ) {
+            return validation("expiresOn");
+          }
+        }
+
         // Fail fast on an unknown catalog tag: nothing is written for a bad body.
         if (tags !== undefined) {
           const missingTagIndex = await firstMissingFixedTagIndex(tx, tags);
@@ -579,7 +618,7 @@ export async function updateGift(
             status: stored.status,
             reservedById: stored.reservedById,
           },
-          data: fields,
+          data: toStoredGiftFields(fields),
           select: { id: true },
         });
 

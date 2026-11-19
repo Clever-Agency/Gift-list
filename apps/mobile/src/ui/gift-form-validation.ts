@@ -30,7 +30,8 @@ export type GiftFormField =
   | "link"
   | "visibility"
   | "quantity"
-  | "tags";
+  | "tags"
+  | "expiresOn";
 
 export type GiftFormErrors = Partial<Record<GiftFormField, true>>;
 
@@ -57,6 +58,7 @@ const FIELD_ORDER = [
   "visibility",
   "quantity",
   "tags",
+  "expiresOn",
 ] as const satisfies readonly GiftFormField[];
 
 /**
@@ -150,6 +152,8 @@ export function serverErrorField(field: string | undefined): GiftFormField | nul
       return "visibility";
     case "quantity":
       return "quantity";
+    case "expiresOn":
+      return "expiresOn";
     default:
       return null;
   }
@@ -235,6 +239,9 @@ export function fieldErrorCopy(
       // The realistic rejection is a wish that became non-OPEN during the edit:
       // a generic "check your input" would ask for a change the server forbids.
       return { catalog: "giftForm", key: "error.quantityLocked" };
+    case "expiresOn":
+      // NOTE FOR UX: EXPERIENCE.md has no sentence for a past «Убрать в архив после».
+      return { catalog: "giftForm", key: "error.expiresOnPast" };
     case "tags":
       if (context.tagIssue === "tooLong")
         return { catalog: "giftForm", key: "error.tagTooLong", values: { max: GIFT_TAG_TEXT_MAX } };

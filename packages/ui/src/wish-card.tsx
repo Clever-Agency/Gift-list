@@ -73,6 +73,8 @@ export type WishCardProps = {
   pressRef?: Ref<ComponentRef<typeof Pressable>>;
   /** Card width in px, or a CSS size. Defaults to the full width of the parent. */
   width?: number | string;
+  /** Owner menu, a sibling of the card button (Story 2.6 archive). */
+  menu?: ReactNode;
   testID?: string;
 };
 
@@ -102,6 +104,7 @@ export function WishCard({
   pressLabel,
   pressRef,
   width,
+  menu,
   testID,
 }: WishCardProps) {
   const content = (
@@ -109,7 +112,12 @@ export function WishCard({
       <Photo interactive={Boolean(onPress)} testID={testID ? `${testID}-photo` : undefined}>
         <PhotoPlaceholder seed={title} />
       </Photo>
-      <YStack gap="$1" paddingTop="$2" paddingHorizontal="$1">
+      <YStack
+        gap="$1"
+        paddingTop="$2"
+        paddingHorizontal="$1"
+        paddingRight={menu ? "$touch-target" : "$1"}
+      >
         <Text kind="body-strong" tone={closed ? "muted" : "default"} numberOfLines={2}>
           {title}
         </Text>
@@ -141,6 +149,30 @@ export function WishCard({
       ) : (
         <View>{content}</View>
       )}
+      {menu ? (
+        // The owner menu sits next to the title, under the photo (product decision
+        // t477u). It stays a sibling of the card button, never nested in it: an
+        // invisible 4:5 spacer of the photo's size pushes it below the plate, and
+        // `box-none` lets presses outside the menu reach the card underneath.
+        <View
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          zIndex="$base"
+          pointerEvents="box-none"
+        >
+          <View width="100%" aspectRatio={4 / 5} pointerEvents="none" />
+          <View
+            flexDirection="row"
+            justifyContent="flex-end"
+            paddingTop="$2"
+            pointerEvents="box-none"
+          >
+            {menu}
+          </View>
+        </View>
+      ) : null}
       {chip ? (
         <View
           position="absolute"

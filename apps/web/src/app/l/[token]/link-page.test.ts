@@ -68,14 +68,16 @@ const rows: Row[] = [
 
 type GiftWhere = {
   listId: string;
-  archivedAt: null;
+  archivedAt?: null;
+  NOT?: { archivedAt: null };
   visibility?: { in: readonly Row["visibility"][] };
 };
 
 function query(where: GiftWhere): Row[] {
   if (where.listId !== "l1") return [];
+  const archived = where.NOT?.archivedAt === null;
   return rows.filter(function visible(row) {
-    if (where.archivedAt === null && row.archivedAt !== null) return false;
+    if ((row.archivedAt !== null) !== archived) return false;
     return where.visibility === undefined || where.visibility.in.includes(row.visibility);
   });
 }

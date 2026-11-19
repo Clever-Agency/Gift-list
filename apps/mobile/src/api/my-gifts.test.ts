@@ -37,6 +37,7 @@ describe("fetchMyGifts", () => {
       ok: true,
       access: "gifts",
       gifts: [card],
+      archived: [],
       publicToken: "tok-1",
     });
   });
@@ -52,6 +53,7 @@ describe("fetchMyGifts", () => {
       ok: true,
       access: "gifts",
       gifts: [],
+      archived: [],
       publicToken: "tok-1",
     });
   });
@@ -104,6 +106,22 @@ describe("fetchMyGifts", () => {
     await expect(fetchMyGifts()).resolves.toEqual({ ok: true, access: "not_found" });
   });
 
+  it("returns the owner's archive and treats a missing key as empty", async () => {
+    const archived = { ...card, id: "g-archived", archivedAt: "2026-01-02T00:00:00.000Z" };
+    api.apiRequest.mockResolvedValue({
+      ok: true,
+      data: { access: "gifts", gifts: [card], archived: [archived], publicToken: "tok-1" },
+    });
+
+    await expect(fetchMyGifts()).resolves.toEqual({
+      ok: true,
+      access: "gifts",
+      gifts: [card],
+      archived: [archived],
+      publicToken: "tok-1",
+    });
+  });
+
   it("treats the retired not_found success body as outside the contract", async () => {
     api.apiRequest.mockResolvedValue({ ok: true, data: { access: "not_found", gifts: [] } });
 
@@ -117,6 +135,7 @@ describe("fetchMyGifts", () => {
       ok: true,
       access: "gifts",
       gifts: [],
+      archived: [],
       publicToken: null,
     });
   });

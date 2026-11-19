@@ -50,6 +50,8 @@ type AppCatalog = {
       tagEdit: string;
       tagCounter: string;
       tagRemove: string;
+      expiresOn: string;
+      expiresOnHint: string;
     };
     action: { create: string; save: string; cancel: string };
     error: {
@@ -350,6 +352,13 @@ describe("GiftForm: поля", () => {
     expect(fieldText(form.field.price)).toContain(form.field.priceHint);
   });
 
+  it("показывает необязательную дату «Убрать в архив после»", async () => {
+    await mount();
+
+    expect(text()).toContain(form.field.expiresOn);
+    expect(text()).toContain(form.field.expiresOnHint);
+  });
+
   /** ARCH-A17: a new wish is visible to everyone. */
   it("видимость по умолчанию — «всем» (PUBLIC)", async () => {
     await mount();
@@ -385,6 +394,7 @@ describe("GiftForm: отправка", () => {
       visibility: "PUBLIC",
       quantity: "SINGLE",
       tags: [],
+      expiresOn: null,
     });
   });
 
@@ -408,6 +418,7 @@ describe("GiftForm: отправка", () => {
       visibility: "FRIENDS",
       quantity: "SINGLE",
       tags: [],
+      expiresOn: null,
     });
   });
 
@@ -460,6 +471,7 @@ describe("GiftForm: отправка", () => {
       visibility: "SECRET",
       quantity: "UNLIMITED",
       tags: [],
+      expiresOn: null,
     });
   });
 

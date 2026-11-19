@@ -717,6 +717,7 @@ function toFormValues(gift: GiftCard): GiftFormValues {
     visibility: gift.visibility,
     quantity: gift.quantity,
     tags: gift.tags.map(giftTagFromCard),
+    expiresOn: gift.expiresOn,
   };
 }
 
@@ -753,6 +754,7 @@ function toGiftUpdate(values: GiftFormValues, gift: GiftCard): GiftUpdate {
     ...(keepsStoredText(values.link ?? "", gift.linkUrl, GIFT_LINK_URL_MAX)
       ? {}
       : { linkUrl: values.link }),
+    ...(values.expiresOn !== gift.expiresOn ? { expiresOn: values.expiresOn } : {}),
     ...(tagsChanged ? { tags: giftTagInputs(values.tags) } : {}),
   };
   if (gift.status === "OPEN" || gift.status === "RESERVED") {

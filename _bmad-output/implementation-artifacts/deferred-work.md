@@ -226,3 +226,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-92-zapret-tekushchego-parolya.md`
   summary: На сыром `/api/auth/change-password` проверка HIBP выполняется до сверки текущего пароля, поэтому вошедший без знания текущего пароля может отличить утёкший новый пароль (`PASSWORD_COMPROMISED`) от неверного текущего.
   evidence: Порядок Better Auth 1.7.14 и хука CLE-90: `hash` (а в нём HIBP) вызывается раньше `password.verify` текущего пароля. CLE-92 эту проверку не переставлял: отказ `PASSWORD_REUSED` звучит только после верного `currentPassword`, но HIBP по-прежнему раньше. Чинить отдельно, не смешивая с запретом текущего пароля.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-76-perenos-2-6-v-staging.md`
+  summary: Выкладка Story 2.6 на staging требует ручных шагов, которых нет в `docs/deployment-environments.md`: `CRON_SECRET` в env staging (без него `getEnv()` валит старт), `prisma migrate deploy` для `20261110180000_gift_expiry_index`, а `schedule` в `wish-expiry.yml` работает только с default-ветки и бьёт в единственный `APP_URL`.
+  evidence: `apps/web/src/lib/env.ts:80` — `CRON_SECRET: z.string().min(32)`; `grep` по `deployment-environments.md` не находит ни cron, ни `APP_URL`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-76-perenos-2-6-v-staging.md`
+  summary: Карточки секции «Архив» не открывают диалог подробностей CLE-84, хотя активные открывают; у `WishCard` с `menu` (меню теперь поверх фото) и у `DateField` нет stories.
+  evidence: `ArchiveSection` не передаёт `onPress`; в `wish-card.stories.tsx` нет состояния с `menu`, `date-field.stories.tsx` нет. В `main` так же — переносом не вызвано.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-76-perenos-2-6-v-staging.md`
+  summary: Долги кода Story 2.6 из ревью переноса: CAS в `processWishExpiry` не сверяет `expiresOn` (гонка с правкой даты), скан без верхней границы и по одной записи без try/catch, чтение архива без лимита, восстановление не обрабатывает NOT_FOUND/UNAUTHENTICATED, `archiveBusy` не блокирует «Вернуть», дубли `deviceToday`/проверки дня/хелперов `restore-gift.ts`, исключение `read-guard` на весь `gift-status-store.ts`, a11y `DateField`, нет тестов на эти пути.
+  evidence: код совпадает с `7903a84` в `main`; находки Blind Hunter и Edge Case Hunter, 2026-11-19.

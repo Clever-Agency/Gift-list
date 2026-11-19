@@ -2170,6 +2170,95 @@ describe("мой вишлист: возврат фокуса на чип", () =>
   });
 });
 
+describe("мой вишлист: архив", () => {
+  const archived = gift({
+    id: "g-old",
+    title: "Плед",
+    archivedAt: "2026-01-02T00:00:00.000Z",
+    tags: [{ catalogId: "dream", label: "мечта" }],
+  });
+
+  function answerList() {
+    return {
+      ok: true,
+      data: { access: "gifts", gifts: [], archived: [archived], publicToken: "tok-1" },
+    };
+  }
+
+  async function expandArchive() {
+    await press("Архив (1)");
+  }
+
+  it("прячет карточки, пока секция свёрнута, и возвращает желание", async () => {
+    const restored = { ...archived, archivedAt: null, expiresOn: null };
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "POST" && String(path).endsWith("/restore")) {
+        return Promise.resolve({ ok: true, data: restored });
+      }
+      return Promise.resolve(answerList());
+    });
+    await mount();
+
+    expect(text()).toContain("Архив (1)");
+    expect(text()).not.toContain("Плед");
+
+    await expandArchive();
+    expect(text()).toContain("Плед");
+
+    await press("⋯");
+    await press("Вернуть в вишлист");
+    await press("Сохранить");
+
+    expect(text()).not.toContain("Архив (1)");
+    expect(text()).toContain("Плед");
+    const restoreCall = api.apiRequest.mock.calls.find(
+      (call) => call[1]?.method === "POST" && String(call[0]).endsWith("/restore"),
+    );
+    expect(restoreCall?.[1]?.body).toEqual({ expiresOn: null });
+  });
+
+  it("копирует желание без даты и оставляет архивную строку", async () => {
+    const copy = gift({ id: "g-copy", title: "Плед" });
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "POST" && path === "/api/v1/me/gifts") {
+        return Promise.resolve({ ok: true, data: copy });
+      }
+      return Promise.resolve(answerList());
+    });
+    await mount();
+    await expandArchive();
+    await press("⋯");
+    const dialog = dialogElement();
+    expect(dialog).not.toBeNull();
+    const copyButton = controls(dialog as HTMLElement).find(function isCopy(node) {
+      return (node.textContent ?? "").includes("Скопировать");
+    });
+    expect(copyButton).toBeDefined();
+    await act(async () => {
+      copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+
+    const createCall = api.apiRequest.mock.calls.find(
+      (call) => call[1]?.method === "POST" && call[0] === "/api/v1/me/gifts",
+    );
+    expect(createCall?.[1]?.body).toEqual({
+      title: "Плед",
+      description: null,
+      linkUrl: null,
+      priceAmount: 250000,
+      priceCurrency: "RUB",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+      tags: [{ catalogId: "dream" }],
+    });
+    expect(text()).toContain("Архив (1)");
+    expect(text()).toContain("Добавлено в вишлист");
+  });
+});
+
 /**
  * W12.19: the main screen lays itself out with the Tamagui media clause
  * `$page-gutter medium:$page-gutter-lg` instead of `useWindowDimensions` +

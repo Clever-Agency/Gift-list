@@ -39,6 +39,7 @@ const input: GiftInput = {
   visibility: "PUBLIC",
   quantity: "SINGLE",
   tags: [],
+  expiresOn: null,
 };
 
 const card = {

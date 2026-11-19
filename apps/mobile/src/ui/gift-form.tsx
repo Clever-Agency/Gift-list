@@ -1,6 +1,7 @@
 import {
   CURRENCIES,
   DEFAULT_QUANTITY,
+  formatDate,
   GIFT_TAG_TEXT_MAX,
   QUANTITIES,
   VISIBILITIES,
@@ -10,6 +11,7 @@ import {
   Button,
   Choice,
   ChoiceList,
+  DateField,
   focusField,
   restoreFocus,
   TagChip,
@@ -34,7 +36,7 @@ import {
   type RefObject,
 } from "react";
 import { AccessibilityInfo } from "react-native";
-import { useTranslations } from "use-intl";
+import { useLocale, useTranslations } from "use-intl";
 import { isGiftFormDirty, type GiftFormDirtyValues } from "@/ui/gift-form-dirty";
 import {
   customTagIssue,
@@ -95,6 +97,8 @@ export type GiftFormValues = {
    * texts. The screen turns them into `{ catalogId }` / `{ text }`.
    */
   tags: GiftFormTag[];
+  /** `YYYY-MM-DD`, or `null` when the wish has no archive date (Story 2.6). */
+  expiresOn: string | null;
 };
 
 /**
@@ -235,6 +239,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   ref,
 ) {
   const t = useTranslations("app.giftForm");
+  const locale = useLocale();
   const tVisibility = useTranslations("app.gift.visibility");
   const tQuantity = useTranslations("app.gift.quantity");
   const common = useTranslations("common");
@@ -249,6 +254,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       visibility: initialValues?.visibility ?? DEFAULT_VISIBILITY,
       quantity: initialValues?.quantity ?? DEFAULT_QUANTITY,
       tags: giftTagsKey(initialValues?.tags ?? []),
+      expiresOn: initialValues?.expiresOn ?? "",
       customTag: "",
     };
   });
@@ -270,6 +276,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       return initialValues?.tags ?? [];
     },
   );
+  const [expiresOn, setExpiresOn] = useState(initialValues?.expiresOn ?? "");
   const [customTag, setCustomTag] = useState("");
   const [customTagError, setCustomTagError] = useState<CustomTagIssue | null>(null);
   // UI4: the field and «Добавить тег» stay hidden until the «Свой тег» chip opens them.
@@ -296,6 +303,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
   const visibilityRef = useRef<FocusTarget | null>(null);
   const quantityRef = useRef<FocusTarget | null>(null);
   const tagsRef = useRef<ComponentRef<typeof XStack>>(null);
+  const expiresOnRef = useRef<ComponentRef<typeof DateField>>(null);
   const closeCustomTagEditor = useCallback(function closeCustomTagEditor() {
     setCustomTagOpen(false);
     setEditingCustomTag(null);
@@ -388,6 +396,9 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       case "tags":
         focusField(tagsRef.current);
         break;
+      case "expiresOn":
+        focusField(expiresOnRef.current);
+        break;
     }
   }, []);
   // UI5: a server rejection with a field also takes focus there.
@@ -453,6 +464,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     visibility,
     quantity,
     tags: giftTagsKey(tags),
+    expiresOn,
     // Opening an existing tag for editing is not an edit until its text changes.
     customTag:
       editingCustomTag !== null && customTag.trim() === editingCustomTag ? "" : customTag,
@@ -671,6 +683,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
       visibility,
       quantity,
       tags: submittedTags,
+      expiresOn: expiresOn === "" ? null : expiresOn,
     });
   }
 
@@ -822,6 +835,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           </YStack>
         ) : null
       ) : (
+      <>
       <YStack gap="$1">
         <Text kind="label">{t("field.tags")}</Text>
         {tagCatalog.status === "loading" ? (
@@ -976,6 +990,24 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
           </Text>
         ) : null}
       </YStack>
+      <DateField
+        ref={expiresOnRef}
+        testID="gift-expires-on"
+        label={t("field.expiresOn")}
+        hint={inlineError("expiresOn") ? undefined : t("field.expiresOnHint")}
+        error={inlineError("expiresOn")}
+        value={expiresOn}
+        min={deviceToday()}
+        clearLabel={t("field.expiresOnClear")}
+        placeholder={t("field.expiresOnChoose")}
+        displayValue={expiresOn === "" ? undefined : formatDate(expiresOn, locale)}
+        doneLabel={t("field.expiresOnDone")}
+        onChange={function handleExpiresOnChange(next) {
+          setExpiresOn(next);
+          clearError("expiresOn");
+        }}
+      />
+      </>
       )}
       {readOnly ? (
         // The one caption of a closed and an archived wish (t351u): the same sentence
@@ -1141,3 +1173,11 @@ export function ChoiceGroup<T extends string>({
 }
 
 ChoiceGroup.displayName = "ChoiceGroup";
+
+/** The device's local today, `YYYY-MM-DD`. The server still checks the owner's zone. */
+function deviceToday(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}

@@ -62,6 +62,7 @@ export {
 } from "./avatar.types";
 export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";
+export { DateField, type DateFieldProps } from "./date-field";
 export {
   PasswordField,
   SearchField,

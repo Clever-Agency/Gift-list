@@ -73,6 +73,8 @@ export type WishCardProps = {
   pressRef?: Ref<ComponentRef<typeof Pressable>>;
   /** Card width in px, or a CSS size. Defaults to the full width of the parent. */
   width?: number | string;
+  /** Owner menu, a sibling of the card button (Story 2.6 archive). */
+  menu?: ReactNode;
   testID?: string;
 };
 
@@ -102,6 +104,7 @@ export function WishCard({
   pressLabel,
   pressRef,
   width,
+  menu,
   testID,
 }: WishCardProps) {
   const content = (
@@ -141,6 +144,11 @@ export function WishCard({
       ) : (
         <View>{content}</View>
       )}
+      {menu ? (
+        <View position="absolute" top="$card-padding" right="$card-padding" zIndex="$base">
+          {menu}
+        </View>
+      ) : null}
       {chip ? (
         <View
           position="absolute"

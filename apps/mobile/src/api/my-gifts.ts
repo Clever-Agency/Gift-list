@@ -12,7 +12,14 @@ import {
 import { apiRequest, type ClientResult } from "@/api/client";
 
 export type MyGiftsResult =
-  | { ok: true; access: "gifts"; gifts: GiftCard[]; publicToken: string | null }
+  | {
+      ok: true;
+      access: "gifts";
+      gifts: GiftCard[];
+      /** Owner archive. Empty when the server omits the key (Story 2.6). */
+      archived: GiftCard[];
+      publicToken: string | null;
+    }
   | { ok: true; access: "not_found" }
   | { ok: false; invalid: true }
   | Exclude<ClientResult<unknown>, { ok: true }>;
@@ -70,8 +77,29 @@ export async function fetchMyGifts(): Promise<MyGiftsResult> {
     ok: true,
     access: "gifts",
     gifts: parsed.data.gifts,
+    archived: parsed.data.archived ?? [],
     publicToken: parsed.data.publicToken ?? null,
   };
+}
+
+/**
+ * Story 2.6: `POST /api/v1/me/gifts/{id}/restore` puts an archived wish back.
+ * `expiresOn` is the new day, or `null` to leave the wish without a date.
+ */
+export async function restoreGift(
+  id: string,
+  expiresOn: string | null,
+): Promise<GiftResult> {
+  const result = await apiRequest<unknown>(
+    `/api/v1/me/gifts/${encodeURIComponent(id)}/restore`,
+    { method: "POST", body: { expiresOn } },
+  );
+  if (!result.ok) return result;
+
+  const parsed = giftCardSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, gift: parsed.data };
 }
 
 /**

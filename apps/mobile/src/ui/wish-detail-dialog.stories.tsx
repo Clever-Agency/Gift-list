@@ -136,6 +136,70 @@ export const ReleaseStepBusy: Story = {
   args: releaseArgs({ ...RELEASE_STEP, body: BOUGHT_WARNING, busy: true }),
 };
 
+/** Story 5.3: шаг закрытия — тот же слой, фокус на «Отмене», кнопка не коралловая. */
+const CLOSE_STEP = {
+  key: "close",
+  origin: "received",
+  title: "Подарок «Плед из шерсти мериноса» получен?",
+  body: "Бронь будет закрыта, бронировавший получит уведомление",
+  cancelLabel: "Отмена",
+  confirmLabel: "Подтвердить",
+  onConfirm: function confirm() {},
+  onCancel: function cancel() {},
+} satisfies WishDetailStep;
+
+/** Владелец закрытого желания: «Изменить желание» нет, в окне отмены — возврат. */
+export const OwnerClosedUndo: Story = {
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      status: "CLOSED",
+      undoUntil: new Date(Date.now() + 7 * 60_000).toISOString(),
+    }),
+    onEdit: function edit() {},
+    onUndoClose: function undo() {},
+  },
+};
+
+/** Окно отмены вышло: у закрытого желания действий нет, только просмотр. */
+export const OwnerClosedExpired: Story = {
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      status: "CLOSED",
+      undoUntil: new Date(Date.now() - 60_000).toISOString(),
+    }),
+    onEdit: function edit() {},
+    onUndoClose: function undo() {},
+  },
+};
+
+/** Владелец открытого желания: рядом с «Изменить желание» — «Отметить полученным». */
+export const OwnerOpenReceived: Story = {
+  args: {
+    viewer: "owner",
+    snapshot: sample({ visibility: "FRIENDS" }),
+    onEdit: function edit() {},
+    onMarkReceived: function received() {},
+  },
+};
+
+/** Шаг закрытия поверх подробностей: вопрос, тело про бронь и две кнопки. */
+export const ReceivedStep: Story = {
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      status: "RESERVED",
+      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
+      reservationLabel: "BOUGHT",
+      ownerAction: "CONFIRM_GIVEN",
+    }),
+    onEdit: function edit() {},
+    onMarkReceived: function received() {},
+    step: CLOSE_STEP,
+  },
+};
+
 export const Loading: Story = {
   args: { load: hang },
 };

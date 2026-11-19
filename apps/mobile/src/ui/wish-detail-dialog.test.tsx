@@ -383,4 +383,176 @@ describe("WishDetailDialog", () => {
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(opener);
   });
+
+  /**
+   * Story 5.3: владелец закрытого желания. «Изменить желание» нет — закрытое
+   * желание только для просмотра; «Вернуть в открытые · ещё N мин» живёт ровно
+   * столько, сколько окно сервера (`undoUntil`), и открывает ту же строку минут.
+   */
+  describe("Story 5.3: закрытое желание у владельца", () => {
+    const inWindow = {
+      status: "CLOSED" as const,
+      undoUntil: new Date(Date.now() + 5 * 60_000).toISOString(),
+    };
+
+    it("в окне отмены: нет «Изменить желание», есть возврат с остатком минут", async () => {
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift(inWindow)}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onUndoClose={function noop() {}}
+        />,
+      );
+
+      expect(control("Изменить желание")).toBeUndefined();
+      expect(control("Вернуть в открытые · ещё 5 мин")).toBeDefined();
+    });
+
+    it("нажатие возврата зовёт onUndoClose, второго подтверждения нет", async () => {
+      const onUndoClose = vi.fn();
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift(inWindow)}
+          onClose={function noop() {}}
+          onUndoClose={onUndoClose}
+        />,
+      );
+
+      await click(control("Вернуть в открытые · ещё 5 мин"));
+      expect(onUndoClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("окно вышло: у закрытого желания действий нет", async () => {
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift({
+            status: "CLOSED",
+            undoUntil: new Date(Date.now() - 60_000).toISOString(),
+          })}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onUndoClose={function noop() {}}
+        />,
+      );
+
+      expect(control("Изменить желание")).toBeUndefined();
+      expect(control("Вернуть в открытые · ещё 5 мин")).toBeUndefined();
+      expect(control("Отметить полученным")).toBeUndefined();
+    });
+
+    it("открытое и забронированное: «Отметить полученным» есть, у закрытого — нет", async () => {
+      const onMarkReceived = vi.fn();
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift({
+            status: "OPEN",
+            reservedBy: null,
+            reservationLabel: null,
+            ownerAction: null,
+            reservation: undefined,
+          })}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onMarkReceived={onMarkReceived}
+        />,
+      );
+
+      await click(control("Отметить полученным"));
+      expect(onMarkReceived).toHaveBeenCalledTimes(1);
+
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift()}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onRelease={function noop() {}}
+          onMarkReceived={onMarkReceived}
+        />,
+      );
+      expect(control("Отметить полученным")).toBeDefined();
+      expect(control(releaseCopy.confirm)).toBeDefined();
+    });
+  });
+
+  /**
+   * Story 5.3: шаг закрытия — тот же механизм шагов, что у снятия брони. После
+   * «Отмены» фокус возвращается на «Отметить полученным», а не на коралловую
+   * «Снять бронь» (замечание S5).
+   */
+  describe("Story 5.3: шаг «Подарок получен?»", () => {
+    function OwnerCloseHarness() {
+      const [step, setStep] = useState<WishDetailStep | null>(null);
+
+      function openStep() {
+        setStep({
+          key: "close",
+          origin: "received",
+          title: "Подарок «Плед» получен?",
+          body: "Бронь будет закрыта, бронировавший получит уведомление",
+          cancelLabel: "Отмена",
+          confirmLabel: "Подтвердить",
+          onConfirm: function confirm() {},
+          onCancel: function cancel() {
+            setStep(null);
+          },
+        });
+      }
+
+      return (
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift()}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onRelease={function noop() {}}
+          onMarkReceived={openStep}
+          step={step}
+        />
+      );
+    }
+    OwnerCloseHarness.displayName = "OwnerCloseHarness";
+
+    it("вопрос, тело про бронь, некрасная кнопка и фокус на «Отмене»", async () => {
+      await render(<OwnerCloseHarness />);
+
+      await click(control("Отметить полученным"));
+      await settle();
+
+      expect(body()).toContain("Подарок «Плед» получен?");
+      expect(body()).toContain("Бронь будет закрыта, бронировавший получит уведомление");
+      expect(control("Подтвердить")).toBeDefined();
+      expect(document.activeElement?.textContent).toContain("Отмена");
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    });
+
+    it("«Отмена» возвращает к подробностям и ставит фокус на «Отметить полученным»", async () => {
+      await render(<OwnerCloseHarness />);
+
+      const opener = control("Отметить полученным") as HTMLElement;
+      await click(opener);
+      await settle();
+      expect(document.activeElement?.textContent).toContain("Отмена");
+
+      await act(async () => {
+        escape();
+      });
+      await settle();
+
+      expect(body()).toContain("Кто видит");
+      expect(body()).not.toContain("Подарок «Плед» получен?");
+      expect(document.activeElement).toBe(opener);
+    });
+  });
 });

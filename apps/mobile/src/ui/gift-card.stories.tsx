@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import type { GiftCard as GiftCardData } from "@gift-list/contracts";
-import { XStack } from "@gift-list/ui";
+import { Pressable, Text, XStack } from "@gift-list/ui";
 import { WishCard } from "./gift-card";
 
 /**
@@ -207,4 +207,49 @@ export const LongCopyNarrow: Story = {
     );
   },
   globals: { viewport: { value: "w360" } },
+};
+
+/** The owner's ⋯: a sibling of the card button, a 44 × 44 control next to the title. */
+function menuTrigger(): ReactNode {
+  return (
+    <Pressable
+      role="button"
+      aria-label="Меню"
+      onPress={noop}
+      width="$touch-target"
+      height="$touch-target"
+      alignItems="center"
+      justifyContent="center"
+    >
+      <Text aria-hidden>⋯</Text>
+    </Pressable>
+  );
+}
+
+/** An open wish with the owner's ⋯ (Story 5.3): «Отметить полученным» lives there. */
+export const OwnerOpenWithMenu: Story = {
+  args: { onPress: noop, onVisibilityPress: noop, menu: menuTrigger() },
+  render: function OwnerOpenWithMenuStory(args) {
+    return (
+      <CardList>
+        <WishCard {...args} />
+      </CardList>
+    );
+  },
+};
+
+/** A received wish with the owner's ⋯: undo in the window, copy and delete. */
+export const ReceivedWithMenu: Story = {
+  args: {
+    gift: giftCard({ status: "CLOSED" }),
+    onPress: noop,
+    menu: menuTrigger(),
+  },
+  render: function ReceivedWithMenuStory(args) {
+    return (
+      <CardList>
+        <WishCard {...args} />
+      </CardList>
+    );
+  },
 };

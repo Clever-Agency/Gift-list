@@ -3,8 +3,6 @@ import "server-only";
 import {
   giftCardSchema,
   giftRestoreSchema,
-  negotiateLocale,
-  preferredFromAcceptLanguage,
   type ActionResult,
   type GiftCard,
 } from "@gift-list/contracts";
@@ -13,28 +11,7 @@ import { restoreFromArchive } from "@/lib/gift-status-store";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import { firstIssueField } from "@/lib/api-v1";
 import { auth } from "@/lib/auth";
-import { ownerGiftSelect } from "@/actions/gifts";
-
-const unauthenticated = {
-  ok: false as const,
-  code: "UNAUTHENTICATED" as const,
-  message: "Authentication required",
-};
-
-const notFound = {
-  ok: false as const,
-  code: "NOT_FOUND" as const,
-  message: "Gift not found",
-};
-
-function validation(field?: string): ActionResult<GiftCard> {
-  return {
-    ok: false,
-    code: "VALIDATION",
-    message: "Invalid input",
-    ...(field ? { field } : {}),
-  };
-}
+import { notFound, ownerGiftSelect, requestLocale, unauthenticated, validation } from "@/actions/gifts";
 
 /**
  * Story 2.6: the owner returns an archived wish to the active list. The date is
@@ -73,6 +50,6 @@ export async function restoreGift(
   });
   if (!row) return notFound;
 
-  const locale = negotiateLocale(preferredFromAcceptLanguage(headers.get("accept-language")));
+  const locale = requestLocale(headers);
   return { ok: true, data: giftCardSchema.parse(toOwnerGiftCard(row, locale)) };
 }

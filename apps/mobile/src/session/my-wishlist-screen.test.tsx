@@ -2218,6 +2218,183 @@ describe("мой вишлист: архив", () => {
     expect(restoreCall?.[1]?.body).toEqual({ expiresOn: null });
   });
 
+  async function pressCopy() {
+    const dialog = dialogElement();
+    const copyButton = controls(dialog as HTMLElement).find(function isCopy(node) {
+      return (node.textContent ?? "").includes("Скопировать");
+    });
+    expect(copyButton).toBeDefined();
+    await act(async () => {
+      copyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+  }
+
+  /** After a restore call the server's list is `afterTotal` big (none left when absent). */
+  function answerRestore(restoreAnswer: unknown, total?: number, afterTotal?: number) {
+    let restoreCalled = false;
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "POST" && String(path).endsWith("/restore")) {
+        restoreCalled = true;
+        return Promise.resolve(restoreAnswer);
+      }
+      if (restoreCalled) {
+        return Promise.resolve({
+          ok: true,
+          data: {
+            access: "gifts",
+            gifts: [],
+            archived: afterTotal === undefined ? [] : [archived],
+            ...(afterTotal === undefined ? {} : { archivedTotal: afterTotal }),
+            publicToken: "tok-1",
+          },
+        });
+      }
+      const answer = answerList();
+      return Promise.resolve(
+        total === undefined ? answer : { ...answer, data: { ...answer.data, archivedTotal: total } },
+      );
+    });
+  }
+
+  it("подпись секции берёт полный счёт архива, а не длину страницы", async () => {
+    answerRestore({ ok: false, network: true }, 130);
+    await mount();
+    expect(text()).toContain("Архив (130)");
+  });
+
+  it("restore NOT_FOUND убирает карточку, закрывает диалог и показывает тост", async () => {
+    answerRestore({ ok: false, code: "NOT_FOUND", message: "" });
+    await mount();
+    await expandArchive();
+    await press("⋯");
+    await press("Вернуть в вишлист");
+    await press("Сохранить");
+
+    expect(dialogElement()).toBeNull();
+    expect(text()).not.toContain("Архив");
+    expect(text()).not.toContain("Плед");
+    expect(text()).toContain("Не найдено.");
+  });
+
+  it("restore UNAUTHENTICATED завершает сессию, как правка", async () => {
+    answerRestore({ ok: false, code: "UNAUTHENTICATED", message: "" });
+    await mount();
+    await expandArchive();
+    await press("⋯");
+    await press("Вернуть в вишлист");
+    await press("Сохранить");
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/", reason: "session_expired" },
+    });
+  });
+
+  it("на шаге даты «Назад» возвращает к выбору действия", async () => {
+    answerRestore({ ok: false, network: true });
+    await mount();
+    await expandArchive();
+    await press("⋯");
+    await press("Вернуть в вишлист");
+    expect(text()).toContain("Сохранить");
+
+    await press("Назад");
+    expect(text()).toContain("Скопировать");
+    expect(text()).not.toContain("Сохранить");
+  });
+
+  it("с полным счётом 130 подпись становится 129 после restore", async () => {
+    const restored = { ...archived, archivedAt: null, expiresOn: null };
+    answerRestore({ ok: true, data: restored }, 130);
+    await mount();
+    await press("Архив (130)");
+    await press("⋯");
+    await press("Вернуть в вишлист");
+    await press("Сохранить");
+    expect(text()).toContain("Архив (129)");
+  });
+
+  it("с полным счётом 130 подпись становится 129 и после restore NOT_FOUND", async () => {
+    answerRestore({ ok: false, code: "NOT_FOUND", message: "" }, 130, 129);
+    await mount();
+    await press("Архив (130)");
+    await press("⋯");
+    await press("Вернуть в вишлист");
+    await press("Сохранить");
+    expect(text()).toContain("Архив (129)");
+  });
+
+  it("restore NOT_FOUND перечитывает список", async () => {
+    answerRestore({ ok: false, code: "NOT_FOUND", message: "" });
+    await mount();
+    const before = api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
+    await expandArchive();
+    await press("⋯");
+    await press("Вернуть в вишлист");
+    await press("Сохранить");
+    const after = api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("copy UNAUTHENTICATED завершает сессию", async () => {
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "POST" && path === "/api/v1/me/gifts") {
+        return Promise.resolve({ ok: false, code: "UNAUTHENTICATED", message: "" });
+      }
+      return Promise.resolve(answerList());
+    });
+    await mount();
+    await expandArchive();
+    await press("⋯");
+    await pressCopy();
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/", reason: "session_expired" },
+    });
+  });
+
+  it("«Назад» сбрасывает показанную ошибку даты", async () => {
+    answerRestore({ ok: false, code: "VALIDATION", field: "expiresOn", message: "" });
+    await mount();
+    await expandArchive();
+    await press("⋯");
+    await press("Вернуть в вишлист");
+    await press("Сохранить");
+    expect(text()).toContain("Выберите сегодняшнюю дату или более позднюю.");
+
+    await press("Назад");
+    await press("Вернуть в вишлист");
+    expect(text()).not.toContain("Выберите сегодняшнюю дату или более позднюю.");
+  });
+
+  it("«Вернуть в вишлист» заблокирована, пока copy в полёте", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "POST" && path === "/api/v1/me/gifts") {
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      }
+      return Promise.resolve(answerList());
+    });
+    await mount();
+    await expandArchive();
+    await press("⋯");
+    await pressCopy();
+
+    expect(button("Вернуть в вишлист")?.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      finish({ ok: false, network: true });
+    });
+  });
+
   it("копирует желание без даты и оставляет архивную строку", async () => {
     const copy = gift({ id: "g-copy", title: "Плед" });
     api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {

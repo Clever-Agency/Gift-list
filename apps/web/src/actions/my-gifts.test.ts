@@ -6,6 +6,7 @@ const {
   getSession,
   findUnique,
   findMany,
+  count,
   ensureOwnerList,
   findFriendship,
   findBlock,
@@ -14,6 +15,7 @@ const {
   getSession: vi.fn(),
   findUnique: vi.fn(),
   findMany: vi.fn(),
+  count: vi.fn(async () => 0),
   ensureOwnerList: vi.fn(),
   // Story 4.1.1: the relation reader now asks the friendship and block tables.
   findFriendship: vi.fn(async () => null),
@@ -26,7 +28,8 @@ vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({
   prisma: {
     list: { findUnique },
-    gift: { findMany },
+    gift: { findMany, count },
+    $transaction: (operations: Promise<unknown>[]) => Promise.all(operations),
     friendship: { findUnique: findFriendship },
     block: { findFirst: findBlock },
     subscription: { findUnique: findSubscription },
@@ -175,7 +178,7 @@ describe("getMyGifts", () => {
     expect(warn).toHaveBeenCalledWith("Missing List row repaired for owner", "u1");
     expect(result).toEqual({
       ok: true,
-      data: { access: "gifts", gifts: [], archived: [], publicToken: "tok-new" },
+      data: { access: "gifts", gifts: [], archived: [], archivedTotal: 0, publicToken: "tok-new" },
     });
     expect(findUnique).toHaveBeenCalledTimes(2);
     expect(findMany).toHaveBeenCalledTimes(2);

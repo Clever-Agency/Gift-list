@@ -3,10 +3,7 @@ import "server-only";
 import type { Prisma, PrismaClient } from "@/db/generated/client";
 import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
-import {
-  RESERVATION_RELEASE_DATA,
-  type GiftStatusTransaction,
-} from "@/domain/gift-status";
+import { RESERVATION_RELEASE_DATA, type GiftStatusTransaction } from "@/domain/gift-status";
 
 type GiftDb = Pick<PrismaClient, "gift">;
 
@@ -58,35 +55,76 @@ export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusT
   };
 }
 
+const EXPIRY_BATCH = 500;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Archive `OPEN` wishes whose owner's local date is later than `expiresOn`.
  * `RESERVED` and `CLOSED` are not candidates (Story 6.6). A second run finds
  * nothing left to archive. `count !== 1` is a lost race and is not a success.
+ *
+ * Candidates are read in batches by `id`. A local day of any zone is at most
+ * UTC-today + 1, so a later `expiresOn` can never be due and is not read. The
+ * CAS also compares `expiresOn`: an owner who moved the date forward between
+ * the read and the write keeps the wish. One failing row is logged (id and error
+ * name only, no titles), counted in `failed` and does not stop the rest.
  */
 export async function processWishExpiry(
   now: Date = new Date(),
   db: GiftDb = prisma,
-): Promise<{ archived: number }> {
-  const rows = await db.gift.findMany({
-    where: { status: "OPEN", archivedAt: null, expiresOn: { not: null } },
-    select: {
-      id: true,
-      expiresOn: true,
-      list: { select: { owner: { select: { timeZone: true } } } },
-    },
-  });
+): Promise<{ archived: number; failed: number }> {
+  const utcToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const horizon = new Date(utcToday.getTime() + DAY_MS);
 
   let archived = 0;
-  for (const row of rows) {
-    const day = calendarDay(row.expiresOn);
-    if (day === null || !isBeforeLocalToday(day, now, row.list.owner.timeZone)) continue;
-    const result = await db.gift.updateMany({
-      where: { id: row.id, status: "OPEN", archivedAt: null },
-      data: { archivedAt: now },
+  let failed = 0;
+  let lastId: string | undefined;
+  for (;;) {
+    const rows = await db.gift.findMany({
+      where: {
+        status: "OPEN",
+        archivedAt: null,
+        expiresOn: { not: null, lt: horizon },
+        ...(lastId === undefined ? {} : { id: { gt: lastId } }),
+      },
+      select: {
+        id: true,
+        expiresOn: true,
+        list: { select: { owner: { select: { timeZone: true } } } },
+      },
+      orderBy: { id: "asc" },
+      take: EXPIRY_BATCH,
     });
-    archived += result.count;
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      const day = calendarDay(row.expiresOn);
+      if (day === null || !isBeforeLocalToday(day, now, row.list.owner.timeZone)) continue;
+      try {
+        const result = await db.gift.updateMany({
+          where: {
+            id: row.id,
+            status: "OPEN",
+            archivedAt: null,
+            expiresOn: row.expiresOn,
+          },
+          data: { archivedAt: now },
+        });
+        archived += result.count;
+      } catch (error) {
+        failed += 1;
+        const reason =
+          error instanceof Error
+            ? `${error.name}${"code" in error ? ` ${String(error.code)}` : ""}`
+            : "unknown";
+        console.error(`wish-expiry: archive of wish ${row.id} failed: ${reason}`);
+      }
+    }
+
+    if (rows.length < EXPIRY_BATCH) break;
+    lastId = rows[rows.length - 1]!.id;
   }
-  return { archived };
+  return { archived, failed };
 }
 
 /**

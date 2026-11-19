@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { XStack, YStack } from "@tamagui/stacks";
+import { Pressable } from "./pressable";
 import { WishCardSkeleton } from "./skeleton";
 import { StatusPill } from "./status-pill";
 import { TagChipList } from "./tag-chip";
+import { Text } from "./text";
 import { VisibilityChip } from "./visibility-chip";
 import { WishCard } from "./wish-card";
 
@@ -131,6 +133,66 @@ export const OwnerWithChip: Story = {
       </CardGrid>
     );
   },
+};
+
+/** The overflow trigger the app puts on an archived card: a 44 px target, a sibling of the card. */
+const archiveMenu = (
+  <Pressable
+    aria-label="Меню"
+    onPress={noop}
+    width="$touch-target"
+    height="$touch-target"
+    alignItems="center"
+    justifyContent="center"
+  >
+    <Text>⋯</Text>
+  </Pressable>
+);
+
+/** The owner's card with the menu trigger in the top-right corner (Story 2.6). */
+export const WithMenu: Story = {
+  args: { menu: archiveMenu },
+  render: function WithMenuStory(args) {
+    return (
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
+    );
+  },
+};
+
+/** An archived wish: muted (`closed`), read-only, only the menu stays active. */
+export const ArchivedWithMenu: Story = {
+  args: {
+    closed: true,
+    status: <StatusPill status="open" label="В архиве" />,
+    reservation: null,
+    menu: archiveMenu,
+  },
+  render: function ArchivedWithMenuStory(args) {
+    return (
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
+    );
+  },
+};
+
+/** Long Cyrillic title at 360 px: the menu trigger does not push the text sideways. */
+export const ArchivedLongTitleNarrow: Story = {
+  args: {
+    closed: true,
+    title: "Плед из шерсти мериноса с длинной бахромой и подогревом для холодных вечеров у камина",
+    menu: archiveMenu,
+  },
+  render: function ArchivedLongTitleNarrowStory(args) {
+    return (
+      <CardGrid>
+        <WishCard {...args} width="calc(50% - 8px)" />
+      </CardGrid>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
 };
 
 /** A 120-character title clamps to two lines at 360 px; the card does not grow sideways. */

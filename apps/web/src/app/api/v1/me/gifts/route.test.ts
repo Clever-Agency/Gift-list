@@ -12,7 +12,11 @@ const { getSession, findUnique, findMany, create, createGift } = vi.hoisted(() =
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({
-  prisma: { list: { findUnique, create }, gift: { findMany } },
+  prisma: {
+    list: { findUnique, create },
+    gift: { findMany, count: () => Promise.resolve(0) },
+    $transaction: (operations: Promise<unknown>[]) => Promise.all(operations),
+  },
 }));
 vi.mock("@/actions/gifts", () => ({ createGift }));
 
@@ -112,6 +116,7 @@ describe("GET /api/v1/me/gifts", () => {
           },
         ],
         archived: [],
+        archivedTotal: 0,
       },
     });
   });
@@ -133,7 +138,7 @@ describe("GET /api/v1/me/gifts", () => {
     expect(res.status).toBe(200);
     expect(viaHttp).toEqual({
       ok: true,
-      data: { access: "gifts", gifts: [], archived: [], publicToken: "tok-1" },
+      data: { access: "gifts", gifts: [], archived: [], archivedTotal: 0, publicToken: "tok-1" },
     });
   });
 
@@ -160,7 +165,7 @@ describe("GET /api/v1/me/gifts", () => {
     expect(warn).toHaveBeenCalledWith("Missing List row repaired for owner", "u1");
     expect(await res.json()).toEqual({
       ok: true,
-      data: { access: "gifts", gifts: [], archived: [], publicToken: "tok-new" },
+      data: { access: "gifts", gifts: [], archived: [], archivedTotal: 0, publicToken: "tok-new" },
     });
   });
 

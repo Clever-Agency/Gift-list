@@ -35,6 +35,24 @@ README, «Деплой вне Vercel»): `prisma migrate deploy` с `DATABASE_UR
 `DIRECT_URL` staging-базы после мержа в `staging` и до проверки на staging,
 на прод-базу — только при продвижении в `main`.
 
+Ночное архивирование желаний (Story 2.6) требует ручных шагов:
+
+- `CRON_SECRET` (не короче 32 символов) задаётся в env хоста каждого окружения
+  (без него `getEnv()` не даёт стартовать серверу) и в секрете GitHub Actions
+  `CRON_SECRET`; значения хоста и секрета совпадают;
+- миграция `20261110180000_gift_expiry_index` применяется `prisma migrate deploy`
+  в общем порядке (после мержа в `staging` и до проверки на staging, на прод-базу —
+  при продвижении в `main`); без неё выборка кандидатов идёт без индекса;
+- `.github/workflows/wish-expiry.yml` по `schedule` запускается только с
+  default-ветки, а `workflow_dispatch` читает тот же единственный секрет
+  `APP_URL`, поэтому для staging он не подходит. Архивирование на staging
+  запускается вручную:
+
+  ```bash
+  curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+    https://staging.wishmoon.clever-agency.dev/api/cron/wish-expiry
+  ```
+
 Хотфикс, попавший сразу в `main`, сразу же вливается обратно в `staging`; иначе
 `staging` разойдётся с продом и следующая проверка пройдёт без фикса.
 
@@ -52,6 +70,8 @@ README, «Деплой вне Vercel»): `prisma migrate deploy` с `DATABASE_UR
 - `EMAIL_FROM`: `WishMoon <noreply@wishmoon.clever-agency.dev>`.
 - Ключ Resend — продовый, только на отправку и только для продового домена.
 - `BETTER_AUTH_URL=https://wishmoon.clever-agency.dev`.
+- `CRON_SECRET` (≥ 32 символа) — тот же, что в секрете GitHub Actions; `APP_URL`
+  в секретах Actions указывает на этот домен: по расписанию работает только он.
 
 ## Staging
 
@@ -65,6 +85,9 @@ README, «Деплой вне Vercel»): `prisma migrate deploy` с `DATABASE_UR
 - Мобильная staging-сборка:
   `EXPO_PUBLIC_API_BASE_URL=https://staging.wishmoon.clever-agency.dev`.
 - Ключ Resend — staging, только на отправку и только для staging-домена.
+- `CRON_SECRET` (≥ 32 символа) — Preview-переменная, ограниченная веткой
+  `staging`. Расписание сюда не стучится (`APP_URL` один): архивирование на
+  staging — вручную, см. «Порядок выкладки».
 
 ## Preview (`*.vercel.app`, остальные ветки)
 

@@ -35,6 +35,7 @@ import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { deviceToday } from "@/ui/device-today";
 import { EmptyState } from "@/ui/empty-state";
 import { restoreFocus, type ChipNode } from "@/ui/focus";
 import { WishCard } from "@/ui/gift-card";
@@ -56,7 +57,14 @@ type ScreenState =
   | { status: "loading" }
   // Story 2.4: the owner answer also carries the immutable `publicToken` (AD-6);
   // it is `null` when the server omits it, so the screen has no link to copy.
-  | { status: "ready"; gifts: GiftCard[]; archived: GiftCard[]; publicToken: string | null }
+  | {
+      status: "ready";
+      gifts: GiftCard[];
+      archived: GiftCard[];
+      /** Full archive size when the server caps the list; `null` means `archived.length`. */
+      archivedTotal: number | null;
+      publicToken: string | null;
+    }
   | { status: "missing" }
   // Only a broken connection claims a network problem; other failed reads get the
   // generic body (EXPERIENCE → State Patterns → «Нет сети при загрузке / ошибка загрузки»).
@@ -253,6 +261,7 @@ export default function MyWishlistScreen() {
                 status: "ready",
                 gifts: result.gifts,
                 archived: result.archived ?? [],
+                archivedTotal: result.archivedTotal ?? null,
                 publicToken: result.publicToken,
               },
         );
@@ -633,7 +642,16 @@ export default function MyWishlistScreen() {
       closeArchiveMenu();
       return;
     }
+    if (await handleArchiveSessionLoss(result)) return;
     setToast({ message: giftForm("error.form"), tone: "error" });
+  }
+
+  /** `UNAUTHENTICATED` from an archive action ends the session, like the edit screen. */
+  async function handleArchiveSessionLoss(result: object): Promise<boolean> {
+    if (!("code" in result) || result.code !== "UNAUTHENTICATED") return false;
+    const signedOut = await expireSession();
+    if (!signedOut) setToast({ message: t("form.network"), tone: "error" });
+    return true;
   }
 
   async function submitRestore() {
@@ -650,12 +668,32 @@ export default function MyWishlistScreen() {
           archived: current.archived.filter(function stillArchived(item) {
             return item.id !== gift.id;
           }),
+          archivedTotal: current.archivedTotal === null ? null : current.archivedTotal - 1,
           gifts: [gift, ...current.gifts.filter(function notRestored(item) {
             return item.id !== gift.id;
           })],
         };
       });
       closeArchiveMenu();
+      return;
+    }
+    if (await handleArchiveSessionLoss(result)) return;
+    if ("code" in result && result.code === "NOT_FOUND") {
+      const missingId = archiveMenu.id;
+      setState(function dropMissing(current) {
+        if (current.status !== "ready") return current;
+        return {
+          ...current,
+          archived: current.archived.filter(function notMissing(item) {
+            return item.id !== missingId;
+          }),
+          archivedTotal: current.archivedTotal === null ? null : current.archivedTotal - 1,
+        };
+      });
+      closeArchiveMenu();
+      setToast({ message: common("errors.code.NOT_FOUND"), tone: "error" });
+      // The wish was restored elsewhere: reread the list, as the edit screen does.
+      setAttempt((value) => value + 1);
       return;
     }
     if (!("network" in result) && !("invalid" in result) && result.field === "expiresOn") {
@@ -836,9 +874,11 @@ export default function MyWishlistScreen() {
                         })}
                       </XStack>
                     )}
-                    {state.archived.length > 0 ? (
+                    {(state.archivedTotal ?? state.archived.length) > 0 ? (
                       <ArchiveSection
-                        label={wishlist("archiveSection", { count: state.archived.length })}
+                        label={wishlist("archiveSection", {
+                          count: state.archivedTotal ?? state.archived.length,
+                        })}
                         expanded={archiveExpanded}
                         onToggle={toggleArchive}
                         gifts={state.archived}
@@ -918,11 +958,22 @@ export default function MyWishlistScreen() {
           testID="wishlist-archive-menu"
           actions={
             restoreStep ? (
-              <Button
-                label={giftForm("action.save")}
-                onPress={submitRestore}
-                disabled={archiveBusy}
-              />
+              <>
+                <Button
+                  variant="ghost"
+                  label={wishlist("archiveBack")}
+                  onPress={function backFromRestore() {
+                    setRestoreStep(false);
+                    setRestoreError(undefined);
+                  }}
+                  disabled={archiveBusy}
+                />
+                <Button
+                  label={giftForm("action.save")}
+                  onPress={submitRestore}
+                  disabled={archiveBusy}
+                />
+              </>
             ) : (
               <Button variant="ghost" label={wishlist("archiveClose")} onPress={closeArchiveMenu} />
             )
@@ -951,6 +1002,7 @@ export default function MyWishlistScreen() {
                 onPress={function showRestore() {
                   setRestoreStep(true);
                 }}
+                disabled={archiveBusy}
               />
               <Button
                 label={wishlist("archiveCopy")}
@@ -1094,12 +1146,4 @@ function tagsFromCard(gift: GiftCard): GiftTagInput[] {
     if (text === "") return [];
     return [{ text }];
   });
-}
-
-/** The device's calendar day, the browser `min` of the date field. */
-function deviceToday(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
 }

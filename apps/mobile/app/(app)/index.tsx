@@ -1076,6 +1076,12 @@ export default function MyWishlistScreen() {
     router.push("/settings");
   }
 
+  function openReservations() {
+    // NOTE FOR UX: временный вход в «Мои брони» до Story 6.2, где брони станут
+    // вкладкой «Брони» (Story 5.5, DESIGN.md → ReservationCard).
+    router.push("/reservations");
+  }
+
   function closeArchiveMenu() {
     setArchiveMenu(null);
     setRestoreStep(false);
@@ -1465,6 +1471,19 @@ export default function MyWishlistScreen() {
                     >
                       <Text kind="button" tone="primary">
                         {wishlist("friends")}
+                      </Text>
+                    </Pressable>
+                    {/* Temporary entry point: «Мои брони» becomes a tab in Story 6.2. */}
+                    <Pressable
+                      role="button"
+                      testID="wishlist-reservations"
+                      onPress={openReservations}
+                      minHeight="$touch-target"
+                      minWidth="$touch-target"
+                      justifyContent="center"
+                    >
+                      <Text kind="button" tone="primary">
+                        {t("reservations.title")}
                       </Text>
                     </Pressable>
                     {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}

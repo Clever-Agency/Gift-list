@@ -1,0 +1,64 @@
+name: Back-merge main to staging
+
+# Хотфикс, попавший сразу в main, вливается обратно в staging
+# (docs/deployment-environments.md, «Порядок выкладки»). Workflow открывает
+# PR main → staging, если в main есть изменения, которых нет в staging.
+# Обычная выкладка staging → main merge-коммитом изменений не добавляет,
+# поэтому PR после неё не открывается. Исключение — выкладка, в которой
+# разрешали конфликт: правка из разрешения тоже уходит в staging.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: back-merge
+  cancel-in-progress: false
+
+jobs:
+  back-merge:
+    name: back-merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Open PR main → staging
+        env:
+          # PR от GITHUB_TOKEN не запускает CI. С BACK_MERGE_TOKEN (PAT или
+          # токен GitHub App: Contents и Pull requests на запись) проверка
+          # check запускается сама.
+          GH_TOKEN: ${{ secrets.BACK_MERGE_TOKEN || github.token }}
+          HAS_BOT_TOKEN: ${{ secrets.BACK_MERGE_TOKEN != '' }}
+        run: |
+          if git diff --quiet origin/staging...origin/main; then
+            echo "В main нет изменений, которых нет в staging — PR не нужен"
+            exit 0
+          fi
+          existing=$(gh pr list --base staging --head main --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            echo "PR main → staging уже открыт: #$existing"
+            exit 0
+          fi
+          commits=$(git log --no-merges --format='- %h %s' origin/staging..origin/main)
+          body=$(printf '%s\n\n%s\n\n%s\n' \
+            "Обратное вливание main в staging: в main есть изменения (хотфикс), которых нет в staging." \
+            "$commits" \
+            "Мержить merge-коммитом, не squash-ом. PR открыт автоматически (.github/workflows/back-merge.yml).")
+          if ! url=$(gh pr create --base staging --head main \
+            --title "Синхронизация main → staging (хотфикс)" \
+            --body "$body"); then
+            echo "::error::Не удалось открыть PR main → staging. Задайте секрет BACK_MERGE_TOKEN или включите Settings → Actions → General → Allow GitHub Actions to create and approve pull requests."
+            exit 1
+          fi
+          echo "Открыт $url"
+          if [ "$HAS_BOT_TOKEN" != "true" ]; then
+            echo "::warning::Секрета BACK_MERGE_TOKEN нет: PR открыт от GITHUB_TOKEN и CI на нём не запустится. Закройте и снова откройте PR, чтобы запустить проверку check."
+          fi

@@ -1,0 +1,62 @@
+name: Guard main
+
+# Прод обновляется только из staging; мимо staging — только хотфикс из hotfix/*
+# (docs/deployment-environments.md, «Порядок выкладки»). Проверка guard-main
+# становится обязательной в правиле (ruleset) ветки main.
+on:
+  pull_request:
+    branches: [main]
+    # edited — PR перевели на базу main сменой целевой ветки.
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  guard-main:
+    name: guard-main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check source branch
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::error::PR в main принимается только из веток этого репозитория, а пришёл из $HEAD_REPO"
+            exit 1
+          fi
+          case "$HEAD_REF" in
+            staging|hotfix/*)
+              echo "PR в main из $HEAD_REF — разрешено"
+              ;;
+            *)
+              echo "::error::PR в main принимается только из staging или hotfix/*, а пришёл из $HEAD_REF. Задачи идут PR-ом в staging."
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout
+        if: startsWith(github.head_ref, 'hotfix/')
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      # Хотфикс, ответвлённый от staging, унёс бы в прод недоделанное из неё.
+      - name: Check hotfix carries nothing from staging
+        if: startsWith(github.head_ref, 'hotfix/')
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          leaked=$(comm -12 \
+            <(git rev-list "$HEAD_SHA" ^origin/main | sort) \
+            <(git rev-list origin/staging ^origin/main | sort))
+          if [ -n "$leaked" ]; then
+            echo "::error::Ветка хотфикса содержит коммиты из staging, которых нет в main. Заведите hotfix/* от main:"
+            echo "$leaked" | xargs -n1 git log -1 --format='  %h %s'
+            exit 1
+          fi
+          echo "В хотфиксе нет коммитов из staging"

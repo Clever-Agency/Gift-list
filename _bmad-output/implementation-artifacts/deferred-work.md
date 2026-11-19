@@ -240,3 +240,17 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-2-снятие-брони-держателем-и-владельцем.md`
   summary: Держатель не получает событие «владелец снял бронь» (in-app + email) — тот же вариант A и та же зависимость от Epic 6 / Story 6.1. От перехода остаётся audit-строка с актором-владельцем; уведомление о снятии владелец-инициировал сам, но держателю оно нужно по AC.
   evidence: Снятие владельцем — CAS `RESERVED → OPEN` в `gift-status-store.ts` с тем же `recordGiftEvent`; таблицы `Notification` в `schema.prisma` нет до Story 6.1, Resend в этой истории не подключается.
+
+## Deferred from: Story 5.3 — закрытие желания владельцем, отмена и «Хочу ещё такой» (CLE-115, 2026-11-19)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
+  summary: Держатель не получает событие «владелец отметил подарок полученным» (in-app + email) ни сразу, ни после окна отмены. Решение A: строки `Notification` нет, факт перехода лежит в колонках `Gift` (`closedAt`, `closedFromStatus`) и сохранённом снимке брони (`reservedById`, `titleSnapshotOnReserve`). Уведомление и `deliverAfter = closedAt + UNDO_WINDOW` — Epic 6, Story 6.1; тексты «Владелец отметил «Y» полученным. Если вы его ещё не вручали — подарок пришёл от кого-то другого» и (из `GIVEN`) «Владелец подтвердил получение «Y»» тоже там. Отмена внутри окна очищает `closedAt`, поэтому отложенная доставка перестаёт вычисляться сама.
+  evidence: `recordGiftEvent` в `apps/web/src/lib/gift-status-store.ts` пишет только `console.info` с `{ event, giftId, actorId, from, to, at }`; после закрытия `reserved*` сохранены, поэтому payload для письма из строки желания ещё собирается, а вот очереди доставки нет.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
+  summary: Аудит NFR-6 покрывает только закрытие и отмену (плюс снятие брони из 5.2). Бронь, снятие своей брони держателем и уход в архив по сроку статус меняют, но audit-строку `gift.status` не пишут. Нужна отдельная задача после 5.3 — расширить шов `recordGiftEvent` на `reserveGift`, `releaseReservation` и архивацию, не смешивая её с текущими историями.
+  evidence: `recordGiftEvent` вызывают только CAS закрытия и отмены в `gift-status-store.ts`; в `schema.prisma` под это нет таблицы (NFR-6 — logging, ARCHITECTURE-SPINE → Consistency Conventions), поэтому аудит остальных переходов — та же строка `console.info`, а не миграция.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
+  summary: Секция «Уже подарено» на серверной странице `/l` осталась открытым вопросом: страница сейчас рисует закрытые желания в общей сетке, а Story 5.3 меняет только приложение. Если решение будет «перенести секцию и туда», это отдельная правка `apps/web/src/app/l/[token]/public-wishlist-view.tsx` со своим порядком секций (активные, «Уже подарено», «Архив»).
+  evidence: Спека 5.3, «Открытые вопросы» п. 1 и «Never» — страницу не трогаем до решения; в приложении секция закрытых собирается на клиенте из `gifts`, на `/l` такой разметки нет.

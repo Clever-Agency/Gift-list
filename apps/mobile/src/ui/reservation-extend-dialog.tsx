@@ -10,6 +10,13 @@ export type ReservationExtendDialogProps = {
   open: boolean;
   /** The holder's zone (`Me.timeZone`): the days of `min`/`max` are its days. */
   timeZone: string;
+  /**
+   * The reservation's current deadline (`ReservationCard.dueAt`). The dialog starts
+   * from it, so «Продлить» never shortens the reservation by default; the day is
+   * kept inside the `today … today + 30` window. Without it the default is
+   * `today + 7`, as before.
+   */
+  currentDueOn?: string;
   busy?: boolean;
   /** «Выберите дату не позже {max}.» built from the server's `params.max`. */
   dateError?: string;
@@ -46,6 +53,27 @@ export function extendBounds(timeZone: string, now = new Date()) {
 }
 
 /**
+ * The day the sheet opens with (R1, CLE-119). With `currentDueOn` the holder's own
+ * deadline is kept when it is still inside the window, otherwise it is clamped to
+ * `[minDue, maxDue]`: the default confirm never shrinks the reservation and never
+ * answers `DUE_OUT_OF_RANGE`. Without it the first day stays `today + 7`, the
+ * behaviour the reserve confirm has always had.
+ */
+export function defaultExtendDueOn(
+  timeZone: string,
+  currentDueOn?: string,
+  now = new Date(),
+): string {
+  const bounds = extendBounds(timeZone, now);
+  if (!currentDueOn || !/^\d{4}-\d{2}-\d{2}$/.test(currentDueOn)) {
+    return defaultDueOn(timeZone, now);
+  }
+  if (currentDueOn < bounds.minDue) return bounds.minDue;
+  if (currentDueOn > bounds.maxDue) return bounds.maxDue;
+  return currentDueOn;
+}
+
+/**
  * «Продлить до…» (Story 5.5, `EXPERIENCE.md` → Reservation actions): the same
  * sheet-or-dialog pair as the reserve confirm, one date and two buttons. `DueOn`
  * is the calendar day the holder picked; the server turns it into the exclusive
@@ -57,6 +85,7 @@ export function extendBounds(timeZone: string, now = new Date()) {
 export function ReservationExtendDialog({
   open,
   timeZone,
+  currentDueOn,
   busy,
   dateError,
   onClose,
@@ -67,7 +96,7 @@ export function ReservationExtendDialog({
   const locale = useLocale();
   const compact = !useMedia().medium;
   const [dueOn, setDueOn] = useState(function startFrom() {
-    return defaultDueOn(timeZone);
+    return defaultExtendDueOn(timeZone, currentDueOn);
   });
 
   const bounds = useMemo(

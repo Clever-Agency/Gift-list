@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   ReservationExtendDialog,
+  addCalendarDays,
+  extendBounds,
   type ReservationExtendDialogProps,
 } from "./reservation-extend-dialog";
 
@@ -37,6 +39,14 @@ export const Compact: Story = {
 /** Запрос в полёте: обе кнопки заняты, второй раз не отправляют. */
 export const Busy: Story = {
   args: { ...base, busy: true },
+};
+
+/**
+ * Продление уже идущей брони: по умолчанию подставлен её текущий срок (он позже
+ * «сегодня + 7»), поэтому «Подтвердить» без правки не сокращает бронь.
+ */
+export const CurrentDue: Story = {
+  args: { ...base, currentDueOn: addCalendarDays(extendBounds("Europe/Minsk").minDue, 14) },
 };
 
 /** День вне диапазона: текст сервера с его `max` под полем даты. */

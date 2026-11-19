@@ -518,6 +518,7 @@ function ReservationsContent({
         key={extendFor === null ? "closed" : `open-${extendFor.giftId}`}
         open={extendFor !== null}
         timeZone={timeZone}
+        currentDueOn={extendFor?.dueAt}
         busy={extendBusy}
         dateError={extendError}
         onClose={cancelExtend}

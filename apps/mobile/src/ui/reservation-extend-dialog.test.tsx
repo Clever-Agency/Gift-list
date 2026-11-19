@@ -9,6 +9,7 @@ import { click, dialogElement, settle, typeInto } from "@/test/dom";
 import {
   ReservationExtendDialog,
   addCalendarDays,
+  defaultExtendDueOn,
   extendBounds,
   todayInZone,
 } from "@/ui/reservation-extend-dialog";
@@ -162,6 +163,37 @@ describe("ReservationExtendDialog", () => {
     // Поле даты подписано: доступное имя — заголовок действия, а не пустое поле.
     expect(dateInput()?.getAttribute("aria-label")).toBe("Продлить до…");
   });
+
+  /**
+   * R1 (CLE-119): «Продлить» открывается на текущем сроке брони, а не на
+   * «сегодня + 7», иначе подтверждение без правки сокращало бы бронь.
+   */
+  it("по умолчанию показывает текущий срок брони внутри окна", async () => {
+    const bounds = extendBounds("UTC");
+    const current = addCalendarDays(bounds.minDue, 20);
+
+    await render(
+      <ReservationExtendDialog
+        open
+        timeZone="UTC"
+        currentDueOn={current}
+        onClose={noop}
+        onConfirm={noop}
+      />,
+    );
+
+    expect(dateInput()?.value).toBe(current);
+  });
+
+  it("без currentDueOn оставляет прежний день «сегодня + 7»", async () => {
+    const bounds = extendBounds("UTC");
+
+    await render(
+      <ReservationExtendDialog open timeZone="UTC" onClose={noop} onConfirm={noop} />,
+    );
+
+    expect(dateInput()?.value).toBe(addCalendarDays(bounds.minDue, 7));
+  });
 });
 
 describe("extend bounds", () => {
@@ -175,5 +207,31 @@ describe("extend bounds", () => {
   it("переход через конец месяца и года", () => {
     expect(addCalendarDays("2026-12-20", 30)).toBe("2027-01-19");
     expect(addCalendarDays("2027-02-01", 30)).toBe("2027-03-03");
+  });
+});
+
+describe("defaultExtendDueOn", () => {
+  // Полдень UTC: день в UTC и в Europe/Minsk совпадает, тест не зависит от часа.
+  const now = new Date("2026-06-15T10:00:00.000Z");
+
+  it("без currentDueOn — прежний «сегодня + 7»", () => {
+    expect(defaultExtendDueOn("UTC", undefined, now)).toBe("2026-06-22");
+  });
+
+  it("текущий срок внутри окна остаётся по умолчанию", () => {
+    expect(defaultExtendDueOn("UTC", "2026-07-01", now)).toBe("2026-07-01");
+    expect(defaultExtendDueOn("UTC", "2026-06-15", now)).toBe("2026-06-15");
+    expect(defaultExtendDueOn("UTC", "2026-07-15", now)).toBe("2026-07-15");
+  });
+
+  it("срок за окном прижимается к [сегодня, сегодня + 30]", () => {
+    expect(defaultExtendDueOn("UTC", "2026-05-01", now)).toBe("2026-06-15");
+    expect(defaultExtendDueOn("UTC", "2026-09-01", now)).toBe("2026-07-15");
+  });
+
+  it("нечитаемый currentDueOn — прежнее поведение", () => {
+    for (const value of ["", "2026-7-1", "2026-07-01T00:00:00.000Z", "next week"]) {
+      expect(defaultExtendDueOn("UTC", value, now)).toBe("2026-06-22");
+    }
   });
 });

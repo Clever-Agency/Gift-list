@@ -539,6 +539,7 @@ export default function GiftDetailScreen() {
             key={extendOpen ? "extend-open" : "extend-closed"}
             open={extendOpen}
             timeZone={timeZone}
+            currentDueOn={current.reservation.dueAt}
             busy={actionBusy}
             dateError={extendError ?? undefined}
             onClose={cancelExtend}

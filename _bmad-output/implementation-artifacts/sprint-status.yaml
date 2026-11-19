@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-11-19'
+last_updated: '2026-11-20'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -81,7 +81,7 @@ development_status:
   5-2-снятие-брони-держателем-и-владельцем: review # CLE-114: typecheck/lint/test/build зелёные, ручная проверка на staging; гонка на PostgreSQL и BOUGHT (5.4) не проверены; не done до приёмки человеком
   5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой: review # CLE-115: typecheck/lint/test/build зелёные, ручная проверка на staging; раздел «Уже подарено» на /l не сделан (открытый вопрос); не done до приёмки человеком
   5-4-удаление-и-правка-забронированного-желания: backlog
-  5-5-мои-брони-продление-купил-видимость-reservation-card: backlog
+  5-5-мои-брони-продление-купил-видимость-reservation-card: review # CLE-119: typecheck/lint/test/build зелёные, ревью координатора + R1; ручная проверка с данными не делалась; не done до приёмки человеком
   5-6-цикл-истечения-срока-брони-cron: backlog
   5-7-подарил-и-подтверждение-получения-владельцем: backlog
   5-8-обязательные-автотесты-инвариантов-ad-15: backlog

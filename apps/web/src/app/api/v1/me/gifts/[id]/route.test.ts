@@ -262,7 +262,7 @@ describe("DELETE /api/v1/me/gifts/[id]", () => {
     deleteGift.mockResolvedValue({
       ok: false,
       code: "CONFLICT",
-      message: "Only an open wish can be deleted here",
+      message: "Only an open or closed wish can be deleted here",
     });
     const { DELETE } = await import("./route");
     const res = await DELETE(remove(), context());
@@ -271,8 +271,23 @@ describe("DELETE /api/v1/me/gifts/[id]", () => {
     expect(await res.json()).toEqual({
       ok: false,
       code: "CONFLICT",
-      message: "Only an open wish can be deleted here",
+      message: "Only an open or closed wish can be deleted here",
     });
+  });
+
+  /**
+   * Story 5.3 (DELETE_CLOSED): a received wish is deleted by the same route. The
+   * `CLOSED` branch lives in `deleteGift` (its own test), so here the route only
+   * has to answer the action's success as 200 with the deleted id.
+   */
+  it("returns 200 for a closed wish and does not need a different route", async () => {
+    deleteGift.mockResolvedValue({ ok: true, data: { id: "g-closed" } });
+    const { DELETE } = await import("./route");
+    const res = await DELETE(remove({ authorization: "Bearer t" }), context("g-closed"));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, data: { id: "g-closed" } });
+    expect(deleteGift).toHaveBeenCalledWith(expect.any(Headers), "g-closed");
   });
 
   it("maps NOT_FOUND to 404", async () => {

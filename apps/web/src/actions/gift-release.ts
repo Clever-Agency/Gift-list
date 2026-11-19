@@ -4,7 +4,7 @@ import type { ActionResult, GiftReservationWarning } from "@gift-list/contracts"
 import { prisma } from "@/db/client";
 import { reservationWarning } from "@/domain/gift-status";
 import { auth } from "@/lib/auth";
-import { giftStatusTransaction } from "@/lib/gift-status-store";
+import { runGiftStatusTransaction } from "@/lib/gift-status-store";
 
 const unauthenticated = {
   ok: false as const,
@@ -61,8 +61,8 @@ export async function releaseMyReservation(
   if (!held) return notFound;
 
   const now = new Date();
-  const outcome = await prisma.$transaction(function releaseHolderReservation(tx) {
-    return giftStatusTransaction(tx).releaseReservationByHolder(giftId, actorId, now);
+  const outcome = await runGiftStatusTransaction(function releaseHolderReservation(service) {
+    return service.releaseReservationByHolder(giftId, actorId, now);
   });
   if (outcome === "lost") return conflict;
 
@@ -113,8 +113,8 @@ export async function releaseReservationAsOwner(
 
   const actorId = session.user.id;
   const now = new Date();
-  const outcome = await prisma.$transaction(function releaseOwnerReservation(tx) {
-    return giftStatusTransaction(tx).releaseReservationByOwner(giftId, actorId, now);
+  const outcome = await runGiftStatusTransaction(function releaseOwnerReservation(service) {
+    return service.releaseReservationByOwner(giftId, actorId, now);
   });
   if (outcome === "success") return { ok: true, data: { id: giftId } };
 

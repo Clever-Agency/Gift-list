@@ -3,7 +3,15 @@ import "server-only";
 import type { Prisma, PrismaClient } from "@/db/generated/client";
 import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
-import { RESERVATION_RELEASE_DATA, type GiftStatusEvent, type GiftStatusTransaction } from "@/domain/gift-status";
+import {
+  RESERVATION_RELEASE_DATA,
+  UNDO_WINDOW_MS,
+  closeGiftData,
+  type GiftStatusEvent,
+  type GiftStatusTransaction,
+  type RecordGiftEvent,
+  undoCloseData,
+} from "@/domain/gift-status";
 
 type GiftDb = Pick<PrismaClient, "gift">;
 
@@ -32,7 +40,8 @@ export function recordGiftEvent(event: GiftStatusEvent): void {
 
 /**
  * Prisma adapter of `GiftStatusService` (AD-8 / AD-9). This is the only place
- * that writes `Gift.status`, the reservation columns and `archivedAt`.
+ * that writes `Gift.status`, the reservation columns, the closure columns and
+ * `archivedAt`.
  *
  * A reservation release receives the caller's transaction, so it commits or
  * rolls back with the field write. Expiry and restore (Story 2.6) are their
@@ -42,14 +51,19 @@ export function recordGiftEvent(event: GiftStatusEvent): void {
  * The CAS on `status: "RESERVED"` means a row that changed status in the
  * meantime is left untouched; `false` says the reservation was already gone.
  *
- * Story 5.2 adds the holder's and the owner's releases. Both are CAS writes, so
- * of two simultaneous releases exactly one succeeds; the one that succeeded
- * reports the transition to {@link recordGiftEvent}, a lost CAS reports nothing
- * (NFR-6). The audit line is written from inside the transaction, so a rolled
- * back transaction keeps a log line — variant A accepts that: the log is not a
- * source the application reads back.
+ * Story 5.2 adds the holder's and the owner's releases; Story 5.3 adds the
+ * owner's close and its undo. All are CAS writes, so of two simultaneous
+ * transitions exactly one succeeds; the one that succeeded reports the
+ * transition through `emit`, a lost CAS reports nothing (NFR-6). `emit` only
+ * collects the event: the audit line is written after the commit by
+ * `runGiftStatusTransaction`, so a rolled back transaction leaves no line.
+ * `giftStatusTransaction` defaults to writing the line immediately, but no
+ * use-case calls the event methods that way.
  */
-export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusTransaction {
+export function giftStatusTransaction(
+  tx: Prisma.TransactionClient,
+  emit: RecordGiftEvent = recordGiftEvent,
+): GiftStatusTransaction {
   return {
     async releaseReservation(giftId) {
       const { count } = await tx.gift.updateMany({
@@ -88,7 +102,7 @@ export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusT
         data: RESERVATION_RELEASE_DATA,
       });
       if (count !== 1) return "lost";
-      recordGiftEvent({
+      emit({
         giftId,
         actorId,
         from: "RESERVED",
@@ -104,7 +118,7 @@ export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusT
         data: RESERVATION_RELEASE_DATA,
       });
       if (count !== 1) return "lost";
-      recordGiftEvent({
+      emit({
         giftId,
         actorId,
         from: "RESERVED",
@@ -114,7 +128,78 @@ export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusT
       });
       return "success";
     },
+    async closeGift(giftId, actorId, from, at) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: from,
+          archivedAt: null,
+          list: { ownerId: actorId },
+        },
+        data: closeGiftData(from, at),
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId,
+        from,
+        to: "CLOSED",
+        at,
+        kind: "WISH_CLOSED",
+      });
+      return "success";
+    },
+    async undoClose(giftId, actorId, expected, at) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "CLOSED",
+          // Both the snapshot CAS (`equals`) and the undo window (`gt`) ride on
+          // one condition: a wish closed again in the meantime carries another
+          // `closedAt` and is never reopened by a stale request.
+          closedAt: {
+            equals: expected.closedAt,
+            gt: new Date(at.getTime() - UNDO_WINDOW_MS),
+          },
+          closedFromStatus: expected.closedFromStatus,
+          list: { ownerId: actorId },
+        },
+        data: undoCloseData(expected.closedFromStatus),
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId,
+        from: "CLOSED",
+        to: expected.closedFromStatus,
+        at,
+        kind: "WISH_REOPENED",
+      });
+      return "success";
+    },
   };
+}
+
+/**
+ * Runs one `GiftStatusService` write in a transaction and reports its
+ * transition **after** the commit (NFR-6): the CAS methods only collect events,
+ * so a transaction that rolls back leaves no audit line about a write that
+ * never happened. Every use-case of 5.2 and 5.3 goes through this helper.
+ */
+export async function runGiftStatusTransaction<T>(
+  work: (service: GiftStatusTransaction) => Promise<T>,
+  db: Pick<PrismaClient, "$transaction"> = prisma,
+): Promise<T> {
+  const events: GiftStatusEvent[] = [];
+  const result = await db.$transaction(function withCollectedEvents(tx) {
+    return work(
+      giftStatusTransaction(tx, function collect(event) {
+        events.push(event);
+      }),
+    );
+  });
+  for (const event of events) recordGiftEvent(event);
+  return result;
 }
 
 const EXPIRY_BATCH = 500;

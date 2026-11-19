@@ -2,10 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findFirst, transaction, releaseByHolder, releaseByOwner } = vi.hoisted(() => ({
+const {
+  getSession,
+  findFirst,
+  transaction,
+  runStatusTransaction,
+  releaseByHolder,
+  releaseByOwner,
+} = vi.hoisted(() => ({
   getSession: vi.fn(),
   findFirst: vi.fn(),
   transaction: vi.fn(),
+  runStatusTransaction: vi.fn(),
   releaseByHolder: vi.fn(),
   releaseByOwner: vi.fn(),
 }));
@@ -15,10 +23,7 @@ vi.mock("@/db/client", () => ({
   prisma: { gift: { findFirst }, $transaction: transaction },
 }));
 vi.mock("@/lib/gift-status-store", () => ({
-  giftStatusTransaction: () => ({
-    releaseReservationByHolder: releaseByHolder,
-    releaseReservationByOwner: releaseByOwner,
-  }),
+  runGiftStatusTransaction: runStatusTransaction,
 }));
 
 import {
@@ -34,6 +39,9 @@ beforeEach(() => {
   getSession.mockResolvedValue({ user: { id: "holder" } });
   transaction.mockImplementation(async function run(fn) {
     return fn({});
+  });
+  runStatusTransaction.mockImplementation(async function run(work) {
+    return work({ releaseReservationByHolder: releaseByHolder, releaseReservationByOwner: releaseByOwner });
   });
 });
 
@@ -70,7 +78,7 @@ describe("releaseMyReservation (the holder)", () => {
     expect(result).toEqual({ ok: true, data: { id: "g1" } });
     expect(releaseByHolder).toHaveBeenCalledTimes(1);
     expect(releaseByHolder).toHaveBeenCalledWith("g1", "holder", expect.any(Date));
-    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(runStatusTransaction).toHaveBeenCalledTimes(1);
   });
 
   it("answers CONFLICT when the reservation is gone between the read and the CAS", async () => {

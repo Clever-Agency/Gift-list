@@ -627,6 +627,8 @@ describe("мой вишлист: список", () => {
       ]),
     );
     await mount();
+    // Story 5.3: a closed wish lives in the collapsed «Получено (1)».
+    await press("Получено (1)");
 
     expect(text()).toContain("Наушники");
     expect(text()).toContain(formatPrice(250000, "RUB", "ru"));
@@ -2074,6 +2076,8 @@ describe("мой вишлист: смена видимости с чипа", () 
       ]),
     );
     await mount();
+    // Story 5.3: the closed wish lives in «Получено (1)»; the archived one stays in the grid.
+    await press("Получено (1)");
 
     expect(text()).toContain("Друзьям");
     expect(text()).toContain("Секрет");
@@ -2605,14 +2609,16 @@ describe("W12.19: главный экран на медиа-пропсах", () 
     expect(paintedWidth(skeleton as Element, 1024)).toBeCloseTo(cardGrid(1024).cardWidth, 5);
   });
 
-  it("экран отрисован: заголовок, сетка из четырёх желаний и подвал", async () => {
+  it("экран отрисован: заголовок, сетка из трёх желаний, «Получено (1)» и подвал", async () => {
     await mountAt(1024);
 
     expect(container.querySelector('[data-testid="wishlist-page"]')).not.toBeNull();
     expect(container.querySelector('[role="heading"][aria-level="1"]')?.textContent).toBe(
       "Мой вишлист",
     );
-    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(4);
+    // Story 5.3: the closed wish is not in the active grid until «Получено (1)» opens.
+    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(3);
+    expect(text()).toContain("Получено (1)");
     expect(text()).toContain("мечта");
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
   });
@@ -2873,5 +2879,428 @@ describe("мой вишлист: снятие чужой брони", () => {
     expect(dialogElement()?.textContent).toContain("Изменить желание");
     expect(dialogElement()?.textContent).not.toContain("Снять бронь");
     expect(preflightCalls()).toHaveLength(0);
+  });
+});
+
+/**
+ * Story 5.3 (FR-32, D-43): владелец отмечает желание полученным, отменяет это в
+ * окне, копирует и удаляет закрытое; закрытые карточки лежат в свёрнутой секции
+ * «Получено (N)» перед архивом. Окно отмены задаёт сервер (`undoUntil`), клиент
+ * только считает остаток.
+ */
+describe("мой вишлист: закрытие желания", () => {
+  function inMinutes(minutes: number): string {
+    return new Date(Date.now() + minutes * 60_000).toISOString();
+  }
+
+  function past(): string {
+    return new Date(Date.now() - 60_000).toISOString();
+  }
+
+  function closedGift(overrides: Partial<GiftCard> = {}): GiftCard {
+    return gift({ id: "g2", title: "Свитер", status: "CLOSED", undoUntil: inMinutes(5), ...overrides });
+  }
+
+  /** The list, the single read and the four write routes of this story. */
+  function respondClose(handlers: {
+    cards: () => GiftCard[];
+    archived?: () => GiftCard[];
+    close?: () => unknown;
+    undo?: () => unknown;
+    remove?: () => unknown;
+    create?: () => unknown;
+  }) {
+    api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
+      const method = init?.method ?? "GET";
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts") {
+        if (method === "POST") {
+          return Promise.resolve(
+            handlers.create ? handlers.create() : { ok: false, code: "CONFLICT", message: "" },
+          );
+        }
+        return Promise.resolve({
+          ok: true,
+          data: {
+            access: "gifts",
+            gifts: handlers.cards(),
+            archived: handlers.archived ? handlers.archived() : [],
+            publicToken: "tok-1",
+          },
+        });
+      }
+      if (path === "/api/v1/me/gifts/g1/close" && method === "POST") {
+        return Promise.resolve(handlers.close ? handlers.close() : { ok: false, code: "CONFLICT", message: "" });
+      }
+      if (path === "/api/v1/me/gifts/g1/undo-close" && method === "POST") {
+        return Promise.resolve(handlers.undo ? handlers.undo() : { ok: false, code: "CONFLICT", message: "" });
+      }
+      if (path === "/api/v1/me/gifts/g2/undo-close" && method === "POST") {
+        return Promise.resolve(handlers.undo ? handlers.undo() : { ok: false, code: "CONFLICT", message: "" });
+      }
+      if (path === "/api/v1/me/gifts/g1") {
+        if (method === "DELETE") {
+          return Promise.resolve(handlers.remove ? handlers.remove() : { ok: false, code: "CONFLICT", message: "" });
+        }
+        const card = handlers.cards().find(function sameId(item) {
+          return item.id === "g1";
+        });
+        return Promise.resolve(
+          card ? { ok: true, data: card } : { ok: false, code: "NOT_FOUND", message: "" },
+        );
+      }
+      if (path === "/api/v1/me/gifts/g2") {
+        if (method === "DELETE") {
+          return Promise.resolve(handlers.remove ? handlers.remove() : { ok: false, code: "CONFLICT", message: "" });
+        }
+        const card = handlers.cards().find(function sameId(item) {
+          return item.id === "g2";
+        });
+        return Promise.resolve(
+          card ? { ok: true, data: card } : { ok: false, code: "NOT_FOUND", message: "" },
+        );
+      }
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
+    });
+  }
+
+  function callsTo(suffix: string, method?: string): unknown[][] {
+    return api.apiRequest.mock.calls.filter(
+      ([path, init]) =>
+        String(path).endsWith(suffix) &&
+        (method === undefined || (init as { method?: string } | undefined)?.method === method),
+    );
+  }
+
+  function listReadsNow(): number {
+    return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
+  }
+
+  async function pressTestId(testID: string) {
+    const target = container.querySelector<HTMLElement>(`[data-testid="${testID}"]`);
+    expect(target, testID).not.toBeNull();
+    await act(async () => {
+      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+  }
+
+  async function pressInDialog(label: string) {
+    const target = Array.from(
+      dialogElement()?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).find((node) => (node.textContent ?? "").includes(label));
+    expect(target, `кнопка «${label}» в слое`).toBeDefined();
+    await act(async () => {
+      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+  }
+
+  async function pressToastAction(label: string) {
+    const target = container.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+    expect(target, `действие тоста «${label}»`).not.toBeNull();
+    await act(async () => {
+      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+  }
+
+  async function openDetailOfFirstCard() {
+    const cardButton = container.querySelector('[role="listitem"] [role="button"]') as HTMLElement;
+    await act(async () => {
+      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+  }
+
+  /** The card of the closed wish: expand «Получено» first. */
+  async function openClosedMenu(closedTitle = "Получено (1)") {
+    await press(closedTitle);
+    await pressTestId("wishlist-card-menu-g2");
+    await settle();
+  }
+
+  it("⋯ открытого желания: подтверждение «Подарок «Y» получен?», POST close, тост и фокус на «Отменить»", async () => {
+    let cards: GiftCard[] = [gift()];
+    respondClose({
+      cards: () => cards,
+      close: function close() {
+        cards = [gift({ status: "CLOSED", undoUntil: inMinutes(10) })];
+        return { ok: true, data: cards[0] };
+      },
+    });
+    await mount();
+
+    await pressTestId("wishlist-card-menu-g1");
+    await settle();
+    expect(dialogElement()?.textContent).toContain("Отметить полученным");
+    await pressInDialog("Отметить полученным");
+    // The menu leaves the tree first, then the confirmation opens.
+    await settle(300);
+
+    expect(dialogElement()?.textContent).toContain("Подарок «Наушники» получен?");
+    expect(dialogElement()?.textContent).not.toContain("Бронь будет закрыта");
+    expect(dialogElement()?.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(dialogElement()?.getAttribute("role")).toBe("alertdialog");
+
+    await pressInDialog("Подтвердить");
+    await settle(300);
+
+    expect(callsTo("/close", "POST")).toHaveLength(1);
+    expect(dialogElement()).toBeNull();
+    expect(text()).toContain("Отмечено полученным");
+    expect(text()).toContain("Отменить");
+    // `DESIGN.md` → «Куда уходит фокус», пункт «а».
+    expect(document.activeElement?.textContent).toBe("Отменить");
+  });
+
+  it("забронированное желание: тело про бронь и её держателя", async () => {
+    respondClose({
+      cards: () => [
+        gift({
+          status: "RESERVED",
+          reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+        }),
+      ],
+      close: () => ({ ok: true, data: gift({ status: "CLOSED", undoUntil: inMinutes(10) }) }),
+    });
+    await mount();
+
+    await pressTestId("wishlist-card-menu-g1");
+    await settle();
+    await pressInDialog("Отметить полученным");
+    await settle(300);
+
+    expect(dialogElement()?.textContent).toContain(
+      "Бронь будет закрыта, бронировавший получит уведомление",
+    );
+  });
+
+  it("шаг в подробностях: «Отметить полученным» → «Подтвердить», диалог закрывается", async () => {
+    let cards: GiftCard[] = [gift()];
+    respondClose({
+      cards: () => cards,
+      close: function close() {
+        cards = [gift({ status: "CLOSED", undoUntil: inMinutes(10) })];
+        return { ok: true, data: cards[0] };
+      },
+    });
+    await mount();
+    await openDetailOfFirstCard();
+
+    expect(dialogElement()?.textContent).toContain("Изменить желание");
+    await pressInDialog("Отметить полученным");
+    await settle();
+
+    expect(dialogElement()?.textContent).toContain("Подарок «Наушники» получен?");
+    expect(dialogElement()?.textContent).not.toContain("Кто видит");
+
+    await pressInDialog("Подтвердить");
+    await settle(300);
+
+    expect(callsTo("/close", "POST")).toHaveLength(1);
+    expect(dialogElement()).toBeNull();
+    expect(text()).toContain("Отмечено полученным");
+  });
+
+  it("«Отменить» в тосте возвращает желание в открытые без второго тоста", async () => {
+    let cards: GiftCard[] = [gift()];
+    respondClose({
+      cards: () => cards,
+      close: function close() {
+        cards = [gift({ status: "CLOSED", undoUntil: inMinutes(10) })];
+        return { ok: true, data: cards[0] };
+      },
+      undo: function undo() {
+        cards = [gift()];
+        return { ok: true, data: cards[0] };
+      },
+    });
+    await mount();
+    const readsBefore = listReadsNow();
+
+    await pressTestId("wishlist-card-menu-g1");
+    await settle();
+    await pressInDialog("Отметить полученным");
+    await settle(300);
+    await pressInDialog("Подтвердить");
+    await settle(300);
+
+    await pressToastAction("Отменить");
+    await settle(300);
+
+    expect(callsTo("/undo-close", "POST")).toHaveLength(1);
+    expect(listReadsNow()).toBeGreaterThan(readsBefore + 1);
+    expect(text()).not.toContain("Отмечено полученным");
+    expect(text()).not.toContain("Время на отмену вышло");
+  });
+
+  it("поздняя отмена: тост «Время на отмену вышло» и перечитывание списка", async () => {
+    let cards: GiftCard[] = [gift()];
+    respondClose({
+      cards: () => cards,
+      close: function close() {
+        cards = [gift({ status: "CLOSED", undoUntil: inMinutes(10) })];
+        return { ok: true, data: cards[0] };
+      },
+      undo: () => ({
+        ok: false,
+        code: "CONFLICT",
+        reason: "UNDO_WINDOW_EXPIRED",
+        message: "Undo window expired",
+      }),
+    });
+    await mount();
+
+    await pressTestId("wishlist-card-menu-g1");
+    await settle();
+    await pressInDialog("Отметить полученным");
+    await settle(300);
+    await pressInDialog("Подтвердить");
+    await settle(300);
+    const readsBefore = listReadsNow();
+
+    await pressToastAction("Отменить");
+    await settle(300);
+
+    expect(text()).toContain("Время на отмену вышло");
+    expect(listReadsNow()).toBeGreaterThan(readsBefore);
+  });
+
+  it("сеть при закрытии: тост общей фразой, подтверждение остаётся", async () => {
+    respondClose({ cards: () => [gift()], close: () => ({ ok: false, network: true }) });
+    await mount();
+
+    await pressTestId("wishlist-card-menu-g1");
+    await settle();
+    await pressInDialog("Отметить полученным");
+    await settle(300);
+    await pressInDialog("Подтвердить");
+    await settle(300);
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(dialogElement()?.textContent).toContain("Подарок «Наушники» получен?");
+    expect(text()).not.toContain("Отмечено полученным");
+  });
+
+  it("«Получено (1)» свёрнута и стоит перед «Архив (1)»; архивная закрытая не считается", async () => {
+    const archivedClosed = gift({
+      id: "g3",
+      title: "Шарф",
+      status: "CLOSED",
+      archivedAt: "2026-11-01T00:00:00.000Z",
+      undoUntil: inMinutes(5),
+    });
+    respondClose({
+      cards: () => [
+        gift(),
+        gift({ id: "g2", title: "Свитер", status: "CLOSED", undoUntil: inMinutes(5) }),
+      ],
+      archived: () => [archivedClosed],
+    });
+    await mount();
+
+    expect(text()).toContain("Получено (1)");
+    expect(text()).not.toContain("Свитер");
+    expect(text()).toContain("Архив (1)");
+
+    const closedToggle = container.querySelector('[data-testid="wishlist-closed-toggle"]');
+    const archiveToggle = container.querySelector('[data-testid="wishlist-archive-toggle"]');
+    expect(closedToggle).not.toBeNull();
+    expect(archiveToggle).not.toBeNull();
+    expect(
+      closedToggle?.compareDocumentPosition(archiveToggle as Node) !== undefined &&
+        ((closedToggle as Node).compareDocumentPosition(archiveToggle as Node) &
+          Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+    ).toBeTruthy();
+
+    await press("Получено (1)");
+    expect(text()).toContain("Свитер");
+    // The archived closed wish lives only in the archive, not in «Получено».
+    expect(text()).not.toContain("Шарф");
+  });
+
+  it("⋯ закрытого в окне: «Вернуть в открытые · ещё 5 мин» возвращает без тоста", async () => {
+    let cards: GiftCard[] = [closedGift()];
+    respondClose({
+      cards: () => cards,
+      undo: function undo() {
+        cards = [gift({ id: "g2", title: "Свитер" })];
+        return { ok: true, data: cards[0] };
+      },
+    });
+    await mount();
+    await openClosedMenu();
+
+    expect(dialogElement()?.textContent).toContain("Вернуть в открытые · ещё 5 мин");
+    await pressInDialog("Вернуть в открытые · ещё 5 мин");
+    await settle(300);
+
+    expect(callsTo("/undo-close", "POST")).toHaveLength(1);
+    expect(text()).not.toContain("Отмечено полученным");
+    expect(text()).not.toContain("Получено (1)");
+  });
+
+  it("⋯ закрытого после окна: возврата нет, копия и удаление есть", async () => {
+    respondClose({ cards: () => [closedGift({ undoUntil: past() })] });
+    await mount();
+    await openClosedMenu();
+
+    const menu = dialogElement()?.textContent ?? "";
+    expect(menu).toContain("Хочу ещё такой");
+    expect(menu).toContain("Удалить");
+    expect(menu).not.toContain("Вернуть в открытые");
+  });
+
+  it("«Хочу ещё такой»: OPEN-копия без expiresOn, тост и перечитывание", async () => {
+    const created = gift({ id: "g-copy", title: "Свитер" });
+    respondClose({
+      cards: () => [closedGift()],
+      create: () => ({ ok: true, data: created }),
+    });
+    await mount();
+    const readsBefore = listReadsNow();
+    await openClosedMenu();
+
+    await pressInDialog("Хочу ещё такой");
+    await settle(300);
+
+    const createCall = callsTo("/me/gifts", "POST")[0] as
+      | [string, { body?: unknown } | undefined]
+      | undefined;
+    expect(createCall?.[1]?.body).toEqual({
+      title: "Свитер",
+      description: null,
+      linkUrl: null,
+      priceAmount: 250000,
+      priceCurrency: "RUB",
+      visibility: "PUBLIC",
+      quantity: "SINGLE",
+    });
+    expect(text()).toContain("Добавлено в вишлист");
+    expect(listReadsNow()).toBeGreaterThan(readsBefore);
+  });
+
+  it("«Удалить» закрытое: confirm называет желание, DELETE и тост", async () => {
+    respondClose({
+      cards: () => [closedGift()],
+      remove: () => ({ ok: true, data: { id: "g2" } }),
+    });
+    await mount();
+    await openClosedMenu();
+
+    await pressInDialog("Удалить");
+    await settle(300);
+
+    expect(dialogElement()?.textContent).toContain("Удалить «Свитер»?");
+    expect(dialogElement()?.textContent).toContain(
+      "Желание исчезнет из вишлиста. Это нельзя отменить.",
+    );
+
+    await pressInDialog("Удалить");
+    await settle(300);
+
+    expect(callsTo("/me/gifts/g2", "DELETE")).toHaveLength(1);
+    expect(text()).toContain("Желание удалено.");
   });
 });

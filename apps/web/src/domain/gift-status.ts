@@ -58,6 +58,151 @@ export function hasActiveReservation(row: GiftStatusRow): boolean {
   return row.status === "RESERVED";
 }
 
+/** The columns the owner's release preflight reads (Story 5.2). */
+export type ReservationWarningRow = {
+  readonly status: GiftStatusRow["status"];
+  readonly reservationBought: boolean;
+};
+
+/**
+ * Story 5.2 (FR-31, AD-12): the owner's answer before releasing someone else's
+ * reservation. `BOUGHT` says the holder marked the gift as bought, so releasing
+ * it lets somebody else buy it again. The `GIVEN` branch belongs to Story 5.7 —
+ * no row carries that phase yet — so this slice answers `BOUGHT` or `null` only.
+ *
+ * A wish that is no longer `RESERVED` warns about nothing: the preflight only
+ * reads and never argues with a stale state, the `DELETE` decides.
+ */
+export function reservationWarning(row: ReservationWarningRow): "BOUGHT" | null {
+  if (row.status !== "RESERVED") return null;
+  return row.reservationBought ? "BOUGHT" : null;
+}
+
+/**
+ * Story 5.3 (D-43, ARCH-A5): the one undo window of a close. The server checks
+ * it on every undo, so a client clock can never widen it; the client only counts
+ * down to the `undoUntil` moment the response carries.
+ */
+export const UNDO_WINDOW_MS = 10 * 60 * 1000;
+
+/** A wish closes from `OPEN` or `RESERVED`; that is the status the undo restores. */
+export type ClosedFromStatus = "OPEN" | "RESERVED";
+
+/** The columns the closing rules read (AD-8: an archived wish is read-only). */
+export type CloseGiftRow = {
+  readonly status: GiftStatusRow["status"];
+  readonly archivedAt: Date | null;
+};
+
+/**
+ * Story 5.3 (FR-32, AD-8): the owner closes a wish that is still `OPEN` or
+ * `RESERVED` and not archived. An archived wish is read-only, and a `CLOSED` one
+ * is not closed twice (the use-case answers CONFLICT before this predicate).
+ */
+export function canCloseGift(row: CloseGiftRow): boolean {
+  return row.archivedAt === null && row.status !== "CLOSED";
+}
+
+/** The columns a close writes; `reserved*`, `quantity` and `visibility` stay. */
+export type CloseGiftData = {
+  readonly status: "CLOSED";
+  readonly closedAt: Date;
+  readonly closedFromStatus: ClosedFromStatus;
+};
+
+/**
+ * Story 5.3 (AD-8): closing keeps the reservation snapshot for audit and only
+ * records the status it came from, so an undo can restore exactly that status.
+ */
+export function closeGiftData(from: ClosedFromStatus, at: Date): CloseGiftData {
+  return { status: "CLOSED", closedAt: at, closedFromStatus: from };
+}
+
+/** The closure columns the undo rules read. */
+export type ClosedGiftRow = {
+  readonly status: GiftStatusRow["status"];
+  readonly closedAt: Date | null;
+  readonly closedFromStatus: ClosedFromStatus | null;
+};
+
+/**
+ * Story 5.3 (D-43, ARCH-A5): the undo is possible only while
+ * `now < closedAt + UNDO_WINDOW_MS` — at exactly ten minutes it is already too
+ * late — and only for a closed wish that still knows what it was closed from.
+ */
+export function canUndoClose(row: ClosedGiftRow, now: Date): boolean {
+  if (row.status !== "CLOSED") return false;
+  if (row.closedAt === null || row.closedFromStatus === null) return false;
+  return now.getTime() < row.closedAt.getTime() + UNDO_WINDOW_MS;
+}
+
+/**
+ * The columns an undo writes: the status the wish was closed from, and both
+ * closure columns cleared. `reserved*` are untouched, so the reservation, its
+ * phase, `bought` and the due date come back by themselves.
+ */
+export function undoCloseData(from: ClosedFromStatus): {
+  readonly status: ClosedFromStatus;
+  readonly closedAt: null;
+  readonly closedFromStatus: null;
+} {
+  return { status: from, closedAt: null, closedFromStatus: null };
+}
+
+/**
+ * The moment the owner's card carries as `undoUntil`: `closedAt + UNDO_WINDOW_MS`
+ * for a `CLOSED` wish — even when it is already in the past, so the client can
+ * order the closed section — and `null` for every other status.
+ */
+export function undoUntil(row: {
+  readonly status: GiftStatusRow["status"];
+  readonly closedAt: Date | null;
+}): Date | null {
+  if (row.status !== "CLOSED" || row.closedAt === null) return null;
+  return new Date(row.closedAt.getTime() + UNDO_WINDOW_MS);
+}
+
+/**
+ * Story 5.2/5.3 (NFR-6): the transitions the one seam reports. The list is
+ * shared, so 5.2 and 5.3 cannot write the same event differently.
+ */
+export type GiftStatusEventKind =
+  | "RESERVATION_RELEASED_BY_HOLDER"
+  | "RESERVATION_RELEASED_BY_OWNER"
+  | "WISH_CLOSED"
+  | "WISH_REOPENED";
+
+/**
+ * The payload of {@link RecordGiftEvent}: identifiers and the transition only —
+ * no names, nicks, emails or titles (FR-31).
+ */
+export type GiftStatusEvent = {
+  readonly giftId: string;
+  readonly actorId: string;
+  readonly from: GiftStatusRow["status"];
+  readonly to: GiftStatusRow["status"];
+  readonly at: Date;
+  readonly kind: GiftStatusEventKind;
+};
+
+/**
+ * The single seam of NFR-6 that the store implements (Story 5.2 declares it,
+ * Story 5.3 reuses it). Today the implementation writes one audit line
+ * (variant A); a `Notification` row (variant B) replaces only that body, so no
+ * caller or CAS method changes.
+ *
+ * The store reports a transition only after the surrounding transaction has
+ * committed (`runGiftStatusTransaction`), so a rolled back write leaves no line
+ * about a transition that never happened.
+ */
+export type RecordGiftEvent = (event: GiftStatusEvent) => void;
+
+/** The snapshot an undo is decided on (Story 5.3); a mismatch is a lost CAS. */
+export type UndoCloseSnapshot = {
+  readonly closedAt: Date;
+  readonly closedFromStatus: ClosedFromStatus;
+};
+
 /**
  * One `RESERVED → OPEN` write (AD-9). The adapter implements it with Prisma; the
  * caller supplies the transaction so the release shares it with the field write,
@@ -74,6 +219,52 @@ export interface GiftStatusTransaction {
    * no longer matches the predicate is left untouched and answers `lost`.
    */
   reserveGift(giftId: string, data: ReserveGiftWrite): Promise<"success" | "lost">;
+  /**
+   * Story 5.2: CAS `RESERVED → OPEN` for the holder of the reservation. The
+   * predicate carries `reservedById`, so a wish held by someone else, released
+   * in the meantime or not reserved at all is left untouched and answers `lost`.
+   * Visibility is deliberately not part of the predicate: after an unfriend or a
+   * block the holder keeps control of the reservation (A-14, FR-25).
+   */
+  releaseReservationByHolder(
+    giftId: string,
+    actorId: string,
+    at: Date,
+  ): Promise<"success" | "lost">;
+  /**
+   * Story 5.2: CAS `RESERVED → OPEN` for the owner of the list the wish belongs
+   * to. The predicate carries ownership, so a foreign wish, a closed wish or a
+   * reservation already gone is left untouched and answers `lost`.
+   */
+  releaseReservationByOwner(
+    giftId: string,
+    actorId: string,
+    at: Date,
+  ): Promise<"success" | "lost">;
+  /**
+   * Story 5.3: CAS `from → CLOSED` for the owner of the list. `from` is the
+   * status read in the same use-case, so a wish that moved in between is left
+   * untouched and answers `lost`. The write keeps `reserved*` and records
+   * `closedAt` and `closedFromStatus`.
+   */
+  closeGift(
+    giftId: string,
+    actorId: string,
+    from: ClosedFromStatus,
+    at: Date,
+  ): Promise<"success" | "lost">;
+  /**
+   * Story 5.3: CAS `CLOSED → closedFromStatus` for the owner, only while the
+   * undo window is open and only on the closure snapshot the use-case read. A
+   * closed-again wish (a different `closedAt`) or one closed from a different
+   * status is left untouched and answers `lost`.
+   */
+  undoClose(
+    giftId: string,
+    actorId: string,
+    expected: UndoCloseSnapshot,
+    at: Date,
+  ): Promise<"success" | "lost">;
 }
 
 /** Only a single open wish can be reserved; unlimited gifts are rejected upstream. */

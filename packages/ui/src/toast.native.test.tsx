@@ -45,4 +45,26 @@ describe("Toast (native): кольцо по focus", () => {
     expect(outline(button, "focus-visible")).toEqual([]);
     expect(declarationsFor(button, "outline-offset").map((one) => one.value)).toEqual(["2px"]);
   });
+
+  it("кнопка действия отдаётся по actionRef и тоже держит $ring на focus", async () => {
+    const actionRef = { current: null as object | null };
+    const { container, render } = mounted();
+    await render(
+      <Toast
+        message="Отмечено полученным"
+        action={{ label: "Отменить", onPress: vi.fn() }}
+        actionRef={actionRef}
+        closeLabel="Закрыть"
+        onClose={vi.fn()}
+      />,
+    );
+
+    const action = container.querySelector('[aria-label="Отменить"]');
+    expect(action, "кнопка действия").not.toBeNull();
+    expect(actionRef.current).toBe(action);
+    expect(outline(action as Element, "focus")).toEqual(
+      ["outline-color:var(--ring)", "outline-style:solid", "outline-width:2px"].sort(),
+    );
+    expect(outline(action as Element, "focus-visible")).toEqual([]);
+  });
 });

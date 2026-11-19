@@ -52,6 +52,7 @@ type Row = {
   quantity: "SINGLE" | "UNLIMITED";
   expiresOn: Date | null;
   archivedAt: Date | null;
+  closedAt: Date | null;
   status: "OPEN" | "RESERVED" | "CLOSED";
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
   holderVisibleToOwner: boolean;
@@ -71,6 +72,7 @@ function gift(overrides: Partial<Row> = {}): Row {
     quantity: "SINGLE",
     expiresOn: null,
     archivedAt: null,
+    closedAt: null,
     status: "OPEN",
     reservationPhase: null,
     holderVisibleToOwner: false,
@@ -273,6 +275,7 @@ describe("getMyGifts", () => {
       reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
       reservationLabel: null,
       ownerAction: "CONFIRM_GIVEN",
+      undoUntil: null,
     });
   });
 

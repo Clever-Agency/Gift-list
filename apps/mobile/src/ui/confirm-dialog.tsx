@@ -34,6 +34,13 @@ export type DestructiveConfirmDialogProps = ConfirmDialogBase & {
   variant?: "confirm";
   /** «Желание исчезнет из вишлиста. Это нельзя отменить.». */
   body?: string;
+  /**
+   * The tone of the confirmation button. `destructive` (the default) is the coral
+   * action of a loss — a deletion. `primary` is a regular action that loses nothing:
+   * closing a wish is not destructive (`DESIGN.md` → Colors: `destructive` не для
+   * «закрыт»).
+   */
+  confirmTone?: "primary" | "destructive";
   /** «Удалить», or «Удаляем…» while the request is in flight. */
   confirmLabel: string;
   /** «Отмена». */
@@ -69,10 +76,12 @@ export type ConfirmDialogProps = DestructiveConfirmDialogProps | DiscardConfirmD
  * from `@gift-list/ui`. It has two modes, picked by `variant` (a discriminated union,
  * so the props of one mode cannot leak into the other):
  *
- * - `confirm` (the default) — a destructive confirmation with two actions:
+ * - `confirm` (the default) — a confirmation with two actions:
  *   `cancelLabel` + `onCancel` and `confirmLabel` + `onConfirm`, plus an optional
  *   `body`. Initial focus lands on «Отмена», so Enter right after opening does
- *   not delete anything (WAI-ARIA APG alertdialog).
+ *   not delete anything (WAI-ARIA APG alertdialog). The confirmation is coral
+ *   (`confirmTone="destructive"`, the default) or a regular `primary` button when
+ *   the action loses nothing — closing a wish, say.
  * - `discard` — «Сохранить изменения?» with three actions: `confirmLabel`
  *   («Сохранить»), `declineLabel` («Не сохранять») and a `closeLabel` cross.
  *   Initial focus lands on the title.
@@ -166,7 +175,7 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
             <Button
               label={props.confirmLabel}
               onPress={confirm}
-              variant="destructive"
+              variant={props.confirmTone ?? "destructive"}
               busy={busy}
             />
           </>

@@ -3,13 +3,45 @@ import "server-only";
 import type { Prisma, PrismaClient } from "@/db/generated/client";
 import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
-import { RESERVATION_RELEASE_DATA, type GiftStatusTransaction } from "@/domain/gift-status";
+import {
+  RESERVATION_RELEASE_DATA,
+  UNDO_WINDOW_MS,
+  closeGiftData,
+  type GiftStatusEvent,
+  type GiftStatusTransaction,
+  type RecordGiftEvent,
+  undoCloseData,
+} from "@/domain/gift-status";
 
 type GiftDb = Pick<PrismaClient, "gift">;
 
 /**
+ * The single seam of NFR-6 (Story 5.2/5.3, variant A): one structured audit line
+ * per successful transition — identifiers and the transition only, without
+ * names, nicks, emails or titles (FR-31), so the line is not a leak channel.
+ *
+ * Variant B (a `Notification` row with `deliverAfter` from Epic 6) replaces only
+ * this body: the CAS methods, the use-cases and the routes keep calling
+ * `recordGiftEvent` and do not change. `kind` and `at` are already in the event
+ * for that future record; the log line keeps the format the spec fixes.
+ */
+export function recordGiftEvent(event: GiftStatusEvent): void {
+  console.info(
+    JSON.stringify({
+      event: "gift.status",
+      giftId: event.giftId,
+      actorId: event.actorId,
+      from: event.from,
+      to: event.to,
+      at: event.at.toISOString(),
+    }),
+  );
+}
+
+/**
  * Prisma adapter of `GiftStatusService` (AD-8 / AD-9). This is the only place
- * that writes `Gift.status`, the reservation columns and `archivedAt`.
+ * that writes `Gift.status`, the reservation columns, the closure columns and
+ * `archivedAt`.
  *
  * A reservation release receives the caller's transaction, so it commits or
  * rolls back with the field write. Expiry and restore (Story 2.6) are their
@@ -18,8 +50,20 @@ type GiftDb = Pick<PrismaClient, "gift">;
  *
  * The CAS on `status: "RESERVED"` means a row that changed status in the
  * meantime is left untouched; `false` says the reservation was already gone.
+ *
+ * Story 5.2 adds the holder's and the owner's releases; Story 5.3 adds the
+ * owner's close and its undo. All are CAS writes, so of two simultaneous
+ * transitions exactly one succeeds; the one that succeeded reports the
+ * transition through `emit`, a lost CAS reports nothing (NFR-6). `emit` only
+ * collects the event: the audit line is written after the commit by
+ * `runGiftStatusTransaction`, so a rolled back transaction leaves no line.
+ * `giftStatusTransaction` defaults to writing the line immediately, but no
+ * use-case calls the event methods that way.
  */
-export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusTransaction {
+export function giftStatusTransaction(
+  tx: Prisma.TransactionClient,
+  emit: RecordGiftEvent = recordGiftEvent,
+): GiftStatusTransaction {
   return {
     async releaseReservation(giftId) {
       const { count } = await tx.gift.updateMany({
@@ -52,7 +96,110 @@ export function giftStatusTransaction(tx: Prisma.TransactionClient): GiftStatusT
       });
       return count === 1 ? "success" : "lost";
     },
+    async releaseReservationByHolder(giftId, actorId, at) {
+      const { count } = await tx.gift.updateMany({
+        where: { id: giftId, status: "RESERVED", reservedById: actorId },
+        data: RESERVATION_RELEASE_DATA,
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId,
+        from: "RESERVED",
+        to: "OPEN",
+        at,
+        kind: "RESERVATION_RELEASED_BY_HOLDER",
+      });
+      return "success";
+    },
+    async releaseReservationByOwner(giftId, actorId, at) {
+      const { count } = await tx.gift.updateMany({
+        where: { id: giftId, status: "RESERVED", list: { ownerId: actorId } },
+        data: RESERVATION_RELEASE_DATA,
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId,
+        from: "RESERVED",
+        to: "OPEN",
+        at,
+        kind: "RESERVATION_RELEASED_BY_OWNER",
+      });
+      return "success";
+    },
+    async closeGift(giftId, actorId, from, at) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: from,
+          archivedAt: null,
+          list: { ownerId: actorId },
+        },
+        data: closeGiftData(from, at),
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId,
+        from,
+        to: "CLOSED",
+        at,
+        kind: "WISH_CLOSED",
+      });
+      return "success";
+    },
+    async undoClose(giftId, actorId, expected, at) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "CLOSED",
+          // Both the snapshot CAS (`equals`) and the undo window (`gt`) ride on
+          // one condition: a wish closed again in the meantime carries another
+          // `closedAt` and is never reopened by a stale request.
+          closedAt: {
+            equals: expected.closedAt,
+            gt: new Date(at.getTime() - UNDO_WINDOW_MS),
+          },
+          closedFromStatus: expected.closedFromStatus,
+          list: { ownerId: actorId },
+        },
+        data: undoCloseData(expected.closedFromStatus),
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId,
+        from: "CLOSED",
+        to: expected.closedFromStatus,
+        at,
+        kind: "WISH_REOPENED",
+      });
+      return "success";
+    },
   };
+}
+
+/**
+ * Runs one `GiftStatusService` write in a transaction and reports its
+ * transition **after** the commit (NFR-6): the CAS methods only collect events,
+ * so a transaction that rolls back leaves no audit line about a write that
+ * never happened. Every use-case of 5.2 and 5.3 goes through this helper.
+ */
+export async function runGiftStatusTransaction<T>(
+  work: (service: GiftStatusTransaction) => Promise<T>,
+  db: Pick<PrismaClient, "$transaction"> = prisma,
+): Promise<T> {
+  const events: GiftStatusEvent[] = [];
+  const result = await db.$transaction(function withCollectedEvents(tx) {
+    return work(
+      giftStatusTransaction(tx, function collect(event) {
+        events.push(event);
+      }),
+    );
+  });
+  for (const event of events) recordGiftEvent(event);
+  return result;
 }
 
 const EXPIRY_BATCH = 500;

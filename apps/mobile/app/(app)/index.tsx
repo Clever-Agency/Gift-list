@@ -21,23 +21,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import type { ClientResult } from "@/api/client";
 import {
+  closeGift,
   createGift,
+  deleteGift,
   fetchMyGifts,
+  fetchReservationWarning,
   previewGiftVisibility,
+  releaseReservation,
   restoreGift,
+  undoGiftClose,
   updateGift,
 } from "@/api/my-gifts";
 import { loadOwnerDetail } from "@/ui/wish-detail-load";
-import { WishDetailDialog } from "@/ui/wish-detail-dialog";
+import { WishDetailDialog, type WishDetailStep } from "@/ui/wish-detail-dialog";
 import { getBrandName } from "@/config/env";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
+import { ClosedSection } from "@/ui/closed-section";
+import { CloseGiftConfirm } from "@/ui/close-gift-confirm";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { deviceToday } from "@/ui/device-today";
 import { EmptyState } from "@/ui/empty-state";
-import { restoreFocus, type ChipNode } from "@/ui/focus";
+import { focusInLayer, restoreFocus, type ChipNode, type FocusTarget } from "@/ui/focus";
+import { GiftCardMenu, type GiftCardMenuAction } from "@/ui/gift-card-menu";
 import { WishCard } from "@/ui/gift-card";
 import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
@@ -45,6 +53,7 @@ import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useCardGrid } from "@/ui/use-card-grid";
+import { useUndoWindow } from "@/ui/use-undo-window";
 import { VisibilityPicker } from "@/ui/visibility-picker";
 import { copyWishlistShareLink } from "@/wishlist/copy-link";
 import { hasWishVisibleToEveryone } from "@/wishlist/share-availability";
@@ -81,9 +90,21 @@ type FailedRequest =
 
 /**
  * One toast at a time: a failed read is destructive, the composer's «Добавлено в
- * вишлист» confirmation is neutral.
+ * вишлист» confirmation is neutral. Story 5.3 adds the undo toast of a closed
+ * wish: it lives 10 s (`DESIGN.md` → Toast), carries the «Отменить» action and
+ * moves focus onto it.
  */
-type ToastState = { message: string; tone: "info" | "error" };
+type ToastState = {
+  message: string;
+  tone: "info" | "error";
+  action?: { label: string; onPress: () => void };
+  durationMs?: number;
+  /** The closing toast: focus goes onto «Отменить» once it is on screen. */
+  focusAction?: boolean;
+};
+
+/** `DESIGN.md` → Toast: the undo toast of a closed wish lives ten seconds. */
+const UNDO_TOAST_MS = 10_000;
 
 /**
  * The one-shot params the form screens hand their success notices over in: the
@@ -141,6 +162,26 @@ export default function MyWishlistScreen() {
   const [picker, setPicker] = useState<{ gift: GiftCard } | null>(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [archiveMenu, setArchiveMenu] = useState<GiftCard | null>(null);
+  // Story 5.3: «Получено (N)» is closed until the owner opens it.
+  const [closedExpanded, setClosedExpanded] = useState(false);
+  // Story 5.3: the ⋯ menu of one card. `pendingMenuAction` is the chosen item:
+  // it runs after the menu has left the tree, so a confirm does not open over a
+  // fading layer.
+  const [cardMenu, setCardMenu] = useState<GiftCard | null>(null);
+  const pendingMenuAction = useRef<(() => void) | null>(null);
+  const menuReturn = useRef<string | null>(null);
+  const menuNodes = useRef(new Map<string, ChipNode | null>());
+  // Story 5.3: closing a wish from the card asks first; the details layer uses a
+  // step instead (`closeStep`).
+  const [closeConfirm, setCloseConfirm] = useState<GiftCard | null>(null);
+  const [closeStep, setCloseStep] = useState<GiftCard | null>(null);
+  const [closeBusy, setCloseBusy] = useState(false);
+  // Story 5.3: deleting a closed wish is the existing DELETE behind a confirm.
+  const [deleteConfirm, setDeleteConfirm] = useState<GiftCard | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const deleteInFlight = useRef(false);
+  // The «Отменить» button of the undo toast: the screen moves focus onto it.
+  const toastAction = useRef<FocusTarget | null>(null);
   const [restoreStep, setRestoreStep] = useState(false);
   const [restoreDate, setRestoreDate] = useState("");
   const [restoreError, setRestoreError] = useState<string | undefined>();
@@ -160,6 +201,17 @@ export default function MyWishlistScreen() {
   const [detail, setDetail] = useState<GiftCard | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const detailReturn = useRef<string | null>(null);
+  // A close from the details hands focus to «Отменить» in the toast, so the closing
+  // layer must not put it back on the card.
+  const [skipDetailFocus, setSkipDetailFocus] = useState(false);
+  // Story 5.2: the owner's release of someone else's reservation. The press runs
+  // the preflight, the answer picks the warning line of the step, the confirm
+  // sends the DELETE and the list is reread.
+  const [releaseStep, setReleaseStep] = useState<{
+    warning: "BOUGHT" | "GIVEN" | null;
+  } | null>(null);
+  const [releaseBusy, setReleaseBusy] = useState(false);
+  const releaseInFlight = useRef(false);
   // The chip that should get focus once the closed dialog has left the tree.
   const pendingFocus = useRef<string | null>(null);
   // The chip behind the confirm step: it owns the focus return while that step is
@@ -176,6 +228,21 @@ export default function MyWishlistScreen() {
   const handledToast = useRef<string | null>(null);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
+  // Story 5.3: the undo window of the card whose ⋯ menu is open. The server owns
+  // the moment (`undoUntil`), the hook only counts the rest of it.
+  const closedMenuWindow = useUndoWindow(
+    cardMenu?.status === "CLOSED" ? cardMenu.undoUntil : null,
+  );
+
+  // The closing toast lands focus on «Отменить» (`DESIGN.md` → «Куда уходит
+  // фокус», пункт «а»). The toast is on screen by the time the effect runs.
+  useEffect(
+    function focusUndoAction() {
+      if (!toast?.focusAction) return;
+      focusInLayer(toastAction.current);
+    },
+    [toast],
+  );
 
   useFocusEffect(
     useCallback(function refreshOnFocus() {
@@ -371,6 +438,8 @@ export default function MyWishlistScreen() {
   function openDetail(gift: GiftCard) {
     detailReturn.current = gift.id;
     setDetail(gift);
+    setReleaseStep(null);
+    setCloseStep(null);
     setDetailOpen(true);
   }
 
@@ -381,7 +450,14 @@ export default function MyWishlistScreen() {
   function detailClosed() {
     const id = detailReturn.current;
     detailReturn.current = null;
+    setReleaseStep(null);
+    setReleaseBusy(false);
+    setCloseStep(null);
+    setCloseBusy(false);
     setDetail(null);
+    const skip = skipDetailFocus;
+    setSkipDetailFocus(false);
+    if (skip) return;
     restoreFocus(id ? cardNodes.current.get(id) : null);
   }
 
@@ -396,6 +472,407 @@ export default function MyWishlistScreen() {
   function loadDetail() {
     if (!detail) return Promise.resolve({ ok: false as const, reason: "unavailable" as const });
     return loadOwnerDetail(detail.id);
+  }
+
+  /**
+   * Story 5.2: the owner presses the coral «Снять бронь». The preflight reads only
+   * the warning (`BOUGHT` | null until Story 5.7), so the step is shown after the
+   * answer, never «наугад»; a failed read reports itself and changes nothing.
+   */
+  async function requestRelease() {
+    if (!detail || releaseInFlight.current) return;
+    releaseInFlight.current = true;
+    const result = await fetchReservationWarning(detail.id);
+    releaseInFlight.current = false;
+    if (result.ok) {
+      setReleaseStep({ warning: result.warning });
+      return;
+    }
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await expireSession();
+      return;
+    }
+    setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+    if (result.code === "NOT_FOUND") setAttempt((value) => value + 1);
+  }
+
+  /** «Отмена», Esc, the cross: back to the details of the same wish, nothing is sent. */
+  function cancelRelease() {
+    if (releaseBusy) return;
+    setReleaseStep(null);
+  }
+
+  /**
+   * The step's coral confirm: one DELETE, then the list is reread (the answer is
+   * only `{ id }`). A lost race is reread, not retried; a broken connection keeps
+   * the step open so the person can try again or cancel.
+   */
+  async function confirmRelease() {
+    if (!detail || releaseInFlight.current) return;
+    releaseInFlight.current = true;
+    setReleaseBusy(true);
+    const result = await releaseReservation(detail.id);
+    releaseInFlight.current = false;
+    setReleaseBusy(false);
+    if (result.ok) {
+      // The step stays on screen while the layer fades out; `detailClosed` clears it.
+      setDetailOpen(false);
+      setAttempt((value) => value + 1);
+      return;
+    }
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    setReleaseStep(null);
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await expireSession();
+      return;
+    }
+    setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+    if (result.code === "CONFLICT" || result.code === "NOT_FOUND") {
+      setAttempt((value) => value + 1);
+    }
+  }
+
+  /**
+   * The step is a plain object (`WishDetailStep`), so Story 5.3 adds its own step
+   * next to this one in the same layer instead of a second dialog.
+   */
+  const releaseStepView: WishDetailStep | null = releaseStep
+    ? {
+        key: "release",
+        title: t("gift.release.title"),
+        body:
+          releaseStep.warning === "BOUGHT"
+            ? t("gift.release.warningBought")
+            : releaseStep.warning === "GIVEN"
+              ? t("gift.release.warningGiven")
+              : undefined,
+        cancelLabel: t("gift.release.cancel"),
+        confirmLabel: t("gift.release.confirm"),
+        destructive: true,
+        busy: releaseBusy,
+        onConfirm: confirmRelease,
+        onCancel: cancelRelease,
+      }
+    : null;
+
+  /** «Подтвердить» of the step: the same one transition as the card's confirm. */
+  async function confirmStepClose() {
+    if (!closeStep || closeBusy) return;
+    await runClose(closeStep);
+  }
+
+  /** «Подарок «Y» получен?»: the step of the details layer (Story 5.3). */
+  const closeStepView: WishDetailStep | null = closeStep
+    ? {
+        key: "close",
+        origin: "received",
+        title: t("gift.close.title", { title: closeStep.title }),
+        body: closeStep.status === "RESERVED" ? t("gift.close.reservedBody") : undefined,
+        cancelLabel: t("gift.close.cancel"),
+        confirmLabel: t("gift.close.confirm"),
+        busy: closeBusy,
+        onConfirm: confirmStepClose,
+        onCancel: cancelCloseStep,
+      }
+    : null;
+
+  /** The one step of the details layer: a release and a close never overlap. */
+  const detailStepView: WishDetailStep | null = closeStepView ?? releaseStepView;
+
+  /**
+   * Story 5.3: one transition `OPEN | RESERVED → CLOSED`, whoever asked — the ⋯
+   * confirm of the card or the step of the details layer. The answer is the
+   * owner's card with `undoUntil`; the list is reread and the undo toast opens
+   * with focus on «Отменить». A broken connection keeps the layer open, so the
+   * person can try again or cancel.
+   */
+  async function runClose(gift: GiftCard) {
+    setCloseBusy(true);
+    const result = await closeGift(gift.id);
+    setCloseBusy(false);
+    if (result.ok) {
+      setCloseConfirm(null);
+      if (detail?.id === gift.id) {
+        // The step stays on screen while the layer fades out; `detailClosed`
+        // clears it, so the details do not flash under the closing step. The card
+        // under the dialog gets its focus back only when the dialog is closed by
+        // the person: here focus belongs to «Отменить» in the toast.
+        setSkipDetailFocus(true);
+        setDetailOpen(false);
+      } else {
+        setCloseStep(null);
+      }
+      setAttempt((value) => value + 1);
+      showClosedToast(gift.id);
+      return;
+    }
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    setCloseConfirm(null);
+    setCloseStep(null);
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await expireSession();
+      return;
+    }
+    setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+    if (result.code === "CONFLICT" || result.code === "NOT_FOUND" || result.code === "VALIDATION") {
+      setAttempt((value) => value + 1);
+    }
+  }
+
+  /** «Отмечено полученным · Отменить»: ten seconds, focus on the action. */
+  function showClosedToast(id: string) {
+    setToast({
+      message: t("gift.toast.closed"),
+      tone: "info",
+      action: {
+        label: t("gift.toast.undo"),
+        onPress: function undoFromToast() {
+          void undoClosed(id);
+        },
+      },
+      durationMs: UNDO_TOAST_MS,
+      focusAction: true,
+    });
+  }
+
+  /**
+   * «Вернуть в открытые» из тоста, ⋯ карточки или подробностей. The server owns
+   * the window: a late undo answers `CONFLICT` with `UNDO_WINDOW_EXPIRED`, so the
+   * person reads «Время на отмену вышло» and the list is reread. A success shows
+   * no second toast: the card simply returns to the active grid.
+   */
+  async function undoClosed(id: string) {
+    const result = await undoGiftClose(id);
+    if (result.ok) {
+      setToast(null);
+      if (detail?.id === id) setDetailOpen(false);
+      setAttempt((value) => value + 1);
+      return;
+    }
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await expireSession();
+      return;
+    }
+    setToast({
+      message:
+        result.reason === "UNDO_WINDOW_EXPIRED"
+          ? common("errors.reason.UNDO_WINDOW_EXPIRED")
+          : mutationErrorMessage(result, common),
+      tone: "error",
+    });
+    setAttempt((value) => value + 1);
+  }
+
+  /** The ⋯ of one card: the menu layer is owned by the screen, like the archive one. */
+  function openCardMenu(gift: GiftCard) {
+    menuReturn.current = gift.id;
+    setCardMenu(gift);
+  }
+
+  function closeCardMenu() {
+    setCardMenu(null);
+  }
+
+  function menuNodeFor(gift: GiftCard) {
+    return function rememberMenuNode(node: ChipNode | null) {
+      menuNodes.current.set(gift.id, node);
+    };
+  }
+
+  /**
+   * The menu has left the tree: focus goes back to its ⋯ and only then the chosen
+   * item runs. A confirm therefore opens over no fading layer.
+   */
+  function cardMenuClosed() {
+    const id = menuReturn.current;
+    menuReturn.current = null;
+    const action = pendingMenuAction.current;
+    pendingMenuAction.current = null;
+    if (id !== null) restoreFocus(menuNodes.current.get(id));
+    if (action) action();
+  }
+
+  /** A pressed item closes the menu first; its work waits for `cardMenuClosed`. */
+  function chooseMenuAction(action: GiftCardMenuAction) {
+    pendingMenuAction.current = action.onPress;
+    setCardMenu(null);
+  }
+
+  function openCloseConfirm(gift: GiftCard) {
+    setCloseConfirm(gift);
+  }
+
+  function cancelCloseConfirm() {
+    if (closeBusy) return;
+    setCloseConfirm(null);
+  }
+
+  function confirmCloseFromCard() {
+    if (!closeConfirm || closeBusy) return;
+    void runClose(closeConfirm);
+  }
+
+  /** «Отметить полученным» in the details: the step asks, in the same layer. */
+  function requestMarkReceived() {
+    if (!detail) return;
+    setCloseStep(detail);
+  }
+
+  function cancelCloseStep() {
+    if (closeBusy) return;
+    setCloseStep(null);
+  }
+
+  /** The undo button of the details layer. */
+  function undoDetailClose() {
+    if (!detail) return;
+    void undoClosed(detail.id);
+  }
+
+  /**
+   * Story 5.3 / FR-32: «Хочу ещё такой» — an ordinary `OPEN` copy through the
+   * existing create route, without `expiresOn` (the copy does not inherit the old
+   * date). One list (AD-6), so there is no chooser; the list is reread.
+   */
+  async function copyClosed(gift: GiftCard) {
+    const tags = tagsFromCard(gift);
+    const result = await createGift({
+      title: gift.title,
+      description: gift.description,
+      linkUrl: gift.linkUrl,
+      priceAmount: gift.priceAmount,
+      priceCurrency: gift.priceCurrency,
+      visibility: gift.visibility,
+      quantity: gift.quantity,
+      ...(tags.length > 0 ? { tags } : {}),
+    });
+    if (result.ok) {
+      setToast({ message: giftForm("toast.created"), tone: "info" });
+      setAttempt((value) => value + 1);
+      return;
+    }
+    if (await handleArchiveSessionLoss(result)) return;
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+  }
+
+  /** The existing `DELETE` deletes a closed wish; the confirm names it. */
+  async function confirmDeleteClosed() {
+    const gift = deleteConfirm;
+    if (!gift || deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setDeleteBusy(true);
+    const result = await deleteGift(gift.id);
+    deleteInFlight.current = false;
+    setDeleteBusy(false);
+    if (result.ok) {
+      setDeleteConfirm(null);
+      setToast({ message: giftForm("toast.deleted"), tone: "info" });
+      setAttempt((value) => value + 1);
+      return;
+    }
+    setDeleteConfirm(null);
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await expireSession();
+      return;
+    }
+    setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+    setAttempt((value) => value + 1);
+  }
+
+  function cancelDeleteClosed() {
+    if (deleteBusy) return;
+    setDeleteConfirm(null);
+  }
+
+  /**
+   * Story 5.3: the items of the ⋯ menu. An active wish can be marked received; a
+   * closed one can be returned (only while the server window is open), copied or
+   * deleted. A viewer never gets this menu.
+   */
+  function cardMenuActionsFor(gift: GiftCard): GiftCardMenuAction[] {
+    if (gift.status !== "CLOSED") {
+      return [
+        {
+          key: "received",
+          label: t("gift.close.menuAction"),
+          onPress: function askClose() {
+            openCloseConfirm(gift);
+          },
+        },
+      ];
+    }
+    const actions: GiftCardMenuAction[] = [];
+    if (closedMenuWindow.open) {
+      actions.push({
+        key: "undo",
+        label: t("gift.closed.undoWithTime", { minutes: closedMenuWindow.minutes }),
+        onPress: function askUndo() {
+          void undoClosed(gift.id);
+        },
+      });
+    }
+    actions.push({
+      key: "copy",
+      label: t("gift.closed.copy"),
+      onPress: function askCopy() {
+        void copyClosed(gift);
+      },
+    });
+    actions.push({
+      key: "delete",
+      label: t("gift.closed.delete"),
+      destructive: true,
+      onPress: function askDelete() {
+        setDeleteConfirm(gift);
+      },
+    });
+    return actions;
   }
 
   async function endSession() {
@@ -719,6 +1196,78 @@ export default function MyWishlistScreen() {
     if (picker) void changeVisibility(picker.gift, next);
   }
 
+  /** The owner's ⋯: a sibling of the card button, so a press never opens the details. */
+  function cardMenuTrigger(gift: GiftCard) {
+    function handlePress() {
+      openCardMenu(gift);
+    }
+
+    return (
+      <Pressable
+        ref={menuNodeFor(gift)}
+        role="button"
+        aria-label={t("gift.closed.menuLabel")}
+        aria-haspopup="dialog"
+        onPress={handlePress}
+        width="$touch-target"
+        height="$touch-target"
+        alignItems="center"
+        justifyContent="center"
+        testID={`wishlist-card-menu-${gift.id}`}
+      >
+        <Text aria-hidden>⋯</Text>
+      </Pressable>
+    );
+  }
+
+  /** One card of the active grid or of «Получено (N)»: both open the details. */
+  function renderGiftCard(gift: GiftCard) {
+    function handlePress() {
+      openDetail(gift);
+    }
+
+    function setCardNode(node: ChipNode | null) {
+      cardNodes.current.set(gift.id, node);
+    }
+
+    function handleVisibilityPress() {
+      openVisibilityPicker(gift);
+    }
+
+    function setChipNode(node: ChipNode | null) {
+      chipNodes.current.set(gift.id, node);
+    }
+
+    return (
+      <WishCard
+        key={gift.id}
+        gift={gift}
+        width={cardWidth}
+        onPress={handlePress}
+        pressRef={setCardNode}
+        onVisibilityPress={handleVisibilityPress}
+        visibilityChipRef={setChipNode}
+        menu={cardMenuTrigger(gift)}
+      />
+    );
+  }
+
+  // Story 5.3: the client splits the one list (AD-6) into active and closed cards;
+  // an archived wish is read from its own key and never reaches «Получено» (the
+  // archive is more important, `DESIGN.md` → Archive section).
+  const activeGifts =
+    state.status === "ready"
+      ? state.gifts.filter(function notClosed(item) {
+          return item.status !== "CLOSED";
+        })
+      : [];
+  const closedGifts =
+    state.status === "ready"
+      ? state.gifts.filter(function onlyClosed(item) {
+          return item.status === "CLOSED" && item.archivedAt === null;
+        })
+      : [];
+
   return (
     <Screen>
       <SafeArea>
@@ -840,40 +1389,26 @@ export default function MyWishlistScreen() {
                         body={wishlist("emptyText")}
                         action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
                       />
-                    ) : (
+                    ) : null}
+                    {activeGifts.length > 0 ? (
                       // Review m5: the grid is a list for assistive tech.
                       <XStack role="list" flexWrap="wrap" gap="$grid-gap">
-                        {state.gifts.map((gift) => {
-                          function handlePress() {
-                            openDetail(gift);
-                          }
-
-                          function setCardNode(node: ChipNode | null) {
-                            cardNodes.current.set(gift.id, node);
-                          }
-
-                          function handleVisibilityPress() {
-                            openVisibilityPicker(gift);
-                          }
-
-                          function setChipNode(node: ChipNode | null) {
-                            chipNodes.current.set(gift.id, node);
-                          }
-
-                          return (
-                            <WishCard
-                              key={gift.id}
-                              gift={gift}
-                              width={cardWidth}
-                              onPress={handlePress}
-                              pressRef={setCardNode}
-                              onVisibilityPress={handleVisibilityPress}
-                              visibilityChipRef={setChipNode}
-                            />
-                          );
-                        })}
+                        {activeGifts.map(renderGiftCard)}
                       </XStack>
-                    )}
+                    ) : null}
+                    {closedGifts.length > 0 ? (
+                      <ClosedSection
+                        label={t("gift.closed.sectionOwner", { count: closedGifts.length })}
+                        expanded={closedExpanded}
+                        onToggle={function toggleClosed() {
+                          setClosedExpanded((open) => !open);
+                        }}
+                        testID="wishlist-closed"
+                        toggleTestID="wishlist-closed-toggle"
+                      >
+                        {closedGifts.map(renderGiftCard)}
+                      </ClosedSection>
+                    ) : null}
                     {(state.archivedTotal ?? state.archived.length) > 0 ? (
                       <ArchiveSection
                         label={wishlist("archiveSection", {
@@ -1041,10 +1576,62 @@ export default function MyWishlistScreen() {
             onClose={closeDetail}
             onClosed={detailClosed}
             onEdit={editDetail}
+            onRelease={requestRelease}
+            onMarkReceived={requestMarkReceived}
+            onUndoClose={undoDetailClose}
+            undoUntil={detail.undoUntil ?? null}
+            step={detailStepView}
           />
         ) : null}
+        {/* Story 5.3: the ⋯ of one card — received, undo, copy or delete. */}
+        <GiftCardMenu
+          open={cardMenu !== null}
+          title={cardMenu?.title ?? ""}
+          actions={cardMenu ? cardMenuActionsFor(cardMenu) : []}
+          closeLabel={t("gift.detail.close")}
+          onClose={closeCardMenu}
+          onClosed={cardMenuClosed}
+          onSelect={chooseMenuAction}
+          testID="wishlist-card-menu"
+        />
+        {/* Closing a wish from the card: ordinary (primary) confirmation. */}
+        <CloseGiftConfirm
+          gift={closeConfirm}
+          busy={closeBusy}
+          onConfirm={confirmCloseFromCard}
+          onCancel={cancelCloseConfirm}
+          onClosed={function closeConfirmClosed() {
+            setCloseBusy(false);
+          }}
+        />
+        {/* Deleting a closed wish: the existing DELETE, coral and irreversible. */}
+        <ConfirmDialog
+          variant="confirm"
+          visible={deleteConfirm !== null}
+          title={
+            deleteConfirm
+              ? giftForm("delete.confirmTitle", { title: deleteConfirm.title })
+              : ""
+          }
+          body={giftForm("delete.confirmBody")}
+          confirmLabel={giftForm("delete.confirm")}
+          cancelLabel={giftForm("delete.cancel")}
+          busy={deleteBusy}
+          onConfirm={confirmDeleteClosed}
+          onCancel={cancelDeleteClosed}
+          onClosed={function deleteConfirmClosed() {
+            setDeleteBusy(false);
+          }}
+        />
         {toast ? (
-          <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
+          <ToastHost
+            message={toast.message}
+            tone={toast.tone}
+            onDismiss={dismissToast}
+            action={toast.action}
+            actionRef={toastAction}
+            durationMs={toast.durationMs}
+          />
         ) : null}
       </SafeArea>
     </Screen>
@@ -1092,48 +1679,41 @@ function ArchiveSection({
   onOpenMenu: (gift: GiftCard) => void;
 }) {
   return (
-    <YStack gap="$2" width="100%" testID="wishlist-archive">
-      <Pressable
-        aria-expanded={expanded}
-        onPress={onToggle}
-        minHeight="$touch-target"
-        justifyContent="center"
-        testID="wishlist-archive-toggle"
-      >
-        <Heading>{label}</Heading>
-      </Pressable>
-      {expanded ? (
-        <XStack role="list" flexWrap="wrap" gap="$grid-gap">
-          {gifts.map(function renderArchived(gift) {
-            function openMenu() {
-              onOpenMenu(gift);
-            }
+    <ClosedSection
+      label={label}
+      expanded={expanded}
+      onToggle={onToggle}
+      testID="wishlist-archive"
+      toggleTestID="wishlist-archive-toggle"
+    >
+      {gifts.map(function renderArchived(gift) {
+        function openMenu() {
+          onOpenMenu(gift);
+        }
 
-            return (
-              <WishCard
-                key={gift.id}
-                gift={gift}
-                width={cardWidth}
-                closed
-                menu={
-                  <Pressable
-                    aria-label={menuLabel}
-                    onPress={openMenu}
-                    width="$touch-target"
-                    height="$touch-target"
-                    alignItems="center"
-                    justifyContent="center"
-                    testID={`wishlist-archive-menu-${gift.id}`}
-                  >
-                    <Text>⋯</Text>
-                  </Pressable>
-                }
-              />
-            );
-          })}
-        </XStack>
-      ) : null}
-    </YStack>
+        return (
+          <WishCard
+            key={gift.id}
+            gift={gift}
+            width={cardWidth}
+            closed
+            menu={
+              <Pressable
+                aria-label={menuLabel}
+                onPress={openMenu}
+                width="$touch-target"
+                height="$touch-target"
+                alignItems="center"
+                justifyContent="center"
+                testID={`wishlist-archive-menu-${gift.id}`}
+              >
+                <Text aria-hidden>⋯</Text>
+              </Pressable>
+            }
+          />
+        );
+      })}
+    </ClosedSection>
   );
 }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
+import { CURRENCIES, QUANTITIES, RESERVATION_LABELS, VISIBILITIES } from "./enums";
 import { textLength } from "./text";
 
 /**
@@ -363,6 +363,19 @@ export const giftReserveBodySchema = z.strictObject({
 });
 
 export type GiftReserveBody = z.infer<typeof giftReserveBodySchema>;
+
+/**
+ * Story 5.2 (FR-31, AD-12): the owner's preflight before releasing someone
+ * else's reservation answers the warning and nothing else — no holder, no due
+ * date, no phase, no `bought`. `GIVEN` is already allowed here so the client and
+ * the contract do not change twice: until Story 5.7 no row carries that phase,
+ * so the server answers `BOUGHT` or `null` only.
+ */
+export const giftReservationWarningSchema = z.strictObject({
+  warning: z.enum(RESERVATION_LABELS).nullable(),
+});
+
+export type GiftReservationWarning = z.infer<typeof giftReservationWarningSchema>;
 
 /**
  * Story 2.6: the owner puts an archived wish back. An absent or empty date

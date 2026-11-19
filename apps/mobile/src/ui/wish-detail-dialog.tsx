@@ -5,11 +5,12 @@ import {
   type DetailViewer,
   type GiftCard,
 } from "@gift-list/contracts";
-import { Button, DetailDialog } from "@gift-list/ui";
+import { Button, DetailDialog, focusInLayer, type FocusTarget } from "@gift-list/ui";
 import { openURL } from "expo-linking";
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useLocale, useTranslations } from "use-intl";
+import { useUndoWindow } from "@/ui/use-undo-window";
 import type { DetailLoadResult } from "@/ui/wish-detail-load";
 
 type View =
@@ -18,6 +19,35 @@ type View =
   | { status: "not_found" }
   | { status: "network" }
   | { status: "unavailable" };
+
+/**
+ * A step inside the details layer (`DESIGN.md` → BottomSheet / Dialog: confirm —
+ * шаг в том же слое, не больше одного слоя). The screen owns the step's data and
+ * its lifecycle; this dialog only swaps the layer's title, body and actions, so a
+ * later story adds its own step as another object instead of a second layer and
+ * without a new branch here.
+ */
+export type WishDetailStep = {
+  /** Stable id, e.g. `release`; a change of the key moves focus into the step. */
+  key: string;
+  title: string;
+  /** The warning line under the title, from the catalog. */
+  body?: string;
+  cancelLabel: string;
+  confirmLabel: string;
+  /** Coral confirm: for removing someone else's data (`DESIGN.md` → Colors → Destructive). */
+  destructive?: boolean;
+  busy?: boolean;
+  /**
+   * Which action of the details opened the step. Leaving the step puts focus back
+   * on that very button: «Отмена» of the close step must not land on the coral
+   * «Снять бронь» (Story 5.2 review note). Defaults to `release`.
+   */
+  origin?: "release" | "received";
+  onConfirm: () => void;
+  /** «Отмена», Esc, the cross: back to the details of the same wish. */
+  onCancel: () => void;
+};
 
 export type WishDetailDialogProps = {
   open: boolean;
@@ -28,14 +58,41 @@ export type WishDetailDialogProps = {
   load?: () => Promise<DetailLoadResult>;
   onClose: () => void;
   onClosed?: () => void;
-  /** Owner only: the existing edit route. */
+  /** Owner only: the existing edit route. A closed wish has no edit (Story 5.3). */
   onEdit?: () => void;
+  /**
+   * Owner only (Story 5.2): asks the screen to run the preflight of a release of
+   * someone else's reservation. The owner's «Снять бронь» is coral, because it
+   * removes another person's action.
+   */
+  onRelease?: () => void;
+  /**
+   * Owner only (Story 5.3): «Отметить полученным» on an `OPEN` or `RESERVED` wish.
+   * The screen owns the confirm: its step comes back through `step`.
+   */
+  onMarkReceived?: () => void;
+  /**
+   * Owner only (Story 5.3): «Вернуть в открытые · ещё N мин» on a closed wish,
+   * shown only while the server's undo window is open.
+   */
+  onUndoClose?: () => void;
+  /**
+   * Story 5.3: the list snapshot's `undoUntil`. The refreshed card wins when it
+   * carries the key, so a reopened layer counts the rest of the window from the
+   * server, never from a timer of its own.
+   */
+  undoUntil?: string | null;
+  /**
+   * The step shown instead of the details (Story 5.2). Absent or `null` shows the
+   * details; the screen sets it once the preflight has answered.
+   */
+  step?: WishDetailStep | null;
 };
 
 /**
  * Подробности пожелания (CLE-84). Поля берёт `toDetailFacts`: владелец не
  * получает блок брони, гость не получает видимость. Сеть — дословный текст
- * `app.form.network`.
+ * `app.form.network`. Шаг подтверждения (Story 5.2) — тот же слой.
  */
 export function WishDetailDialog({
   open,
@@ -45,8 +102,15 @@ export function WishDetailDialog({
   onClose,
   onClosed,
   onEdit,
+  onRelease,
+  onMarkReceived,
+  onUndoClose,
+  undoUntil,
+  step,
 }: WishDetailDialogProps) {
   const tGift = useTranslations("app.gift");
+  const tRelease = useTranslations("app.gift.release");
+  const tClosed = useTranslations("app.gift.closed");
   const tForm = useTranslations("app.form");
   const locale = useLocale();
   const loadRef = useRef(load);
@@ -59,6 +123,35 @@ export function WishDetailDialog({
     setSeenOpen(open);
     if (open && load) setView({ status: "loading" });
   }
+
+  // The step lands on the safe «Отмена»; leaving it puts focus back on the action
+  // that opened it, so the Tab order does not fall to <body> and a close step does
+  // not send focus to the coral release button.
+  const stepKey = step?.key ?? null;
+  const stepCancelRef = useRef<FocusTarget>(null);
+  const releaseRef = useRef<FocusTarget>(null);
+  const receivedRef = useRef<FocusTarget>(null);
+  const previousStep = useRef<WishDetailStep | null>(step ?? null);
+
+  useEffect(
+    function moveFocusForStep() {
+      const previous = previousStep.current;
+      previousStep.current = step ?? null;
+      if (step && previous?.key !== step.key) {
+        focusInLayer(stepCancelRef.current);
+        return;
+      }
+      if (!step && previous) {
+        focusInLayer(
+          (previous.origin === "received" ? receivedRef : releaseRef).current,
+        );
+      }
+    },
+    // The step object is rebuilt on every render of the screen; only its key and
+    // its presence move focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stepKey],
+  );
 
   useEffect(
     function rememberLoad() {
@@ -114,11 +207,63 @@ export function WishDetailDialog({
             : undefined;
   const gift = view.status === "ready" ? view.gift : null;
   const facts = gift ? toDetailFacts(gift, viewer, locale, detailCopy(getMessages(locale))) : [];
+  // Story 5.3: the owner's closed card carries the server moment; the refreshed
+  // card wins. Ten minutes are not repeated here — the hook counts what is left.
+  const undoWindow = useUndoWindow(gift ? (gift.undoUntil ?? undoUntil) : undoUntil);
+
+  const canEdit =
+    viewer === "owner" && gift !== null && onEdit !== undefined && gift.status !== "CLOSED";
+  const canRelease =
+    viewer === "owner" && gift !== null && onRelease !== undefined && gift.status === "RESERVED";
+  const canMarkReceived =
+    viewer === "owner" &&
+    gift !== null &&
+    onMarkReceived !== undefined &&
+    gift.status !== "CLOSED";
+  const canUndoClose =
+    viewer === "owner" &&
+    gift !== null &&
+    onUndoClose !== undefined &&
+    gift.status === "CLOSED" &&
+    undoWindow.open;
 
   function retry() {
     setAttempt(function next(value) {
       return value + 1;
     });
+  }
+
+  if (step) {
+    return (
+      <DetailDialog
+        open={open}
+        title={step.title}
+        notice={step.body}
+        closeLabel={tGift("detail.close")}
+        onClose={step.onCancel}
+        onClosed={onClosed}
+        actions={
+          <>
+            <Button
+              ref={stepCancelRef as never}
+              label={step.cancelLabel}
+              variant="ghost"
+              onPress={step.onCancel}
+              disabled={step.busy}
+            />
+            <Button
+              label={step.confirmLabel}
+              // Closing a wish is not a loss: the screen picks the tone, the step
+              // only turns coral when the caller says so (`destructive`).
+              variant={step.destructive ? "destructive" : "primary"}
+              onPress={step.onConfirm}
+              busy={step.busy}
+            />
+          </>
+        }
+        testID="wish-detail"
+      />
+    );
   }
 
   return (
@@ -143,8 +288,35 @@ export function WishDetailDialog({
       onClose={onClose}
       onClosed={onClosed}
       actions={
-        viewer === "owner" && onEdit && gift ? (
-          <Button label={tGift("detail.edit")} variant="secondary" onPress={onEdit} />
+        canEdit || canRelease || canMarkReceived || canUndoClose ? (
+          <>
+            {canEdit ? (
+              <Button label={tGift("detail.edit")} variant="secondary" onPress={onEdit} />
+            ) : null}
+            {canMarkReceived ? (
+              <Button
+                ref={receivedRef as never}
+                label={tGift("close.menuAction")}
+                variant="secondary"
+                onPress={onMarkReceived}
+              />
+            ) : null}
+            {canRelease ? (
+              <Button
+                ref={releaseRef as never}
+                label={tRelease("confirm")}
+                variant="destructive"
+                onPress={onRelease}
+              />
+            ) : null}
+            {canUndoClose ? (
+              <Button
+                label={tClosed("undoWithTime", { minutes: undoWindow.minutes })}
+                variant="secondary"
+                onPress={onUndoClose}
+              />
+            ) : null}
+          </>
         ) : undefined
       }
       testID="wish-detail"

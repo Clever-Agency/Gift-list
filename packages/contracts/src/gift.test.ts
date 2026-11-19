@@ -6,6 +6,7 @@ import {
   GIFT_TAG_TEXT_MAX,
   GIFT_TITLE_MAX,
   giftInputSchema,
+  giftReservationWarningSchema,
   giftRestoreSchema,
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
@@ -576,6 +577,25 @@ describe("giftVisibilityPreview", () => {
     expect(giftVisibilityPreviewSchema.safeParse({ wouldCancelReservation: true, id: "g1" }).success).toBe(
       false,
     );
+  });
+});
+
+/** Story 5.2 / FR-31: the owner's preflight before releasing a reservation. */
+describe("giftReservationWarning", () => {
+  it.each(["BOUGHT", "GIVEN", null] as const)("accepts the %s warning", (warning) => {
+    expect(giftReservationWarningSchema.parse({ warning })).toEqual({ warning });
+  });
+
+  it("rejects an unknown warning value", () => {
+    expect(giftReservationWarningSchema.safeParse({ warning: "RETURNED" }).success).toBe(false);
+  });
+
+  it("rejects a missing warning and any key the preflight does not answer", () => {
+    expect(giftReservationWarningSchema.safeParse({}).success).toBe(false);
+    expect(giftReservationWarningSchema.safeParse({ warning: "BOUGHT", holderId: "u2" }).success).toBe(
+      false,
+    );
+    expect(giftReservationWarningSchema.safeParse({ warning: "BOUGHT", bought: true }).success).toBe(false);
   });
 });
 

@@ -2,9 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+const { transaction } = vi.hoisted(() => ({ transaction: vi.fn() }));
+
+vi.mock("@/db/client", () => ({ prisma: { $transaction: transaction } }));
+
 import type { Prisma, PrismaClient } from "@/db/generated/client";
 import { RESERVATION_RELEASE_DATA } from "@/domain/gift-status";
-import { giftStatusTransaction, processWishExpiry, restoreFromArchive } from "./gift-status-store";
+import {
+  giftStatusTransaction,
+  processWishExpiry,
+  restoreFromArchive,
+  runGiftStatusTransaction,
+} from "./gift-status-store";
 
 const updateMany = vi.fn();
 const findMany = vi.fn();
@@ -20,8 +29,21 @@ function expiryClient(): PrismaClient {
 beforeEach(() => {
   updateMany.mockReset();
   findMany.mockReset();
+  transaction.mockReset();
   updateMany.mockResolvedValue({ count: 1 });
 });
+
+/** NFR-6: one audit line per successful transition, none on a lost CAS. */
+function expectOneAuditLine(
+  calls: readonly (readonly unknown[])[],
+  expected: Record<string, string>,
+) {
+  expect(calls).toHaveLength(1);
+  const line = calls[0]?.[0];
+  expect(typeof line).toBe("string");
+  const parsed = JSON.parse(String(line)) as Record<string, unknown>;
+  expect(parsed).toEqual(expected);
+}
 
 describe("giftStatusTransaction.releaseReservation", () => {
   it("writes status OPEN and clears the reservation columns of a RESERVED row through one CAS write", async () => {
@@ -79,6 +101,273 @@ describe("giftStatusTransaction.releaseReservation", () => {
 
     expect(released).toBe(false);
     expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the Story 5.2 releases", () => {
+  it("lets the holder release with the holder predicate and logs one audit line", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const at = new Date("2026-11-19T10:00:00.000Z");
+
+    const outcome = await giftStatusTransaction(transactionClient()).releaseReservationByHolder(
+      "g1",
+      "u2",
+      at,
+    );
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "g1", status: "RESERVED", reservedById: "u2" },
+      data: RESERVATION_RELEASE_DATA,
+    });
+    // The audit line carries ids and the transition only — no names, nicks or emails (FR-31).
+    expectOneAuditLine(info.mock.calls, {
+      event: "gift.status",
+      giftId: "g1",
+      actorId: "u2",
+      from: "RESERVED",
+      to: "OPEN",
+      at: "2026-11-19T10:00:00.000Z",
+    });
+    info.mockRestore();
+  });
+
+  it("lets the owner release with the ownership predicate and logs one audit line", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const at = new Date("2026-11-19T11:30:00.000Z");
+
+    const outcome = await giftStatusTransaction(transactionClient()).releaseReservationByOwner(
+      "g1",
+      "u1",
+      at,
+    );
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "g1", status: "RESERVED", list: { ownerId: "u1" } },
+      data: RESERVATION_RELEASE_DATA,
+    });
+    expectOneAuditLine(info.mock.calls, {
+      event: "gift.status",
+      giftId: "g1",
+      actorId: "u1",
+      from: "RESERVED",
+      to: "OPEN",
+      at: "2026-11-19T11:30:00.000Z",
+    });
+    info.mockRestore();
+  });
+
+  it.each(["releaseReservationByHolder", "releaseReservationByOwner"] as const)(
+    "writes and logs nothing when %s loses the CAS",
+    async (method) => {
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+      updateMany.mockResolvedValue({ count: 0 });
+
+      const outcome = await giftStatusTransaction(transactionClient())[method](
+        "g1",
+        "u2",
+        new Date("2026-11-19T10:00:00.000Z"),
+      );
+
+      expect(outcome).toBe("lost");
+      expect(updateMany).toHaveBeenCalledTimes(1);
+      expect(info).not.toHaveBeenCalled();
+      info.mockRestore();
+    },
+  );
+
+  it("counts a CAS that touched two rows as lost and keeps the log silent", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    updateMany.mockResolvedValue({ count: 2 });
+
+    const outcome = await giftStatusTransaction(transactionClient()).releaseReservationByHolder(
+      "g1",
+      "u2",
+      new Date("2026-11-19T10:00:00.000Z"),
+    );
+
+    expect(outcome).toBe("lost");
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+});
+
+describe("the Story 5.3 close and undo", () => {
+  const at = new Date("2026-11-19T12:00:00.000Z");
+  const WINDOW_MS = 10 * 60 * 1000;
+
+  it.each(["OPEN", "RESERVED"] as const)(
+    "closes a %s wish of the owner with one CAS and one audit line",
+    async (from) => {
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+      const outcome = await giftStatusTransaction(transactionClient()).closeGift(
+        "g1",
+        "u1",
+        from,
+        at,
+      );
+
+      expect(outcome).toBe("success");
+      expect(updateMany).toHaveBeenCalledWith({
+        where: {
+          id: "g1",
+          status: from,
+          archivedAt: null,
+          list: { ownerId: "u1" },
+        },
+        data: { status: "CLOSED", closedAt: at, closedFromStatus: from },
+      });
+      expectOneAuditLine(info.mock.calls, {
+        event: "gift.status",
+        giftId: "g1",
+        actorId: "u1",
+        from,
+        to: "CLOSED",
+        at: "2026-11-19T12:00:00.000Z",
+      });
+      info.mockRestore();
+    },
+  );
+
+  it("never rewrites reserved, quantity or visibility columns when closing", async () => {
+    await giftStatusTransaction(transactionClient()).closeGift("g1", "u1", "RESERVED", at);
+
+    const { data } = updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(Object.keys(data).sort()).toEqual(["closedAt", "closedFromStatus", "status"]);
+    expect(data).not.toHaveProperty("reservedById");
+    expect(data).not.toHaveProperty("quantity");
+    expect(data).not.toHaveProperty("visibility");
+  });
+
+  it.each([0, 2])("writes and logs nothing when the close CAS touches %i rows", async (count) => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    updateMany.mockResolvedValue({ count });
+
+    const outcome = await giftStatusTransaction(transactionClient()).closeGift(
+      "g1",
+      "u1",
+      "OPEN",
+      at,
+    );
+
+    expect(outcome).toBe("lost");
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("restores the origin status and clears the closure columns on undo", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const closedAt = new Date("2026-11-19T11:55:00.000Z");
+
+    const outcome = await giftStatusTransaction(transactionClient()).undoClose(
+      "g1",
+      "u1",
+      { closedAt, closedFromStatus: "RESERVED" },
+      at,
+    );
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "g1",
+        status: "CLOSED",
+        closedAt: { equals: closedAt, gt: new Date(at.getTime() - WINDOW_MS) },
+        closedFromStatus: "RESERVED",
+        list: { ownerId: "u1" },
+      },
+      data: { status: "RESERVED", closedAt: null, closedFromStatus: null },
+    });
+    expectOneAuditLine(info.mock.calls, {
+      event: "gift.status",
+      giftId: "g1",
+      actorId: "u1",
+      from: "CLOSED",
+      to: "RESERVED",
+      at: "2026-11-19T12:00:00.000Z",
+    });
+    info.mockRestore();
+  });
+
+  it("answers lost and logs nothing when the undo CAS touches no row", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    updateMany.mockResolvedValue({ count: 0 });
+
+    const outcome = await giftStatusTransaction(transactionClient()).undoClose(
+      "g1",
+      "u1",
+      { closedAt: new Date("2026-11-19T11:55:00.000Z"), closedFromStatus: "OPEN" },
+      at,
+    );
+
+    expect(outcome).toBe("lost");
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+});
+
+describe("runGiftStatusTransaction", () => {
+  const at = new Date("2026-11-19T12:00:00.000Z");
+
+  it("reports the transition only after the transaction committed", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    transaction.mockImplementation(async function commit(run) {
+      const outcome = await run(transactionClient());
+      // The line is still absent while the transaction has not returned.
+      expect(info).not.toHaveBeenCalled();
+      return outcome;
+    });
+
+    const outcome = await runGiftStatusTransaction(function close(service) {
+      return service.closeGift("g1", "u1", "OPEN", at);
+    });
+
+    expect(outcome).toBe("success");
+    expectOneAuditLine(info.mock.calls, {
+      event: "gift.status",
+      giftId: "g1",
+      actorId: "u1",
+      from: "OPEN",
+      to: "CLOSED",
+      at: "2026-11-19T12:00:00.000Z",
+    });
+    info.mockRestore();
+  });
+
+  it("writes no audit line when the transaction rolls back after the CAS", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    transaction.mockImplementation(async function rollback(run) {
+      await run(transactionClient());
+      throw new Error("rollback");
+    });
+
+    await expect(
+      runGiftStatusTransaction(function close(service) {
+        return service.closeGift("g1", "u1", "RESERVED", at);
+      }),
+    ).rejects.toThrow("rollback");
+
+    // The CAS did run and matched a row, but the transaction never committed.
+    expect(updateMany).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("does not report a lost CAS", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    updateMany.mockResolvedValue({ count: 0 });
+    transaction.mockImplementation(async function commit(run) {
+      return run(transactionClient());
+    });
+
+    const outcome = await runGiftStatusTransaction(function release(service) {
+      return service.releaseReservationByHolder("g1", "u2", at);
+    });
+
+    expect(outcome).toBe("lost");
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
   });
 });
 

@@ -66,6 +66,12 @@ export const ERROR_REASONS = [
    */
   "RESERVATION_TAKEN",
   /**
+   * An undo request arrived after `UNDO_WINDOW` (10 min, D-43, ARCH-A5) had
+   * already closed. Always rides with `code: "CONFLICT"`; the client shows
+   * «Время на отмену вышло» and keeps the card closed.
+   */
+  "UNDO_WINDOW_EXPIRED",
+  /**
    * A registration or reset password is shorter than `PASSWORD_MIN` (UTF-16).
    * Always rides with `code: "VALIDATION"` and `field: "password"`.
    */
@@ -222,6 +228,13 @@ export const giftCardSchema = z.strictObject({
       holderVisibleToOthers: z.boolean(),
     })
     .optional(),
+  /**
+   * Story 5.3 (ARCH-A5): the owner's closed card carries the moment its undo
+   * window ends (`closedAt + UNDO_WINDOW`, ISO), even when it is already past; it
+   * is `null` for every other status. The key is absent on a viewer card, so a
+   * shared schema stays closed and nothing owner-only reaches a stranger.
+   */
+  undoUntil: z.string().nullable().optional(),
 });
 
 export type GiftCard = z.infer<typeof giftCardSchema>;
@@ -438,6 +451,7 @@ export {
   GIFT_TITLE_MAX,
   giftInputSchema,
   isCalendarDay,
+  giftReservationWarningSchema,
   giftReserveBodySchema,
   giftRestoreSchema,
   giftTagInputSchema,
@@ -446,6 +460,7 @@ export {
   giftVisibilityPreviewSchema,
   type GiftInput,
   type GiftInputDraft,
+  type GiftReservationWarning,
   type GiftReserveBody,
   type GiftRestore,
   type GiftTagInput,

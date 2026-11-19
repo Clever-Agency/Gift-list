@@ -113,6 +113,7 @@ describe("GET /api/v1/me/gifts", () => {
             reservedBy: null,
             reservationLabel: null,
             ownerAction: null,
+            undoUntil: null,
           },
         ],
         archived: [],

@@ -710,7 +710,7 @@ describe("W12.21: вишлист по ссылке на медиа-пропса�
     expect(source).not.toMatch(/\bpageGutter\b/);
   });
 
-  it("экран отрисован: имя владельца, сетка из четырёх желаний, тег и подвал", async () => {
+  it("экран отрисован: имя владельца, сетка из трёх желаний, «Уже подарено» и подвал", async () => {
     await mountAt(1024);
 
     expect(container.querySelector('[data-testid="public-wishlist-page"]')).not.toBeNull();
@@ -720,7 +720,9 @@ describe("W12.21: вишлист по ссылке на медиа-пропса�
     expect(container.querySelector('[role="heading"][aria-level="1"]')?.textContent).toBe(
       "Аня",
     );
-    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(4);
+    // Story 5.3: the closed wish is in «Уже подарено», not in the active grid.
+    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(3);
+    expect(text()).toContain("Уже подарено");
     expect(text()).toContain("мечта");
     expect(text()).toContain("на день рождения");
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
@@ -783,5 +785,61 @@ describe("W12.21: вишлист по ссылке на медиа-пропса�
         expect(row).toBeLessThanOrEqual(Math.min(width, spacing["max-wide"]) + 1e-6);
       },
     );
+  });
+});
+
+/**
+ * Story 5.3 (SECTION_VIEWER): закрытые желания зрителя лежат в свёрнутой секции
+ * «Уже подарено» без действий. Сервер уже отфильтровал видимость, поэтому экран
+ * только раскладывает карточки по двум секциям.
+ */
+describe("вишлист по ссылке: закрытые желания", () => {
+  const closed = gift({
+    id: "g-closed",
+    title: "Свитер",
+    status: "CLOSED",
+    undoUntil: null,
+  });
+
+  it("«Уже подарено» свёрнута: карточка закрытого не в дереве, сетка активных на месте", async () => {
+    respond(giftsAnswer([gift(), closed]));
+    await mount();
+
+    expect(text()).toContain("Уже подарено");
+    expect(container.querySelector('[data-testid="wishlist-closed-toggle"]')?.getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(1);
+    expect(text()).not.toContain("Свитер");
+  });
+
+  it("раскрытая секция показывает закрытое желание без действий", async () => {
+    respond(giftsAnswer([gift(), closed]));
+    await mount();
+
+    await press("Уже подарено");
+
+    const section = container.querySelector('[data-testid="wishlist-closed"]');
+    expect(section).not.toBeNull();
+    expect(section?.textContent).toContain("Свитер");
+    expect(container.querySelector('[data-testid="wishlist-closed-toggle"]')?.getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+
+    // No owner's ⋯ and none of its items: the viewer only reads the card.
+    expect(section?.querySelector('[aria-haspopup="dialog"]')).toBeNull();
+    expect(text()).not.toContain("Хочу ещё такой");
+    expect(text()).not.toContain("Отметить полученным");
+    expect(text()).not.toContain("Вернуть в открытые");
+  });
+
+  it("одни закрытые желания: списка активных нет, секция и заголовок владельца на месте", async () => {
+    respond(giftsAnswer([closed]));
+    await mount();
+
+    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(0);
+    expect(text()).toContain("Уже подарено");
+    expect(text()).not.toContain("Пока нет открытых желаний");
+    expect(dialogElement()).toBeNull();
   });
 });

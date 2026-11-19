@@ -41,8 +41,11 @@ export const notFound = {
  * the reason lets the client show «Архивное желание можно только просматривать».
  * A foreign archived wish still answers NOT_FOUND, so this never confirms that
  * somebody else's wish exists (AD-7).
+ *
+ * Exported for the Story 5.3 close use-case: closing an archived wish is refused
+ * with the same reason, so both writes answer one body.
  */
-const archivedValidation = {
+export const archivedValidation = {
   ok: false as const,
   code: "VALIDATION" as const,
   message: "Invalid input",
@@ -95,6 +98,8 @@ export const ownerGiftSelect = {
   status: true,
   reservationPhase: true,
   holderVisibleToOwner: true,
+  // Story 5.3: read only to compute the owner's `undoUntil`.
+  closedAt: true,
   reservedBy: { select: { id: true, nick: true, name: true } },
   // Story 2.5/AD-22: only what the card shows. `slug` is fetched for the card's
   // deterministic display order (2.5.7); it never reaches the client.
@@ -742,13 +747,13 @@ export async function previewGiftVisibility(
 }
 
 /**
- * Story 2.3 (FR-10): the owner deletes an `OPEN` wish of their own list. The
- * delete's `where` carries ownership, "not archived" and the status (AD-6, AD-8),
- * so a foreign or archived id removes nothing. A wish that still exists after
- * the delete is reserved or closed: this use-case only deletes `OPEN` ones —
- * `RESERVED` is Story 5.4 and `CLOSED` is removed from "Received" (Story 2.6).
- * Everything that matches nothing answers the same NOT_FOUND, so a foreign id
- * never reveals that it exists (AD-7).
+ * Story 2.3 (FR-10), Story 5.3 (FR-32): the owner deletes a wish of their own
+ * list that is still deletable here — `OPEN` or `CLOSED` (a received wish can be
+ * removed from the list). The delete's `where` carries ownership, "not archived"
+ * and the status (AD-6, AD-8), so a foreign or archived id removes nothing and
+ * answers one and the same NOT_FOUND, so a foreign id never reveals that it
+ * exists (AD-7). A wish that still exists after the delete is `RESERVED`, which
+ * this use-case leaves to Story 5.4 and answers CONFLICT.
  */
 export async function deleteGift(
   headers: Headers,
@@ -761,13 +766,13 @@ export async function deleteGift(
     where: {
       id: giftId,
       archivedAt: null,
-      status: "OPEN",
+      status: { in: ["OPEN", "CLOSED"] },
       list: { ownerId: session.user.id },
     },
   });
   if (count === 1) return { ok: true, data: { id: giftId } };
 
-  // Still there and owned: reserved or closed, which this use-case does not delete.
+  // Still there and owned: reserved, which this use-case does not delete.
   const existing = await prisma.gift.findFirst({
     where: { id: giftId, archivedAt: null, list: { ownerId: session.user.id } },
     select: { status: true },
@@ -776,7 +781,7 @@ export async function deleteGift(
     return {
       ok: false,
       code: "CONFLICT",
-      message: "Only an open wish can be deleted here",
+      message: "Only an open or closed wish can be deleted here",
     };
   }
 

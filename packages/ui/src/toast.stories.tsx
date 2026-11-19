@@ -131,6 +131,31 @@ function focusAction({ canvasElement }: { canvasElement: HTMLElement }) {
   action?.focus();
 }
 
+/**
+ * The undo toast of a closed wish (Story 5.3): «Отмечено полученным · Отменить».
+ * `Toast` only draws it — the 10 s countdown lives in `ToastHost`, which pauses it on
+ * hover and on the focus a person sets (`onFocusChange` names the control, so a host
+ * can tell the screen's own focus move from a Tab or a click). `actionRef` gives the
+ * screen the action button, so focus can land on «Отменить» right after closing
+ * (`DESIGN.md` → «Куда уходит фокус», пункт «а»).
+ */
+export const ClosedUndo: Story = {
+  args: {
+    tone: "success",
+    message: "Отмечено полученным",
+    action: { label: "Отменить", onPress: noop },
+  },
+  render: function ClosedUndoStory(args) {
+    return (
+      <PhoneFrame>
+        <Toast {...args} onClose={noop} />
+      </PhoneFrame>
+    );
+  },
+  play: focusAction,
+  globals: { viewport: { value: "w360" } },
+};
+
 /** The action is running: a spinner instead of the icon, the card is announced busy. */
 export const LoadingAction: Story = {
   args: { tone: "info", message: "Сохраняем изменения", loading: true },

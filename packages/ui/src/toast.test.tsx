@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Toast } from "./toast";
 import { createMount, settle, stateValues } from "./test-utils";
@@ -201,5 +202,41 @@ describe("Toast: варианты", () => {
     // The cross is a picture: the name comes from the label, not from the glyph.
     expect(close?.querySelector("svg")).not.toBeNull();
     expect((close?.textContent ?? "").trim()).toBe("");
+  });
+});
+
+describe("Toast: ссылка на кнопку действия", () => {
+  it("actionRef указывает на кнопку действия и переводит на неё фокус", async () => {
+    const actionRef = { current: null as object | null };
+    const { render } = mounted();
+    await render(
+      <Toast
+        testID="toast"
+        tone="success"
+        message="Отмечено полученным"
+        action={{ label: "Отменить", onPress: noop }}
+        actionRef={actionRef}
+        closeLabel="Закрыть"
+        onClose={noop}
+      />,
+    );
+
+    const action = document.querySelector<HTMLElement>("[aria-label='Отменить']");
+    expect(actionRef.current).toBe(action);
+    // The screen moves focus there itself: the ref is a focusable control.
+    act(() => {
+      (actionRef.current as HTMLElement).focus();
+    });
+    expect(document.activeElement).toBe(action);
+  });
+
+  it("без действия ссылка остаётся пустой", async () => {
+    const actionRef = { current: null as object | null };
+    const { render } = mounted();
+    await render(
+      <Toast testID="toast" message="Сохранено" actionRef={actionRef} closeLabel="Закрыть" onClose={noop} />,
+    );
+
+    expect(actionRef.current).toBeNull();
   });
 });

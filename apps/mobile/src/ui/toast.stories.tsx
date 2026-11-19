@@ -7,7 +7,9 @@ import { ToastHost } from "./toast";
  * The app's toast host: one toast at a time, an error announced assertively and
  * kept until dismissed, an info toast hidden after `max(3000 мс, 60 мс × символ)`
  * (`DESIGN.md` → Toast, DECISION 2026-11-10). The countdown pauses while the toast
- * is hovered or one of its buttons has focus.
+ * is hovered or one of its buttons has focus. A screen that knows the life of one
+ * toast itself passes `durationMs` (the undo toast of a closed wish lives 10 s) and
+ * `actionRef` to move focus onto its action.
  *
  * The host calls `onDismiss` when the time is up; a screen unmounts it there. The
  * stories keep the toast mounted (dismiss does nothing) so the state stays visible.
@@ -87,6 +89,31 @@ function focusUndo({ canvasElement }: { canvasElement: HTMLElement }) {
   const action = canvasElement.querySelector<HTMLElement>("[aria-label='Отменить']");
   action?.focus();
 }
+
+/**
+ * The undo toast of a closed wish (Story 5.3): «Отмечено полученным · Отменить».
+ * The screen passes `durationMs` — `DESIGN.md` gives the undo toast 10 s whatever the
+ * message length — and `actionRef`, so focus lands on «Отменить» right after the wish
+ * is closed (`DESIGN.md` → «Куда уходит фокус», пункт «а»). Hover and focus pause the
+ * countdown, and with a screen reader on the toast is not hidden by itself.
+ */
+export const ClosedUndo: Story = {
+  args: {
+    tone: "success",
+    message: "Отмечено полученным",
+    action: { label: "Отменить", onPress: noop },
+    durationMs: 10_000,
+  },
+  render: function ClosedUndoStory(args) {
+    return (
+      <PhoneFrame>
+        <ToastHost {...args} />
+      </PhoneFrame>
+    );
+  },
+  play: focusUndo,
+  globals: { viewport: { value: "w360" } },
+};
 
 /** A sticky bottom control lifts the toast above itself. */
 export const AboveStickyButton: Story = {

@@ -55,6 +55,8 @@ type HostProps = {
   tone?: "info" | "error";
   persistent?: boolean;
   action?: { label: string; onPress: () => void };
+  actionRef?: { current: object | null };
+  durationMs?: number;
 };
 
 const onDismiss = vi.fn();
@@ -352,6 +354,100 @@ describe("ToastHost: действие и диктор", () => {
       toast.dispatchEvent(new Event("pointerout", { bubbles: true }));
     });
     advance(1999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ToastHost: undo-тост закрытия желания", () => {
+  const CLOSED_TOAST = {
+    message: "Отмечено полученным",
+    tone: "info" as const,
+    action: { label: ACTION, onPress: () => {} },
+    durationMs: 10_000,
+  };
+
+  it("живёт 10 секунд, а не по формуле текста", async () => {
+    // Формула дала бы 3 с: короткое сообщение упирается в нижний порог.
+    expect(toastDurationMs(CLOSED_TOAST.message)).toBe(TOAST_MIN_MS);
+
+    await render(CLOSED_TOAST);
+    advance(9_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("пауза на hover и фокус отсчитывается от полных 10 с", async () => {
+    await render(CLOSED_TOAST);
+    advance(5_000);
+
+    const toast = element('[role="status"]');
+    act(() => {
+      toast.dispatchEvent(new Event("pointerover", { bubbles: true }));
+    });
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    act(() => {
+      toast.dispatchEvent(new Event("pointerout", { bubbles: true }));
+    });
+    // Осталось 5 с: сначала дедлайн не наступает, потом наступает.
+    advance(4_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("фокус на «Отменить» держит тост, blur продолжает отсчёт", async () => {
+    await render(CLOSED_TOAST);
+    advance(2_000);
+
+    const action = buttonByName(ACTION);
+    expect(action).not.toBeNull();
+    focus(action as HTMLElement);
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    blur(action as HTMLElement);
+    advance(7_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("actionRef — это кнопка «Отменить», на неё можно перевести фокус", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ ...CLOSED_TOAST, actionRef });
+
+    const action = buttonByName(ACTION);
+    expect(action).not.toBeNull();
+    expect(actionRef.current).toBe(action);
+    // Экран переводит фокус сам: ссылка — на фокусируемую кнопку.
+    act(() => {
+      (actionRef.current as HTMLElement).focus();
+    });
+    expect(document.activeElement).toBe(action);
+  });
+
+  it("без действия ссылка остаётся пустой", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ message: "Сохранено", tone: "info", actionRef });
+
+    expect(actionRef.current).toBeNull();
+  });
+
+  it("новая durationMs перезапускает отсчёт", async () => {
+    await render({ message: "Отмечено полученным", tone: "info", durationMs: 3_000 });
+    advance(1_000);
+
+    await render({ message: "Отмечено полученным", tone: "info", durationMs: 10_000 });
+    advance(9_999);
     expect(onDismiss).not.toHaveBeenCalled();
 
     advance(1);

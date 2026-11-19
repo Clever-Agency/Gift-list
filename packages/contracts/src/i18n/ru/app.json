@@ -371,6 +371,9 @@
     },
     "extend": "Продлить до…",
     "extendCaption": "Не позже {max}",
+    "extendDateLabel": "Новая дата",
+    "extendConfirm": "Подтвердить",
+    "extendCancel": "Отмена",
     "release": "Снять бронь"
   },
   "toast": {

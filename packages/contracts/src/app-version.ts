@@ -136,8 +136,8 @@ export function appVersionStatus(
 /**
  * Validates the packed-in policy and throws `ZodError` when it is invalid: the
  * constants are ours, so a broken one is a deploy-time programming error, not a
- * user-facing `NOT_FOUND`. The server action parses `APP_VERSION_POLICY` once
- * so a typo cannot leak into a 200 answer.
+ * user-facing `NOT_FOUND`. The server action parses `APP_VERSION_POLICY` on every
+ * call so a typo cannot leak into a 200 answer.
  */
 export function parseAppVersionPolicy(value: unknown): AppVersionData {
   return appVersionDataSchema.parse(value);
@@ -147,8 +147,14 @@ export function parseAppVersionPolicy(value: unknown): AppVersionData {
  * Default policy for both platforms: nobody is asked to update and no store
  * link exists until a listing is published. Raising either number before then
  * would show a dead end, so the defaults stay at the current build.
+ *
+ * Deliberately a plain constant, not `parseAppVersionPolicy({...})`: the module
+ * is imported by the mobile client too, so a typo must not throw while the
+ * contracts package loads — that would break the whole app at start instead of
+ * failing open. Validity is pinned by `app-version.test.ts`, and the server
+ * parses the constant on every call (`getAppVersionPolicy`).
  */
-export const APP_VERSION_POLICY: AppVersionData = parseAppVersionPolicy({
+export const APP_VERSION_POLICY = {
   android: {
     latestVersion: DEFAULT_APP_VERSION,
     minSupportedVersion: DEFAULT_APP_VERSION,
@@ -159,4 +165,4 @@ export const APP_VERSION_POLICY: AppVersionData = parseAppVersionPolicy({
     minSupportedVersion: DEFAULT_APP_VERSION,
     storeUrl: null,
   },
-});
+} satisfies AppVersionData;

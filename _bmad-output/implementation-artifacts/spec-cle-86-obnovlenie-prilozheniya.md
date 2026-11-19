@@ -121,6 +121,14 @@ export const APP_VERSION_POLICY: AppVersionData;
 export function parseAppVersionPolicy(value: unknown): AppVersionData;
 ```
 
+> Примечание (R1, 2026-11-20, CLE-86). `APP_VERSION_POLICY` — обычная константа
+> (`satisfies AppVersionData`), без вызова парсера при импорте пакета: контракты
+> импортирует и мобильное приложение, поэтому опечатка в константах не должна
+> бросать исключение при загрузке всего пакета и ронять старт приложения.
+> Валидность держат тест `parseAppVersionPolicy(APP_VERSION_POLICY)` в
+> `app-version.test.ts` и проверка в `getAppVersionPolicy` на сервере (исключение →
+> 500 на маршруте).
+
 Схемы ответа — `z.object`, **не** `z.strictObject`: лишнее поле, добавленное сервером позже, не должно молча выключать проверку у старых сборок. Это осознанное отличие от схем карточек и тел запросов, чтобы fail open не срабатывал на расширение ответа.
 
 Ответ `GET /api/v1/app-version` (200, без входа, без БД, `Cache-Control: private, no-store`):

@@ -289,6 +289,16 @@ describe("APP_VERSION_POLICY", () => {
       );
     }
   });
+
+  /**
+   * R1 (CLE-86): the constant is not built by the parser at import, because the
+   * module also loads in the mobile app and a typo there must not break the start
+   * of the whole package. This test is the guard: it fails as soon as the
+   * shipped constants stop satisfying the schema.
+   */
+  it("is accepted by parseAppVersionPolicy", () => {
+    expect(parseAppVersionPolicy(APP_VERSION_POLICY)).toEqual(APP_VERSION_POLICY);
+  });
 });
 
 describe("parseAppVersionPolicy", () => {

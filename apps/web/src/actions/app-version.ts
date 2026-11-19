@@ -16,11 +16,11 @@ import {
  * variable and no app rebuild. The endpoint is public because the check runs
  * before (and independently of) sign-in.
  *
- * `parseAppVersionPolicy` runs on every call even though the constant was
- * validated at import: a typo in the constants is a programming error, so this
- * function throws instead of answering `NOT_FOUND`, and the route maps the
- * throw to a bare 500. The client treats a non-envelope body as a network
- * failure and fails open, which is the sanctioned behavior for CLE-86.
+ * `parseAppVersionPolicy` runs on every call: a typo in the constants is a
+ * programming error, so this function throws instead of answering `NOT_FOUND`,
+ * and the route maps the throw to a bare 500. The constant itself is a plain
+ * object (the mobile client imports the same package), so the parser runs here,
+ * not at import, and a broken constant never prevents the apps from starting.
  */
 export async function getAppVersionPolicy(): Promise<ActionResult<AppVersionData>> {
   return { ok: true, data: parseAppVersionPolicy(APP_VERSION_POLICY) };

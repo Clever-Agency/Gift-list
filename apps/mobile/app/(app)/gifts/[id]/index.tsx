@@ -86,6 +86,10 @@ export default function GiftDetailScreen() {
   // guard as the reserve and the release.
   const [actionBusy, setActionBusy] = useState(false);
   const actionInFlight = useRef(false);
+  // R1 (CLE-119): the release of Story 5.2 and the holder's actions of Story 5.5
+  // are one queue — while any of them is in flight, the rest are blocked and a
+  // second request does not leave the screen.
+  const holderBusy = actionBusy || releaseBusy;
   const [visibilityOpen, setVisibilityOpen] = useState(false);
   const [extendOpen, setExtendOpen] = useState(false);
   const [extendError, setExtendError] = useState<string | null>(null);
@@ -209,7 +213,7 @@ export default function GiftDetailScreen() {
    * instead of guessed; the network keeps the card as it was (DECISION 2026-11-18).
    */
   async function submitRelease() {
-    if (!id || !current || releaseInFlight.current) return;
+    if (!id || !current || releaseInFlight.current || actionInFlight.current) return;
     releaseInFlight.current = true;
     setReleaseBusy(true);
     const result = await releaseMyReservation(id);
@@ -265,7 +269,7 @@ export default function GiftDetailScreen() {
 
   /** One holder action at a time; a second tap while the answer is missing sends nothing. */
   async function requestAction(body: ReservationActionBody): Promise<ReservationUpdateResult | null> {
-    if (!id || actionInFlight.current) return null;
+    if (!id || actionInFlight.current || releaseInFlight.current) return null;
     actionInFlight.current = true;
     setActionBusy(true);
     setToast(null);
@@ -333,7 +337,7 @@ export default function GiftDetailScreen() {
   }
 
   function cancelExtend() {
-    if (actionBusy) return;
+    if (holderBusy) return;
     setExtendOpen(false);
     setExtendError(null);
   }
@@ -443,7 +447,7 @@ export default function GiftDetailScreen() {
                       <Switch
                         label={tReservations("bought")}
                         checked={current.reservation.bought}
-                        disabled={actionBusy}
+                        disabled={holderBusy}
                         onChange={function changeBought(value) {
                           void submitBought(value);
                         }}
@@ -456,7 +460,7 @@ export default function GiftDetailScreen() {
                           label={tReservations("extend")}
                           variant="outline"
                           onPress={openExtend}
-                          disabled={actionBusy}
+                          disabled={holderBusy}
                           testID="gift-extend"
                         />
                       )}
@@ -467,7 +471,7 @@ export default function GiftDetailScreen() {
                           holderVisibleToOwner: current.reservation.holderVisibleToOwner,
                           holderVisibleToOthers: current.reservation.holderVisibleToOthers,
                         }}
-                        busy={actionBusy}
+                        busy={holderBusy}
                         onChange={function changeVisibility(next) {
                           void submitVisibility(next);
                         }}
@@ -488,6 +492,7 @@ export default function GiftDetailScreen() {
                     <Button
                       label={tGift("release.confirm")}
                       variant="secondary"
+                      disabled={holderBusy}
                       onPress={function openReleaseConfirm() {
                         setReleaseConfirmOpen(true);
                       }}

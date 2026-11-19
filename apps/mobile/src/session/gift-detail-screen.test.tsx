@@ -559,3 +559,72 @@ describe("деталь желания: действия держателя", () 
     expect(text()).toContain("Куплено");
   });
 });
+
+/**
+ * R1 (CLE-119): снятие брони (5.2) и действия держателя (5.5) — одна очередь
+ * запросов. Пока летит любое из них, остальные кнопки неактивны и второй запрос
+ * не уходит: иначе два PATCH/DELETE гоняются за одну и ту же бронь.
+ */
+describe("деталь желания: одно действие за раз", () => {
+  /** The session and the wish answer at once, every other request stays in flight. */
+  function respondPending() {
+    let answer: (value: unknown) => void = function noop() {};
+    api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
+        return Promise.resolve({ ok: true, data: gift() });
+      }
+      return new Promise((resolve) => {
+        answer = resolve;
+      });
+    });
+    return function resolvePending(value: unknown) {
+      answer(value);
+    };
+  }
+
+  it("пока летит действие держателя, «Снять бронь» неактивна и не открывает confirm", async () => {
+    const resolvePending = respondPending();
+    await mount();
+
+    await click(switchNamed("Купил"));
+    await settle(10);
+    expect(actionCalls()).toHaveLength(1);
+    expect(control("Снять бронь")?.getAttribute("aria-disabled")).toBe("true");
+
+    await click(control("Снять бронь"));
+    await settle(10);
+    expect(dialogElement()).toBeNull();
+    expect(releaseCalls()).toHaveLength(0);
+
+    await act(async () => {
+      resolvePending({ ok: true, data: reservationCard({ bought: true }) });
+    });
+    await settle();
+    expect(control("Снять бронь")?.getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("пока летит снятие, «Купил» и продление не отправляют запрос", async () => {
+    const resolvePending = respondPending();
+    await mount();
+
+    await click(control("Снять бронь"));
+    await settle();
+    await click(dialogControl("Снять бронь"));
+    await settle(10);
+    expect(releaseCalls()).toHaveLength(1);
+
+    await click(switchNamed("Купил"));
+    await click(control("Продлить до…"));
+    await settle(10);
+    expect(actionCalls()).toHaveLength(0);
+    // Продление не открылось: на экране всё ещё confirm снятия.
+    expect(dialogElement()?.textContent).toContain("Снять бронь?");
+
+    await act(async () => {
+      resolvePending({ ok: true, data: { id: "g1" } });
+    });
+    await settle();
+    expect(control("Снять бронь")).toBeUndefined();
+  });
+});

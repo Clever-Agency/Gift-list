@@ -327,6 +327,9 @@ function ReservationsContent({
   }
 
   function openExtend(card: ReservationCard) {
+    // R1 (CLE-119): one request at a time per card — a dialog is not opened over
+    // an action that is already in flight.
+    if (inFlight.current.has(card.giftId)) return;
     setExtendError(undefined);
     setExtendFor(card);
   }
@@ -409,6 +412,8 @@ function ReservationsContent({
   }
 
   function openMenu(card: ReservationCard) {
+    // R1 (CLE-119): the release behind the menu waits for an action in flight.
+    if (inFlight.current.has(card.giftId)) return;
     menuReturn.current = card.giftId;
     setMenuFor(card);
   }

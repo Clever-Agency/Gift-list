@@ -480,4 +480,78 @@ describe("экран «Мои брони»", () => {
 
     expect(readCalls().length).toBe(before + 1);
   });
+
+  /**
+   * R1 (CLE-119): снятие и действия одной карточки идут одной очередью. Пока
+   * запрос карточки в полёте, её ⋮ и «Продлить до…» не открываются, а «Купил» не
+   * шлёт второй запрос; иначе два запроса гоняются за одну бронь.
+   */
+  describe("одна карточка — одно действие за раз", () => {
+    /** The session and the list answer; every other request stays in flight. */
+    function respondPending() {
+      let answer: (value: unknown) => void = function noop() {};
+      api.apiRequest.mockImplementation(function answerWith(path: string) {
+        if (path === "/api/v1/me") return Promise.resolve(sessionReady);
+        if (path === "/api/v1/me/reservations") return Promise.resolve(listAnswer([card()]));
+        return new Promise((resolve) => {
+          answer = resolve;
+        });
+      });
+      return function resolvePending(value: unknown) {
+        answer(value);
+      };
+    }
+
+    it("пока летит действие, ⋮ и продление не открываются", async () => {
+      const resolvePending = respondPending();
+      await mount();
+
+      await click(byLabel("Купил"));
+      await settle(10);
+      expect(updateCalls()).toHaveLength(1);
+
+      await click(control("Продлить до…"));
+      await click(byLabel("Меню"));
+      await settle(10);
+      expect(dialogElement()).toBeNull();
+      expect(updateCalls()).toHaveLength(1);
+
+      await act(async () => {
+        resolvePending({ ok: true, data: card({ bought: true }) });
+      });
+      await settle(20);
+      expect(text()).toContain("Куплено");
+    });
+
+    it("пока летит снятие, «Купил» не отправляет запрос", async () => {
+      const resolvePending = respondPending();
+      await mount();
+
+      await click(byLabel("Меню"));
+      await settle(20);
+      await click(dialogControl("Снять бронь"));
+      await settle(300);
+      await click(dialogControl("Снять бронь"));
+      await settle(10);
+      expect(
+        api.apiRequest.mock.calls.filter(
+          ([path, init]) =>
+            path === "/api/v1/gifts/g1/reserve" &&
+            typeof init === "object" &&
+            init !== null &&
+            (init as { method?: string }).method === "DELETE",
+        ),
+      ).toHaveLength(1);
+
+      await click(byLabel("Купил"));
+      await settle(10);
+      expect(updateCalls()).toHaveLength(0);
+
+      await act(async () => {
+        resolvePending({ ok: true, data: { id: "g1" } });
+      });
+      await settle(20);
+      expect(text()).toContain("Броней нет");
+    });
+  });
 });

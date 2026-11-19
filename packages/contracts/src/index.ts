@@ -475,6 +475,9 @@ export {
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
   giftVisibilityPreviewSchema,
+  reservationActionBodySchema,
+  reservationCardSchema,
+  reservationListSchema,
   type GiftInput,
   type GiftInputDraft,
   type GiftReservationWarning,
@@ -484,6 +487,9 @@ export {
   type GiftUpdate,
   type GiftVisibilityPreview,
   type GiftVisibilityPreviewQuery,
+  type ReservationActionBody,
+  type ReservationCard,
+  type ReservationList,
 } from "./gift";
 
 export {

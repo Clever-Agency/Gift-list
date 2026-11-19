@@ -59,6 +59,13 @@ describe("formatDate", () => {
       "01.11.2026",
     );
   });
+
+  /** Story 5.5: the reservation card shows «до DD.MM»; the detail keeps the full date. */
+  it("drops the year only when the caller asks for the short form", () => {
+    expect(formatDate("2026-11-20", "ru", { year: false })).toBe("20.11");
+    expect(formatDate("2026-11-20", "ru")).toBe("20.11.2026");
+    expect(formatDate("2026-11-20", "ru", { year: true })).toBe("20.11.2026");
+  });
 });
 
 describe("formatPrice", () => {
@@ -219,6 +226,71 @@ describe("closing copy", () => {
 
     expect(app.gift.closed.sectionOwner).toContain("{count}");
     expect(app.myWishlist.archiveSection).toContain("{count}");
+  });
+});
+
+/**
+ * Story 5.5: «Мои брони» — экран держателя. Тексты из epics (Story 5.5),
+ * EXPERIENCE (Empty states, Reservation actions, Подписи брони) и DESIGN
+ * (ReservationCard), дословно. Три строки новых, без утверждения в UX:
+ * `pageTitle`, `loading`, `openGift` (Open Questions спеки 5.5, п. 5).
+ */
+describe("reservation copy", () => {
+  it("keeps the card, empty and action texts verbatim and not empty", () => {
+    const reservations = getMessages("ru").app.reservations;
+
+    expect(reservations.title).toBe("Мои брони");
+    expect(reservations.pageTitle).toBe("Мои брони — {brand}");
+    expect(reservations.loading).toBe("Загружаем брони");
+    expect(reservations.emptyTitle).toBe("Броней нет");
+    expect(reservations.emptyText).toBe(
+      "Нажмите «Куплю сам» у желания друга — бронь появится здесь.",
+    );
+    expect(reservations.openGift).toBe("Открыть желание «{title}»");
+    expect(reservations.owner).toBe("у @{nick}");
+    expect(reservations.due).toBe("до {date}");
+    expect(reservations.bought).toBe("Купил");
+    expect(reservations.boughtChip).toBe("Куплено");
+
+    expect(reservations.visibility.title).toBe("Кто видит, что это я");
+    expect(reservations.visibility.owner).toBe("Показать владельцу, что это я");
+    expect(reservations.visibility.others).toBe("Показать другим, кто берёт");
+    expect(reservations.visibility.hint).toBe(
+      "Владелец сразу увидит ваше имя; если потом выключить, он может уже знать",
+    );
+
+    expect(reservations.extend).toBe("Продлить до…");
+    expect(reservations.extendCaption).toBe("Не позже {max}");
+    expect(reservations.release).toBe("Снять бронь");
+
+    for (const value of Object.values(reservations)) {
+      if (typeof value === "string") expect(value.length).toBeGreaterThan(0);
+    }
+    for (const value of Object.values(reservations.visibility)) {
+      expect(value.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("substitutes the day, the nick, the title and the max day exactly once", () => {
+    const reservations = getMessages("ru").app.reservations;
+
+    expect(reservations.due.replace("{date}", "08.12")).toBe("до 08.12");
+    expect(reservations.owner.replace("{nick}", "anna")).toBe("у @anna");
+    expect(reservations.openGift.replace("{title}", "Наушники")).toBe(
+      "Открыть желание «Наушники»",
+    );
+    expect(reservations.extendCaption.replace("{max}", "20.12.2026")).toBe(
+      "Не позже 20.12.2026",
+    );
+  });
+
+  /** New texts of 5.5 that no source in epics/EXPERIENCE/DESIGN approved. */
+  it("marks the three new texts of Story 5.5", () => {
+    const reservations = getMessages("ru").app.reservations;
+
+    expect(reservations.pageTitle.endsWith("{brand}")).toBe(true);
+    expect(reservations.loading).toBe("Загружаем брони");
+    expect(reservations.openGift).toContain("«{title}»");
   });
 });
 

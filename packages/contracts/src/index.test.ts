@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
 import {
   actionResultSchema,
+  errorReasonSchema,
   giftCardSchema,
   isNotFound,
   listDataSchema,
@@ -134,9 +135,10 @@ const GIFT_CARD_FIELDS = [
   "reservationLabel",
   "ownerAction",
   "reservation",
+  "undoUntil",
 ] as const;
 
-const OPTIONAL_GIFT_CARD_FIELDS = new Set<string>(["reservation"]);
+const OPTIONAL_GIFT_CARD_FIELDS = new Set<string>(["reservation", "undoUntil"]);
 
 describe("giftCardSchema", () => {
   it("accepts an AD-12 gift card with nullable fields", () => {
@@ -198,6 +200,29 @@ describe("giftCardSchema", () => {
     expect(giftCardSchema.safeParse({ ...card, status: "CLOSED", ownerAction: "EXPIRED_NO_REPLY" }).success).toBe(
       true,
     );
+  });
+
+  /** Story 5.3 (ARCH-A5): only the owner card carries the undo moment, and it may be null. */
+  it("accepts undoUntil as an ISO moment, null, or an absent key", () => {
+    expect(giftCardSchema.safeParse({ ...giftCard, undoUntil: "2026-11-19T10:10:00.000Z" }).success).toBe(true);
+    expect(giftCardSchema.safeParse({ ...giftCard, status: "CLOSED", undoUntil: null }).success).toBe(true);
+    expect(giftCardSchema.safeParse(giftCard).success).toBe(true);
+  });
+
+  it("rejects a non-string undoUntil", () => {
+    expect(giftCardSchema.safeParse({ ...giftCard, undoUntil: 1_760_000_000_000 }).success).toBe(false);
+  });
+
+  /** Story 5.3: the late-undo refusal is one of the closed reasons. */
+  it("accepts the UNDO_WINDOW_EXPIRED reason", () => {
+    expect(errorReasonSchema.safeParse("UNDO_WINDOW_EXPIRED").success).toBe(true);
+    const refusal = {
+      ok: false,
+      code: "CONFLICT",
+      message: "The undo window is closed",
+      reason: "UNDO_WINDOW_EXPIRED",
+    };
+    expect(actionResultSchema(z.object({ id: z.string() })).safeParse(refusal).success).toBe(true);
   });
 });
 

@@ -254,3 +254,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
   summary: Секция «Уже подарено» на серверной странице `/l` осталась открытым вопросом: страница сейчас рисует закрытые желания в общей сетке, а Story 5.3 меняет только приложение. Если решение будет «перенести секцию и туда», это отдельная правка `apps/web/src/app/l/[token]/public-wishlist-view.tsx` со своим порядком секций (активные, «Уже подарено», «Архив»).
   evidence: Спека 5.3, «Открытые вопросы» п. 1 и «Never» — страницу не трогаем до решения; в приложении секция закрытых собирается на клиенте из `gifts`, на `/l` такой разметки нет.
+
+## Deferred from: CLE-86 — проверка обновления приложения (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Play In-App Updates на Android не подключён: нужен новый пакет (`react-native-in-app-updates` или аналог), а в ночном заходе пакеты не ставятся. Пока Android открывает ссылку магазина через `Linking.openURL`, как iOS, — системного диалога обновления из Play нет.
+  evidence: Мягкое предложение (`apps/mobile/src/ui/app-update-soft-dialog.tsx`) и блокирующий экран (`app-update-block-screen.tsx`) открывают только `storeUrl` из ответа `GET /api/v1/app-version`; в `apps/mobile/package.json` нет пакета обновлений, а спека прямо относит Play In-App Updates к «Never» этой задачи.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Реальные значения политики и URL магазинов не заполнены: магазины не опубликованы, поэтому `APP_VERSION_POLICY` в `packages/contracts/src/app-version.ts` держит `latestVersion = minSupportedVersion = "0.1.0"` и `storeUrl = null` для обеих платформ. Никому ничего не показывается, и блокирующий экран до публикации — тупик без кнопки (`bodyNoStore`). Поднимать `latest`/`min` и вписывать ссылки — после публикации сборок (владелец — Евгений/Сергей), тогда же адреса появятся в ответе сервера без пересборки приложения.
+  evidence: Спека, «Отложено» п. 2 и «Открытые вопросы» п. 1–3; значение по умолчанию закреплено в контракте (`DEFAULT_APP_VERSION`), а клиент политику локально не читает — только из ответа `GET /api/v1/app-version`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Тексты «Доступно обновление» / «Обновите приложение» и переводы на другие языки ждут UX и локалей. Сейчас ключи `app.appVersion.*` лежат только в `packages/contracts/src/i18n/ru/app.json` (AD-27), переводы появятся вместе с первой не-русской локалью.
+  evidence: Спека, «Тексты (ru)» и «Отложено» п. 3: строк в `DESIGN.md`/`EXPERIENCE.md` нет, это новые тексты без утверждения в UX («Доступно обновление», «Вышла новая версия приложения. Обновите его, когда будет удобно.», «Обновить», «Закрыть», «Обновите приложение», «Эта версия больше не поддерживается. Обновите приложение в магазине, чтобы продолжить.», «…в магазине.», «Открыть магазин»).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: `expo-updates`/OTA, принудительное обновление без магазина, откат версии и телеметрия отказов не делаются — вне CLE-86. Обход fail open тоже остаётся открытым вопросом: человек ниже `minSupportedVersion` с выключенной сетью видит обычное приложение, потому что неудачная проверка ничего не меняет и показанный блок не снимает; «последний известный ответ» в хранилище не вводился.
+  evidence: Спека, «Отложено» п. 4 и «Открытые вопросы» п. 1; `apps/mobile/src/app-version/check.ts` (`resolveAppVersion` возвращает прежнее состояние на `ok: false`), `app-version-gate.native.tsx` не ждёт сеть на старте, `expo-updates` в зависимостях нет.

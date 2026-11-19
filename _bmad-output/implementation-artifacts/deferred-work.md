@@ -272,3 +272,33 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
   summary: `expo-updates`/OTA, принудительное обновление без магазина, откат версии и телеметрия отказов не делаются — вне CLE-86. Обход fail open тоже остаётся открытым вопросом: человек ниже `minSupportedVersion` с выключенной сетью видит обычное приложение, потому что неудачная проверка ничего не меняет и показанный блок не снимает; «последний известный ответ» в хранилище не вводился.
   evidence: Спека, «Отложено» п. 4 и «Открытые вопросы» п. 1; `apps/mobile/src/app-version/check.ts` (`resolveAppVersion` возвращает прежнее состояние на `ok: false`), `app-version-gate.native.tsx` не ждёт сеть на старте, `expo-updates` в зависимостях нет.
+
+## Deferred from: Story 5.5 — «Мои брони»: продление, «Купил», видимость (CLE-119, 2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Владелец не получает уведомление «Даритель уже ответил», когда продление из `AWAITING_OWNER` сняло запрос: `reservationPhase` стал `ACTIVE`, и следующий ответ владельцу уже отдаёт `ownerAction = null`. Отдельного флага «ответил» нет — Epic 6 читает `reservationPhase`/`reservationPhaseAt` в момент доставки. Вариант A: строк `Notification` и писем 5.5 не создаёт.
+  evidence: `ownerAction` — производная от фазы (`apps/web/src/domain/viewer-gift-card.ts`), а не колонка; продление пишет `reservationPhase = ACTIVE` и `reservationPhaseAt` через CAS `GiftStatusService` (`apps/web/src/lib/gift-status-store.ts`). Таблицы `Notification` в `schema.prisma` нет до Story 6.1.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Уведомления об изменении «Купил» и переключателей видимости не отправляются: FR-26 их не перечисляет. Если продукт захочет, это Epic 6 и отдельное решение, а не 5.5.
+  evidence: Спека, «Never» и «Отложено» п. 2; действия `bought` и `visibility` меняют только колонки `reservationBought` и `holderVisibleTo*`, статус не меняется, `recordGiftEvent` не вызывается.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: «Подарил», переход в `GIVEN`, подтверждение получения владельцем и ответы на запрос (`Получил` / `Не получал`) — Story 5.7. В 5.5 фазы `AWAITING_*` и `GIVEN` только отображаются: подписи есть, «Подарил» нигде нет, продление в `GIVEN` спрятано и сервер отвечает `CONFLICT`.
+  evidence: Спека, «Отложено» п. 3 и «Открытые вопросы» п. 2; карточка и деталь не рендерят «Подарил», `reservationActionBodySchema` содержит только `extend`, `bought`, `visibility`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Cron `reservation-timers`, расчёт `AWAITING_GIVER`/`AWAITING_OWNER` по сроку и автоматическое снятие брони — Story 5.6. 5.5 только показывает фазы, которые уже возможны в данных, и не заводит таймеров.
+  evidence: Спека, «Отложено» п. 4; маршрутов `app/api/cron/*` для брони нет, фазы приходят из `reservationPhase`, записываемой только действиями держателя.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Вкладка «Брони» и полная навигация — Story 6.2; до неё вход в «Мои брони» — временная строка в нижнем ряду «Моего вишлиста». После 6.2 строку убрать, экран станет вкладкой.
+  evidence: Спека, «Открытые вопросы» п. 8; `apps/mobile/app/(app)/index.tsx` содержит строку с комментарием «временный вход до Story 6.2», `spa-paths.ts` и навигация не менялись.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Деталь желания после unfriend/Block по A-14 не открывается: `getViewerGift` не знает A-14 и отвечает `NOT_FOUND`. Если продукт захочет открывать reservation card отдельным экраном — это вне 5.5; сейчас карточка «Моих броней» самодостаточна (`canOpenGift = false` убирает ссылку, действия остаются).
+  evidence: `canOpenGift` считает сервер через `VisibilityPolicy.canSee` без токена ссылки; экран `/gifts/{id}` ссылку не получает, управление живёт в `/reservations`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Audit NFR-6 для фаз и атрибутов брони (продление, «Купил», переключатели) не пишется: статус `Gift.status` при этих действиях не меняется, а `recordGiftEvent` фиксирует только смену статуса. Если Epic 6 или аудит потребует, отдельная задача; факт продления пока читается из `reservationPhase`/`reservationPhaseAt`.
+  evidence: Спека, «Отложено» п. 7 и «Always» про NFR-6; `recordGiftEvent` в `apps/web/src/lib/gift-status-store.ts` вызывают только CAS закрытия/отмены, три новых CAS `extend`/`bought`/`visibility` audit-строк не добавляют.

@@ -24,13 +24,13 @@ import { auth } from "@/lib/auth";
 import { giftStatusTransaction } from "@/lib/gift-status-store";
 import { relationshipReader } from "@/lib/relationships";
 
-const unauthenticated = {
+export const unauthenticated = {
   ok: false as const,
   code: "UNAUTHENTICATED" as const,
   message: "Authentication required",
 };
 
-const notFound = {
+export const notFound = {
   ok: false as const,
   code: "NOT_FOUND" as const,
   message: "Gift not found",
@@ -135,7 +135,7 @@ const previewGiftSelect = {
   reservedById: true,
 } satisfies Prisma.GiftSelect;
 
-function validation(field?: string): ActionResult<GiftCard> {
+export function validation(field?: string): ActionResult<GiftCard> {
   return {
     ok: false,
     code: "VALIDATION",
@@ -155,7 +155,7 @@ function toStoredGiftFields<T extends { expiresOn?: string | null }>(fields: T) 
 }
 
 /** AD-27: fixed tag labels follow the request language, like the catalog read. */
-function requestLocale(headers: Headers): SupportedLocale {
+export function requestLocale(headers: Headers): SupportedLocale {
   return negotiateLocale(preferredFromAcceptLanguage(headers.get("accept-language")));
 }
 

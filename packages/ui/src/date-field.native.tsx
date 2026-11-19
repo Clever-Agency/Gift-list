@@ -1,6 +1,6 @@
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { YStack } from "@tamagui/stacks";
-import { forwardRef, useId, useState } from "react";
+import { forwardRef, useState } from "react";
 import { Platform } from "react-native";
 import { BottomSheet } from "./bottom-sheet";
 import { Button } from "./button";
@@ -58,7 +58,6 @@ export const DateField = forwardRef<unknown, DateFieldProps>(function DateField(
   },
   ref,
 ) {
-  const id = useId();
   const described = error || hint;
   const [open, setOpen] = useState(false);
   const selected = value === "" ? new Date() : dateFromDay(value);
@@ -81,6 +80,9 @@ export const DateField = forwardRef<unknown, DateFieldProps>(function DateField(
     onChange(dayFromDate(date));
   }
 
+  const chosen = value === "" ? placeholder : `${label}, ${displayValue ?? value}`;
+  const buttonLabel = error ? `${chosen}. ${error}` : chosen;
+
   const picker = (
     <DateTimePicker
       value={selected}
@@ -93,14 +95,14 @@ export const DateField = forwardRef<unknown, DateFieldProps>(function DateField(
 
   return (
     <YStack gap="$1" testID={testID}>
-      <Text kind="label" id={id}>
+      <Text kind="label">
         {label}
       </Text>
       <Pressable
         ref={ref as never}
         role="button"
-        aria-label={value === "" ? placeholder : `${label}, ${displayValue ?? value}`}
-        accessibilityHint={described}
+        aria-label={buttonLabel}
+        accessibilityHint={error ? undefined : hint}
         onPress={openPicker}
         minHeight="$control-height"
         justifyContent="center"
@@ -129,7 +131,6 @@ export const DateField = forwardRef<unknown, DateFieldProps>(function DateField(
         <Text
           kind="caption"
           tone={error ? "destructive" : "muted"}
-          role={error ? "alert" : undefined}
         >
           {described}
         </Text>

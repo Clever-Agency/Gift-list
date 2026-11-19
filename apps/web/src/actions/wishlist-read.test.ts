@@ -2,12 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { findUnique, findMany } = vi.hoisted(() => ({
+const { findUnique, findMany, count } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   findMany: vi.fn(),
+  count: vi.fn(),
 }));
 
-vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
+vi.mock("@/db/client", () => ({
+  prisma: {
+    list: { findUnique },
+    gift: { findMany, count },
+    $transaction: (operations: Promise<unknown>[]) => Promise.all(operations),
+  },
+}));
 
 import type { ListData } from "@gift-list/contracts";
 import type { ViewerRelations } from "@/domain/visibility";
@@ -115,6 +122,8 @@ function giftsOf(result: ListData | null) {
 beforeEach(() => {
   findUnique.mockReset();
   findMany.mockReset();
+  count.mockReset();
+  count.mockResolvedValue(0);
   findUnique.mockResolvedValue({
     id: "l1",
     ownerId: "u1",
@@ -141,6 +150,27 @@ describe("readWishlist", () => {
     expect(giftsOf(result).some((card) => card.id === "g-archived")).toBe(false);
     expect(result).toMatchObject({
       archived: [expect.objectContaining({ id: "g-archived", archivedAt: expect.any(String) })],
+    });
+  });
+
+  it("caps the owner's archive at 100 newest and reports the full count", async () => {
+    count.mockResolvedValue(130);
+
+    const result = await readWishlist(
+      { viewer: { id: "u1" }, target: { ownerId: "u1" } },
+      reader().deps,
+    );
+
+    expect(result).toMatchObject({ archivedTotal: 130 });
+    const archiveCall = findMany.mock.calls.find(
+      ([args]) => (args as { where: GiftWhere }).where.NOT !== undefined,
+    );
+    expect(archiveCall?.[0]).toMatchObject({
+      take: 100,
+      orderBy: [{ archivedAt: "desc" }, { id: "desc" }],
+    });
+    expect(count).toHaveBeenCalledWith({
+      where: { listId: "l1", NOT: { archivedAt: null } },
     });
   });
 
@@ -171,7 +201,10 @@ describe("readWishlist", () => {
       reader().deps,
     );
 
-    expect(result).toEqual({ access: "gifts", gifts: [], archived: [], publicToken: "tok-1" });
+    expect(result).toEqual({ access: "gifts", gifts: [], archived: [],
+      archivedTotal: 0,
+      publicToken: "tok-1",
+    });
   });
 
   /** The share token is the owner's: a friend or link visitor must not receive it. */

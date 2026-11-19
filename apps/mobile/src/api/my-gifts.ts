@@ -18,6 +18,8 @@ export type MyGiftsResult =
       gifts: GiftCard[];
       /** Owner archive. Empty when the server omits the key (Story 2.6). */
       archived: GiftCard[];
+      /** Full archive size; `archived` holds at most the newest 100. */
+      archivedTotal: number | null;
       publicToken: string | null;
     }
   | { ok: true; access: "not_found" }
@@ -78,6 +80,7 @@ export async function fetchMyGifts(): Promise<MyGiftsResult> {
     access: "gifts",
     gifts: parsed.data.gifts,
     archived: parsed.data.archived ?? [],
+    archivedTotal: parsed.data.archivedTotal ?? null,
     publicToken: parsed.data.publicToken ?? null,
   };
 }

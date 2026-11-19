@@ -1,6 +1,11 @@
 import "server-only";
 
-import { DEFAULT_LOCALE, listDataSchema, type ListData, type SupportedLocale } from "@gift-list/contracts";
+import {
+  DEFAULT_LOCALE,
+  listDataSchema,
+  type ListData,
+  type SupportedLocale,
+} from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import type { Prisma } from "@/db/generated/client";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
@@ -32,6 +37,9 @@ export type ReadWishlistInput = {
 /** Ports the read depends on; tests hand over a scripted reader. */
 export type ReadWishlistDeps = { readonly reader: RelationshipReader };
 
+/** The owner's archive is read newest-first and capped; the full count rides separately. */
+const ARCHIVE_PAGE = 100;
+
 /** Fields both card mappers need; `ownerId` is not a `Gift` column, see below. */
 const giftSelect = {
   id: true,
@@ -55,7 +63,11 @@ const giftSelect = {
   // Story 2.5/AD-22: only what the card shows. `slug` orders fixed tags like the
   // catalog (2.5.7) and never reaches the client.
   tags: {
-    select: { tagId: true, customText: true, tag: { select: { labels: true, slug: true } } },
+    select: {
+      tagId: true,
+      customText: true,
+      tag: { select: { labels: true, slug: true } },
+    },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   },
 } satisfies Prisma.GiftSelect;
@@ -152,17 +164,21 @@ export async function readWishlist(
 
   // Story 2.6: only the owner sees the archive. Viewers never get the key, so a
   // shared schema stays closed and an archived title cannot leak.
-  const archived = owner
-    ? (
-        await prisma.gift.findMany({
-          where: { listId: list.id, NOT: { archivedAt: null } },
+  const archivedWhere = { listId: list.id, NOT: { archivedAt: null } };
+  const [archivedRows, archivedTotal] = owner
+    ? await prisma.$transaction([
+        prisma.gift.findMany({
+          where: archivedWhere,
           orderBy: [{ archivedAt: "desc" }, { id: "desc" }],
+          take: ARCHIVE_PAGE,
           select: giftSelect,
-        })
-      ).map(function toArchivedCard(row) {
-        return toOwnerGiftCard(row, locale);
-      })
-    : undefined;
+        }),
+        prisma.gift.count({ where: archivedWhere }),
+      ])
+    : [undefined, undefined];
+  const archived = archivedRows?.map(function toArchivedCard(row) {
+    return toOwnerGiftCard(row, locale);
+  });
 
   return listDataSchema.parse({
     access: "gifts",
@@ -170,6 +186,6 @@ export async function readWishlist(
     ...ownerFields,
     // Story 2.4 (AD-6, A-26): only the owner gets the immutable share token; the
     // link `/l/{publicToken}` is what the owner shares, nobody else.
-    ...(owner ? { publicToken: list.publicToken, archived } : {}),
+    ...(owner ? { publicToken: list.publicToken, archived, archivedTotal } : {}),
   });
 }

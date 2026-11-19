@@ -226,3 +226,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-92-zapret-tekushchego-parolya.md`
   summary: На сыром `/api/auth/change-password` проверка HIBP выполняется до сверки текущего пароля, поэтому вошедший без знания текущего пароля может отличить утёкший новый пароль (`PASSWORD_COMPROMISED`) от неверного текущего.
   evidence: Порядок Better Auth 1.7.14 и хука CLE-90: `hash` (а в нём HIBP) вызывается раньше `password.verify` текущего пароля. CLE-92 эту проверку не переставлял: отказ `PASSWORD_REUSED` звучит только после верного `currentPassword`, но HIBP по-прежнему раньше. Чинить отдельно, не смешивая с запретом текущего пароля.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-76-dolgi-2-6.md`
+  summary: Карточки секции «Архив» не открывают диалог подробностей CLE-84, хотя активные открывают.
+  evidence: `ArchiveSection` не передаёт `onPress`. Остальное из ревью переноса (шаги выкладки, долги кода, stories `WishCard` с `menu` и `DateField`) закрыто в `spec-cle-76-dolgi-2-6.md`.

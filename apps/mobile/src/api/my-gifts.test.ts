@@ -38,6 +38,7 @@ describe("fetchMyGifts", () => {
       access: "gifts",
       gifts: [card],
       archived: [],
+      archivedTotal: null,
       publicToken: "tok-1",
     });
   });
@@ -54,6 +55,7 @@ describe("fetchMyGifts", () => {
       access: "gifts",
       gifts: [],
       archived: [],
+      archivedTotal: null,
       publicToken: "tok-1",
     });
   });
@@ -118,6 +120,7 @@ describe("fetchMyGifts", () => {
       access: "gifts",
       gifts: [card],
       archived: [archived],
+      archivedTotal: null,
       publicToken: "tok-1",
     });
   });
@@ -136,6 +139,7 @@ describe("fetchMyGifts", () => {
       access: "gifts",
       gifts: [],
       archived: [],
+      archivedTotal: null,
       publicToken: null,
     });
   });

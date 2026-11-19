@@ -37,6 +37,7 @@ import {
 } from "react";
 import { AccessibilityInfo } from "react-native";
 import { useLocale, useTranslations } from "use-intl";
+import { deviceToday } from "@/ui/device-today";
 import { isGiftFormDirty, type GiftFormDirtyValues } from "@/ui/gift-form-dirty";
 import {
   customTagIssue,
@@ -1173,11 +1174,3 @@ export function ChoiceGroup<T extends string>({
 }
 
 ChoiceGroup.displayName = "ChoiceGroup";
-
-/** The device's local today, `YYYY-MM-DD`. The server still checks the owner's zone. */
-function deviceToday(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}

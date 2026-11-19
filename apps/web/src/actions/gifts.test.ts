@@ -83,6 +83,7 @@ type Row = {
   status: "OPEN" | "RESERVED" | "CLOSED";
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
   holderVisibleToOwner: boolean;
+  closedAt?: Date | null;
   reservedBy: { id: string; nick: string; name: string } | null;
   /** A stored read carries it; the card read does not, and the mapper ignores it. */
   reservedById: string | null;
@@ -106,6 +107,7 @@ function giftRow(overrides: Partial<Row> = {}): Row {
     status: "OPEN",
     reservationPhase: null,
     holderVisibleToOwner: false,
+    closedAt: null,
     reservedBy: null,
     reservedById: null,
     list: { ownerId: "u1" },
@@ -1871,7 +1873,7 @@ describe("deleteGift", () => {
     expect(findFirst).not.toHaveBeenCalled();
   });
 
-  /** Story 2.3: the delete carries ownership, "not archived" and the OPEN status. */
+  /** Story 2.3/5.3: the delete carries ownership, "not archived" and a deletable status. */
   it("deletes an OPEN wish of the owner's list", async () => {
     deleteMany.mockResolvedValue({ count: 1 });
 
@@ -1880,26 +1882,31 @@ describe("deleteGift", () => {
       where: {
         id: "g1",
         archivedAt: null,
-        status: "OPEN",
+        status: { in: ["OPEN", "CLOSED"] },
         list: { ownerId: "u1" },
       },
     });
     expect(findFirst).not.toHaveBeenCalled();
   });
 
-  /** Story 2.3: RESERVED is Story 5.4 and CLOSED is Story 2.6, so both conflict here. */
-  it.each(["RESERVED", "CLOSED"] as const)(
-    "answers CONFLICT and keeps a %s wish",
-    async (status) => {
-      findFirst.mockResolvedValue({ status });
+  /** Story 5.3 (DELETE_CLOSED): a received wish can be removed with the same confirm. */
+  it("deletes a CLOSED wish of the owner's list", async () => {
+    deleteMany.mockResolvedValue({ count: 1 });
 
-      expect(await deleteGift(headers, "g1")).toMatchObject({
-        ok: false,
-        code: "CONFLICT",
-        message: "Only an open wish can be deleted here",
-      });
-    },
-  );
+    expect(await deleteGift(headers, "g1")).toEqual({ ok: true, data: { id: "g1" } });
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  /** Story 5.4 owns the reserved wish: it conflicts here. */
+  it("answers CONFLICT and keeps a RESERVED wish", async () => {
+    findFirst.mockResolvedValue({ status: "RESERVED" });
+
+    expect(await deleteGift(headers, "g1")).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      message: "Only an open or closed wish can be deleted here",
+    });
+  });
 
   /** AD-7: a foreign, archived or missing gift answers one and the same NOT_FOUND. */
   it("answers NOT_FOUND for a foreign, archived or missing gift", async () => {
@@ -1908,6 +1915,20 @@ describe("deleteGift", () => {
     expect(await deleteGift(headers, "g-other")).toMatchObject({
       ok: false,
       code: "NOT_FOUND",
+    });
+  });
+
+  it("answers NOT_FOUND for the owner's archived wish", async () => {
+    // The delete `where` excludes the archive, and the re-read shares it.
+    findFirst.mockResolvedValue(null);
+
+    expect(await deleteGift(headers, "g-archived")).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: "g-archived", archivedAt: null, list: { ownerId: "u1" } },
+      select: { status: true },
     });
   });
 });

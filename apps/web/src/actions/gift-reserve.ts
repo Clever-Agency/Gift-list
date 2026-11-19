@@ -62,6 +62,8 @@ const reserveSelect = {
   reservationBought: true,
   holderVisibleToOwner: true,
   holderVisibleToOthers: true,
+  // Story 5.3: the viewer card does not expose it, but the row type is shared.
+  closedAt: true,
   reservedBy: { select: { id: true, nick: true, name: true } },
   tags: {
     select: { tagId: true, customText: true, tag: { select: { labels: true, slug: true } } },

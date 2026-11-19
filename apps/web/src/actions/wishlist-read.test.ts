@@ -32,6 +32,7 @@ type Row = {
   quantity: "SINGLE" | "UNLIMITED";
   expiresOn: Date | null;
   archivedAt: Date | null;
+  closedAt: Date | null;
   status: "OPEN" | "RESERVED" | "CLOSED";
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
   reservationBought: boolean;
@@ -51,6 +52,7 @@ function gift(overrides: Partial<Row> & Pick<Row, "id" | "title">): Row {
     quantity: "SINGLE",
     expiresOn: null,
     archivedAt: null,
+    closedAt: null,
     status: "OPEN",
     reservationPhase: null,
     reservationBought: false,
@@ -172,6 +174,34 @@ describe("readWishlist", () => {
     expect(count).toHaveBeenCalledWith({
       where: { listId: "l1", NOT: { archivedAt: null } },
     });
+  });
+
+  /** Story 5.3 (CARD_OWNER_CLOSED / CARD_VIEWER_CLOSED): `undoUntil` is owner-only. */
+  it("gives the owner undoUntil on a closed gift and never a viewer", async () => {
+    findMany.mockResolvedValue([
+      gift({
+        id: "g-closed",
+        title: "Получено",
+        status: "CLOSED",
+        closedAt: new Date("2026-11-19T12:00:00.000Z"),
+      }),
+    ]);
+
+    const owner = await readWishlist(
+      { viewer: { id: "u1" }, target: { ownerId: "u1" } },
+      reader().deps,
+    );
+    const viewer = await readWishlist(
+      { viewer: { id: "u9" }, target: { ownerId: "u1" } },
+      reader({ friend: true }).deps,
+    );
+
+    expect(giftsOf(owner)[0]).toMatchObject({
+      status: "CLOSED",
+      undoUntil: "2026-11-19T12:10:00.000Z",
+    });
+    expect(giftsOf(viewer)[0]).toMatchObject({ status: "CLOSED" });
+    expect(giftsOf(viewer)[0]).not.toHaveProperty("undoUntil");
   });
 
   /** Story 2.4 (AD-6, A-26): the owner builds the share link from this token. */

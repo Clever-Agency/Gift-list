@@ -451,6 +451,18 @@ describe("updateMyReservation", () => {
     },
   );
 
+  it("answers NOT_FOUND when the fresh row is somebody else's reservation", async () => {
+    findFirst
+      .mockResolvedValueOnce(preflight)
+      .mockResolvedValueOnce(cardRow({ reservedById: "other" }));
+    setReservationBought.mockResolvedValue("success");
+
+    const result = await updateMyReservation(headers, "g1", { action: "bought", value: true });
+
+    expect(result).toEqual({ ok: false, code: "NOT_FOUND", message: "Gift not found" });
+    expect(relationsBetween).not.toHaveBeenCalled();
+  });
+
   it("answers NOT_FOUND instead of mapping an incomplete reservation", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(function quiet() {});
     findFirst

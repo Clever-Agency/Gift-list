@@ -11,10 +11,18 @@ import { describe, expect, it } from "vitest";
  * owner's time zone, and writes `archivedAt` through the CAS, never a card.
  * So the adapter is exempt only for exactly one `.gift.findMany` with that
  * narrow `select`.
+ *
+ * Story 5.5 adds the one sanctioned A-14 read: «Мои брони» is read by
+ * `reservedById` and must keep working after an unfriend or a block, so it does
+ * not pass the gate. The exemption is exactly one `.gift.findMany` whose
+ * `select` is the closed reservation card — no price, link, token or owner name.
  */
 const WISHLIST_READ = path.resolve(fileURLToPath(new URL("./wishlist-read.ts", import.meta.url)));
 const STATUS_SERVICE = path.resolve(
   fileURLToPath(new URL("../lib/gift-status-store.ts", import.meta.url)),
+);
+const MY_RESERVATIONS_READ = path.resolve(
+  fileURLToPath(new URL("./my-reservations.ts", import.meta.url)),
 );
 const SRC = path.resolve(path.dirname(WISHLIST_READ), "..");
 
@@ -29,6 +37,13 @@ const RAW_QUERY = /\$queryRaw(?:Unsafe)?/g;
 
 /** The one allowed scan `select`, whitespace removed, nested form included. */
 const EXPIRY_SELECT = "{id:true,expiresOn:true,list:{select:{owner:{select:{timeZone:true}}}}}";
+
+/** The closed A-14 card `select` of `my-reservations.ts`, same normalisation. */
+const RESERVATION_CARD_SELECT =
+  "{id:true,status:true,title:true,titleSnapshotOnReserve:true,reservationDueAt:true," +
+  "reservationTimeZone:true,reservationPhase:true,reservationBought:true," +
+  "holderVisibleToOwner:true,holderVisibleToOthers:true,visibility:true,archivedAt:true," +
+  "reservedById:true,list:{select:{ownerId:true,owner:{select:{nick:true}}}}}";
 
 type Violation = { readonly file: string; readonly call: string };
 
@@ -100,6 +115,7 @@ async function findViolations(): Promise<Violation[]> {
     if (resolved === WISHLIST_READ) continue;
     const text = await readFile(file, "utf8");
     if (resolved === STATUS_SERVICE && isNarrowExpiryScan(text)) continue;
+    if (resolved === MY_RESERVATIONS_READ && isReservationCardScan(text)) continue;
     for (const call of GIFT_READS) {
       if (call.test(text)) violations.push({ file: relative, call: String(call) });
     }
@@ -119,6 +135,36 @@ function isNarrowExpiryScan(text: string): boolean {
   const select = /select:\s*\{/.exec(text.slice(call));
   if (!select) return false;
   const open = call + select.index + select[0].length - 1;
+  return objectAt(text, open) === EXPIRY_SELECT;
+}
+
+/**
+ * Story 5.5 (A-14): «Мои брони» reads `Gift` outside the gate on purpose, so the
+ * file is exempt only while it keeps exactly one `.gift.findMany` with the
+ * closed card `select`. The select may be inline or a named constant.
+ */
+function isReservationCardScan(text: string): boolean {
+  return findManySelectShape(text) === RESERVATION_CARD_SELECT;
+}
+
+/** Normalised shape of the single `findMany` select in a file, or `null`. */
+function findManySelectShape(text: string): string | null {
+  if (countFindMany(text) !== 1) return null;
+  if (/\.gift\.(?:groupBy|count)\s*\(/.test(text) || rawGiftQueries(text).length > 0) return null;
+  const call = text.search(/\.gift\.findMany\s*\(/);
+  const select = /select:\s*(\{|[A-Za-z_$][\w$]*)/.exec(text.slice(call));
+  if (!select) return null;
+  const at = call + select.index + select[0].length - 1;
+  if (select[1] === "{") return objectAt(text, at);
+
+  const name = select[1];
+  const declaration = new RegExp(`\\b${name}\\s*=\\s*\\{`).exec(text);
+  if (!declaration) return null;
+  return objectAt(text, declaration.index + declaration[0].length - 1);
+}
+
+/** The object literal starting at `open`, whitespace and trailing commas removed. */
+function objectAt(text: string, open: number): string {
   let depth = 0;
   let end = open;
   for (let i = open; i < text.length; i++) {
@@ -128,11 +174,10 @@ function isNarrowExpiryScan(text: string): boolean {
       break;
     }
   }
-  const normalized = text
+  return text
     .slice(open, end + 1)
     .replace(/\s+/g, "")
     .replace(/,}/g, "}");
-  return normalized === EXPIRY_SELECT;
 }
 
 function countFindMany(text: string): number {
@@ -152,6 +197,15 @@ describe("gift read guard (AD-7)", () => {
     );
     expect(nested).not.toBe(text);
     expect(isNarrowExpiryScan(nested)).toBe(false);
+  });
+
+  it("lets «Мои брони» read only the closed reservation card select", async () => {
+    const text = await readFile(MY_RESERVATIONS_READ, "utf8");
+    expect(isReservationCardScan(text)).toBe(true);
+
+    const wider = text.replace("id: true,", "id: true, publicToken: true,");
+    expect(wider).not.toBe(text);
+    expect(isReservationCardScan(wider)).toBe(false);
   });
 
   it("reads Gift rows only inside readWishlist", async () => {

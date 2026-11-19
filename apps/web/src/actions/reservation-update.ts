@@ -265,7 +265,9 @@ export async function updateMyReservation(
     where: { id: giftId },
     select: reservationCardSelect,
   });
-  if (fresh === null) return notFound;
+  // The CAS proved the write, but a release and a new reservation could still
+  // land in between: a card of somebody else's reservation is never the answer.
+  if (fresh === null || fresh.reservedById !== actorId) return notFound;
 
   const row = reservationCardRow(fresh);
   if (row === null) {

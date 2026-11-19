@@ -230,3 +230,13 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-76-dolgi-2-6.md`
   summary: Карточки секции «Архив» не открывают диалог подробностей CLE-84, хотя активные открывают.
   evidence: `ArchiveSection` не передаёт `onPress`. Остальное из ревью переноса (шаги выкладки, долги кода, stories `WishCard` с `menu` и `DateField`) закрыто в `spec-cle-76-dolgi-2-6.md`.
+
+## Deferred from: Story 5.2 — снятие брони держателем и владельцем (CLE-114, 2026-11-19)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-снятие-брони-держателем-и-владельцем.md`
+  summary: Владелец не получает событие «держатель снял бронь» (in-app + email). Уведомлений нет: решение A оставляет факт перехода только в audit-строке `gift.status`, строки `Notification` и письма не создаются. Появится с Epic 6 — Story 6.1 заводит `Notification` и `deliverAfter`; источником события будет либо лог, либо запись в момент перехода через шов `recordGiftEvent`.
+  evidence: `recordGiftEvent` в `apps/web/src/lib/gift-status-store.ts` пишет только `console.info` с `{ event, giftId, actorId, from, to, at }`; после CAS колонки `reserved*` очищены, поэтому payload для письма из строки желания уже не собрать.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-снятие-брони-держателем-и-владельцем.md`
+  summary: Держатель не получает событие «владелец снял бронь» (in-app + email) — тот же вариант A и та же зависимость от Epic 6 / Story 6.1. От перехода остаётся audit-строка с актором-владельцем; уведомление о снятии владелец-инициировал сам, но держателю оно нужно по AC.
+  evidence: Снятие владельцем — CAS `RESERVED → OPEN` в `gift-status-store.ts` с тем же `recordGiftEvent`; таблицы `Notification` в `schema.prisma` нет до Story 6.1, Resend в этой истории не подключается.

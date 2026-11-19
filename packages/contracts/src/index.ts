@@ -272,6 +272,8 @@ export const listDataSchema = z.strictObject({
    * a viewer answer omits it, and archived rows never appear in `gifts`.
    */
   archived: z.array(giftCardSchema).optional(),
+  /** Full count of the owner's archive; `archived` holds only the newest page. */
+  archivedTotal: z.number().int().nonnegative().optional(),
   /**
    * Story 4.6 (FR-46, AD-19): `true` when the viewer has a directed
    * `Subscription(viewerId → ownerId)`. Only `/u/:nick` adds it, so `/l/:token`
@@ -435,6 +437,7 @@ export {
   GIFT_TAG_TEXT_MAX,
   GIFT_TITLE_MAX,
   giftInputSchema,
+  isCalendarDay,
   giftReserveBodySchema,
   giftRestoreSchema,
   giftTagInputSchema,

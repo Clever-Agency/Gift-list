@@ -37,9 +37,11 @@ export type DateFieldProps = {
   hint?: string;
   /** Shown when a day is set, so the owner can clear an optional date. */
   clearLabel: string;
-  /** Phone button text. The browser input has its own empty state. */
+  /** Phone only: the button text. The browser input has its own empty state. */
   placeholder?: string;
+  /** Phone only: the chosen day, already formatted for the button. */
   displayValue?: string;
+  /** Phone only: closes the iOS sheet. */
   doneLabel?: string;
   testID?: string;
 };
@@ -76,10 +78,8 @@ export const DateField = forwardRef<ComponentRef<typeof DateInput>, DateFieldPro
             value={value}
             onChangeText={handleChange}
             invalid={Boolean(error)}
-            aria-label={label}
             aria-invalid={error ? true : undefined}
             aria-describedby={described ? `${id}-description` : undefined}
-            accessibilityHint={described}
             flex={1}
             {...({ type: "date", min } as object)}
           />

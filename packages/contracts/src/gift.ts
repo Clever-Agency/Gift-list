@@ -87,6 +87,23 @@ const linkUrlFieldSchema = z.preprocess(
 const visibilityFieldSchema = z.enum(VISIBILITIES);
 const quantityFieldSchema = z.enum(QUANTITIES);
 
+const CALENDAR_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** A real Gregorian day (`YYYY-MM-DD`), not `2026-02-31` and not a datetime. */
+export function isCalendarDay(value: string): boolean {
+  const match = CALENDAR_DAY.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 /**
  * Story 2.6: an optional calendar day (`YYYY-MM-DD`). Empty form text means
  * "no date". Impossible days (`2026-02-31`) are rejected here; "before today"
@@ -96,20 +113,8 @@ const expiresOnFieldSchema = z.preprocess(
   blankToNull,
   z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .refine(function isRealCalendarDay(value) {
-      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-      if (!match) return false;
-      const year = Number(match[1]);
-      const month = Number(match[2]);
-      const day = Number(match[3]);
-      const date = new Date(Date.UTC(year, month - 1, day));
-      return (
-        date.getUTCFullYear() === year &&
-        date.getUTCMonth() === month - 1 &&
-        date.getUTCDate() === day
-      );
-    }, { message: "expiresOn must be a calendar day" })
+    .regex(CALENDAR_DAY)
+    .refine(isCalendarDay, { message: "expiresOn must be a calendar day" })
     .nullable()
     .optional(),
 );

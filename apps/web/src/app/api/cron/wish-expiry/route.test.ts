@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { processWishExpiry } = vi.hoisted(() => ({ processWishExpiry: vi.fn() }));
+const { processWishExpiry } = vi.hoisted(() => ({
+  processWishExpiry: vi.fn(),
+}));
 
 vi.mock("@/lib/gift-status-store", () => ({
   processWishExpiry,
@@ -35,10 +37,37 @@ describe("POST /api/cron/wish-expiry", () => {
   });
 
   it("returns only the archived count", async () => {
-    processWishExpiry.mockResolvedValue({ archived: 2 });
+    processWishExpiry.mockResolvedValue({ archived: 2, failed: 0 });
     const response = await POST(post(`Bearer ${secret}`));
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true, data: { archived: 2 } });
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      data: { archived: 2 },
+    });
+  });
+
+  it("answers 500 without a body or details when the run fails", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    processWishExpiry.mockRejectedValue(new Error("secret title"));
+    const response = await POST(post(`Bearer ${secret}`));
+    expect(response.status).toBe(500);
+    await expect(response.text()).resolves.toBe("");
+    spy.mockRestore();
+  });
+
+  it("answers 500 without a body when some rows failed", async () => {
+    processWishExpiry.mockResolvedValue({ archived: 1, failed: 1 });
+    const response = await POST(post(`Bearer ${secret}`));
+    expect(response.status).toBe(500);
+    await expect(response.text()).resolves.toBe("");
+  });
+
+  it("logs the failed run without the error message", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    processWishExpiry.mockRejectedValue(new Error("secret title"));
+    await POST(post(`Bearer ${secret}`));
+    expect(JSON.stringify(spy.mock.calls)).not.toContain("secret title");
+    spy.mockRestore();
   });
 
   it("answers GET as not found", async () => {

@@ -19,7 +19,8 @@ vi.mock("@/db/client", () => ({
   prisma: {
     user: { findUnique: findUser },
     list: { findUnique: findList },
-    gift: { findMany: findManyGifts },
+    gift: { findMany: findManyGifts, count: () => Promise.resolve(0) },
+    $transaction: (operations: Promise<unknown>[]) => Promise.all(operations),
   },
 }));
 // The pure `profileRelationFacts` stays real: the tests below pin the cooldown

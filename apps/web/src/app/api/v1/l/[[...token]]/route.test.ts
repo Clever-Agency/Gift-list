@@ -10,7 +10,8 @@ const { getSession, findUnique, findMany, relationsBetween } = vi.hoisted(() => 
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
-vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
+vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany, count: () => Promise.resolve(0) },
+    $transaction: (operations: Promise<unknown>[]) => Promise.all(operations) } }));
 vi.mock("@/lib/relationships", () => ({ relationshipReader: { relationsBetween } }));
 
 type Row = {

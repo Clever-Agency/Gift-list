@@ -70,3 +70,14 @@ export function isDueOnInRange(dueOn: string, timeZone: string, now = new Date()
   const max = maxReserveDueOn(timeZone, now);
   return dueOn >= min && dueOn <= max;
 }
+
+/**
+ * Story 5.5 (AD-9, ARCH-A14): the calendar day the holder picked, read back from
+ * the stored deadline. `reservationDueAt` is the exclusive end of that day — the
+ * first instant of the next day in the snapshot zone — so the day is
+ * `calendarDayInZone(dueAt, zone) − 1`. The holder card and the viewer card share
+ * this one formula, and the zone itself never reaches the wire.
+ */
+export function reservationDueOn(dueAt: Date, timeZone: string): string {
+  return addCalendarDays(calendarDayInZone(dueAt, timeZone), -1);
+}

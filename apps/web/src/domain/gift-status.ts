@@ -6,6 +6,7 @@
 // Story 2.6: archiving an expired open wish and restoring it are writes in that
 // same adapter. Whether a day is already past is `isBeforeLocalToday`.
 
+import { RESERVATION_PHASES } from "@gift-list/contracts";
 import {
   VisibilityPolicy,
   type GiftVisibility,
@@ -52,6 +53,45 @@ export type ReserveGiftWrite = {
   readonly holderVisibleToOwner: boolean;
   readonly holderVisibleToOthers: boolean;
 };
+
+/** The closed reservation phases (Story 5.5); the wire enum is `RESERVATION_PHASES`. */
+export type ReservationPhase = (typeof RESERVATION_PHASES)[number];
+
+/**
+ * Story 5.5 (AD-9): one extension of a live reservation. `dueAt` is the exclusive
+ * end of the new chosen day, `timeZone` a fresh snapshot of the holder's zone
+ * (`canonicalTimeZone(storedTimeZone(...))`, as in Story 5.1) and `at` the moment
+ * the phase returns to `ACTIVE`. `bought` is deliberately not part of the write:
+ * extending never changes it.
+ */
+export type ExtendReservationWrite = {
+  readonly dueAt: Date;
+  readonly timeZone: string;
+  readonly at: Date;
+};
+
+/** Story 5.5: only `Gift.reservationBought` changes. */
+export type SetReservationBoughtWrite = {
+  readonly value: boolean;
+};
+
+/** Story 5.5: both toggles of the holder's visibility arrive in one body. */
+export type SetReservationVisibilityWrite = {
+  readonly holderVisibleToOwner: boolean;
+  readonly holderVisibleToOthers: boolean;
+};
+
+/**
+ * Story 5.5: the phases an extension may leave. `GIVEN` is not one of them — it
+ * waits for the owner's confirmation (Story 5.7) and its expiry timers are
+ * stopped, so an extension would silently restart them. The store's CAS uses this
+ * exact list, so the pre-check and the write cannot drift apart.
+ */
+export const EXTENDABLE_RESERVATION_PHASES = [
+  "ACTIVE",
+  "AWAITING_GIVER",
+  "AWAITING_OWNER",
+] as const satisfies readonly ReservationPhase[];
 
 /** Only a live reservation is released; an OPEN or CLOSED row has nothing to clear. */
 export function hasActiveReservation(row: GiftStatusRow): boolean {
@@ -220,6 +260,36 @@ export interface GiftStatusTransaction {
    */
   reserveGift(giftId: string, data: ReserveGiftWrite): Promise<"success" | "lost">;
   /**
+   * Story 5.5 (AD-9): CAS on a live reservation of the holder in an extendable
+   * phase. The write moves the deadline, snapshots the zone and puts the phase
+   * back to `ACTIVE`. A row that is no longer `RESERVED`, belongs to somebody
+   * else or already sits in `GIVEN` is left untouched and answers `lost`.
+   */
+  extendReservation(
+    giftId: string,
+    actorId: string,
+    write: ExtendReservationWrite,
+  ): Promise<"success" | "lost">;
+  /**
+   * Story 5.5 (AD-9): CAS on any live reservation of the holder. Only
+   * `reservationBought` changes, so clearing the mark in `AWAITING_OWNER` keeps
+   * `reservationPhaseAt` and the request to the owner stays as it was.
+   */
+  setReservationBought(
+    giftId: string,
+    actorId: string,
+    write: SetReservationBoughtWrite,
+  ): Promise<"success" | "lost">;
+  /**
+   * Story 5.5 (FR-31): CAS on any live reservation of the holder. Only the two
+   * toggles change; the phase, its moment, the deadline and `bought` stay.
+   */
+  setReservationVisibility(
+    giftId: string,
+    actorId: string,
+    write: SetReservationVisibilityWrite,
+  ): Promise<"success" | "lost">;
+  /**
    * Story 5.2: CAS `RESERVED → OPEN` for the holder of the reservation. The
    * predicate carries `reservedById`, so a wish held by someone else, released
    * in the meantime or not reserved at all is left untouched and answers `lost`.
@@ -274,6 +344,34 @@ export function canReserveGift(row: ReserveEligibleRow): boolean {
     row.quantity === "SINGLE" &&
     row.archivedAt === null
   );
+}
+
+/** The columns the Story 5.5 predicates read. */
+export type ReservationAttributeRow = {
+  readonly status: GiftStatusRow["status"];
+  readonly reservationPhase: ReservationPhase | null;
+};
+
+/**
+ * Story 5.5: may this reservation be extended? Only a live `RESERVED` row in one
+ * of {@link EXTENDABLE_RESERVATION_PHASES}; `GIVEN` refuses on purpose, and an
+ * incomplete row (no phase) is refused too. The server re-checks the same rule in
+ * the CAS, so a stale answer can only lose the race, never write.
+ */
+export function canExtendReservation(row: ReservationAttributeRow): boolean {
+  if (row.status !== "RESERVED" || row.reservationPhase === null) return false;
+  return (EXTENDABLE_RESERVATION_PHASES as readonly ReservationPhase[]).includes(
+    row.reservationPhase,
+  );
+}
+
+/**
+ * Story 5.5 (AD-9): `bought` and the two visibility toggles are attributes of any
+ * live reservation — every phase, `GIVEN` included, may change them. Only the
+ * status limits them; an `OPEN` or `CLOSED` row is not a reservation anymore.
+ */
+export function canSetReservationAttributes(row: GiftStatusRow): boolean {
+  return row.status === "RESERVED";
 }
 
 export type HolderAccessInput = {

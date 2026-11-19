@@ -280,3 +280,47 @@ export async function releaseReservation(id: string): Promise<ReleaseReservation
 
   return { ok: true };
 }
+
+/**
+ * Story 5.3 (FR-32, ARCH-A5): `POST /api/v1/me/gifts/{id}/close` marks an own
+ * `OPEN` or `RESERVED` wish as received. The answer is the owner's AD-12 card,
+ * re-checked with the shared contract; a closed card carries `undoUntil`, the
+ * moment the server's undo window ends. The screen counts down from that moment
+ * and never keeps the ten minutes itself: the server refuses a late undo anyway.
+ *
+ * A late undo of an already closed wish answers `CONFLICT` with
+ * `reason: "UNDO_WINDOW_EXPIRED"`. The envelope keeps the reason, so the caller
+ * tells it apart from a plain `CONFLICT` and shows «Время на отмену вышло».
+ */
+export async function closeGift(id: string): Promise<GiftResult> {
+  const result = await apiRequest<unknown>(
+    `/api/v1/me/gifts/${encodeURIComponent(id)}/close`,
+    { method: "POST" },
+  );
+  if (!result.ok) return result;
+
+  const parsed = giftCardSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, gift: parsed.data };
+}
+
+/**
+ * Story 5.3 (D-43, ARCH-A5): `POST /api/v1/me/gifts/{id}/undo-close` returns a
+ * closed wish to the status it was closed from. The answer is the owner's card
+ * (`undoUntil: null`), so the screen replaces the card instead of rereading the
+ * list. Outside the window the same request is `CONFLICT` with the reason above.
+ * The body is empty, hence no `content-type`, as the close.
+ */
+export async function undoGiftClose(id: string): Promise<GiftResult> {
+  const result = await apiRequest<unknown>(
+    `/api/v1/me/gifts/${encodeURIComponent(id)}/undo-close`,
+    { method: "POST" },
+  );
+  if (!result.ok) return result;
+
+  const parsed = giftCardSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, gift: parsed.data };
+}

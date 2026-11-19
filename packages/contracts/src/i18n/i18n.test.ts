@@ -148,6 +148,27 @@ describe("invite confirmation copy", () => {
   });
 });
 
+describe("reservation release copy", () => {
+  /**
+   * Story 5.2: the holder's confirm and the owner's step are worded by the AC of
+   * the story and by `EXPERIENCE.md`, so the catalog keeps the sentences verbatim.
+   */
+  it("keeps the release texts verbatim and not empty", () => {
+    const release = getMessages("ru").app.gift.release;
+
+    expect(release.title).toBe("Снять бронь? Подарок снова станет открытым.");
+    expect(release.confirm).toBe("Снять бронь");
+    expect(release.cancel).toBe("Отмена");
+    expect(release.warningBought).toBe(
+      "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё",
+    );
+    expect(release.warningGiven).toBe("Даритель отметил, что уже вручил");
+    for (const text of Object.values(release)) {
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe("error catalog", () => {
   it("covers every error code and reason with non-empty text", () => {
     const { code, reason } = getMessages("ru").common.errors;

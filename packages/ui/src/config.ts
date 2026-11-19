@@ -3,9 +3,14 @@ import { animations } from "./animations";
 import {
   breakpoints,
   colors,
+  colorsDark,
+  highlights,
   rounded,
+  shadows,
   spacing,
   typography,
+  type ThemeColors,
+  type ThemeName,
   type TypographyRole,
 } from "./tokens";
 
@@ -67,8 +72,16 @@ function spaceTokens(): Record<string, number> {
   return { ...sizeTokens(), 1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32 };
 }
 
+/**
+ * Size, space, radius and zIndex are static, so they are tokens. **Colours are not
+ * tokens on purpose**: Tamagui resolves `$name` of a colour property to a token
+ * before it looks at the theme (`getSplitStyles`: `tokensParsed[category]` wins), so a
+ * `color` token named `primary` would freeze every `$primary` to the light value —
+ * the dark theme would never paint. Colour names live in the two themes below, and
+ * `colors` / `colorsDark` stay the JS palette (theme seeds and plain values for the
+ * few native props that cannot take a theme token).
+ */
 const tokens = createTokens({
-  color: colors,
   space: spaceTokens(),
   size: sizeTokens(),
   radius: { 0: 0, ...rounded },
@@ -76,22 +89,34 @@ const tokens = createTokens({
 });
 
 /**
- * The only theme (`light`, UX-A8). Besides the DESIGN.md colors it carries the
- * keys the Tamagui components in use ask for (`tamagui/dialog`, `tamagui/sheet`
- * manifests): `color`, `color-5`, `shadow-color`, `border-color*`, `outline-color`.
+ * One theme from one palette (v8: `light` and `dark`, the same keys). Besides the
+ * DESIGN.md colors it carries the keys the Tamagui components in use ask for
+ * (`tamagui/dialog`, `tamagui/sheet` manifests): `color`, `color-5`, `shadow-color`,
+ * `border-color*`, `outline-color`.
+ *
+ * `shadow-card` and `shadow-card-hover` are the v8 elevation as one CSS value per
+ * theme (the top-edge highlight plus the card layers of `effects`), so a component
+ * writes `boxShadow="$shadow-card"` and never branches on the theme name.
  */
-const light = {
-  ...colors,
-  color: colors.foreground,
-  "color-5": colors["border-strong"],
-  "shadow-color": colors.scrim,
-  "background-hover": colors.muted,
-  "background-press": colors.muted,
-  "border-color": colors.border,
-  "border-color-hover": colors["border-strong"],
-  "border-color-focus": colors.ring,
-  "outline-color": colors.ring,
-};
+function createTheme(palette: ThemeColors, theme: ThemeName) {
+  return {
+    ...palette,
+    color: palette.foreground,
+    "color-5": palette["border-strong"],
+    "shadow-color": palette.scrim,
+    "shadow-card": [highlights[theme].card, shadows[theme].card].join(", "),
+    "shadow-card-hover": [highlights[theme].card, shadows[theme].cardHover].join(", "),
+    "background-hover": palette.muted,
+    "background-press": palette.muted,
+    "border-color": palette.border,
+    "border-color-hover": palette["border-strong"],
+    "border-color-focus": palette.ring,
+    "outline-color": palette.ring,
+  } as const;
+}
+
+const light = createTheme(colors, "light");
+const dark = createTheme(colorsDark, "dark");
 
 export function createGiftListConfig(families: FontFamilies) {
   const faces = families.bodyFaces;
@@ -125,7 +150,7 @@ export function createGiftListConfig(families: FontFamilies) {
     tokens,
     animations,
     fonts: { body, heading, "body-500": body500, "body-600": body600, display },
-    themes: { light },
+    themes: { light, dark },
     media: {
       medium: { minWidth: breakpoints.medium },
       expanded: { minWidth: breakpoints.expanded },

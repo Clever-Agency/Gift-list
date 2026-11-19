@@ -130,20 +130,20 @@ describe("POST /api/v1/password/forgot", () => {
 
 describe("POST /api/v1/password/reset", () => {
   it("reset-ok stores the password, sets no session, and a second use is stale", async () => {
-    const res = await reset(post("/api/v1/password/reset", { token: "live-token", password: "password1" }));
+    const res = await reset(post("/api/v1/password/reset", { token: "live-token", password: "password1234" }));
     expect(res.status).toBe(200);
     expect(res.headers.get("set-cookie")).toBeNull();
     expect(res.headers.get("set-auth-token")).toBeNull();
     expect(await res.json()).toEqual({ ok: true, data: { saved: true } });
     expect(resetPassword).toHaveBeenCalledTimes(1);
     expect(resetPassword).toHaveBeenCalledWith({
-      body: { newPassword: "password1", token: "live-token" },
+      body: { newPassword: "password1234", token: "live-token" },
     });
 
     resetPassword.mockRejectedValue(
       Object.assign(new Error("Invalid token"), { body: { code: "INVALID_TOKEN", message: "Invalid token" } }),
     );
-    const again = await reset(post("/api/v1/password/reset", { token: "live-token", password: "password1" }));
+    const again = await reset(post("/api/v1/password/reset", { token: "live-token", password: "password1234" }));
     expect(again.status).toBe(400);
     expect(await again.json()).toEqual({
       ok: false,
@@ -155,18 +155,18 @@ describe("POST /api/v1/password/reset", () => {
 
   it("reset-stale maps an expired, used, or empty token", async () => {
     for (const token of ["", "   "]) {
-      const res = await reset(post("/api/v1/password/reset", { token, password: "password1" }));
+      const res = await reset(post("/api/v1/password/reset", { token, password: "password1234" }));
       expect(res.status).toBe(400);
       expect(await res.json()).toMatchObject({ code: "VALIDATION", reason: "RESET_LINK_STALE" });
     }
-    const missing = await reset(post("/api/v1/password/reset", { password: "password1" }));
+    const missing = await reset(post("/api/v1/password/reset", { password: "password1234" }));
     expect(missing.status).toBe(400);
     expect(await missing.json()).toMatchObject({ code: "VALIDATION", reason: "RESET_LINK_STALE" });
     expect(resetPassword).not.toHaveBeenCalled();
 
     for (const code of ["TOKEN_EXPIRED", "USER_NOT_FOUND"]) {
       resetPassword.mockRejectedValue(Object.assign(new Error(code), { body: { code } }));
-      const expired = await reset(post("/api/v1/password/reset", { token: "old", password: "password1" }));
+      const expired = await reset(post("/api/v1/password/reset", { token: "old", password: "password1234" }));
       expect(expired.status).toBe(400);
       expect(await expired.json()).toMatchObject({ reason: "RESET_LINK_STALE" });
     }
@@ -177,7 +177,7 @@ describe("POST /api/v1/password/reset", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body).toMatchObject({ ok: false, code: "VALIDATION", field: "password" });
-    expect(body.reason).toBeUndefined();
+    expect(body.reason).toBe("PASSWORD_TOO_SHORT");
     expect(resetPassword).not.toHaveBeenCalled();
   });
 
@@ -191,6 +191,7 @@ describe("POST /api/v1/password/reset", () => {
       code: "VALIDATION",
       message: "Invalid input",
       field: "password",
+      reason: "PASSWORD_TOO_LONG",
     });
     expect(resetPassword).not.toHaveBeenCalled();
   });
@@ -207,6 +208,7 @@ describe("POST /api/v1/password/reset", () => {
       code: "VALIDATION",
       message: "Invalid input",
       field: "password",
+      reason: "PASSWORD_TOO_LONG",
     });
     expect(resetPassword).not.toHaveBeenCalled();
   });

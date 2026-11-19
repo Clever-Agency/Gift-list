@@ -19,7 +19,7 @@ import { focusRingInverse } from "./focus-ring";
 
 const mounted = createMount();
 
-const RING = ["outline-color:var(--c-ring)", "outline-style:solid", "outline-width:2px"];
+const RING = ["outline-color:var(--ring)", "outline-style:solid", "outline-width:2px"];
 
 function outline(element: Element, state: string): string[] {
   return declarationsFor(element)

@@ -123,16 +123,42 @@ describe("formIssue", () => {
     });
   });
 
+  it("PASSWORD_PWNED keeps the breach sentence on the password field", () => {
+    expect(
+      formIssue(
+        err({ code: "VALIDATION", field: "password", reason: "PASSWORD_PWNED" }),
+        fake,
+        fake,
+        "register",
+      ),
+    ).toEqual({ field: "password", reason: "PASSWORD_PWNED", text: "errors.reason.PASSWORD_PWNED" });
+  });
+
+  it("PASSWORD_REUSED keeps the reuse sentence on the password field", () => {
+    expect(
+      formIssue(
+        err({ code: "VALIDATION", field: "password", reason: "PASSWORD_REUSED" }),
+        fake,
+        fake,
+        "reset",
+      ),
+    ).toEqual({ field: "password", reason: "PASSWORD_REUSED", text: "errors.reason.PASSWORD_REUSED" });
+  });
+
   it("passwordFieldIssue states the rule on both bounds and the generic text between them", () => {
     expect(passwordFieldIssue("1234567", fake, fake)).toEqual({
       field: "password",
+      reason: "PASSWORD_TOO_SHORT",
       text: "form.passwordRules",
     });
-    expect(passwordFieldIssue("12345678", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("12345678901", fake, fake).reason).toBe("PASSWORD_TOO_SHORT");
+    expect(passwordFieldIssue("123456789012", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("password1234", fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue("x".repeat(127), fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue("x".repeat(128), fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue("x".repeat(129), fake, fake)).toEqual({
       field: "password",
+      reason: "PASSWORD_TOO_LONG",
       text: "form.passwordTooLong",
     });
   });
@@ -143,17 +169,18 @@ describe("formIssue", () => {
     // 65 emoji are 130 units: over it, while both are 65 code points.
     expect(passwordFieldIssue("🎁".repeat(65), fake, fake)).toEqual({
       field: "password",
+      reason: "PASSWORD_TOO_LONG",
       text: "form.passwordTooLong",
     });
     expect("🎁".repeat(65).length).toBe(130);
   });
 
   it("passwordFieldIssue measures the value as typed: no trim, no normalisation", () => {
-    // 11 units with the spaces: long enough, so the minimum sentence stays away.
-    expect(passwordFieldIssue("  1234567  ", fake, fake).text).toBe("errors.code.VALIDATION");
-    expect(passwordFieldIssue("  1234   ", fake, fake).text).toBe("errors.code.VALIDATION");
-    // 8 spaces is a password of 8 units, not an empty one.
-    expect(passwordFieldIssue("        ", fake, fake).text).toBe("errors.code.VALIDATION");
+    // Twelve UTF-16 units inside the padding pass the minimum.
+    expect(passwordFieldIssue("  password12  ", fake, fake).text).toBe("errors.code.VALIDATION");
+    expect(passwordFieldIssue("  1234   ", fake, fake).reason).toBe("PASSWORD_TOO_SHORT");
+    expect(passwordFieldIssue(" ".repeat(11), fake, fake).reason).toBe("PASSWORD_TOO_SHORT");
+    expect(passwordFieldIssue(" ".repeat(12), fake, fake).text).toBe("errors.code.VALIDATION");
     expect(passwordFieldIssue(`  ${"x".repeat(127)}  `, fake, fake).text).toBe(
       "form.passwordTooLong",
     );

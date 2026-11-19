@@ -50,6 +50,11 @@ export default function RegisterScreen() {
   const [nickSettled, setNickSettled] = useState(false);
   const [issue, setIssue] = useState<FormIssue | null>(null);
   const [pending, setPending] = useState(false);
+  // CLE-99: the server replaces an invite `next` with `/` when the registration
+  // did not create a friendship (unknown token and Block share that answer).
+  // The ready-effect must follow that landing, not the URL the form was opened
+  // with — otherwise the new account opens «Приглашение не найдено.».
+  const landing = useRef<string | null>(null);
   // UI5: submit moves focus to the invalid field and scrolls it into view.
   const emailRef = useRef<TextInputInstance | null>(null);
   const passwordRef = useRef<TextInputInstance | null>(null);
@@ -102,7 +107,7 @@ export default function RegisterScreen() {
   }
 
   useEffect(function redirectWhenReady() {
-    if (auth.state.status === "ready") router.replace(next as "/");
+    if (auth.state.status === "ready") router.replace((landing.current ?? next) as "/");
   }, [auth.state.status, next]);
 
   // AD-13: the same rule as the server, taken from the contract. The preview is
@@ -178,7 +183,10 @@ export default function RegisterScreen() {
     setPending(false);
     if (!result.ok) {
       const issue = formIssue(result, t, common, "register");
-      let nextIssue = issue.field === "password" ? passwordFieldIssue(password, t, common) : issue;
+      let nextIssue =
+        issue.field === "password" && issue.reason === undefined
+          ? passwordFieldIssue(password, t, common)
+          : issue;
       if (nextIssue.field === "nick" && nextIssue.reason !== "NICK_TAKEN") {
         // A server-side nick validation names the same reason the client would.
         setNickSettled(true);
@@ -191,8 +199,9 @@ export default function RegisterScreen() {
       focusIssueField(nextIssue.field);
       return;
     }
+    landing.current = safeNextPath(result.data.next);
     auth.setUser(result.data.user);
-    router.replace(safeNextPath(result.data.next) as "/");
+    router.replace(landing.current as "/");
   }
 
   function handleSubmit() {
@@ -222,10 +231,22 @@ export default function RegisterScreen() {
     params: next !== "/" ? { next } : {},
   };
 
+  function reserveTitleFromNext(path: string): string | null {
+    const query = path.split("?")[1];
+    if (!query) return null;
+    const title = new URLSearchParams(query).get("title");
+    return title && title.trim() !== "" ? title : null;
+  }
+
+  const reserveTitle = next !== "/" ? reserveTitleFromNext(next) : null;
+
   return (
     <>
       <Stack.Screen options={{ title: t("register.pageTitle", { brand }) }} />
       <AnonymousScreen title={t("register.title")}>
+        {reserveTitle ? (
+          <Text kind="body">{t("register.forReserve", { title: reserveTitle })}</Text>
+        ) : null}
         {issue && !issue.field ? (
           <Text role="alert" aria-live="polite">
             {issue.text}
@@ -257,7 +278,6 @@ export default function RegisterScreen() {
           value={password}
           onChangeText={change("password", setPassword)}
           error={fieldError("password")}
-          // NOTE FOR UX: «Ошибки форм» не задаёт длину пароля. Подсказка и ошибка — form.passwordRules / form.passwordTooLong.
           hint={password.length < PASSWORD_MIN ? t("form.passwordRules") : undefined}
           showLabel={t("form.showPassword")}
           input={{

@@ -172,11 +172,21 @@ function gift(overrides: Partial<GiftCard> = {}): GiftCard {
   };
 }
 
-/** `/api/v1/me` answers with the session; every other path answers with the wishlist. */
+/** `/api/v1/me` answers with the session; a single wish answers with that card; the rest with the list. */
 function respond(gifts: unknown, session: unknown = { ok: true, data: user }) {
-  api.apiRequest.mockImplementation((path: string) =>
-    Promise.resolve(path === "/api/v1/me" ? session : gifts),
-  );
+  api.apiRequest.mockImplementation((path: string) => {
+    if (path === "/api/v1/me") return Promise.resolve(session);
+    const one = /^\/api\/v1\/me\/gifts\/([^/]+)$/.exec(path);
+    if (one && gifts && typeof gifts === "object" && gifts !== null && "data" in gifts) {
+      const data = (gifts as { data?: { gifts?: { id: string }[] } }).data;
+      const card = data?.gifts?.find(function sameId(item) {
+        return item.id === decodeURIComponent(one[1] ?? "");
+      });
+      if (card) return Promise.resolve({ ok: true, data: card });
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Gift not found" });
+    }
+    return Promise.resolve(gifts);
+  });
 }
 
 function giftsAnswer(cards: unknown[], publicToken?: string) {
@@ -224,6 +234,16 @@ function button(label: string): HTMLElement | undefined {
 async function press(label: string) {
   const target = button(label);
   expect(target).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
+/** The toast's close cross: an icon button, so its name comes from `aria-label`. */
+async function dismissToast() {
+  const target = container.querySelector<HTMLElement>('[aria-label="Закрыть"]');
+  expect(target).not.toBeNull();
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
@@ -643,12 +663,13 @@ describe("мой вишлист: список", () => {
   });
 
   /**
-   * Story 2.2: the owner card is the way into the edit form. The pressable lives
+   * CLE-84: the owner card opens details. «Изменить желание» inside the dialog
+   * is the way into the edit form (Story 2.2). The pressable lives
    * inside the listitem, so the list semantics above stay exactly as they were.
    * CLE-65: the press zone is the whole card, and the chip is a sibling layer over
    * the reserved footer, not a nested button.
    */
-  it("нажатие на карточку открывает редактирование желания, listitem остаётся", async () => {
+  it("нажатие на карточку открывает подробности, listitem остаётся", async () => {
     respond(giftsAnswer([gift(), gift({ id: "g2", title: "Свитер" })]));
     await mount();
 
@@ -670,18 +691,63 @@ describe("мой вишлист: список", () => {
       card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
+    await settle();
+    const dialog = dialogElement();
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("Наушники");
+    expect(dialog?.textContent).toContain("Изменить желание");
+    expect(navigation.push).not.toHaveBeenCalled();
+    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
+    await act(async () => {
+      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
     expect(navigation.push).toHaveBeenCalledWith({
       pathname: "/gifts/[id]/edit",
       params: { id: "g1" },
     });
   });
 
+  it("подробности берут описание из чтения одного желания и возвращают фокус на карточку", async () => {
+    const card = gift();
+    respond(giftsAnswer([card]));
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({
+          ok: true,
+          data: { ...card, description: "Синие, с шумоподавлением." },
+        });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+    await mount();
+
+    const cardButton = container.querySelector(
+      '[role="listitem"] > [role="button"]',
+    ) as HTMLElement;
+    await act(async () => {
+      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(dialogElement()?.textContent).toContain("Синие, с шумоподавлением.");
+    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/me/gifts/g1");
+
+    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
+    await act(async () => {
+      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(300);
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cardButton);
+  });
+
   /**
    * CLE-65 reproduction: a click on the empty footer space next to the «Всем» chip
    * did nothing. That space is the card's reserved footer spacer — the last box of
-   * the card button — so the press now opens the editor.
+   * the card button — so the press now opens the detail dialog, not the editor.
    */
-  it("нажатие на пустое место рядом с чипом открывает редактирование", async () => {
+  it("нажатие на пустое место рядом с чипом открывает подробности", async () => {
     respond(giftsAnswer([gift()]));
     await mount();
 
@@ -696,10 +762,9 @@ describe("мой вишлист: список", () => {
       spacer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    expect(navigation.push).toHaveBeenCalledWith({
-      pathname: "/gifts/[id]/edit",
-      params: { id: "g1" },
-    });
+    await settle();
+    expect(dialogElement()?.textContent).toContain("Наушники");
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 
   it("пустой вишлист: «Пока пусто» и «Добавить желание» ведёт в форму", async () => {
@@ -762,7 +827,7 @@ describe("мой вишлист: список", () => {
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(button("Повторить")).toBeDefined();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс), экран убирает его после анимации.
     await settle(300);
     expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
@@ -979,7 +1044,7 @@ describe("мой вишлист: список", () => {
 });
 
 /**
- * Story 2.4 (FR-28, AD-6, Q-2): one button copies `{origin}/l/{publicToken}` and
+ * Story 2.4 (FR-28, AD-6, D-48): one button copies `{origin}/l/{publicToken}` and
  * a toast says so. A missing origin or token is never copied as a broken string;
  * the press shows the error toast instead. No share-sheet.
  */
@@ -1421,7 +1486,7 @@ describe("мой вишлист: весточка от формы создани
     // `setParams({ toast: undefined })` drops the param (expo-router does) and the
     // screen re-renders on «Закрыть»: the notice and its value are both gone.
     search.params = {};
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
@@ -1440,7 +1505,7 @@ describe("мой вишлист: весточка от формы создани
     respond(giftsAnswer([gift()]));
     await mount();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Добавлено в вишлист");
@@ -1484,7 +1549,7 @@ describe("мой вишлист: весточка от формы редакти
     respond(giftsAnswer([gift()]));
     await mount();
 
-    await press("Закрыть");
+    await dismissToast();
     // Тост уходит с fade (160 мс) — подтверждение исчезает после анимации.
     await settle(300);
     expect(text()).not.toContain("Изменения сохранены.");
@@ -1593,6 +1658,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     await press("Всем");
     expect(dialogElement()).not.toBeNull();
     expect(text()).toContain("Кто видит «Наушники»");
+    // The chip is a sibling of the card button: it must not open wish details.
+    expect(text()).not.toContain("Изменить желание");
 
     // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
     let answer: (value: unknown) => void = function pendingAnswer() {};
@@ -2305,9 +2372,10 @@ describe("W12.19: главный экран на медиа-пропсах", () 
   });
 
   it.each([
-    { width: 360, columns: 1 },
-    { width: 599, columns: 1 },
-    { width: 600, columns: 1 },
+    { width: 360, columns: 2 },
+    { width: 599, columns: 2 },
+    { width: 600, columns: 2 },
+    { width: 1023, columns: 2 },
     { width: 1024, columns: 3 },
     { width: 1280, columns: 3 },
   ])(
@@ -2386,29 +2454,30 @@ describe("W12.19: главный экран на медиа-пропсах", () 
   /**
    * W12.23: the grid follows the measured content area, not the window. A 600 px window
    * with a classic ~15 px scrollbar leaves a 585 px column, so the cards get
-   * 585 − 2·24 = 537 px instead of the 552 px `cardGrid(600)` drew — the right gutter is
-   * 24 px again. Without a scrollbar the content area is the window minus the gutter and
-   * the numbers are the ones W12.19–W12.21 pinned.
+   * 585 − 2·24 = 537 px of content; v8 puts two cards in it, and the right gutter is
+   * 24 px again. Without a scrollbar the numbers are the ones the width tests pinned.
    */
   describe("W12.23: сетка по ширине контента", () => {
-    it("окно 600 px, колонка 537 px: карточка 537 px и ряд влезает в колонку", async () => {
+    it("окно 600 px, колонка 537 px: две карточки, ряд влезает в колонку", async () => {
       await mountAt(600);
       await measuredLayout.measure(537);
 
       const cssGutter = paintedSpace(pageColumn(), "padding-inline", 600) ?? 0;
       const cardWidth = paintedWidth(gridCard(), 600);
+      const gap = spacing["grid-gap"];
 
       expect(cssGutter).toBe(spacing["page-gutter-lg"]);
       expect(cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 5);
-      expect(cardWidth).toBe(537);
-      // 537 px of cards plus two 24 px gutters is exactly the 585 px column, so the
-      // right edge of the last card sits on the 24 px gutter and not 9 px from it.
-      expect(cardWidth + cssGutter * 2).toBe(585);
+      expect(cardGridForContent(537).columns).toBe(2);
+      // Two cards and the gap fill the 537 px column exactly, so the right edge of the
+      // last card sits on the 24 px gutter and not 9 px from it.
+      expect(cardWidth * 2 + gap).toBeCloseTo(537, 5);
+      expect(cardWidth * 2 + gap + cssGutter * 2).toBe(585);
     });
 
     it.each([
-      { width: 360, columns: 1, card: 328 },
-      { width: 600, columns: 1, card: 552 },
+      { width: 360, columns: 2, card: 156 },
+      { width: 600, columns: 2, card: 268 },
       { width: 1024, columns: 3, card: 314.67 },
       { width: 1280, columns: 3, card: 346.67 },
     ])(

@@ -126,7 +126,7 @@ export function SegmentTabs({ label, tabs, value, onChange, testID }: SegmentTab
                 paddingHorizontal="$1"
                 alignItems="center"
                 justifyContent="center"
-                borderRadius="$full"
+                borderRadius="$sm"
                 backgroundColor="$muted"
               >
                 <Text kind="caption" tone="muted" fontWeight="600">

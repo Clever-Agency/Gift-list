@@ -128,7 +128,7 @@ async function enter(label: string) {
   });
 }
 
-function registrationBody(password = "password1") {
+function registrationBody(password = "password1234") {
   return {
     email: "a@b.test",
     password,
@@ -173,7 +173,7 @@ describe("регистрация: подтверждение пароля", () =
       },
     });
     await mount("register");
-    await fillRegistration("password1", "password1");
+    await fillRegistration("password1234", "password1234");
 
     await press("Зарегистрироваться");
 
@@ -187,7 +187,7 @@ describe("регистрация: подтверждение пароля", () =
 
   it("несовпадение: запрос не уходит, ошибка под подтверждением и фокус на нём", async () => {
     await mount("register");
-    await fillRegistration("password1", "password2");
+    await fillRegistration("password1234", "password12345");
 
     await press("Зарегистрироваться");
 
@@ -233,7 +233,7 @@ describe("регистрация: подтверждение пароля", () =
   it("пустое подтверждение при отправке — та же ошибка", async () => {
     await mount("register");
     await fill("Email", "a@b.test");
-    await fill("Пароль", "password1");
+    await fill("Пароль", "password1234");
     await fill("Имя", "Анна");
     await fill("Ник", "anna");
 
@@ -285,21 +285,21 @@ describe("сброс пароля: подтверждение пароля", () 
   it("совпадение: запрос уходит, тело — прежние token и password", async () => {
     api.apiRequest.mockResolvedValue({ ok: true, data: { saved: true } });
     await mount("reset");
-    await fill("Пароль", "12345678");
-    await fill("Повторите пароль", "12345678");
+    await fill("Пароль", "password1234");
+    await fill("Повторите пароль", "password1234");
     expect(describedBy("Повторите пароль")).toBe("");
 
     await press("Сохранить пароль");
 
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/password/reset", {
       method: "POST",
-      body: { token: "live-token", password: "12345678" },
+      body: { token: "live-token", password: "password1234" },
     });
   });
 
   it("несовпадение: запрос не уходит, ошибка и фокус на подтверждении", async () => {
     await mount("reset");
-    await fill("Пароль", "12345678");
+    await fill("Пароль", "password1234");
     await fill("Повторите пароль", "12345679");
 
     await press("Сохранить пароль");
@@ -317,14 +317,14 @@ describe("сброс пароля: подтверждение пароля", () 
     await press("Сохранить пароль");
 
     expect(api.apiRequest).not.toHaveBeenCalled();
-    expect(describedBy("Пароль")).toBe("Минимум 8 символов");
+    expect(describedBy("Пароль")).toBe("Минимум 12 символов");
     expect(describedBy("Повторите пароль")).toBe("");
     expect(document.activeElement).toBe(field("Пароль"));
   });
 
   it("пустое подтверждение при отправке — ошибка", async () => {
     await mount("reset");
-    await fill("Пароль", "12345678");
+    await fill("Пароль", "password1234");
 
     await press("Сохранить пароль");
 
@@ -335,8 +335,8 @@ describe("сброс пароля: подтверждение пароля", () 
   it("Enter в пароле ведёт к подтверждению, Enter в подтверждении отправляет", async () => {
     api.apiRequest.mockResolvedValue({ ok: true, data: { saved: true } });
     await mount("reset");
-    await fill("Пароль", "12345678");
-    await fill("Повторите пароль", "12345678");
+    await fill("Пароль", "password1234");
+    await fill("Повторите пароль", "password1234");
     expect(field("Повторите пароль").getAttribute("enterkeyhint")).toBe("done");
 
     await enter("Пароль");
@@ -347,7 +347,7 @@ describe("сброс пароля: подтверждение пароля", () 
 
     expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/password/reset", {
       method: "POST",
-      body: { token: "live-token", password: "12345678" },
+      body: { token: "live-token", password: "password1234" },
     });
   });
 

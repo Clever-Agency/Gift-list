@@ -8,3 +8,9 @@ export const QUANTITIES = ["SINGLE", "UNLIMITED"] as const;
 export const GIFT_STATUSES = ["OPEN", "RESERVED", "CLOSED"] as const;
 export const RESERVATION_LABELS = ["BOUGHT", "GIVEN"] as const;
 export const OWNER_ACTIONS = ["CONFIRM_GIVEN", "EXPIRED_NO_REPLY"] as const;
+export const RESERVATION_PHASES = [
+  "ACTIVE",
+  "AWAITING_GIVER",
+  "AWAITING_OWNER",
+  "GIVEN",
+] as const;

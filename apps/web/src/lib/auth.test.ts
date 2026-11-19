@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseUserInput } from "better-auth/db";
+import { DISPLAY_NAME_MAX } from "@gift-list/contracts";
 
 vi.mock("server-only", () => ({}));
 
@@ -52,13 +53,17 @@ describe("auth proxy", () => {
     const ids = (auth.options.plugins ?? []).map((plugin) => plugin.id);
     expect(ids).toContain("expo");
     expect(ids).toContain("bearer");
+    expect(ids).toContain("have-i-been-pwned");
     expect(ids.at(-1)).toBe("next-cookies");
+    expect(auth.options.emailAndPassword?.minPasswordLength).toBe(12);
+    expect(auth.options.emailAndPassword?.maxPasswordLength).toBe(128);
     expect(auth.options.trustedOrigins).toContain("giftlist://");
     expect(auth.options.emailAndPassword?.disableSignUp).toBe(true);
     expect(auth.options.disabledPaths).toEqual([
       "/sign-in/email",
       "/sign-up/email",
       "/request-password-reset",
+      "/update-user",
     ]);
     expect(auth.options.emailAndPassword?.resetPasswordTokenExpiresIn).toBe(3600);
     expect(auth.options.emailAndPassword?.revokeSessionsOnPasswordReset).toBe(true);
@@ -74,9 +79,9 @@ describe("auth proxy", () => {
   });
 
   /**
-   * CLE-94: Better Auth is a second writer of `User`. `input: false` keeps
-   * `nick`/`nickNormalized` out of `/api/auth/update-user`; only the two use-cases
-   * (registration and the nick change) may write them.
+   * CLE-94: `input: false` не пускает ник в разбор входа Better Auth.
+   * CLE-109: тот же разбор `name` не видит — обработчик снимает его с тела
+   * раньше, — поэтому HTTP `/update-user` закрыт в `disabledPaths`.
    */
   it("keeps nick and nickNormalized out of Better Auth client input", async () => {
     setAuthEnv();
@@ -96,6 +101,8 @@ describe("auth proxy", () => {
     );
     // A column the config does not declare is dropped, never written.
     expect(parseUserInput(auth.options, { nameNormalized: "other" }, "update")).toEqual({});
+    // `name` is a core column, not an additional field, so this seam does not reject it.
+    expect(parseUserInput(auth.options, { name: "Новое имя" }, "update")).toEqual({});
   });
 
   it("link-shape sends loopback http /reset?token= and swallows a mailer failure", async () => {
@@ -170,6 +177,16 @@ describe("closed Better Auth HTTP routes", () => {
       path: "/api/auth/request-password-reset",
       body: { email: "a@example.com", redirectTo: "http://127.0.0.1:3000/reset" },
     },
+    // CLE-109: любое имя, в том числе длиннее DISPLAY_NAME_MAX, не доходит до записи.
+    // Поиск читает nameNormalized; его пишет только registerUser вместе с name.
+    {
+      path: "/api/auth/update-user",
+      body: { name: "Новое имя" },
+    },
+    {
+      path: "/api/auth/update-user",
+      body: { name: "я".repeat(DISPLAY_NAME_MAX + 1) },
+    },
   ] as const;
 
   async function handler() {
@@ -192,7 +209,7 @@ describe("closed Better Auth HTTP routes", () => {
     });
   }
 
-  it("returns 404 for sign-in, sign-up and password reset before any mail or session", async () => {
+  it("returns 404 for sign-in, sign-up, password reset and update-user before any mail or session", async () => {
     const { POST } = await handler();
     for (const { path, body } of closed) {
       for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -217,6 +234,30 @@ describe("closed Better Auth HTTP routes", () => {
       expect(slashed.headers.get("set-auth-token")).toBeNull();
       expect(slashed.headers.get("set-cookie")).toBeNull();
     }
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("rejects update-user before the handler, with or without a session cookie", async () => {
+    const { POST } = await handler();
+    const response = await POST(
+      new Request("http://127.0.0.1:3000/api/auth/update-user", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "http://127.0.0.1:3000",
+          cookie: "better-auth.session_token=not-a-real-session",
+        },
+        body: JSON.stringify({ name: "Другое имя", image: "https://example.test/a.png" }),
+      }),
+    );
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Not found",
+    });
+    expect(response.headers.get("set-auth-token")).toBeNull();
+    expect(response.headers.get("set-cookie")).toBeNull();
     expect(send).not.toHaveBeenCalled();
   });
 
@@ -254,6 +295,15 @@ describe("closed Better Auth HTTP routes", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await response.json()).toMatchObject({ code: "PROVIDER_NOT_FOUND" });
+  });
+
+  it("rejects a short password on reset-password before looking up the token", async () => {
+    const { POST } = await handler();
+    const response = await POST(
+      post("/api/auth/reset-password", { newPassword: "short", token: "unused-token" }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "PASSWORD_TOO_SHORT" });
   });
 
   it("still answers session reads and the health route", async () => {

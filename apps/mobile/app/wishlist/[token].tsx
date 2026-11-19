@@ -12,8 +12,8 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { Stack, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { Stack, router, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { fetchPublicWishlist, type PublicWishlistOwner } from "@/api/public-wishlist";
 import { getBrandName } from "@/config/env";
@@ -24,6 +24,7 @@ import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
+import { loadViewerDetail } from "@/ui/wish-detail-load";
 import { SiteFooter } from "@/ui/site-footer";
 import { ToastHost } from "@/ui/toast";
 import { useCardGrid } from "@/ui/use-card-grid";
@@ -70,7 +71,7 @@ export default function PublicWishlistScreen() {
   // Destructured: React's `refs` lint rule treats an object that holds a ref callback
   // as a ref, and a member read of it during render is an error.
   const { cardWidth, attachContainer } = useCardGrid();
-  const params = useLocalSearchParams<{ token?: string }>();
+  const params = useLocalSearchParams<{ token?: string; reserve?: string; title?: string }>();
   const route = publicWishlistRoute(paramValue(params.token));
   const token = route?.token ?? null;
   const [state, setState] = useState<ScreenState>(
@@ -152,6 +153,49 @@ export default function PublicWishlistScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authPending, token, attempt]);
 
+  const handledReserve = useRef<string | null>(null);
+
+  useEffect(function followReserveDeepLink() {
+    const reserveId = paramValue(params.reserve);
+    if (!reserveId || authPending || !token) return;
+    const handleKey = `${token}:${reserveId}:${auth.state.status}`;
+    if (handledReserve.current === handleKey) return;
+    if (auth.state.status === "anonymous") {
+      handledReserve.current = handleKey;
+      const title = paramValue(params.title);
+      const nextQuery = new URLSearchParams({ reserve: reserveId });
+      if (title) nextQuery.set("title", title);
+      router.replace({
+        pathname: "/login",
+        params: { next: `/wishlist/${token}?${nextQuery.toString()}` },
+      });
+      return;
+    }
+    if (auth.state.status !== "ready") return;
+    if (state.status !== "ready" || state.token !== token) return;
+    handledReserve.current = handleKey;
+    const gift = state.gifts.find(function matchGift(row) {
+      return row.id === reserveId;
+    });
+    if (gift?.quantity === "SINGLE" && gift.status === "OPEN") {
+      router.replace({
+        pathname: "/gifts/[id]",
+        params: { id: reserveId, openReserve: "1", listToken: token, title: gift.title },
+      });
+      return;
+    }
+    if (!gift || gift.status !== "RESERVED") {
+      router.replace({
+        pathname: "/gifts/[id]",
+        params: {
+          id: reserveId,
+          listToken: token,
+          title: gift?.title ?? paramValue(params.title) ?? "",
+        },
+      });
+    }
+  }, [authPending, auth.state.status, params.reserve, params.title, state, token]);
+
   if (token === null) {
     return <NotFoundScreen />;
   }
@@ -173,7 +217,25 @@ export default function PublicWishlistScreen() {
 
   function dismissToast() {
     setToast(null);
+    if (paramValue(params.reserve) && token) {
+      router.replace({ pathname: "/wishlist/[token]", params: { token } });
+    }
   }
+
+  const reserveIdNow = paramValue(params.reserve);
+  const reservedWhileEntering =
+    auth.state.status === "ready" &&
+    state.status === "ready" &&
+    state.token === token &&
+    reserveIdNow !== undefined &&
+    state.gifts.some(function taken(row) {
+      return row.id === reserveIdNow && row.status === "RESERVED";
+    });
+  const visibleToast =
+    toast ??
+    (reservedWhileEntering
+      ? { message: common("errors.reason.RESERVATION_TAKEN"), tone: "error" as const }
+      : null);
 
   return (
     <Screen>
@@ -230,7 +292,19 @@ export default function PublicWishlistScreen() {
                       <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
                         {view.gifts.map(function renderGift(gift) {
                           return (
-                            <PublicGiftCard key={gift.id} gift={gift} width={cardWidth} />
+                            <PublicGiftCard
+                              key={gift.id}
+                              gift={gift}
+                              width={cardWidth}
+                              listToken={token}
+                              loadDetail={
+                                auth.state.status === "ready"
+                                  ? function loadThisGift() {
+                                      return loadViewerDetail(gift.id, token, gift);
+                                    }
+                                  : undefined
+                              }
+                            />
                           );
                         })}
                       </XStack>
@@ -242,10 +316,10 @@ export default function PublicWishlistScreen() {
             </Column>
           </PageContainer>
         </PageScroll>
-        {toast ? (
+        {visibleToast ? (
           <ToastHost
-            message={toast.message}
-            tone={toast.tone}
+            message={visibleToast.message}
+            tone={visibleToast.tone}
             onDismiss={dismissToast}
             offsetBottom={spacing["page-gutter"]}
           />

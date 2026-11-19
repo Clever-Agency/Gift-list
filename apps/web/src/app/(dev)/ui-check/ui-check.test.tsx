@@ -26,8 +26,8 @@ describe("/ui-check", () => {
     expect(html).toContain("Кнопка проверки");
     expect(html).toContain("Открыт");
     expect(html).toContain("<style");
-    expect(config.getNewCSS()).toContain("--c-primary");
-    expect(config.getCSS()).toContain("var(--c-");
+    expect(config.getNewCSS()).toContain("--primary");
+    expect(config.getCSS()).toContain("var(--primary)");
   });
 
   it("в production страница отдаёт 404", () => {

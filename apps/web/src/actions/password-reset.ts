@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  newPasswordLengthReason,
   rateLimitedError,
   type ActionResult,
   type PasswordForgotBody,
@@ -23,7 +24,12 @@ function staleLink(): ActionResult<{ saved: true }> {
 }
 
 const STALE_TOKEN_CODES = new Set(["INVALID_TOKEN", "TOKEN_EXPIRED", "USER_NOT_FOUND"]);
-const PASSWORD_RULE_CODES = new Set(["PASSWORD_TOO_SHORT", "PASSWORD_TOO_LONG"]);
+const PASSWORD_RULE_CODES = new Set([
+  "PASSWORD_TOO_SHORT",
+  "PASSWORD_TOO_LONG",
+  "PASSWORD_COMPROMISED",
+  "PASSWORD_REUSED",
+]);
 
 function errorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
@@ -64,6 +70,10 @@ export async function requestPasswordReset(
  */
 export async function resetPassword(input: PasswordResetBody): Promise<ActionResult<{ saved: true }>> {
   if (input.token.trim().length === 0) return staleLink();
+  const lengthReason = newPasswordLengthReason(input.password);
+  if (lengthReason) {
+    return { ok: false, code: "VALIDATION", message: "Invalid input", field: "password", reason: lengthReason };
+  }
   try {
     const result = await auth.api.resetPassword({
       body: { newPassword: input.password, token: input.token },
@@ -71,8 +81,17 @@ export async function resetPassword(input: PasswordResetBody): Promise<ActionRes
     if (!result?.status) return staleLink();
     return { ok: true, data: { saved: true } };
   } catch (error) {
-    if (PASSWORD_RULE_CODES.has(errorCode(error) ?? "")) {
-      return { ok: false, code: "VALIDATION", message: "Invalid input", field: "password" };
+    const code = errorCode(error) ?? "";
+    if (PASSWORD_RULE_CODES.has(code)) {
+      const reason =
+        code === "PASSWORD_TOO_SHORT"
+          ? "PASSWORD_TOO_SHORT"
+          : code === "PASSWORD_TOO_LONG"
+            ? "PASSWORD_TOO_LONG"
+            : code === "PASSWORD_REUSED"
+              ? "PASSWORD_REUSED"
+              : "PASSWORD_PWNED";
+      return { ok: false, code: "VALIDATION", message: "Invalid input", field: "password", reason };
     }
     if (STALE_TOKEN_CODES.has(errorCode(error) ?? "")) return staleLink();
     throw error;

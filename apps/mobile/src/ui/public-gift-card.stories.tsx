@@ -5,9 +5,9 @@ import { XStack } from "@gift-list/ui";
 import { PublicGiftCard } from "./public-gift-card";
 
 /**
- * The card a link visitor sees on `/l/{token}` (Story 3.3): the same
- * `packages/ui` card, without the visibility chip and without a press zone — a
- * visitor cannot open a wish or change anything. The server has already applied
+ * The card a link visitor sees (Story 3.3, CLE-84): the same `packages/ui` card,
+ * without the visibility chip. The main zone opens the detail dialog. «Куплю сам»
+ * does not. The server has already applied
  * `VisibilityPolicy` (AD-7): whatever arrives in `gift` is allowed for this viewer,
  * so the card never inspects `visibility`.
  */

@@ -13,7 +13,7 @@ import {
 } from "@gift-list/contracts";
 import { acceptInviteLink, readInviteLinkState, type InviteLinkOwner } from "@/domain/invite-link";
 import { auth } from "@/lib/auth";
-import { ensureInviteLink, inviteLinkStore } from "@/lib/invite-link-store";
+import { inviteLinkStore, readInviteLinkToken } from "@/lib/invite-link-store";
 import { isPublicTokenSegment } from "@/lib/public-token";
 
 const unauthenticated = {
@@ -42,16 +42,15 @@ function toInviter(owner: InviteLinkOwner): InviteLinkInviter {
 
 /**
  * AD-21 (Story 4.7): `GET /api/v1/me/invite-link` — the session user's immutable
- * link token. A user created before Story 4.7.1 has no row yet, so the token is
- * issued lazily here and the link works from the first request on. Only the
- * token is returned: the client builds `{origin}/i/{token}` the same way it
- * builds `{origin}/l/{publicToken}`.
+ * link token read from storage. Registration creates the row; historical accounts
+ * rely on deploy backfill. Only the token is returned: the client builds
+ * `{origin}/i/{token}` the same way it builds `{origin}/l/{publicToken}`.
  */
 export async function getMyInviteLink(headers: Headers): Promise<ActionResult<InviteLinkData>> {
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
-  const token = await ensureInviteLink(session.user.id);
+  const token = await readInviteLinkToken(session.user.id);
   return { ok: true, data: inviteLinkDataSchema.parse({ token }) };
 }
 

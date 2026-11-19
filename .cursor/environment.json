@@ -1,0 +1,4 @@
+{
+  "name": "Gift List",
+  "install": "bash .cursor/install.sh"
+}

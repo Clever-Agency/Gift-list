@@ -54,19 +54,34 @@ export const DISPLAY_NAME_MAX = 50;
 export const EMAIL_MAX = 254;
 
 /**
- * Registration and reset password limits; Better Auth's defaults are the same
- * numbers (`minPasswordLength` 8, `maxPasswordLength` 128) but it counts UTF-16
- * units, so the checks below count the same unit — see {@link fitsPasswordUnits}.
+ * Registration and reset password limits; Better Auth reads
+ * `minPasswordLength` / `maxPasswordLength` from the same numbers in
+ * `apps/web/src/lib/auth.ts`. It counts UTF-16 units, so the checks below count
+ * the same unit — see {@link fitsPasswordUnits}.
  */
-export const PASSWORD_MIN = 8;
+export const PASSWORD_MIN = 12;
 export const PASSWORD_MAX = 128;
+
+/** Machine reason when a new password is shorter than {@link PASSWORD_MIN}. */
+export type NewPasswordLengthReason = "PASSWORD_TOO_SHORT" | "PASSWORD_TOO_LONG";
+
+/**
+ * Classifies a new password by UTF-16 length ({@link String#length}). Returns
+ * `null` when the value sits within {@link PASSWORD_MIN}..{@link PASSWORD_MAX}.
+ */
+export function newPasswordLengthReason(password: string): NewPasswordLengthReason | null {
+  if (password.length < PASSWORD_MIN) return "PASSWORD_TOO_SHORT";
+  if (password.length > PASSWORD_MAX) return "PASSWORD_TOO_LONG";
+  return null;
+}
 
 /**
  * A password is measured in UTF-16 code units (`String#length`), not in code
  * points: Better Auth compares `password.length` with its own
  * `minPasswordLength`/`maxPasswordLength`
- * (`better-auth/dist/utils/password.mjs:4-15`, defaults 8/128 from
- * `dist/context/create-context.mjs:186-187`) at sign-in and reset. A password
+ * (`better-auth/dist/utils/password.mjs:4-15`) when a password is set.
+ * Sign-in calls only the upper-bound check, so a shorter stored password still
+ * reaches the hash. A password
  * accepted here must not be one Better Auth refuses later, so the contract counts
  * the same unit — an emoji outside the BMP is two units. Zod's `.min()/.max()`
  * count code points and cannot express this.

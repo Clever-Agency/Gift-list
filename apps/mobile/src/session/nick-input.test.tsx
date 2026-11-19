@@ -160,8 +160,8 @@ describe("регистрация: ник", () => {
 
   it("короткий ник при отправке: ошибка под полем, запрос не уходит", async () => {
     await fill("Email", "a@b.test");
-    await fill("Пароль", "password1");
-    await fill("Повторите пароль", "password1");
+    await fill("Пароль", "password1234");
+    await fill("Повторите пароль", "password1234");
     await fill("Имя", "Аня");
     await fill("Ник", "ab");
 
@@ -173,8 +173,8 @@ describe("регистрация: ник", () => {
 
   it("пробелы по краям не дают отправить форму, хотя схема их обрезает", async () => {
     await fill("Email", "a@b.test");
-    await fill("Пароль", "password1");
-    await fill("Повторите пароль", "password1");
+    await fill("Пароль", "password1234");
+    await fill("Повторите пароль", "password1234");
     await fill("Имя", "Аня");
     await fill("Ник", " anna ");
 

@@ -6,8 +6,8 @@ describe("brand constants", () => {
     expect(PRODUCT_NAME).toBe("WishMoon");
   });
 
-  it("uses the owner's public author address", () => {
-    expect(AUTHOR_EMAIL).toBe("clever.web.agency@gmail.com");
+  it("uses the product support address", () => {
+    expect(AUTHOR_EMAIL).toBe("support@wishmoon.clever-agency.dev");
   });
 
   it("builds the bare mailto link from the address", () => {

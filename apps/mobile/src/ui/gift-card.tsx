@@ -1,6 +1,6 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
-import type { ReactNode } from "react";
-import { TagChipList, WishCard as UiWishCard } from "@gift-list/ui";
+import type { ReactNode, Ref } from "react";
+import { TagChipList, WishCard as UiWishCard, type FocusTarget } from "@gift-list/ui";
 import { useLocale, useTranslations } from "use-intl";
 import { StatusPill } from "@/ui/status-pill";
 import { VisibilityChip, type VisibilityChipRef } from "@/ui/visibility-chip";
@@ -28,7 +28,7 @@ function joinCardName(parts: readonly (string | null)[]): string {
  * is always the outer element, so the list semantics of the grid survive the
  * pressable inside it.
  *
- * The edit button covers the whole card (CLE-65): the footer area is reserved under
+ * The detail button covers the whole card (CLE-65, CLE-84): the footer area is reserved under
  * the body with an empty spacer of the same height (footer margin + chip + card
  * padding), so a press on the empty space next to the chip opens the edit route
  * too. The visibility chip is drawn over that reserved area from a sibling layer,
@@ -40,11 +40,11 @@ function joinCardName(parts: readonly (string | null)[]): string {
  * `OPEN` or `RESERVED` (`DESIGN.md` → VisibilityChip; `EXPERIENCE.md` → Visibility
  * chip). A closed or archived wish is read-only (product clarification t351u), so
  * its chip only shows the value. A non-pressable chip lets the press through to
- * the card underneath, so it also opens the edit route.
+ * the card underneath, so it also opens the detail dialog.
  *
- * NOTE FOR UX: photo, tags and ⋯ arrive with Stories 2.5–2.7, together with the
- * `Link` main zone that `DESIGN.md` reserves for the detail route; for now the
- * owner edit route is a button.
+ * NOTE FOR UX: the wish photo is not in the contract yet, so the v8 card shows the
+ * placeholder. CLE-84: the press zone opens the detail dialog. The ⋮ menu is still
+ * pending; «Изменить желание» lives in that dialog, not on the card.
  */
 export function WishCard({
   gift,
@@ -52,12 +52,15 @@ export function WishCard({
   onPress,
   onVisibilityPress,
   visibilityChipRef,
+  pressRef,
   menu,
   closed = false,
 }: {
   gift: GiftCardData;
   width: number;
   onPress?: () => void;
+  /** The card button, so the detail dialog can return focus to it. */
+  pressRef?: Ref<FocusTarget>;
   /** Opens the visibility picker; only `OPEN` and `RESERVED` wishes get a pressable chip. */
   onVisibilityPress?: () => void;
   /** Where focus returns when the visibility layer closes (Story 2.3). */
@@ -148,6 +151,7 @@ export function WishCard({
       chipInteractive={visibilityPress !== undefined}
       onPress={onPress}
       pressLabel={pressLabel}
+      pressRef={pressRef as never}
       width={width}
       menu={menu}
     />

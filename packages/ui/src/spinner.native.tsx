@@ -3,7 +3,7 @@ import { Animated, Easing } from "react-native";
 import { Path, Svg } from "react-native-svg";
 import { spinnerA11yProps } from "./spinner-a11y";
 import { SPINNER_PERIOD_MS, SPINNER_SIZE } from "./spinner-motion";
-import { colors } from "./tokens";
+import { useThemeColor } from "./theme-color";
 import { useReduceMotion } from "./use-reduce";
 
 export type SpinnerProps = {
@@ -31,12 +31,12 @@ export type SpinnerProps = {
  * starts and the arc stands still; the button's `aria-busy` still announces the
  * wait (`DESIGN.md`:407).
  */
-export function Spinner({
-  size = SPINNER_SIZE,
-  color = colors.foreground,
-  testID = "spinner",
-}: SpinnerProps) {
+export function Spinner({ size = SPINNER_SIZE, color, testID = "spinner" }: SpinnerProps) {
   const reduce = useReduceMotion();
+  // The phone has no `currentColor`: a standalone spinner takes the theme's
+  // `foreground`, the colour of the text around it (v8: light or dark).
+  const fallback = useThemeColor("foreground");
+  const stroke = color ?? fallback;
   const turn = useRef(new Animated.Value(0)).current;
 
   useEffect(
@@ -72,7 +72,7 @@ export function Spinner({
       <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
         <Path
           d="M21 12a9 9 0 1 1-6.219-8.56"
-          stroke={color}
+          stroke={stroke}
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"

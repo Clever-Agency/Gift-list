@@ -1,7 +1,15 @@
 // Wire contract shared by apps/web and apps/mobile (AD-12, AD-26).
 // No React, Prisma or env here: the package must load in any client.
 import { z } from "zod";
-import { CURRENCIES, GIFT_STATUSES, OWNER_ACTIONS, QUANTITIES, RESERVATION_LABELS, VISIBILITIES } from "./enums";
+import {
+  CURRENCIES,
+  GIFT_STATUSES,
+  OWNER_ACTIONS,
+  QUANTITIES,
+  RESERVATION_LABELS,
+  RESERVATION_PHASES,
+  VISIBILITIES,
+} from "./enums";
 import { PROFILE_RELATIONSHIPS, profileInviteCooldownSchema } from "./friendship";
 
 export const ERROR_CODES = [
@@ -52,6 +60,33 @@ export const ERROR_REASONS = [
    * `errors.reason.PAYLOAD_TOO_LARGE`.
    */
   "PAYLOAD_TOO_LARGE",
+  /**
+   * Another donor reserved the same SINGLE wish while this request was in flight
+   * (Story 5.1, AD-9). Always rides with `code: "CONFLICT"`.
+   */
+  "RESERVATION_TAKEN",
+  /**
+   * A registration or reset password is shorter than `PASSWORD_MIN` (UTF-16).
+   * Always rides with `code: "VALIDATION"` and `field: "password"`.
+   */
+  "PASSWORD_TOO_SHORT",
+  /**
+   * A registration or reset password is longer than `PASSWORD_MAX` (UTF-16).
+   * Always rides with `code: "VALIDATION"` and `field: "password"`.
+   */
+  "PASSWORD_TOO_LONG",
+  /**
+   * Have I Been Pwned flagged the password during registration or reset. Always
+   * rides with `code: "VALIDATION"` and `field: "password"`; the reset token is
+   * not spent.
+   */
+  "PASSWORD_PWNED",
+  /**
+   * Reset or change-password matched the account's current hash. Always rides
+   * with `code: "VALIDATION"` and `field: "password"`. The reset token is not
+   * spent. Registration does not use this reason.
+   */
+  "PASSWORD_REUSED",
 ] as const;
 
 /** Closed set of machine-readable causes; the client maps them to `errors.reason.<REASON>`. */
@@ -135,6 +170,7 @@ export {
   OWNER_ACTIONS,
   QUANTITIES,
   RESERVATION_LABELS,
+  RESERVATION_PHASES,
   VISIBILITIES,
 } from "./enums";
 
@@ -173,6 +209,19 @@ export const giftCardSchema = z.strictObject({
     .nullable(),
   reservationLabel: z.enum(RESERVATION_LABELS).nullable(),
   ownerAction: z.enum(OWNER_ACTIONS).nullable(),
+  /**
+   * Story 5.1 (AD-12): only the live holder sees their reservation facts; the key
+   * is absent for the owner and every other viewer.
+   */
+  reservation: z
+    .strictObject({
+      dueAt: z.string(),
+      phase: z.enum(RESERVATION_PHASES),
+      bought: z.boolean(),
+      holderVisibleToOwner: z.boolean(),
+      holderVisibleToOthers: z.boolean(),
+    })
+    .optional(),
 });
 
 export type GiftCard = z.infer<typeof giftCardSchema>;
@@ -246,6 +295,7 @@ export {
   PASSWORD_MIN,
   hideFromSearchUpdateBodySchema,
   loginBodySchema,
+  newPasswordLengthReason,
   nickIssue,
   nickUpdateBodySchema,
   passwordForgotBodySchema,
@@ -255,6 +305,7 @@ export {
   timeZoneBodySchema,
   type HideFromSearchUpdateBody,
   type LoginBody,
+  type NewPasswordLengthReason,
   type NickIssue,
   type NickUpdateBody,
   type PasswordForgotBody,
@@ -384,6 +435,7 @@ export {
   GIFT_TAG_TEXT_MAX,
   GIFT_TITLE_MAX,
   giftInputSchema,
+  giftReserveBodySchema,
   giftRestoreSchema,
   giftTagInputSchema,
   giftUpdateSchema,
@@ -391,6 +443,7 @@ export {
   giftVisibilityPreviewSchema,
   type GiftInput,
   type GiftInputDraft,
+  type GiftReserveBody,
   type GiftRestore,
   type GiftTagInput,
   type GiftUpdate,
@@ -410,6 +463,14 @@ export {
   type TagCatalog,
   type TagCatalogItem,
 } from "./tag";
+
+export {
+  detailCopy,
+  toDetailFacts,
+  type DetailCopy,
+  type DetailFact,
+  type DetailViewer,
+} from "./detail-fields";
 
 export {
   DEFAULT_LOCALE,

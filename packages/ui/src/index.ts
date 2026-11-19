@@ -4,12 +4,19 @@
 export {
   breakpoints,
   colors,
+  colorsDark,
+  highlights,
   rounded,
+  shadows,
   spacing,
   typography,
   SCRIM_OPACITY,
   type ColorToken,
+  type HighlightToken,
+  type ShadowToken,
   type SpacingToken,
+  type ThemeColors,
+  type ThemeName,
   type TypographyRole,
 } from "./tokens";
 export { createGiftListConfig, type FontFamilies, type GiftListConfig } from "./config";
@@ -26,6 +33,33 @@ export { focusRing } from "./focus-ring";
 export { Pressable, type PressableProps } from "./pressable";
 export { Switch, type SwitchProps } from "./switch";
 export { Button, type ButtonProps, type ButtonVariant } from "./button";
+export {
+  IconButton,
+  type IconButtonProps,
+  type IconButtonShape,
+  type IconButtonSize,
+  type IconButtonVariant,
+} from "./icon-button";
+export { AlertTriangle, Check, CheckCircle, CircleAlert, Close, Eye, EyeOff, Info, Moon, Search, Star } from "./icons";
+export { Photo, type PhotoProps } from "./photo";
+export { PhotoPlaceholder, type PhotoPlaceholderProps } from "./photo-placeholder";
+export {
+  PartnerStoreCard,
+  type PartnerStoreCardProps,
+} from "./partner-store-card";
+export {
+  PartnerStoreRail,
+  type PartnerStoreRailProps,
+} from "./partner-store-rail";
+export { CollectionCard, type CollectionCardProps } from "./collection-card";
+export { FriendsTwoPane, type FriendsTwoPaneProps } from "./friends-two-pane";
+export { Avatar } from "./avatar";
+export {
+  avatarInitials,
+  type AvatarProps,
+  type AvatarSize,
+  type AvatarStatus,
+} from "./avatar.types";
 export { InfoButton } from "./info-button";
 export type { InfoButtonProps } from "./info-button.types";
 export { DateField, type DateFieldProps } from "./date-field";
@@ -54,6 +88,7 @@ export { RelationshipChip, type RelationshipChipProps } from "./relationship-chi
 export {
   VisibilityChip,
   visibilityChipColors,
+  useVisibilityChipColors,
   type VisibilityChipProps,
   type VisibilityTone,
 } from "./visibility-chip";
@@ -75,7 +110,9 @@ export { SegmentTabs, type SegmentTab, type SegmentTabsProps } from "./segment-t
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";
+export { DetailDialog, type DetailDialogProps, type DetailFactView } from "./detail-dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
 export { useReduceMotion } from "./use-reduce";
+export { useThemeColor } from "./theme-color";
 export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";

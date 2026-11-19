@@ -37,6 +37,22 @@ export type GiftStatusRow = {
   readonly status: "OPEN" | "RESERVED" | "CLOSED";
 };
 
+export type ReserveEligibleRow = GiftStatusRow & {
+  readonly quantity: "SINGLE" | "UNLIMITED";
+  readonly archivedAt: Date | null;
+};
+
+export type ReserveGiftWrite = {
+  readonly reservedById: string;
+  readonly reservedAt: Date;
+  readonly titleSnapshotOnReserve: string;
+  readonly reservationDueAt: Date;
+  readonly reservationTimeZone: string;
+  readonly reservationPhaseAt: Date;
+  readonly holderVisibleToOwner: boolean;
+  readonly holderVisibleToOthers: boolean;
+};
+
 /** Only a live reservation is released; an OPEN or CLOSED row has nothing to clear. */
 export function hasActiveReservation(row: GiftStatusRow): boolean {
   return row.status === "RESERVED";
@@ -53,6 +69,20 @@ export interface GiftStatusTransaction {
    * that is no longer `RESERVED` writes nothing and answers `false`.
    */
   releaseReservation(giftId: string): Promise<boolean>;
+  /**
+   * Story 5.1: CAS `OPEN → RESERVED` for a single, non-archived wish. A row that
+   * no longer matches the predicate is left untouched and answers `lost`.
+   */
+  reserveGift(giftId: string, data: ReserveGiftWrite): Promise<"success" | "lost">;
+}
+
+/** Only a single open wish can be reserved; unlimited gifts are rejected upstream. */
+export function canReserveGift(row: ReserveEligibleRow): boolean {
+  return (
+    row.status === "OPEN" &&
+    row.quantity === "SINGLE" &&
+    row.archivedAt === null
+  );
 }
 
 export type HolderAccessInput = {

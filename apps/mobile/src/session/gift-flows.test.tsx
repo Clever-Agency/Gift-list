@@ -425,8 +425,9 @@ describe("поток: сохранение из шага «Сохранить и
 });
 
 /**
- * Story 2.2, edit flow across screens: the owner card opens
- * `/gifts/[id]/edit` with the id, the screen reads that wish and prefills the
+ * Story 2.2, edit flow across screens: the owner card opens the detail dialog
+ * (CLE-84), «Изменить желание» opens `/gifts/[id]/edit` with the id, the screen
+ * reads that wish and prefills the
  * form, the changed field travels back as `GiftUpdate`, and the list shows
  * «Изменения сохранены.» from `?toast=` over a freshly read list.
  */
@@ -446,6 +447,10 @@ describe("поток: редактирование желания из спис�
     expect(gifts.fetchMyGifts).toHaveBeenCalledTimes(1);
 
     await pressCard("Свитер");
+    await flush();
+
+    expect(navigation.pathname()).toBe("/");
+    await press("Изменить желание");
     await flush();
 
     expect(navigation.pathname()).toBe("/gifts/[id]/edit");

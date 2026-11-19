@@ -24,7 +24,7 @@ function HiddenPasswordStory() {
       value="wishmoon-demo"
       onChangeText={noop}
       showLabel="Показать пароль"
-      hint="Не короче 8 символов"
+      hint="Не короче 12 символов"
     />
   );
 }
@@ -64,6 +64,26 @@ export const WithHint: Story = {
 
 export const WithError: Story = {
   args: { value: "", error: "Название не может быть пустым" },
+};
+
+/** A stored value the form does not let change: the field keeps its text, muted. */
+export const Disabled: Story = {
+  args: {
+    value: "Плед из шерсти мериноса",
+    input: { disabled: true },
+  },
+};
+
+/**
+ * The focus state is the real CSS one: the story puts the caret into the field, and
+ * the browser paints the `ring` border plus the 2 px ring with a 2 px offset. Click
+ * the field too — a text input is always `:focus-visible` while it holds the caret.
+ */
+export const Focused: Story = {
+  args: { value: "Плед из шерсти мериноса" },
+  play: function focusInput({ canvasElement }) {
+    canvasElement.querySelector<HTMLElement>("input")?.focus();
+  },
 };
 
 export const Multiline: Story = {

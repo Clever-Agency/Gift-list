@@ -37,6 +37,43 @@ describe("giftStatusTransaction.releaseReservation", () => {
     });
   });
 
+  it("reserves an OPEN SINGLE row with CAS and answers lost when the row moved", async () => {
+    updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    const tx = giftStatusTransaction(transactionClient());
+    const at = new Date("2026-06-15T10:00:00.000Z");
+  const data = {
+    reservedById: "u2",
+      reservedAt: at,
+      titleSnapshotOnReserve: "Gift",
+      reservationDueAt: new Date("2026-06-22T00:00:00.000Z"),
+      reservationTimeZone: "UTC",
+      reservationPhaseAt: at,
+      holderVisibleToOwner: false,
+      holderVisibleToOthers: true,
+    };
+
+    await expect(tx.reserveGift("g1", data)).resolves.toBe("success");
+    await expect(tx.reserveGift("g1", data)).resolves.toBe("lost");
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: "g1", status: "OPEN", quantity: "SINGLE", archivedAt: null },
+      data: {
+        status: "RESERVED",
+        reservedById: "u2",
+        reservedAt: at,
+        titleSnapshotOnReserve: "Gift",
+        reservationDueAt: data.reservationDueAt,
+        reservationTimeZone: "UTC",
+        reservationPhase: "ACTIVE",
+        reservationPhaseAt: at,
+        reservationBought: false,
+        holderVisibleToOwner: false,
+        holderVisibleToOthers: true,
+      },
+    });
+  });
+
   it("writes nothing for a row that is no longer reserved", async () => {
     updateMany.mockResolvedValue({ count: 0 });
 

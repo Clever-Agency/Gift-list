@@ -50,7 +50,7 @@ function readPageOrigin(): string {
 }
 
 /**
- * Public site origin for outbound links (Q-2, AD-26). `EXPO_PUBLIC_WEB_ORIGIN`
+ * Public site origin for outbound links (AD-26, D-48). `EXPO_PUBLIC_WEB_ORIGIN`
  * wins; when it is empty the API origin is used, because the site and the API
  * share one domain and App Links claim `/l/*` there. On the web the current
  * page origin is the last resort: a deployed SPA is served from that same

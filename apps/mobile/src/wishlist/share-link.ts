@@ -2,7 +2,7 @@ import { getPublicWebOrigin, normalizeWebOrigin } from "@/config/env";
 
 /**
  * The one link an owner copies (Story 2.4, AD-6): `{origin}/l/{publicToken}`.
- * The origin comes from configuration (Q-2); tests may pass one explicitly.
+ * The origin comes from configuration (AD-26, D-48); tests may pass one explicitly.
  * `null` means the origin or the token is missing, so the caller shows an error
  * instead of copying a broken link.
  */

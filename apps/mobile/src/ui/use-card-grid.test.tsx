@@ -99,8 +99,8 @@ describe("useCardGrid (web)", () => {
     await mountAt(600);
 
     expect(grid()).toEqual(cardGrid(600));
-    // The old bug in one number: 552 px of cards for a 537 px column.
-    expect(grid().cardWidth).toBe(552);
+    // A 600 px window is still a tablet: two columns.
+    expect(grid().columns).toBe(2);
   });
 
   it("первый кадр уже по контенту: контейнер измеряется до отрисовки", async () => {
@@ -108,7 +108,7 @@ describe("useCardGrid (web)", () => {
     await mountAt(600);
 
     expect(grid()).toEqual(cardGridForContent(537));
-    expect(grid().cardWidth).toBe(537);
+    expect(grid().cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 10);
   });
 
   it("после измерения считает от ширины контента: окно 600 px, колонка 537 px", async () => {
@@ -116,7 +116,8 @@ describe("useCardGrid (web)", () => {
     await content.measure(537);
 
     expect(grid()).toEqual(cardGridForContent(537));
-    expect(grid().cardWidth).toBe(537);
+    expect(grid().columns).toBe(2);
+    expect(grid().cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 10);
   });
 
   it.each([
@@ -143,7 +144,7 @@ describe("useCardGrid (web)", () => {
     await content.measure(537);
 
     await setWindowWidth(1280);
-    expect(grid().cardWidth).toBe(537);
+    expect(grid().cardWidth).toBeCloseTo(cardGridForContent(537).cardWidth, 10);
 
     // The column itself is what changes the cards.
     await content.measure(1072);
@@ -163,7 +164,7 @@ describe("useCardGrid (web)", () => {
 
     await content.measure(552);
     expect(commits).toBe(settled + 1);
-    expect(grid().cardWidth).toBe(552);
+    expect(grid().cardWidth).toBeCloseTo(cardGridForContent(552).cardWidth, 10);
   });
 
   it("нулевая или нечисловая ширина не перетирает запасные числа", async () => {

@@ -112,9 +112,11 @@ model List {
 
 // One immutable invite token per user (AD-21, FR-47, Story 4.7.1). `userId` is
 // the primary key, so a user can hold at most one link and the token is never
-// rewritten; `/i/:token` is the only path. The token is a CUID2, never derived
-// from the nick (A-26), and registration with it creates the `Friendship` in the
-// same transaction as the account unless a `Block` exists (AD-21).
+// rewritten; `/i/:token` is the only path. New accounts get a CUID2 at
+// registration (A-26, never derived from the nick). Accounts that predate the
+// table receive a 32-character hex token from the deploy backfill, which never
+// rewrites an existing token. Accepting an invite at registration creates the
+// `Friendship` in the same transaction unless a `Block` exists (AD-21).
 model InviteLink {
   userId    String   @id
   token     String   @unique

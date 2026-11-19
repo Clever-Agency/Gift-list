@@ -205,3 +205,24 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-t422u-staging-flow.md`
   summary: Не определено, что значит «проверка на staging»: нет чек-листа, критерия выхода и шага проверки мобильной staging-сборки.
   evidence: Шаг 2 в `docs/deployment-environments.md` называет только адрес; в сводной таблице есть `EXPO_PUBLIC_API_BASE_URL` для staging-сборки, но команды и критериев «проверено» нигде нет. Чек-лист — предмет отдельного решения, а не этой инфраструктурной правки.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-99-регистрация-по-приглашению-при-block.md`
+  summary: В проде регистрация не видит Block нового аккаунта: строка Block ссылается на уже существующих пользователей и каскадно удаляется вместе с ними, а проверка идёт по id, созданному в этой же транзакции.
+  evidence: `Block.blockerId` / `blockedId` — FK на `User` с `onDelete: Cascade` (`schema.prisma`). `acceptInviteLinkInTransaction` вызывает `hasBlockBetween(newUserId, ownerId)` до коммита. Чужая транзакция не может вставить Block на ещё не закоммиченный id. Поэтому описанный в CLE-99 экран «Приглашение не найдено» сразу после регистрации по блоку в текущей схеме недостижим: дружба создаётся. Вход уже существующим аккаунтом по той же ссылке по решению CLE-99 оставлен на экране приглашения. Нужно подтверждение, считается ли это отдельной дырой (новый аккаунт обходит блок) или ожидаемым следствием «блок только между аккаунтами».
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-99-регистрация-по-приглашению-при-block.md`
+  summary: EXPERIENCE Flow 15 и тексты историй по-прежнему говорят, что после блока или невалидного токена человек видит «Приглашение не найдено», а успешная регистрация по `/i` возвращает на приглашение.
+  evidence: Решение CLE-99 меняет только послерегистрационный `next`, когда токен был в теле и дружба не создана. `EXPERIENCE.md` Flow 15 и Story 4.7 в `epics.md` правятся через `bmad-correct-course`, не в этом фиксе. Повторное открытие ссылки и вход существующим аккаунтом текст «Приглашение не найдено.» сохраняют.
+
+## Deferred from: контакт автора support@ (2026-11-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-support-email-author-contact.md`
+  summary: Нет истории и маршрута для веб-страницы, где можно запросить удаление аккаунта без приложения (Google Play, Data safety): D-48 и п. 6 чеклиста требуют раздел политики с `privacy@wishmoon.clever-agency.dev`, но страницы политики нет ни в эпиках, ни в списке путей Next в AD-26.
+  evidence: Путь не входит в `/api`, `/l`, `/i`, `/unsubscribe`, `/admin`, `/.well-known` (AD-26), поэтому без решения его отдаст SPA-fallback с рендером только на клиенте. Нужен `bmad-correct-course` вместе с пунктом 4 чеклиста (политика конфиденциальности) до публикации в Google Play.
+- source_spec: `_bmad-output/implementation-artifacts/spec-support-email-author-contact.md`
+  summary: Письма уходят с `noreply@` без `Reply-To`, поэтому ответ пользователя на письмо теряется; стоит ставить `Reply-To: AUTHOR_EMAIL` (`support@`) или явно решить, что ответы не поддерживаются.
+  evidence: D-48 и `docs/deployment-environments.md` фиксируют отправителя `noreply@` и что ответы на него не читаются; ни один документ не требует `Reply-To`. Поведение было и до смены контакта.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-92-zapret-tekushchego-parolya.md`
+  summary: На сыром `/api/auth/change-password` проверка HIBP выполняется до сверки текущего пароля, поэтому вошедший без знания текущего пароля может отличить утёкший новый пароль (`PASSWORD_COMPROMISED`) от неверного текущего.
+  evidence: Порядок Better Auth 1.7.14 и хука CLE-90: `hash` (а в нём HIBP) вызывается раньше `password.verify` текущего пароля. CLE-92 эту проверку не переставлял: отказ `PASSWORD_REUSED` звучит только после верного `currentPassword`, но HIBP по-прежнему раньше. Чинить отдельно, не смешивая с запретом текущего пароля.

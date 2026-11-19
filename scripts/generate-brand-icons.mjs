@@ -42,8 +42,8 @@ const ADAPTIVE_ZONE = 0.66;
 /** Maskable icon: the disc stays inside the safe 80 % of the canvas. */
 const MASKABLE_ZONE = 0.8;
 
-/** Forest Paper `background` from `packages/ui/src/tokens.ts`; the manifest colour only. */
-const PAPER = "#F4F1EA";
+/** v8 «Ночное небо» `background` from `packages/ui/src/tokens.ts`; the manifest colour only. */
+const PAPER = "#F3F1EC";
 
 const png = { compressionLevel: 9, adaptiveFiltering: false };
 

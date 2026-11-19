@@ -6,7 +6,9 @@ import { expo } from "@better-auth/expo";
 import { nextCookies } from "better-auth/next-js";
 import { bearer } from "better-auth/plugins";
 import { createId } from "@paralleldrive/cuid2";
+import { PASSWORD_MAX, PASSWORD_MIN } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
+import { haveIBeenPwnedPlugin } from "@/lib/hibp-password";
 import { getEnv } from "@/lib/env";
 import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
 import { invalidateOutstandingPasswordResets } from "@/lib/password-reset-tokens";
@@ -26,6 +28,8 @@ function createAuth() {
     },
     emailAndPassword: {
       enabled: true,
+      minPasswordLength: PASSWORD_MIN,
+      maxPasswordLength: PASSWORD_MAX,
       // Sign-up goes through `registerUser` so the user and the single list
       // are created in one transaction (AD-6); the raw endpoint stays closed.
       disableSignUp: true,
@@ -63,15 +67,22 @@ function createAuth() {
     // паттерн кастомной схемы без хоста совпадает с любым хостом и портом
     // (Better Auth matchesOriginPattern), поэтому в проде их быть не должно.
     trustedOrigins: ["giftlist://", ...env.AUTH_DEV_TRUSTED_ORIGINS],
-    // Клиент и сброс ходят в `/api/v1` и `auth.api.*`. Эти HTTP-пути обошли бы
-    // счётчики Postgres (вход, регистрация, письмо) и упёрлись бы только в
-    // лимитер Better Auth в памяти процесса. `disabledPaths` отвечает 404 до
-    // этого лимитера и до обработчика; `auth.api.*` не затрагивается.
-    disabledPaths: ["/sign-in/email", "/sign-up/email", "/request-password-reset"],
+    // Клиент и сброс ходят в `/api/v1` и `auth.api.*`. Сырые
+    // `/sign-in/email`, `/sign-up/email` и `/request-password-reset` обошли бы
+    // счётчики Postgres и упёрлись бы только в лимитер Better Auth в памяти
+    // процесса. `/update-user` пишет `name` и `image` мимо `nameNormalized`
+    // (CLE-109): поиск читает нормализованное имя. `disabledPaths` отвечает
+    // 404 до лимитера и до обработчика; `auth.api.*` не затрагивается.
+    disabledPaths: [
+      "/sign-in/email",
+      "/sign-up/email",
+      "/request-password-reset",
+      "/update-user",
+    ],
     // bearer() accepts `Authorization: Bearer` and adds `set-auth-token` to cookie-setting
     // responses; the /api/auth route strips that header for non-native requests.
     // nextCookies must stay last so Server Actions can set the session cookie.
-    plugins: [expo(), bearer(), nextCookies()],
+    plugins: [expo(), bearer(), haveIBeenPwnedPlugin(), nextCookies()],
   });
 }
 

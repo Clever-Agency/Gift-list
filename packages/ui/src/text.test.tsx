@@ -60,7 +60,7 @@ describe("LinkText: кольцо фокуса, hover и press", () => {
     await render(linkText());
 
     const lines = styleLines(link(container));
-    expect(focusVisibleOutline(lines, "outline-color:var(--c-ring)")).toBe(true);
+    expect(focusVisibleOutline(lines, "outline-color:var(--ring)")).toBe(true);
     expect(focusVisibleOutline(lines, "outline-width:2px")).toBe(true);
     expect(focusVisibleOutline(lines, "outline-style:solid")).toBe(true);
     expect(lines.some((line) => line.includes("outline-offset:2px"))).toBe(true);
@@ -82,7 +82,7 @@ describe("LinkText: кольцо фокуса, hover и press", () => {
         (line) =>
           line.includes("@media (hover: hover)") &&
           line.includes(":where(:hover)") &&
-          line.includes("background-color:var(--c-background)"),
+          line.includes("background-color:var(--background)"),
       ),
     ).toBe(true);
     expect(

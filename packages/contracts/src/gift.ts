@@ -350,6 +350,15 @@ export const giftUpdateSchema = z
     return update;
   });
 
+/** Story 5.1 (AD-9): body of `POST /api/v1/gifts/:id/reserve`. */
+export const giftReserveBodySchema = z.strictObject({
+  dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  holderVisibleToOwner: z.boolean(),
+  holderVisibleToOthers: z.boolean(),
+});
+
+export type GiftReserveBody = z.infer<typeof giftReserveBodySchema>;
+
 /**
  * Story 2.6: the owner puts an archived wish back. An absent or empty date
  * clears `expiresOn`. "Before today" is checked by `restoreFromArchive`.

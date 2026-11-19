@@ -57,14 +57,28 @@ vi.mock("@/lib/rate-limit", () => ({
   clientIp: () => "127.0.0.1",
 }));
 
+const isPasswordPwnedFailOpen = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/hibp-password", () => ({
+  isPasswordPwnedFailOpen,
+}));
+
 import { registerUser } from "./register";
 
 const input = {
   email: "a@example.com",
-  password: "password1",
+  password: "password1234",
   displayName: "Анна",
   nick: "anna",
 };
+
+/** Two successful registrations mint different ids; every other field must match. */
+function withoutUserId(result: Awaited<ReturnType<typeof registerUser>>["result"]) {
+  if (!result.ok) return result;
+  const user: Record<string, unknown> = { ...result.data.user };
+  delete user.id;
+  return { ...result, data: { ...result.data, user } };
+}
 
 const OWNER: InviteLinkOwner = { id: "zebra_owner", displayName: "Сергей", nick: "sergey" };
 const LINK_TOKEN = "invite_token_1";
@@ -79,6 +93,7 @@ type PortMemory = {
   invites: { fromUserId: string; toUserId: string }[];
   writes: string[];
   locks: FriendshipPair[];
+  blockChecks: Array<[string, string]>;
 };
 
 function createPortMemory(seed: Partial<PortMemory> = {}): PortMemory {
@@ -91,6 +106,7 @@ function createPortMemory(seed: Partial<PortMemory> = {}): PortMemory {
     invites: [],
     writes: [],
     locks: [],
+    blockChecks: [],
     ...seed,
   };
 }
@@ -102,7 +118,8 @@ function createInvitePort(memory: PortMemory): InviteLinkTransaction {
       memory.lookups.push(token);
       return memory.owners.get(token) ?? null;
     },
-    async hasBlockBetween() {
+    async hasBlockBetween(firstUserId, secondUserId) {
+      memory.blockChecks.push([firstUserId, secondUserId]);
       return memory.blocked;
     },
     async findFriendship(pair) {
@@ -160,9 +177,37 @@ beforeEach(() => {
   inviteLinkTransaction.mockImplementation((client: { invite: InviteLinkTransaction }) => {
     return client.invite;
   });
+  isPasswordPwnedFailOpen.mockReset();
+  isPasswordPwnedFailOpen.mockResolvedValue(false);
 });
 
 describe("registerUser", () => {
+  it("rejects a short password before the database and without a breach check", async () => {
+    const outcome = await registerUser({ ...input, password: "short" }, headers());
+    expect(outcome.result).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+      reason: "PASSWORD_TOO_SHORT",
+    });
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(isPasswordPwnedFailOpen).not.toHaveBeenCalled();
+  });
+
+  it("rejects a leaked password before the database", async () => {
+    isPasswordPwnedFailOpen.mockResolvedValue(true);
+    const outcome = await registerUser(input, headers());
+    expect(outcome.result).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "password",
+      reason: "PASSWORD_PWNED",
+    });
+    expect(findFirst).toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
   it("creates one list without a type and stores the negotiated locale", async () => {
     const outcome = await registerUser(input, headers());
     expect(outcome.result).toMatchObject({
@@ -249,6 +294,80 @@ describe("registerUser", () => {
     expect(outcome.result).toMatchObject({ ok: true, data: { next: "/" } });
     expect(port.friendships).toEqual([]);
     expect(port.writes).toEqual([]);
+  });
+
+  it("sends a blocked invite and an unknown token home with one body (CLE-99)", async () => {
+    const inviteNext = "/invite/tok_1";
+    const unknown = await registerUser(
+      { ...input, inviteToken: "nonsense", next: inviteNext },
+      headers(),
+    );
+
+    port.owners.set(LINK_TOKEN, OWNER);
+    port.blocked = true;
+    const blocked = await registerUser(
+      { ...input, inviteToken: LINK_TOKEN, next: inviteNext },
+      headers(),
+    );
+
+    expect(withoutUserId(unknown.result)).toEqual({
+      ok: true,
+      data: {
+        user: {
+          email: "a@example.com",
+          name: "Анна",
+          nick: "anna",
+          timeZone: null,
+          hideFromSearch: false,
+        },
+        next: "/",
+      },
+    });
+    // Block and an unknown token stay indistinguishable, including `next`.
+    expect(withoutUserId(blocked.result)).toEqual(withoutUserId(unknown.result));
+    expect(JSON.stringify(blocked.result)).not.toContain("block");
+    expect(JSON.stringify(blocked.result)).not.toContain(OWNER.displayName);
+    expect(JSON.stringify(blocked.result)).not.toContain(OWNER.nick);
+    expect(port.friendships).toEqual([]);
+    expect(port.writes).toEqual([]);
+    if (!blocked.result.ok) throw new Error("expected a successful registration");
+    expect(port.blockChecks).toEqual([[blocked.result.data.user.id, OWNER.id]]);
+  });
+
+  it("keeps the invite screen when registration creates the friendship (CLE-99)", async () => {
+    port.owners.set(LINK_TOKEN, OWNER);
+
+    const outcome = await registerUser(
+      { ...input, inviteToken: LINK_TOKEN, next: "/invite/tok_1?from=page" },
+      headers(),
+    );
+
+    expect(outcome.result).toMatchObject({
+      ok: true,
+      data: { next: "/invite/tok_1?from=page" },
+    });
+    expect(port.friendships).toHaveLength(1);
+  });
+
+  it("keeps the invite screen when the body does not carry a token (CLE-99)", async () => {
+    const outcome = await registerUser({ ...input, next: "/invite/tok_1" }, headers());
+
+    expect(outcome.result).toMatchObject({ ok: true, data: { next: "/invite/tok_1" } });
+    expect(port.lookups).toEqual([]);
+    expect(port.blockChecks).toEqual([]);
+  });
+
+  it("drops an invite return path with a query the same way for a block and an unknown token (CLE-99)", async () => {
+    const next = "/i/tok_1?from=page";
+    const unknown = await registerUser({ ...input, inviteToken: "nonsense", next }, headers());
+
+    port.owners.set(LINK_TOKEN, OWNER);
+    port.blocked = true;
+    const blocked = await registerUser({ ...input, inviteToken: LINK_TOKEN, next }, headers());
+
+    expect(withoutUserId(unknown.result)).toMatchObject({ ok: true, data: { next: "/" } });
+    expect(withoutUserId(blocked.result)).toEqual(withoutUserId(unknown.result));
+    expect(port.friendships).toEqual([]);
   });
 
   it("creates no friendship and no subscription from a /l/ next path (AD-15-11)", async () => {

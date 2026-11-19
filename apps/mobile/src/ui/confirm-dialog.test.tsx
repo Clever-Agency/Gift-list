@@ -6,6 +6,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { controlByLabel, dialogElement, escape, pressScrim, settle } from "@/test/dom";
+import { declarationsFor } from "@/test/tamagui-css";
 import {
   ConfirmDialog,
   type DiscardConfirmDialogProps,
@@ -499,5 +500,56 @@ describe("ConfirmDialog: слой закрылся", () => {
 
     expect(onClosed).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(openerNode);
+  });
+});
+
+/**
+ * `DESIGN.md` → Colors: `destructive` «не для «закрыт»». The confirm keeps the coral
+ * button for a loss (a deletion) and takes the regular primary one for an action that
+ * loses nothing — closing a wish (Story 5.3).
+ */
+describe("ConfirmDialog: тон подтверждения", () => {
+  /** The resting background of the button: the hover rule is a state, not the base. */
+  function baseBackground(node: Element): string | undefined {
+    const found = declarationsFor(node, "background-color").filter(
+      (one) => !one.selector.includes(":where("),
+    );
+    return found.length > 0 ? found[found.length - 1].value : undefined;
+  }
+
+  it("по умолчанию кнопка подтверждения коралловая: destructive", async () => {
+    await renderConfirm();
+
+    expect(baseBackground(button("Удалить"))).toBe("var(--destructive)");
+    // The safe action stays a ghost: no fill of its own.
+    expect(baseBackground(button("Отмена"))).toBe("transparent");
+  });
+
+  it("confirmTone=primary: «Подтвердить» — обычная кнопка, без кораллового", async () => {
+    await renderConfirm({
+      title: "Подарок «Наушники» получен?",
+      confirmLabel: "Подтвердить",
+      confirmTone: "primary",
+    });
+
+    expect(baseBackground(button("Подтвердить"))).toBe("var(--primary)");
+    expect(baseBackground(button("Подтвердить"))).not.toBe("var(--destructive)");
+  });
+
+  it("primary-подтверждение всё равно открывается с фокусом на «Отмене»", async () => {
+    await renderConfirm({ confirmLabel: "Подтвердить", confirmTone: "primary" });
+
+    expect(document.activeElement).toBe(button("Отмена"));
+  });
+
+  it("primary-подтверждение работает как обычное: одно нажатие — один onConfirm", async () => {
+    const { onConfirm, onCancel } = await renderConfirm({
+      confirmLabel: "Подтвердить",
+      confirmTone: "primary",
+    });
+
+    await act(async () => button("Подтвердить").click());
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });

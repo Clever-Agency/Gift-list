@@ -169,6 +169,59 @@ describe("reservation release copy", () => {
   });
 });
 
+describe("closing copy", () => {
+  /**
+   * Story 5.3: закрытие владельцем, секция «Получено» и undo-тост — дословно из
+   * epics (Story 5.3), EXPERIENCE (Undo toast, Received section) и DESIGN
+   * (Archive section, мелкие элементы: «Вернуть в открытые · ещё N мин»).
+   */
+  it("keeps the close, closed and undo texts verbatim", () => {
+    const { app, common } = getMessages("ru");
+    const { close, closed, toast } = app.gift;
+
+    expect(close.menuAction).toBe("Отметить полученным");
+    expect(close.title).toBe("Подарок «{title}» получен?");
+    expect(close.reservedBody).toBe("Бронь будет закрыта, бронировавший получит уведомление");
+    expect(close.confirm).toBe("Подтвердить");
+    expect(close.cancel).toBe("Отмена");
+
+    expect(closed.undo).toBe("Вернуть в открытые");
+    expect(closed.undoWithTime).toBe("Вернуть в открытые · ещё {minutes} мин");
+    expect(closed.copy).toBe("Хочу ещё такой");
+    expect(closed.delete).toBe("Удалить");
+    expect(closed.sectionOwner).toBe("Получено ({count})");
+    expect(closed.sectionViewer).toBe("Уже подарено");
+    expect(closed.menuLabel).toBe("Меню");
+
+    expect(toast.closed).toBe("Отмечено полученным");
+    expect(toast.undo).toBe("Отменить");
+
+    expect(common.errors.reason.UNDO_WINDOW_EXPIRED).toBe("Время на отмену вышло");
+
+    for (const text of [...Object.values(close), ...Object.values(closed)]) {
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("substitutes the title and the minutes exactly once", () => {
+    const { app } = getMessages("ru");
+
+    expect(app.gift.close.title.replace("{title}", "Наушники")).toBe(
+      "Подарок «Наушники» получен?",
+    );
+    expect(app.gift.closed.undoWithTime.replace("{minutes}", "7")).toBe(
+      "Вернуть в открытые · ещё 7 мин",
+    );
+  });
+
+  it("counts the received section the same way as the archive", () => {
+    const { app } = getMessages("ru");
+
+    expect(app.gift.closed.sectionOwner).toContain("{count}");
+    expect(app.myWishlist.archiveSection).toContain("{count}");
+  });
+});
+
 describe("error catalog", () => {
   it("covers every error code and reason with non-empty text", () => {
     const { code, reason } = getMessages("ru").common.errors;

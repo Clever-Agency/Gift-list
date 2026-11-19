@@ -23,12 +23,14 @@ import type { ClientResult } from "@/api/client";
 import {
   createGift,
   fetchMyGifts,
+  fetchReservationWarning,
   previewGiftVisibility,
+  releaseReservation,
   restoreGift,
   updateGift,
 } from "@/api/my-gifts";
 import { loadOwnerDetail } from "@/ui/wish-detail-load";
-import { WishDetailDialog } from "@/ui/wish-detail-dialog";
+import { WishDetailDialog, type WishDetailStep } from "@/ui/wish-detail-dialog";
 import { getBrandName } from "@/config/env";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
@@ -160,6 +162,14 @@ export default function MyWishlistScreen() {
   const [detail, setDetail] = useState<GiftCard | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const detailReturn = useRef<string | null>(null);
+  // Story 5.2: the owner's release of someone else's reservation. The press runs
+  // the preflight, the answer picks the warning line of the step, the confirm
+  // sends the DELETE and the list is reread.
+  const [releaseStep, setReleaseStep] = useState<{
+    warning: "BOUGHT" | "GIVEN" | null;
+  } | null>(null);
+  const [releaseBusy, setReleaseBusy] = useState(false);
+  const releaseInFlight = useRef(false);
   // The chip that should get focus once the closed dialog has left the tree.
   const pendingFocus = useRef<string | null>(null);
   // The chip behind the confirm step: it owns the focus return while that step is
@@ -371,6 +381,7 @@ export default function MyWishlistScreen() {
   function openDetail(gift: GiftCard) {
     detailReturn.current = gift.id;
     setDetail(gift);
+    setReleaseStep(null);
     setDetailOpen(true);
   }
 
@@ -381,6 +392,8 @@ export default function MyWishlistScreen() {
   function detailClosed() {
     const id = detailReturn.current;
     detailReturn.current = null;
+    setReleaseStep(null);
+    setReleaseBusy(false);
     setDetail(null);
     restoreFocus(id ? cardNodes.current.get(id) : null);
   }
@@ -397,6 +410,102 @@ export default function MyWishlistScreen() {
     if (!detail) return Promise.resolve({ ok: false as const, reason: "unavailable" as const });
     return loadOwnerDetail(detail.id);
   }
+
+  /**
+   * Story 5.2: the owner presses the coral «Снять бронь». The preflight reads only
+   * the warning (`BOUGHT` | null until Story 5.7), so the step is shown after the
+   * answer, never «наугад»; a failed read reports itself and changes nothing.
+   */
+  async function requestRelease() {
+    if (!detail || releaseInFlight.current) return;
+    releaseInFlight.current = true;
+    const result = await fetchReservationWarning(detail.id);
+    releaseInFlight.current = false;
+    if (result.ok) {
+      setReleaseStep({ warning: result.warning });
+      return;
+    }
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await expireSession();
+      return;
+    }
+    setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+    if (result.code === "NOT_FOUND") setAttempt((value) => value + 1);
+  }
+
+  /** «Отмена», Esc, the cross: back to the details of the same wish, nothing is sent. */
+  function cancelRelease() {
+    if (releaseBusy) return;
+    setReleaseStep(null);
+  }
+
+  /**
+   * The step's coral confirm: one DELETE, then the list is reread (the answer is
+   * only `{ id }`). A lost race is reread, not retried; a broken connection keeps
+   * the step open so the person can try again or cancel.
+   */
+  async function confirmRelease() {
+    if (!detail || releaseInFlight.current) return;
+    releaseInFlight.current = true;
+    setReleaseBusy(true);
+    const result = await releaseReservation(detail.id);
+    releaseInFlight.current = false;
+    setReleaseBusy(false);
+    if (result.ok) {
+      // The step stays on screen while the layer fades out; `detailClosed` clears it.
+      setDetailOpen(false);
+      setAttempt((value) => value + 1);
+      return;
+    }
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
+    setReleaseStep(null);
+    if ("invalid" in result) {
+      setToast({ message: common("errors.generic"), tone: "error" });
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await expireSession();
+      return;
+    }
+    setToast({ message: mutationErrorMessage(result, common), tone: "error" });
+    if (result.code === "CONFLICT" || result.code === "NOT_FOUND") {
+      setAttempt((value) => value + 1);
+    }
+  }
+
+  /**
+   * The step is a plain object (`WishDetailStep`), so Story 5.3 adds its own step
+   * next to this one in the same layer instead of a second dialog.
+   */
+  const releaseStepView: WishDetailStep | null = releaseStep
+    ? {
+        key: "release",
+        title: t("gift.release.title"),
+        body:
+          releaseStep.warning === "BOUGHT"
+            ? t("gift.release.warningBought")
+            : releaseStep.warning === "GIVEN"
+              ? t("gift.release.warningGiven")
+              : undefined,
+        cancelLabel: t("gift.release.cancel"),
+        confirmLabel: t("gift.release.confirm"),
+        destructive: true,
+        busy: releaseBusy,
+        onConfirm: confirmRelease,
+        onCancel: cancelRelease,
+      }
+    : null;
 
   async function endSession() {
     const result = await auth.signOut();
@@ -1041,6 +1150,8 @@ export default function MyWishlistScreen() {
             onClose={closeDetail}
             onClosed={detailClosed}
             onEdit={editDetail}
+            onRelease={requestRelease}
+            step={releaseStepView}
           />
         ) : null}
         {toast ? (

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { GiftCard } from "@gift-list/contracts";
-import { WishDetailDialog } from "./wish-detail-dialog";
+import { WishDetailDialog, type WishDetailStep } from "./wish-detail-dialog";
 import type { DetailLoadResult } from "./wish-detail-load";
 
 /**
@@ -74,6 +74,66 @@ export const Owner: Story = {
     }),
     onEdit: function edit() {},
   },
+};
+
+/** Владелец, чужая бронь: коралловая «Снять бронь» рядом с «Изменить желание». */
+export const OwnerReserved: Story = {
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      visibility: "FRIENDS",
+      status: "RESERVED",
+      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
+      reservationLabel: "BOUGHT",
+      ownerAction: "CONFIRM_GIVEN",
+    }),
+    onEdit: function edit() {},
+    onRelease: function release() {},
+  },
+};
+
+/** Шаг снятия без отметки дарителя: только вопрос и две кнопки. */
+const RELEASE_STEP = {
+  key: "release",
+  title: "Снять бронь? Подарок снова станет открытым.",
+  cancelLabel: "Отмена",
+  confirmLabel: "Снять бронь",
+  destructive: true,
+  onConfirm: function confirm() {},
+  onCancel: function cancel() {},
+} satisfies WishDetailStep;
+
+const BOUGHT_WARNING =
+  "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё";
+
+/** The owner detail with a step: the screen owns both, the story only draws them. */
+function releaseArgs(step: WishDetailStep) {
+  return {
+    viewer: "owner" as const,
+    snapshot: sample({ visibility: "FRIENDS" as const, status: "RESERVED" as const }),
+    onEdit: function edit() {},
+    onRelease: function release() {},
+    step,
+  };
+}
+
+export const ReleaseStep: Story = {
+  args: releaseArgs(RELEASE_STEP),
+};
+
+/** Шаг снятия, даритель отметил «Купил»: предупреждение в описании шага. */
+export const ReleaseStepBought: Story = {
+  args: releaseArgs({ ...RELEASE_STEP, body: BOUGHT_WARNING }),
+};
+
+/** Шаг снятия после Story 5.7: даритель отметил «Подарил». */
+export const ReleaseStepGiven: Story = {
+  args: releaseArgs({ ...RELEASE_STEP, body: "Даритель отметил, что уже вручил" }),
+};
+
+/** Подтверждение уже ушло: обе кнопки недоступны. */
+export const ReleaseStepBusy: Story = {
+  args: releaseArgs({ ...RELEASE_STEP, body: BOUGHT_WARNING, busy: true }),
 };
 
 export const Loading: Story = {

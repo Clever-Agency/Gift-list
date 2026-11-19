@@ -2677,3 +2677,201 @@ describe("W12.19: главный экран на медиа-пропсах", () 
     );
   });
 });
+
+/**
+ * Story 5.2 (UI_OWNER): владелец снимает чужую бронь. «Снять бронь» — коралловая,
+ * потому что действие чужое (`DESIGN.md` → Colors → Destructive). Нажатие сначала
+ * читает preflight (`warning`), шаг подтверждения живёт в том же диалоге детали,
+ * после DELETE список перечитывается — ответ снятия несёт только `{ id }`.
+ */
+describe("мой вишлист: снятие чужой брони", () => {
+  function reservedCard(overrides: Partial<GiftCard> = {}): GiftCard {
+    return gift({
+      status: "RESERVED",
+      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
+      reservationLabel: "BOUGHT",
+      ownerAction: "CONFIRM_GIVEN",
+      ...overrides,
+    });
+  }
+
+  function preflightCalls(): unknown[][] {
+    return api.apiRequest.mock.calls.filter(
+      ([path]) => path === "/api/v1/me/gifts/g1/reservation",
+    );
+  }
+
+  function releaseCalls(): unknown[][] {
+    return preflightCalls().filter(
+      ([, init]) => (init as { method?: string } | undefined)?.method === "DELETE",
+    );
+  }
+
+  /** The list, the single read and the two reservation routes of the first wish. */
+  function respondOwnerRelease(handlers: {
+    cards: () => GiftCard[];
+    preflight: () => unknown;
+    release: () => unknown;
+  }) {
+    api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts") return Promise.resolve(giftsAnswer(handlers.cards()));
+      if (path === "/api/v1/me/gifts/g1") {
+        const card = handlers.cards().find(function sameId(item) {
+          return item.id === "g1";
+        });
+        return Promise.resolve(
+          card
+            ? { ok: true, data: card }
+            : { ok: false, code: "NOT_FOUND", message: "Gift not found" },
+        );
+      }
+      if (path === "/api/v1/me/gifts/g1/reservation") {
+        return Promise.resolve(
+          init?.method === "DELETE" ? handlers.release() : handlers.preflight(),
+        );
+      }
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+    });
+  }
+
+  async function openFirstDetail() {
+    const cardButton = container.querySelector(
+      '[role="listitem"] [role="button"]',
+    ) as HTMLElement;
+    await act(async () => {
+      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    return cardButton;
+  }
+
+  async function pressInDialog(label: string) {
+    const target = Array.from(
+      dialogElement()?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).find((node) => (node.textContent ?? "").includes(label));
+    expect(target).toBeDefined();
+    await act(async () => {
+      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+  }
+
+  it("шаг показывает предупреждение «Купил», DELETE один и список перечитан", async () => {
+    let cards: GiftCard[] = [reservedCard()];
+    respondOwnerRelease({
+      cards: () => cards,
+      preflight: () => ({ ok: true, data: { warning: "BOUGHT" } }),
+      release: () => {
+        cards = [gift()];
+        return { ok: true, data: { id: "g1" } };
+      },
+    });
+    await mount();
+    await openFirstDetail();
+
+    expect(dialogElement()?.textContent).toContain("Снять бронь");
+    const readsBefore = listReads();
+
+    await pressInDialog("Снять бронь");
+    expect(preflightCalls()).toHaveLength(1);
+    expect(dialogElement()?.textContent).toContain(
+      "Снять бронь? Подарок снова станет открытым.",
+    );
+    expect(dialogElement()?.textContent).toContain(
+      "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё",
+    );
+    expect(dialogElement()?.textContent).not.toContain("Кто видит");
+
+    await pressInDialog("Снять бронь");
+    expect(releaseCalls()).toHaveLength(1);
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(text()).toContain("Открыт");
+    expect(listReads()).toBe(readsBefore + 1);
+  });
+
+  it("без отметки «Купил» шаг не показывает предупреждение", async () => {
+    respondOwnerRelease({
+      cards: () => [reservedCard({ reservationLabel: null })],
+      preflight: () => ({ ok: true, data: { warning: null } }),
+      release: () => ({ ok: true, data: { id: "g1" } }),
+    });
+    await mount();
+    await openFirstDetail();
+    await pressInDialog("Снять бронь");
+
+    const step = dialogElement()?.textContent ?? "";
+    expect(step).toContain("Снять бронь? Подарок снова станет открытым.");
+    expect(step).not.toContain("Даритель отметил");
+  });
+
+  it("«Отмена» в шаге возвращает к деталям и ничего не отправляет", async () => {
+    respondOwnerRelease({
+      cards: () => [reservedCard()],
+      preflight: () => ({ ok: true, data: { warning: "BOUGHT" } }),
+      release: () => ({ ok: true, data: { id: "g1" } }),
+    });
+    await mount();
+    await openFirstDetail();
+    await pressInDialog("Снять бронь");
+
+    await pressInDialog("Отмена");
+
+    expect(releaseCalls()).toHaveLength(0);
+    expect(dialogElement()?.textContent).toContain("Кто видит");
+    expect(dialogElement()?.textContent).not.toContain(
+      "Снять бронь? Подарок снова станет открытым.",
+    );
+  });
+
+  it("сеть на preflight: тост, шаг не открывается, бронь на месте", async () => {
+    respondOwnerRelease({
+      cards: () => [reservedCard()],
+      preflight: () => ({ ok: false, network: true }),
+      release: () => ({ ok: true, data: { id: "g1" } }),
+    });
+    await mount();
+    await openFirstDetail();
+    await pressInDialog("Снять бронь");
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(dialogElement()?.textContent).toContain("Кто видит");
+    expect(dialogElement()?.textContent).not.toContain(
+      "Снять бронь? Подарок снова станет открытым.",
+    );
+    expect(releaseCalls()).toHaveLength(0);
+  });
+
+  it("CONFLICT на DELETE: шаг закрыт, тост и перечитанный список", async () => {
+    respondOwnerRelease({
+      cards: () => [reservedCard()],
+      preflight: () => ({ ok: true, data: { warning: "BOUGHT" } }),
+      release: () => ({ ok: false, code: "CONFLICT", message: "Reservation changed" }),
+    });
+    await mount();
+    await openFirstDetail();
+    const readsBefore = listReads();
+    await pressInDialog("Снять бронь");
+    await pressInDialog("Снять бронь");
+    await settle(300);
+
+    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
+    expect(listReads()).toBe(readsBefore + 1);
+  });
+
+  it("у открытого желания кораллового действия снятия нет", async () => {
+    respondOwnerRelease({
+      cards: () => [gift()],
+      preflight: () => ({ ok: true, data: { warning: null } }),
+      release: () => ({ ok: true, data: { id: "g1" } }),
+    });
+    await mount();
+    await openFirstDetail();
+
+    expect(dialogElement()?.textContent).toContain("Изменить желание");
+    expect(dialogElement()?.textContent).not.toContain("Снять бронь");
+    expect(preflightCalls()).toHaveLength(0);
+  });
+});

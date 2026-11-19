@@ -15,7 +15,7 @@ import { formatDate, formatPrice } from "@gift-list/contracts";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
-import { fetchViewerGift, reserveGift } from "@/api/viewer-gift";
+import { fetchViewerGift, releaseMyReservation, reserveGift } from "@/api/viewer-gift";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
@@ -24,6 +24,7 @@ import { EmptyState } from "@/ui/empty-state";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PrimaryButton } from "@/ui/primary-button";
+import { ReservationReleaseConfirm } from "@/ui/reservation-release-confirm";
 import { ReserveConfirm } from "@/ui/reserve-confirm";
 import { StatusPill } from "@/ui/status-pill";
 import { ToastHost } from "@/ui/toast";
@@ -61,6 +62,11 @@ export default function GiftDetailScreen() {
   const [dateError, setDateError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const reserveInFlight = useRef(false);
+  // Story 5.2: the holder's own release — the confirm, its request in flight, and
+  // the same one-at-a-time guard the reserve uses.
+  const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false);
+  const [releaseBusy, setReleaseBusy] = useState(false);
+  const releaseInFlight = useRef(false);
   const timeZone =
     auth.state.status === "ready" ? auth.state.user.timeZone ?? "UTC" : "UTC";
 
@@ -117,8 +123,12 @@ export default function GiftDetailScreen() {
   const current = gift ?? (state.status === "ready" ? state.gift : null);
   const showReserveCta =
     current?.quantity === "SINGLE" && current?.status === "OPEN";
+  // Story 5.2 (A-14): only the live holder gets `reservation` from the server, so
+  // its presence is the holder branch, not a name or a relationship lookup. The
+  // release itself is only possible while the wish is `RESERVED`.
+  const showRelease = current?.status === "RESERVED" && current.reservation !== undefined;
   const reserveHint =
-    current && !showReserveCta
+    current && !showReserveCta && !showRelease
       ? current.quantity === "UNLIMITED"
         ? tGift("reserveNoButton.UNLIMITED")
         : tGift(`reserveNoButton.${current.status}` as "reserveNoButton.RESERVED")
@@ -167,6 +177,45 @@ export default function GiftDetailScreen() {
       }
       setToast(mutationErrorMessage(result, common));
       if (result.reason === "RESERVATION_TAKEN") setConfirmOpen(false);
+    }
+  }
+
+  /**
+   * Story 5.2: release of the holder's own reservation. The server answers `{ id }`,
+   * so the screen applies the transition it already knows: `OPEN` and no reservation
+   * block. A lost race or a wish that has gone (`CONFLICT` / `NOT_FOUND`) is reread
+   * instead of guessed; the network keeps the card as it was (DECISION 2026-11-18).
+   */
+  async function submitRelease() {
+    if (!id || !current || releaseInFlight.current) return;
+    releaseInFlight.current = true;
+    setReleaseBusy(true);
+    const result = await releaseMyReservation(id);
+    releaseInFlight.current = false;
+    setReleaseBusy(false);
+    setReleaseConfirmOpen(false);
+    if (result.ok) {
+      setGift({
+        ...current,
+        status: "OPEN",
+        reservedBy: null,
+        reservationLabel: null,
+        ownerAction: null,
+        reservation: undefined,
+      });
+      return;
+    }
+    if ("network" in result) {
+      setToast(tForm("network"));
+      return;
+    }
+    if ("invalid" in result) {
+      setToast(common("errors.generic"));
+      return;
+    }
+    setToast(mutationErrorMessage(result, common));
+    if (result.code === "CONFLICT" || result.code === "NOT_FOUND") {
+      setAttempt((value) => value + 1);
     }
   }
 
@@ -235,6 +284,14 @@ export default function GiftDetailScreen() {
                         setConfirmOpen(true);
                       }}
                     />
+                  ) : showRelease ? (
+                    <Button
+                      label={tGift("release.confirm")}
+                      variant="secondary"
+                      onPress={function openReleaseConfirm() {
+                        setReleaseConfirmOpen(true);
+                      }}
+                    />
                   ) : reserveHint ? (
                     <Text kind="label" tone="muted" accessibilityRole="text">
                       {reserveHint}
@@ -259,6 +316,17 @@ export default function GiftDetailScreen() {
               setConfirmOpen(false);
             }}
             onConfirm={submitReserve}
+          />
+        ) : null}
+        {current ? (
+          <ReservationReleaseConfirm
+            open={releaseConfirmOpen}
+            busy={releaseBusy}
+            onClose={function closeReleaseConfirm() {
+              if (releaseBusy) return;
+              setReleaseConfirmOpen(false);
+            }}
+            onConfirm={submitRelease}
           />
         ) : null}
         {toast ? (

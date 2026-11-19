@@ -205,6 +205,45 @@ describe("Toast: варианты", () => {
   });
 });
 
+describe("Toast: фокус сообщает, какой элемент его получил", () => {
+  it("действие и крестик приходят со своей подписью action / close", async () => {
+    const onFocusChange = vi.fn();
+    const { container, render } = mounted();
+    await render(
+      <Toast
+        testID="toast"
+        tone="info"
+        message="Отмечено полученным"
+        action={{ label: "Отменить", onPress: noop }}
+        closeLabel="Закрыть"
+        onClose={noop}
+        onFocusChange={onFocusChange}
+      />,
+    );
+
+    const action = container.querySelector<HTMLElement>("[aria-label='Отменить']");
+    const close = container.querySelector<HTMLElement>("[aria-label='Закрыть']");
+
+    // Экран переводит фокус на действие сам — хост должен узнать, что это действие,
+    // а не крестик: программный фокус отсчёт не держит.
+    act(() => {
+      action?.focus();
+    });
+    expect(onFocusChange).toHaveBeenLastCalledWith(true, "action");
+
+    act(() => {
+      close?.focus();
+    });
+    expect(onFocusChange.mock.calls).toContainEqual([false, "action"]);
+    expect(onFocusChange).toHaveBeenLastCalledWith(true, "close");
+
+    act(() => {
+      close?.blur();
+    });
+    expect(onFocusChange).toHaveBeenLastCalledWith(false, "close");
+  });
+});
+
 describe("Toast: ссылка на кнопку действия", () => {
   it("actionRef указывает на кнопку действия и переводит на неё фокус", async () => {
     const actionRef = { current: null as object | null };

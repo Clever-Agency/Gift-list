@@ -13,8 +13,10 @@ import {
 const ACTION = "Отменить";
 
 /** Состояние диктора: `AccessibilityInfo` отвечает им на подписку и на запрос. */
-const narration = vi.hoisted(() => ({ enabled: false }));
+const narration = vi.hoisted(() => ({ enabled: false, asked: vi.fn() }));
 const listeners = vi.hoisted(() => new Set<(enabled: boolean) => void>());
+/** Платформа: в браузере `react-native-web` всегда отвечает «диктор включён». */
+const platform = vi.hoisted(() => ({ os: "web" as "web" | "ios" }));
 
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
@@ -33,8 +35,17 @@ vi.mock("use-intl", async () => {
 
 vi.mock("react-native", () => {
   return {
+    Platform: {
+      // Геттер: тесты переключают платформу так же, как её видит приложение.
+      get OS() {
+        return platform.os;
+      },
+    },
     AccessibilityInfo: {
-      isScreenReaderEnabled: () => Promise.resolve(narration.enabled),
+      isScreenReaderEnabled: () => {
+        narration.asked();
+        return Promise.resolve(narration.enabled);
+      },
       addEventListener: (event: string, listener: (enabled: boolean) => void) => {
         if (event !== "screenReaderChanged") return { remove: () => {} };
         listeners.add(listener);
@@ -110,13 +121,13 @@ function opacityClass(node: HTMLElement): string {
 /** React слушает фокус через focusin/focusout — они всплывают. */
 function focus(node: HTMLElement) {
   act(() => {
-    node.dispatchEvent(new Event("focusin", { bubbles: true }));
+    node.focus();
   });
 }
 
 function blur(node: HTMLElement) {
   act(() => {
-    node.dispatchEvent(new Event("focusout", { bubbles: true }));
+    node.blur();
   });
 }
 
@@ -129,6 +140,9 @@ beforeEach(() => {
   });
   narration.enabled = false;
   listeners.clear();
+  // Веб-сборка — то, что видит человек в браузере: там `react-native-web` отвечает
+  // «диктор включён» на любой запрос.
+  platform.os = "web";
   mounted = false;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -280,10 +294,17 @@ describe("ToastHost: сам скрывается по таймеру", () => {
 });
 
 describe("ToastHost: действие и диктор", () => {
+  // Диктор спрашивают только на телефоне: в браузере `react-native-web` отвечает
+  // `true` всегда (см. `screenReaderApi`), и тост не скрывался бы никогда.
+  beforeEach(() => {
+    platform.os = "ios";
+  });
+
   it("при включённом дикторе тост с действием не скрывается сам", async () => {
     narration.enabled = true;
     await render({ message: "Добавлено в вишлист", tone: "info", action: { label: ACTION, onPress: vi.fn() } });
 
+    expect(narration.asked).toHaveBeenCalledTimes(1);
     const text = container.textContent ?? "";
     expect(text.indexOf(ACTION)).toBeGreaterThanOrEqual(0);
     // v8: the action sits in the text column, the close cross is the last control.
@@ -447,6 +468,90 @@ describe("ToastHost: undo-тост закрытия желания", () => {
     advance(1_000);
 
     await render({ message: "Отмечено полученным", tone: "info", durationMs: 10_000 });
+    advance(9_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ToastHost: фокус, который поставил экран", () => {
+  const CLOSED_TOAST = {
+    message: "Отмечено полученным",
+    tone: "info" as const,
+    action: { label: ACTION, onPress: () => {} },
+    durationMs: 10_000,
+  };
+
+  it("программный фокус на «Отменить» не держит тост: через 10 с он скрыт", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ ...CLOSED_TOAST, actionRef });
+
+    // Экран переводит фокус сам — `focusInLayer(toastAction.current)` из
+    // `DESIGN.md` → «Куда уходит фокус», пункт «а».
+    focus(actionRef.current as HTMLElement);
+    expect(document.activeElement).toBe(actionRef.current);
+
+    advance(9_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("фокус человека держит тост и после программного: blur продолжает с остатка", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ ...CLOSED_TOAST, actionRef });
+    advance(2_000);
+
+    focus(actionRef.current as HTMLElement);
+    // Программный фокус отсчёт не остановил: 3 с прошло, осталось 7 с.
+    advance(1_000);
+
+    focus(closeButton());
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    blur(closeButton());
+    advance(6_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("возврат фокуса на «Отменить» уже человеком — пауза", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ ...CLOSED_TOAST, actionRef });
+    advance(1_000);
+
+    const action = actionRef.current as HTMLElement;
+    focus(action);
+    // Ушли с действия и вернулись: этот фокус ставит уже человек.
+    blur(action);
+    advance(1_000);
+    focus(action);
+
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    blur(action);
+    advance(7_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("в браузере диктор не спрашивается: «включён» от react-native-web не держит тост", async () => {
+    // `react-native-web` отвечает `true` на любой запрос — именно из-за этого тост
+    // с действием в веб-сборке не скрывался никогда.
+    narration.enabled = true;
+
+    await render(CLOSED_TOAST);
+    expect(narration.asked).not.toHaveBeenCalled();
+
     advance(9_999);
     expect(onDismiss).not.toHaveBeenCalled();
 

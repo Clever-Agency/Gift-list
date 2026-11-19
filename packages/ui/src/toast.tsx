@@ -62,8 +62,12 @@ export type ToastProps = {
   offsetBottom?: number;
   /** The pointer is over the toast or left it; for pausing the countdown. */
   onHoverChange?: (hovered: boolean) => void;
-  /** Focus entered or left one of the toast's buttons; for pausing the countdown. */
-  onFocusChange?: (focused: boolean) => void;
+  /**
+   * Focus entered or left one of the toast's controls; for pausing the countdown.
+   * The `control` says which one: the host needs it to tell the focus the screen
+   * moved onto `action` (`actionRef`) from the focus a person set with Tab or a click.
+   */
+  onFocusChange?: (focused: boolean, control: "action" | "close") => void;
   /**
    * The host is taking the toast away: the toast fades out and stops taking
    * touches. The host unmounts it when the fade is over.
@@ -116,12 +120,20 @@ export function Toast({
     onHoverChange?.(false);
   }
 
-  function handleFocus() {
-    onFocusChange?.(true);
+  function handleActionFocus() {
+    onFocusChange?.(true, "action");
   }
 
-  function handleBlur() {
-    onFocusChange?.(false);
+  function handleActionBlur() {
+    onFocusChange?.(false, "action");
+  }
+
+  function handleCloseFocus() {
+    onFocusChange?.(true, "close");
+  }
+
+  function handleCloseBlur() {
+    onFocusChange?.(false, "close");
   }
 
   return (
@@ -180,8 +192,8 @@ export function Toast({
               role="button"
               aria-label={action.label}
               onPress={action.onPress}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
+              onFocus={handleActionFocus}
+              onBlur={handleActionBlur}
               alignSelf="flex-start"
               minHeight="$touch-target"
               justifyContent="center"
@@ -196,8 +208,8 @@ export function Toast({
           <Pressable
             aria-label={closeLabel}
             onPress={onClose}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
+            onFocus={handleCloseFocus}
+            onBlur={handleCloseBlur}
             minHeight="$touch-target"
             minWidth="$touch-target"
             alignItems="center"

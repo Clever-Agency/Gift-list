@@ -1,6 +1,6 @@
 import { Toast, type FocusTarget, type ToastTone } from "@gift-list/ui";
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, Platform } from "react-native";
 import { useTranslations } from "use-intl";
 
 /**
@@ -33,8 +33,13 @@ type ScreenReaderApi = {
 /**
  * `AccessibilityInfo` есть не на каждой платформе, и частичные моки `react-native`
  * в тестах его не отдают. Без него тост с действием просто ведёт себя как обычный.
+ *
+ * В браузере диктор не спрашивается вовсе: `react-native-web` на
+ * `isScreenReaderEnabled` всегда отвечает `true` (заглушка), и тост с действием
+ * не скрывался бы никогда. Настоящий ответ есть только на телефоне.
  */
 function screenReaderApi(): ScreenReaderApi | null {
+  if (Platform.OS === "web") return null;
   try {
     return (AccessibilityInfo as ScreenReaderApi | undefined) ?? null;
   } catch {
@@ -47,11 +52,12 @@ function screenReaderApi(): ScreenReaderApi | null {
  * assertively and stays until it is dismissed: «Нет сети» never hides itself.
  *
  * An info toast hides itself after `toastDurationMs(message)`, but the countdown
- * stops while the toast is hovered or one of its buttons has focus and resumes
- * with the remaining time. A toast with an action never hides itself while a
- * screen reader is on — the reader must reach the action first. A screen that knows
- * the life of one toast itself passes `durationMs` (the undo toast of a closed wish
- * lives 10 s), and `actionRef` hands it the action button for the focus move.
+ * stops while the toast is hovered or a person set focus on one of its buttons, and
+ * resumes with the remaining time. On a phone a toast with an action never hides
+ * itself while a screen reader is on — the reader must reach the action first; the
+ * web cannot tell (see `screenReaderApi`), so there the countdown runs. A screen that
+ * knows the life of one toast itself passes `durationMs` (the undo toast of a closed
+ * wish lives 10 s), and `actionRef` hands it the action button for the focus move.
  */
 export function ToastHost({
   message,
@@ -107,10 +113,32 @@ export function ToastHost({
   const [screenReader, setScreenReader] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  /**
+   * Первый фокус на действии ставит сам экран: `DESIGN.md` → Доступность «Куда
+   * уходит фокус», пункт «а» — после закрытия желания фокус уходит на «Отменить» в
+   * тосте. Держать на таком фокусе паузу — значит не закрыть тост никогда, поэтому
+   * отсчёт останавливает только следующий фокус, который поставил человек (Tab,
+   * клик, возврат на кнопку). В браузере экран зовёт `focus()` и приходит событие
+   * `onFocus`; на телефоне — `setAccessibilityFocus`, которое `onFocus` не шлёт,
+   * так что там любой фокус на тосте человеческий.
+   */
+  const screenFocus = useRef(Platform.OS === "web" && hasAction && actionRef != null);
   /** Тост уже растворяется: следующий шаг — `onDismiss` и размонтирование. */
   const [leaving, setLeaving] = useState(false);
   const paused = hovered || focused;
   const autoHide = !stays && !(hasAction && screenReader);
+
+  /**
+   * Фокус человека на любом элементе тоста держит отсчёт; программный перевод
+   * фокуса с экрана — нет.
+   */
+  function handleFocusChange(next: boolean, control: "action" | "close") {
+    if (next && control === "action" && screenFocus.current) {
+      screenFocus.current = false;
+      return;
+    }
+    setFocused(next);
+  }
 
   useEffect(function detectScreenReader() {
     // Диктор важен только тосту с действием: без действия тост ничего не прячет.
@@ -158,6 +186,17 @@ export function ToastHost({
       if (closeTimer.current !== null) clearTimeout(closeTimer.current);
     };
   }, []);
+
+  /**
+   * Новый тост — снова первый фокус на действии ставит экран (`action` у нового
+   * тоста новый, поэтому закрытие второго желания подряд тоже перевооружает).
+   */
+  useEffect(
+    function rearmScreenFocus() {
+      screenFocus.current = Platform.OS === "web" && hasAction && actionRef != null;
+    },
+    [action, actionRef, duration, hasAction, message],
+  );
 
   /**
    * Крестик — действие человека, а не конец отсчёта: `onDismiss` ждёт fade,
@@ -236,7 +275,7 @@ export function ToastHost({
       offsetBottom={offsetBottom}
       visible={!leaving}
       onHoverChange={setHovered}
-      onFocusChange={setFocused}
+      onFocusChange={handleFocusChange}
     />
   );
 }

@@ -134,7 +134,8 @@ function focusAction({ canvasElement }: { canvasElement: HTMLElement }) {
 /**
  * The undo toast of a closed wish (Story 5.3): «Отмечено полученным · Отменить».
  * `Toast` only draws it — the 10 s countdown lives in `ToastHost`, which pauses it on
- * hover and focus and keeps it while a screen reader is on. `actionRef` gives the
+ * hover and on the focus a person sets (`onFocusChange` names the control, so a host
+ * can tell the screen's own focus move from a Tab or a click). `actionRef` gives the
  * screen the action button, so focus can land on «Отменить» right after closing
  * (`DESIGN.md` → «Куда уходит фокус», пункт «а»).
  */

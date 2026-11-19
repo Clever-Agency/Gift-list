@@ -7,7 +7,8 @@ import { ToastHost } from "./toast";
  * The app's toast host: one toast at a time, an error announced assertively and
  * kept until dismissed, an info toast hidden after `max(3000 мс, 60 мс × символ)`
  * (`DESIGN.md` → Toast, DECISION 2026-11-10). The countdown pauses while the toast
- * is hovered or one of its buttons has focus. A screen that knows the life of one
+ * is hovered or a person put focus on one of its buttons; the focus the screen moves
+ * onto «Отменить» itself does not pause it. A screen that knows the life of one
  * toast itself passes `durationMs` (the undo toast of a closed wish lives 10 s) and
  * `actionRef` to move focus onto its action.
  *
@@ -94,8 +95,10 @@ function focusUndo({ canvasElement }: { canvasElement: HTMLElement }) {
  * The undo toast of a closed wish (Story 5.3): «Отмечено полученным · Отменить».
  * The screen passes `durationMs` — `DESIGN.md` gives the undo toast 10 s whatever the
  * message length — and `actionRef`, so focus lands on «Отменить» right after the wish
- * is closed (`DESIGN.md` → «Куда уходит фокус», пункт «а»). Hover and focus pause the
- * countdown, and with a screen reader on the toast is not hidden by itself.
+ * is closed (`DESIGN.md` → «Куда уходит фокус», пункт «а»). Hover and the focus a
+ * person sets pause the countdown; the focus the screen moved itself does not, so the
+ * toast is gone in 10 s. A screen reader holds a toast with an action on a phone; the
+ * web cannot tell a reader from silence, so there the countdown runs.
  */
 export const ClosedUndo: Story = {
   args: {

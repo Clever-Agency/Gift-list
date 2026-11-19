@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { ReservationReleaseConfirm } from "./reservation-release-confirm";
 
 /**
- * Снятие своей брони (Story 5.2): confirm «Снять бронь? Подарок снова станет
+ * Снятие своей брони (Story 5.2): confirm «Снять бронь? Желание снова станет
  * открытым.». На 360 px — шторка снизу, на medium+ — диалог. «Отмена» — ghost,
  * «Снять бронь» — обычная кнопка: коралловый `destructive` только у владельца,
  * который снимает чужую бронь.

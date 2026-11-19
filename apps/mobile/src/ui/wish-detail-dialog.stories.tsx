@@ -95,7 +95,7 @@ export const OwnerReserved: Story = {
 /** Шаг снятия без отметки дарителя: только вопрос и две кнопки. */
 const RELEASE_STEP = {
   key: "release",
-  title: "Снять бронь? Подарок снова станет открытым.",
+  title: "Снять бронь? Желание снова станет открытым.",
   cancelLabel: "Отмена",
   confirmLabel: "Снять бронь",
   destructive: true,

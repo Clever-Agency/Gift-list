@@ -2782,7 +2782,7 @@ describe("мой вишлист: снятие чужой брони", () => {
     await pressInDialog("Снять бронь");
     expect(preflightCalls()).toHaveLength(1);
     expect(dialogElement()?.textContent).toContain(
-      "Снять бронь? Подарок снова станет открытым.",
+      "Снять бронь? Желание снова станет открытым.",
     );
     expect(dialogElement()?.textContent).toContain(
       "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё",
@@ -2809,7 +2809,7 @@ describe("мой вишлист: снятие чужой брони", () => {
     await pressInDialog("Снять бронь");
 
     const step = dialogElement()?.textContent ?? "";
-    expect(step).toContain("Снять бронь? Подарок снова станет открытым.");
+    expect(step).toContain("Снять бронь? Желание снова станет открытым.");
     expect(step).not.toContain("Даритель отметил");
   });
 
@@ -2828,7 +2828,7 @@ describe("мой вишлист: снятие чужой брони", () => {
     expect(releaseCalls()).toHaveLength(0);
     expect(dialogElement()?.textContent).toContain("Кто видит");
     expect(dialogElement()?.textContent).not.toContain(
-      "Снять бронь? Подарок снова станет открытым.",
+      "Снять бронь? Желание снова станет открытым.",
     );
   });
 
@@ -2845,7 +2845,7 @@ describe("мой вишлист: снятие чужой брони", () => {
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(dialogElement()?.textContent).toContain("Кто видит");
     expect(dialogElement()?.textContent).not.toContain(
-      "Снять бронь? Подарок снова станет открытым.",
+      "Снять бронь? Желание снова станет открытым.",
     );
     expect(releaseCalls()).toHaveLength(0);
   });

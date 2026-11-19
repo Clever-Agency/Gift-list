@@ -156,7 +156,7 @@ describe("reservation release copy", () => {
   it("keeps the release texts verbatim and not empty", () => {
     const release = getMessages("ru").app.gift.release;
 
-    expect(release.title).toBe("Снять бронь? Подарок снова станет открытым.");
+    expect(release.title).toBe("Снять бронь? Желание снова станет открытым.");
     expect(release.confirm).toBe("Снять бронь");
     expect(release.cancel).toBe("Отмена");
     expect(release.warningBought).toBe(

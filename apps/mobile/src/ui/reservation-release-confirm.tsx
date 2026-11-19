@@ -12,7 +12,7 @@ export type ReservationReleaseConfirmProps = {
 
 /**
  * Снятие своей брони (Story 5.2, `EXPERIENCE.md` → Interaction Primitives):
- * confirm «Снять бронь? Подарок снова станет открытым.» в шторке на компактной
+ * confirm «Снять бронь? Желание снова станет открытым.» в шторке на компактной
  * ширине и в диалоге на medium+. Это обычное действие, а не удаление: «Отмена»
  * — ghost, «Снять бронь» — обычная кнопка, коралловый `destructive` остаётся
  * за снятием чужой брони (`DESIGN.md` → Colors → Destructive).

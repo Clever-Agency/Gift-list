@@ -194,7 +194,7 @@ afterEach(async () => {
 /**
  * Story 5.2 (UI_HOLDER): у держателя есть блок `reservation`, поэтому на детали
  * вместо подсказки «Уже забронирован» стоит `secondary` «Снять бронь» → confirm
- * «Снять бронь? Подарок снова станет открытым.» → карточка сама становится `OPEN`.
+ * «Снять бронь? Желание снова станет открытым.» → карточка сама становится `OPEN`.
  */
 describe("деталь желания: снятие своей брони", () => {
   it("держатель видит «Снять бронь» вместо подсказки, гость — подсказку", async () => {
@@ -221,7 +221,7 @@ describe("деталь желания: снятие своей брони", () =
     await click(control("Снять бронь"));
     await settle();
     expect(dialogElement()?.textContent).toContain(
-      "Снять бронь? Подарок снова станет открытым.",
+      "Снять бронь? Желание снова станет открытым.",
     );
 
     await click(dialogControl("Снять бронь"));
@@ -288,6 +288,6 @@ describe("деталь желания: снятие своей брони", () =
     expect(dialog?.textContent).toContain("Отмена");
     expect(dialog?.textContent).toContain("Снять бронь");
     const name = document.getElementById(dialog?.getAttribute("aria-labelledby") ?? "");
-    expect(name?.textContent).toBe("Снять бронь? Подарок снова станет открытым.");
+    expect(name?.textContent).toBe("Снять бронь? Желание снова станет открытым.");
   });
 });

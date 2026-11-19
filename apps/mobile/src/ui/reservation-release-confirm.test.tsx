@@ -76,10 +76,10 @@ describe("ReservationReleaseConfirm", () => {
     );
 
     expect(dialogElement()).not.toBeNull();
-    expect(body()).toContain("Снять бронь? Подарок снова станет открытым.");
+    expect(body()).toContain("Снять бронь? Желание снова станет открытым.");
     expect(control("Отмена")).toBeDefined();
     expect(control("Снять бронь")).toBeDefined();
-    expect(catalog.gift.release.title).toBe("Снять бронь? Подарок снова станет открытым.");
+    expect(catalog.gift.release.title).toBe("Снять бронь? Желание снова станет открытым.");
     expect(catalog.gift.release.confirm).toBe("Снять бронь");
     expect(catalog.gift.release.cancel).toBe("Отмена");
   });

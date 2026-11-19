@@ -206,55 +206,90 @@ export const BUTTON_TYPES = ["button", "submit"] as const;
 
 export type ButtonType = (typeof BUTTON_TYPES)[number];
 
+/**
+ * Props of `Button`. The catalogue prints these descriptions in the props table of
+ * `UI/Button` (`button.stories.tsx` → `argTypes`): the React Native Web framework
+ * has no TypeScript docgen, so the story repeats them for the table.
+ */
 export type ButtonProps = {
-  /** The visible text and the accessible name. Copy comes from the caller. */
+  /**
+   * Required. The visible text and the accessible name (unless `ariaLabel` says
+   * more). Copy comes from the caller. While `busy` it stays in the layout at
+   * opacity 0 under the spinner, so the width does not change.
+   */
   label: string;
   /**
-   * The accessible name when it has to say more than the visible label, e.g. a
-   * disabled button's reason. Defaults to `label`.
+   * The accessible name (`aria-label`) when it has to say more than the visible
+   * label, e.g. a disabled button's reason. Defaults to `label`. The label hidden
+   * under the busy spinner is not a second name.
    */
   ariaLabel?: string;
-  /** The id of the visible text that explains a disabled button. */
+  /**
+   * The id of the visible text that explains why the button is disabled; reaches
+   * the web DOM as `aria-describedby`.
+   */
   ariaDescribedBy?: string;
+  /** Called on a live press only — never while `disabled` or `busy`. */
   onPress?: () => void;
+  /**
+   * Visual style and height. `primary`, `reserve`, `secondary`, `outline` and
+   * `destructive` are at least 48 px tall (`$control-height`); `ghost` is at least
+   * 44 × 44 px (`$touch-target`). There is no `size` prop.
+   *
+   * - `primary` — `$primary` fill → hover `$primary-hover` (8% darker) → press 90% opacity
+   * - `reserve` — the same solid CTA as `primary` (only «Куплю сам» / «Подтвердить»)
+   * - `secondary` — translucent `$accent-soft` fill with `$accent-border` frame → hover `$accent-soft-hover` → press 90% opacity
+   * - `outline` — transparent with `$border-strong` frame → hover `$muted` fill and `$foreground` frame → press `$muted`
+   * - `ghost` — transparent → hover `$muted` fill → press `$muted` fill
+   * - `destructive` — `$destructive` fill → hover `$destructive-hover` → press 90% opacity
+   */
   variant?: ButtonVariant;
-  /** Does not take a press and is announced as disabled. */
+  /**
+   * A native disabled button: leaves the Tab order (`tabIndex=-1`), is announced
+   * with `aria-disabled`, dims to 40%, and takes no hover or press — a blocked
+   * button keeps its resting look.
+   */
   disabled?: boolean;
   /**
-   * Keep the disabled button in the Tab order (`aria-disabled` instead of the
-   * `disabled` attribute), so a keyboard user can still find it and read why.
+   * Keeps a disabled button in the Tab order: `aria-disabled` instead of the
+   * `disabled` attribute, 40% opacity, no press.
    */
   focusableWhenDisabled?: boolean;
   /**
-   * The action is running: dimmed, announced busy, takes no second press. The
-   * spinner is drawn over the hidden label, so the button keeps its size.
+   * The action is running: keeps the resting paddings and width — the label stays
+   * in the row at opacity 0 while a 16 px spinner is centred in an absolute slot
+   * over it. Dims to 60%, is announced with `aria-busy`, stays in the Tab order,
+   * takes no second press, and on the web `type` is reset to `button` so a form is
+   * not submitted twice.
    */
   busy?: boolean;
+  /** Stretches to the parent's width (`align-self: stretch`); the row stays centred. */
   fullWidth?: boolean;
   /**
    * A navigation target. On the web the root becomes a real `<a href>` with the
-   * same look, so a page action that only opens another page (a link to
-   * registration, login or a public page) keeps the browser's own click, the new
-   * tab and the context menu. A blocked button stays a `<button>` and ignores it.
-   * Native has no anchor: the caller hands the navigation to the router.
+   * same look, so a page action that only navigates (registration, login, a public
+   * page) keeps the browser's own click, new tab and context menu. A blocked button
+   * stays a `<button>` and ignores the target. A phone has no anchor: the caller
+   * hands navigation to the router.
    */
   href?: string;
+  /** A stable handle for tests; reaches the web DOM as `data-testid`. */
   testID?: string;
-  /** `submit` makes the web button submit its form; the phone ignores it. */
+  /**
+   * `submit` submits the web button's form; a phone ignores it. Reset to `button`
+   * while blocked, so a form is not submitted twice.
+   */
   type?: ButtonType;
 };
 
 /**
  * The button of the app and of the Next pages (`DESIGN.md` → components
  * `button-primary`, `button-reserve`, `button-secondary`, `button-outline`,
- * `button-ghost`).
- * On the web it is a real `<button>` with the label as its name (with `href` it is
- * a real `<a href>` with the same look); a disabled one never fires `onPress`.
+ * `button-ghost`). On the web it is a real `<button>` (with `href`, a real
+ * `<a href>`); a phone renders the same component through React Native.
  *
- * `busy` keeps the button exactly the size it has at rest (`t343u`): the paddings
- * do not change and the label keeps its place in the row, only its opacity drops
- * to 0. The 16 px spinner is drawn over the button in an absolute slot, centred on
- * both axes (`t344u`), and fades in from opacity 0, so nothing shifts.
+ * The rules of every prop live in `ButtonProps` and are printed in the props table
+ * of `UI/Button`; this comment stays the short summary.
  */
 export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(function Button(
   {

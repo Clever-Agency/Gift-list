@@ -1,6 +1,6 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
-import { TagChipList, WishCard as UiWishCard, type FocusTarget } from "@gift-list/ui";
 import type { ReactNode, Ref } from "react";
+import { TagChipList, WishCard as UiWishCard, type FocusTarget } from "@gift-list/ui";
 import { useLocale, useTranslations } from "use-intl";
 import { StatusPill } from "@/ui/status-pill";
 import { VisibilityChip, type VisibilityChipRef } from "@/ui/visibility-chip";

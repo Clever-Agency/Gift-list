@@ -23,10 +23,21 @@ const messages = getMessages("ru");
 /**
  * The page the catalog draws on: the app background, outside the theme. `$` tokens,
  * not `colors.*`: the surface follows the active theme (v8: light and dark).
+ *
+ * The surface spans its whole parent — the docs story block or the canvas — so the
+ * themed background never shrinks to the width of the sample inside it. The content
+ * keeps its placement: centred in the default `layout: "centered"`, at the start in
+ * `layout: "fullscreen"` (the gallery stories), so only the background grows.
  */
-function CatalogSurface({ children }: { children: ReactNode }) {
+function CatalogSurface({ children, centered = true }: { children: ReactNode; centered?: boolean }) {
   return (
-    <YStack padding={24} backgroundColor="$background" color="$foreground">
+    <YStack
+      width="100%"
+      padding={24}
+      alignItems={centered ? "center" : "flex-start"}
+      backgroundColor="$background"
+      color="$foreground"
+    >
       {children}
     </YStack>
   );
@@ -71,7 +82,7 @@ const withStorySurface: Decorator = function withStorySurface(Story, context) {
     );
   }
   return (
-    <CatalogSurface>
+    <CatalogSurface centered={(context.parameters.layout ?? "centered") !== "fullscreen"}>
       <Story />
     </CatalogSurface>
   );

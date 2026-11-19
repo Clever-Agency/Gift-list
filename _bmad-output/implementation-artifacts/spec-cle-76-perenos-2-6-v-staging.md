@@ -59,6 +59,7 @@ context:
 - Прирост веб-бандла 198 517 при потолке 195 584 (CI проверяет `measure-web-size`): потолок поднят на 4 КиБ до 199 680 с записью в `scripts/measure-web-size.mjs`, как в CLE-84/CLE-90.
 - Падения `gift-flows` / `session-error-screen` в первом полном прогоне не повторились: `npm test -w @gift-list/mobile` — 1400/1400.
 - Итоговые гейты на этом дереве (2026-11-19): `typecheck`, `lint`, `build` — 0; `measure-web-size` — прирост 198 517 при потолке 199 680; vitest — mobile 1400, web 1347, contracts 335, ui 311, все зелёные. `npm test` = 1 только из-за `scripts/generate-brand-icons.test.mjs`: генератор пишет `site.webmanifest` с LF, а checkout с `core.autocrlf=true` даёт CRLF, содержимое не отличается. Файлы бренда переносом не тронуты; на Linux CI этого нет.
+- 2026-11-19: PR #105 закрыт без мержа — Story 2.6 пришла в `staging` синхронизацией #102–#104 раньше. В `staging` из этого переноса через #106 попали только `datetimepicker` `~9.2.1` (одна копия в корне lock), эта спека и записи в `deferred-work.md`; разрешение конфликтов взято то, что уже в `staging`.
 
 ## Spec Change Log
 

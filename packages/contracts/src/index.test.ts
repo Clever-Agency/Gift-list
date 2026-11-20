@@ -5,6 +5,7 @@ import {
   errorReasonSchema,
   giftCardSchema,
   isNotFound,
+  keepReservationBodySchema,
   listDataSchema,
   meSchema,
   notFoundError,
@@ -409,5 +410,17 @@ describe("reservation contract", () => {
       reservationActionBodySchema.safeParse({ action: "bought", value: true, dueOn: "2026-12-08" })
         .success,
     ).toBe(false);
+  });
+});
+
+/** Story 5.6: the owner's «Не получал, оставить бронь» takes a strict empty body. */
+describe("keep reservation contract", () => {
+  it("exposes the strict empty body from the package entry", () => {
+    expect(keepReservationBodySchema.parse({})).toEqual({});
+  });
+
+  it("rejects a smuggled key", () => {
+    expect(keepReservationBodySchema.safeParse({ dueOn: "2026-12-08" }).success).toBe(false);
+    expect(keepReservationBodySchema.safeParse(null).success).toBe(false);
   });
 });

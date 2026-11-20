@@ -1,20 +1,6 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-
-import { processWishExpiry } from "@/lib/gift-status-store";
 import { notFoundResponse, toResponse } from "@/lib/api-v1";
-import { getEnv } from "@/lib/env";
-
-/**
- * Story 2.6 / AD-16: the external scheduler calls this once an hour. The secret
- * is compared as a hash so a wrong length does not throw and does not leak it.
- */
-function cronAuthorized(request: Request): boolean {
-  const header = request.headers.get("authorization") ?? "";
-  const expected = `Bearer ${getEnv().CRON_SECRET}`;
-  const actualHash = createHash("sha256").update(header).digest();
-  const expectedHash = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(actualHash, expectedHash);
-}
+import { cronAuthorized } from "@/lib/cron-auth";
+import { processWishExpiry } from "@/lib/gift-status-store";
 
 /** Archive open wishes whose date has passed. The body has no gift titles. */
 export async function POST(request: Request): Promise<Response> {

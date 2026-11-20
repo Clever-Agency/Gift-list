@@ -193,6 +193,7 @@ export function WishCard({
         pressRef={pressRef as never}
         width={width}
         menu={menu}
+        listItem={ownerStrip === null}
       />
     </CardWithOwnerStrip>
   );
@@ -201,8 +202,9 @@ export function WishCard({
 /**
  * Story 5.6: the card and, when the owner has to answer, the strip under it. The
  * wrapper keeps the card width in the grid; without a strip it is exactly the card,
- * so the DOM of every other state stays as before. The strip is a sibling of the
- * card button, never inside it.
+ * so the DOM of every other state stays as before. With a strip the wrapper is the
+ * one `listitem` of the grid: the card button and both answers of the strip live
+ * inside it, and the card itself carries no role (card `listItem={false}`).
  */
 function CardWithOwnerStrip({
   width,
@@ -216,7 +218,7 @@ function CardWithOwnerStrip({
   if (strip === null) return <>{children}</>;
 
   return (
-    <YStack width={width} gap="$1">
+    <YStack role="listitem" width={width} gap="$1">
       {children}
       {strip}
     </YStack>

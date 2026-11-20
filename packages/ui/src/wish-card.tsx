@@ -75,6 +75,13 @@ export type WishCardProps = {
   width?: number | string;
   /** Owner menu, a sibling of the card button (Story 2.6 archive). */
   menu?: ReactNode;
+  /**
+   * Whether the card itself is the `listitem` of the surrounding `role="list"`.
+   * Story 5.6 passes `false` when an owner strip stands next to the card: then the
+   * wrapper of the cell carries the role, so the strip buttons stay inside the one
+   * list item. Defaults to `true`.
+   */
+  listItem?: boolean;
   testID?: string;
 };
 
@@ -105,6 +112,7 @@ export function WishCard({
   pressRef,
   width,
   menu,
+  listItem = true,
   testID,
 }: WishCardProps) {
   const content = (
@@ -141,7 +149,7 @@ export function WishCard({
   );
 
   return (
-    <Card role="listitem" width={width} testID={testID}>
+    <Card role={listItem ? "listitem" : undefined} width={width} testID={testID}>
       {onPress ? (
         <Pressable ref={pressRef} aria-label={pressLabel} onPress={onPress} borderRadius="$lg">
           {content}

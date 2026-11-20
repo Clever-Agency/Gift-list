@@ -35,6 +35,20 @@ describe("WishCard", () => {
     expect(card.querySelector("[role='button']")).toBeNull();
   });
 
+  it("listItem={false}: роли listitem у карточки нет — её несёт обёртка ячейки", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        title="Плед"
+        status={<StatusPill status="open" label="Открыт" />}
+        listItem={false}
+      />,
+    );
+
+    expect(container.querySelector("[role='listitem']")).toBeNull();
+    expect(container.textContent).toContain("Плед");
+  });
+
   it("с onPress вся карточка — кнопка с именем, Enter и Space тоже нажимают", async () => {
     const onPress = vi.fn();
     const { container, render } = mounted();

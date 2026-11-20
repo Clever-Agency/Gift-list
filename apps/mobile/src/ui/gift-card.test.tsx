@@ -752,18 +752,59 @@ describe("WishCard: полоса «Срок брони истёк» (Story 5.6)"
     expect(strip()?.textContent).toContain("Получил");
     expect(strip()?.textContent).toContain("Не получал, оставить бронь");
 
-    const card = container.querySelector(CARD);
+    const item = container.querySelector('[role="listitem"]');
+    const card = item?.querySelector('[role="button"]') as HTMLElement | null;
     // The line is gone from the card itself: the strip carries it once.
     expect(card?.textContent).not.toContain("Срок брони истёк");
     expect(card?.textContent).not.toContain("Берёт Олег");
     // The accessible name still says what the card is about.
     expect(card?.getAttribute("aria-label")).toContain("Срок брони истёк");
 
-    // The strip is a sibling of the card button, never inside it: the same-width
-    // wrapper holds the card first and the strip second.
-    const item = container.querySelector('[role="listitem"]');
-    expect(strip()?.parentElement?.firstElementChild).toBe(item);
+    // The strip is never inside the card button: the same-width wrapper holds the
+    // card first and the strip second.
+    expect(strip()?.parentElement).toBe(item);
     expect(card?.contains(strip())).toBe(false);
+  });
+
+  /**
+   * Review F3: the grid is `role="list"`, so a cell with the strip must stay one
+   * `listitem` — otherwise the strip buttons fall outside the item. The wrapper is
+   * the item then: it holds the card button and both answers of the strip, and the
+   * card itself carries no role.
+   */
+  it("полоса: ровно один listitem, в нём кнопка карточки и обе кнопки полосы", async () => {
+    const onPress = vi.fn();
+    await renderOwner(expiredCard(), { onPress });
+
+    const items = container.querySelectorAll('[role="listitem"]');
+    expect(items).toHaveLength(1);
+    const item = items[0] as HTMLElement;
+
+    const buttons = Array.from(item.querySelectorAll('[role="button"]'));
+    // The card first (the Tab order), then «Получил» and «Не получал, оставить бронь».
+    expect(buttons).toHaveLength(3);
+    expect(buttons[0]?.getAttribute("aria-label")).toContain("Наушники");
+
+    const received = strip()?.querySelector<HTMLElement>("[data-testid='owner-action-received']");
+    const keep = strip()?.querySelector<HTMLElement>("[data-testid='owner-action-keep']");
+    expect(item.contains(received ?? null)).toBe(true);
+    expect(item.contains(keep ?? null)).toBe(true);
+
+    await click(buttons[0]);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  /** Without the strip the cell is the card itself, exactly as before F3. */
+  it("без полосы listitem остаётся сама карточка, обёртки с ролью нет", async () => {
+    await renderOwner(gift({ status: "RESERVED", ownerAction: "CONFIRM_GIVEN" }), {
+      onPress: vi.fn(),
+    });
+
+    expect(strip()).toBeNull();
+    expect(container.querySelectorAll('[role="listitem"]')).toHaveLength(1);
+    const card = container.querySelector(CARD);
+    expect(card).not.toBeNull();
+    expect(container.querySelector('[role="listitem"]')?.firstElementChild).toBe(card);
   });
 
   it("«Получил» и «Не получал, оставить бронь» зовут свои обработчики, карточка не открывается", async () => {

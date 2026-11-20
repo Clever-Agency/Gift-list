@@ -167,11 +167,13 @@ export async function fetchGift(id: string): Promise<GiftResult> {
 }
 
 /**
- * Story 2.3 (FR-10): `DELETE /api/v1/me/gifts/{id}` removes an open wish of the
- * owner's list and answers with the deleted id. The id is a path segment, hence
- * encoded; a body that does not echo the same id is `invalid` rather than a
- * broken connection. The server answers NOT_FOUND for a foreign, archived or
- * missing wish and CONFLICT for a reserved or closed one (AD-6…AD-8).
+ * Story 2.3 (FR-10): `DELETE /api/v1/me/gifts/{id}` removes a wish of the owner's
+ * list and answers with the deleted id. The id is a path segment, hence encoded; a
+ * body that does not echo the same id is `invalid` rather than a broken connection.
+ * The server answers NOT_FOUND for a foreign, archived or missing wish (AD-7). Story
+ * 5.4: a reserved wish is deleted too — the server releases the reservation through
+ * `GiftStatusService` and deletes the row in one transaction — so CONFLICT now means
+ * only that the row changed under the request, and the screen re-reads the wish.
  */
 export async function deleteGift(id: string): Promise<DeleteGiftResult> {
   const result = await apiRequest<unknown>(
@@ -247,6 +249,10 @@ export async function previewGiftVisibility(
  * `{ warning }`: `BOUGHT` when the holder marked the gift as bought, `null`
  * otherwise. The body carries no holder, due date, phase or `bought`, and the
  * schema is strict, so anything extra is `invalid`.
+ *
+ * Story 5.4: deletion asks the same question (AD-7 gives one `warning` to both a
+ * release and a delete), so the body of the delete confirm comes from here instead
+ * of a second route; the request and its answer are unchanged.
  */
 export async function fetchReservationWarning(id: string): Promise<ReservationWarningResult> {
   const result = await apiRequest<unknown>(

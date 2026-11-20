@@ -169,6 +169,15 @@ type GiftFormProps = {
    */
   readOnly?: boolean;
   /**
+   * Story 5.4: one `caption` above the first field, under the screen's heading —
+   * «Желание забронировано — бронировавший получит уведомление». It is plain text:
+   * not a field, not a focus target and no live region, so a screen reader reads it
+   * in order before the fields and the Tab order is unchanged. The screen decides
+   * when it applies and passes the catalog line; without the prop the form renders
+   * exactly as before.
+   */
+  notice?: string;
+  /**
    * Story 2.5: `quantity` is frozen once the wish is no longer open. The rows show
    * the stored value, disabled, with a hint why.
    */
@@ -218,7 +227,8 @@ export type GiftFormHandle = {
  * CLE-82/S23.3: a reserved wish still edits its visibility (`RESERVED` is not a
  * lock on the owner's side any more); only its quantity stays frozen. A `CLOSED`
  * or archived wish is read-only as a whole (`readOnly`), with one caption for both
- * states.
+ * states. Story 5.4 adds the caption of a reserved wish (`notice`): the screen
+ * passes the catalog line and the form only places it above the fields.
  */
 export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftForm(
   {
@@ -233,6 +243,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     cancelLabel,
     secondaryAction,
     readOnly = false,
+    notice,
     quantityLocked = false,
     tagCatalog = EMPTY_TAG_CATALOG,
     onRetryTagCatalog,
@@ -721,6 +732,13 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
 
   return (
     <YStack gap="$grid-gap">
+      {notice ? (
+        // Story 5.4: the caption of a reserved wish sits above the fields, under the
+        // screen's heading. Plain text: read in order, never a stop in the Tab order.
+        <Text testID="gift-form-notice" kind="caption" tone="muted">
+          {notice}
+        </Text>
+      ) : null}
       <TextField
         ref={titleRef}
         label={t("field.title")}

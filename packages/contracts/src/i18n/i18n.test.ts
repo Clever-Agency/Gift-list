@@ -294,6 +294,53 @@ describe("reservation copy", () => {
   });
 });
 
+/**
+ * Story 5.4: правка и удаление забронированного желания. Подсказка правки —
+ * дословно из EXPERIENCE (Interaction Primitives); тела confirm про бронь —
+ * новые, без утверждения в UX (Open Questions спеки 5.4, п. 1). Прежние строки
+ * удаления («Удалить «{title}»?», «Удалить», «Отмена», «Удаляем…»,
+ * «Желание удалено.») не меняются.
+ */
+describe("reserved wish editing and deletion copy", () => {
+  it("keeps the edit notice of a reserved wish verbatim", () => {
+    const notice = getMessages("ru").app.giftForm.notice;
+
+    expect(notice.reserved).toBe(
+      "Желание забронировано — бронировавший получит уведомление",
+    );
+    expect(notice.reserved.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the delete texts of a reserved wish verbatim and not empty", () => {
+    const { delete: remove } = getMessages("ru").app.giftForm;
+
+    expect(remove.action).toBe("Удалить желание");
+    expect(remove.confirmTitle).toBe("Удалить «{title}»?");
+    expect(remove.confirm).toBe("Удалить");
+    expect(remove.cancel).toBe("Отмена");
+    expect(remove.deleting).toBe("Удаляем…");
+    expect(remove.reservedBody).toBe(
+      "Бронь снимется, бронировавший получит уведомление. Это нельзя отменить.",
+    );
+    expect(remove.reservedBoughtBody).toBe(
+      "Даритель отметил, что подарок уже куплен. Бронь снимется, бронировавший получит уведомление. Это нельзя отменить.",
+    );
+    expect(getMessages("ru").app.giftForm.toast.deleted).toBe("Желание удалено.");
+
+    for (const text of Object.values(remove)) {
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("substitutes the title exactly once in the confirm question", () => {
+    const remove = getMessages("ru").app.giftForm.delete;
+
+    expect(remove.confirmTitle.replace("{title}", "Наушники")).toBe(
+      "Удалить «Наушники»?",
+    );
+  });
+});
+
 describe("error catalog", () => {
   it("covers every error code and reason with non-empty text", () => {
     const { code, reason } = getMessages("ru").common.errors;

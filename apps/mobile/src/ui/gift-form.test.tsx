@@ -20,6 +20,7 @@ import { formatMinorToPrice } from "@/ui/gift-price";
 /** The same catalogue the app ships, so the copy is asserted without a copy of it. */
 type AppCatalog = {
   giftForm: {
+    notice: { reserved: string };
     field: {
       title: string;
       titlePlaceholder: string;
@@ -676,6 +677,51 @@ describe("GiftForm: отправка", () => {
     await press(form.action.create);
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Story 5.4: a reserved wish carries the caption «Желание забронировано —
+ * бронировавший получит уведомление» above the fields. It is plain text under the
+ * screen's heading: never a field and never a stop in the Tab order.
+ */
+describe("GiftForm: подсказка забронированного желания", () => {
+  const notice = form.notice.reserved;
+
+  it("с пропом показывает caption до первого поля и не делает его полем", async () => {
+    await mount({ notice, initialValues: { title: "Свитер" } });
+
+    const caption = container.querySelector('[data-testid="gift-form-notice"]');
+    expect(caption, "подсказка").not.toBeNull();
+    expect(caption?.textContent).toBe(notice);
+    // Not a control: no role, no tab stop, no accessible name of its own.
+    expect(caption?.getAttribute("role")).toBeNull();
+    expect(caption?.getAttribute("tabindex")).toBeNull();
+    expect(caption?.getAttribute("aria-label")).toBeNull();
+    // Above the first field, not after the form's fields or actions.
+    const title = field(form.field.title);
+    expect(
+      (caption?.compareDocumentPosition(title) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // The caption adds no field of its own.
+    expect(["INPUT", "TEXTAREA"]).not.toContain(caption?.tagName);
+  });
+
+  it("без пропа формы как раньше: подсказки нет", async () => {
+    await mount();
+
+    expect(container.querySelector('[data-testid="gift-form-notice"]')).toBeNull();
+    expect(text()).not.toContain(notice);
+  });
+
+  it("длинная кириллическая подсказка остаётся одной caption и не ломает отправку", async () => {
+    const long = `${notice}. ${"Очень длинная строка подсказки ".repeat(6)}`.trim();
+    const onSubmit = await mount({ notice: long, initialValues: { title: "Свитер" } });
+
+    expect(container.querySelector('[data-testid="gift-form-notice"]')?.textContent).toBe(long);
+    await submit();
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ title: "Свитер" }));
   });
 });
 

@@ -11,7 +11,7 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { useTranslations } from "use-intl";
 import type { ClientResult } from "@/api/client";
-import { deleteGift, fetchGift, previewGiftVisibility, updateGift } from "@/api/my-gifts";
+import { deleteGift, fetchGift, fetchReservationWarning, previewGiftVisibility, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
@@ -83,14 +83,19 @@ type FailedRequest =
  * `useDiscardGuard` and asks the same question. A save never asks.
  *
  * Story 2.3 lives next to it as a second, independent step: an open wish offers
- * «Удалить желание», which confirms in the same dialog of this form; a wish that
- * is no longer open offers no delete.
+ * «Удалить желание», which confirms in the same dialog of this form. Story 5.4
+ * extends the same step to a reserved wish: the press first reads the same
+ * `warning` the release preflight uses (`BOUGHT | null`), then opens the same
+ * confirm with a body about the reservation (stronger when the gift is bought);
+ * the server releases the reservation and deletes the wish in one transaction.
+ * The form also carries the caption «Желание забронировано — бронировавший
+ * получит уведомление» while the wish is reserved.
  *
  * CLE-82/S23.3: a reserved wish may still change its visibility, and only a change
  * that would take the holder's access away asks first — the preflight answers
  * whether the reservation would be released, then the confirm «Бронирующий
  * потеряет доступ, бронь снимется» runs the one PATCH with every field. A `CLOSED`
- * or archived wish is read-only (`GiftForm` → `readOnly`).
+ * or archived wish is read-only (`GiftForm` → `readOnly`) and offers no delete.
  */
 export default function EditGiftScreen() {
   const t = useTranslations("app");
@@ -120,6 +125,12 @@ export default function EditGiftScreen() {
   // Story 2.3: deleting is a confirm step of this form, not a separate layer.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Story 5.4: the confirm body of the open step — the reservation sentence for a
+  // reserved wish, `null` for the open wish's own one.
+  const [deleteBody, setDeleteBody] = useState<string | null>(null);
+  // Story 5.4: the preflight of a reserved wish runs before the confirm opens, so
+  // «Удалить желание» reports itself busy while it is in flight.
+  const [previewing, setPreviewing] = useState(false);
   // CLE-82/S23.3: a visibility change on a reserved wish may ask before it saves.
   // The pending values wait here while the confirm is open.
   const [visibilityDraft, setVisibilityDraft] = useState<GiftFormValues | null>(null);
@@ -128,6 +139,8 @@ export default function EditGiftScreen() {
   const inFlight = useRef(false);
   // Same guard for DELETE: two taps before the first answer must delete once.
   const deleteInFlight = useRef(false);
+  // Story 5.4: same guard for the delete preflight of a reserved wish.
+  const previewInFlight = useRef(false);
   // The button the confirm layer was opened from, and whether focus should go back to
   // it when the layer closes: a successful delete leaves the screen, so it must not.
   const deleteButtonRef = useRef<ComponentRef<typeof Pressable>>(null);
@@ -138,7 +151,7 @@ export default function EditGiftScreen() {
   // dirty draft is lost. The delete step owns the back while it is open, so the
   // guard sleeps then: its own modal closes like any other layer.
   const guard = useDiscardGuard(
-    dirty && !submitting && !confirmingDelete && visibilityDraft === null,
+    dirty && !submitting && !previewing && !confirmingDelete && visibilityDraft === null,
     openDiscard,
   );
   // Story 2.5: the catalogue only offers fixed tags; it never resets the stored
@@ -452,10 +465,10 @@ export default function EditGiftScreen() {
   }
 
   /**
-   * Story 2.3: only an open wish can be deleted (`EXPERIENCE.md` → Правка
-   * забронированного желания, Story 5.4 owns `RESERVED`). The request runs from
-   * the confirm step; the list shows «Желание удалено.» from the param, the same
-   * hand-over the save uses.
+   * Story 2.3 + 5.4: only an open or a reserved wish can be deleted from this form;
+   * a `CLOSED` or archived one is read-only and offers none (5.3 deletes a closed
+   * wish from its ⋯ menu). The request runs from the confirm step; the list shows
+   * «Желание удалено.» from the param, the same hand-over the save uses.
    */
   async function remove() {
     if (deleteInFlight.current) return;
@@ -502,8 +515,9 @@ export default function EditGiftScreen() {
       return;
     }
     if (result.code === "CONFLICT") {
-      // It was reserved while the confirm was open: reload the wish so the
-      // screen shows the real status and drops the delete action.
+      // The row changed under the delete (a reservation landed, or the wish was
+      // already released or closed elsewhere): re-read it and let the screen show
+      // its real status instead of deleting a reservation nobody has seen (5.4).
       setToast({ message: common("errors.code.CONFLICT"), tone: "error" });
       setState({ status: "loading" });
       setAttempt((value) => value + 1);
@@ -522,14 +536,56 @@ export default function EditGiftScreen() {
     setConfirmingDelete(false);
   }
 
+  /** «Удалить желание»: a reserved wish asks the preflight first, an open one at once. */
   function startDelete() {
-    setToast(null);
+    void beginDelete();
+  }
+
+  /**
+   * Story 5.4: the delete of a reserved wish is previewed with the same
+   * `GET /me/gifts/:id/reservation` the release uses (AD-7): `BOUGHT` adds the
+   * «already bought» sentence, `null` the plain reservation one. The answer carries
+   * no holder, due date or phase (AD-12, FR-31). Nothing is written here, so a
+   * failure keeps the form exactly as it was and only reports itself.
+   */
+  async function beginDelete() {
+    if (state.status !== "ready") return;
     // Only one step of this form is open at a time.
+    setToast(null);
     setDiscardOpen(false);
     setVisibilityDraft(null);
-    // «Удалить желание» gets focus back once the confirm layer has closed — unless the
-    // delete goes through and the screen leaves for the list.
+    if (state.gift.status !== "RESERVED") {
+      openDeleteConfirm(null);
+      return;
+    }
+    // Two taps before the answer must ask the preflight once.
+    if (previewInFlight.current) return;
+    previewInFlight.current = true;
+    setPreviewing(true);
+    const preview = await fetchReservationWarning(id);
+    previewInFlight.current = false;
+    setPreviewing(false);
+    if (!preview.ok) {
+      await reportIssue(preview);
+      return;
+    }
+    openDeleteConfirm(
+      preview.warning === "BOUGHT"
+        ? giftForm("delete.reservedBoughtBody")
+        : giftForm("delete.reservedBody"),
+    );
+  }
+
+  /**
+   * The confirm step itself (`DESIGN.md` → Dialog): «Удалить желание» gets focus
+   * back once the layer has closed — unless the delete goes through and the screen
+   * leaves for the list. `body` is the sentence about the reservation, or `null`
+   * for an open wish, whose body stays the stored one.
+   */
+  function openDeleteConfirm(body: string | null) {
+    // «Удалить желание» gets focus back once the confirm layer has closed.
     pendingDeleteFocus.current = true;
+    setDeleteBody(body);
     setConfirmingDelete(true);
   }
 
@@ -618,16 +674,30 @@ export default function EditGiftScreen() {
                       submitRequest={submitRequest}
                       onDirtyChange={setDirty}
                       onCancel={cancel}
-                      // Story 2.3: only an open wish offers deletion; Story 5.4 owns RESERVED.
-                      // An archived wish is read-only (CLE-82/S23.3), so it offers none either.
+                      // Story 5.4: a reserved wish carries the caption the holder's
+                      // notification is promised by; an open one has none.
+                      notice={
+                        state.gift.status === "RESERVED"
+                          ? giftForm("notice.reserved")
+                          : undefined
+                      }
+                      // Story 2.3 + 5.4: an open and a reserved wish offer deletion; a
+                      // closed one deletes from its ⋯ menu (5.3), an archived one is
+                      // read-only (CLE-82/S23.3), so neither offers it here.
                       // The destructive action rides in the form's own button row (first, left),
                       // text only, 44×44 (`DESIGN.md` → buttons); the ref keeps the focus return.
                       secondaryAction={
-                        state.gift.status === "OPEN" && state.gift.archivedAt === null ? (
+                        (state.gift.status === "OPEN" ||
+                          state.gift.status === "RESERVED") &&
+                        state.gift.archivedAt === null ? (
                           <Pressable
                             ref={deleteButtonRef}
                             role="button"
                             aria-label={giftForm("delete.action")}
+                            // The preflight of a reserved wish reports itself busy and
+                            // swallows a second press; the label stays the action's.
+                            aria-busy={previewing || undefined}
+                            aria-disabled={previewing || undefined}
                             onPress={startDelete}
                             justifyContent="center"
                             minHeight="$touch-target"
@@ -661,7 +731,7 @@ export default function EditGiftScreen() {
             variant="confirm"
             visible={confirmingDelete}
             title={giftForm("delete.confirmTitle", { title: state.gift.title })}
-            body={giftForm("delete.confirmBody")}
+            body={deleteBody ?? giftForm("delete.confirmBody")}
             confirmLabel={deleting ? giftForm("delete.deleting") : giftForm("delete.confirm")}
             cancelLabel={giftForm("delete.cancel")}
             busy={deleting}

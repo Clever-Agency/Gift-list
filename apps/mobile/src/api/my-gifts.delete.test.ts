@@ -56,12 +56,14 @@ describe("deleteGift", () => {
   });
 
   it("passes a 409 CONFLICT through as an action error", async () => {
+    // Since Story 5.4 a reserved wish is deleted too: CONFLICT is no longer «only an
+    // open wish» but «the row changed under the delete», and the screen re-reads.
     fetchMock.mockResolvedValue(
       respond(
         {
           ok: false,
           code: "CONFLICT",
-          message: "Only an open wish can be deleted here",
+          message: "The wish changed while it was being deleted",
         },
         409,
       ),
@@ -70,7 +72,7 @@ describe("deleteGift", () => {
     await expect(deleteGift("g1")).resolves.toEqual({
       ok: false,
       code: "CONFLICT",
-      message: "Only an open wish can be deleted here",
+      message: "The wish changed while it was being deleted",
     });
   });
 

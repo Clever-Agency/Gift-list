@@ -2,14 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   EXTENDABLE_RESERVATION_PHASES,
+  RESERVATION_GIVER_WINDOW_MS,
+  RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
   UNDO_WINDOW_MS,
+  canAskOwner,
   canCloseGift,
+  canExpireToGiver,
   canExtendReservation,
+  canKeepReservation,
+  canReleaseByExpiry,
   canSetReservationAttributes,
   canUndoClose,
   closeGiftData,
   hasActiveReservation,
+  keptReservationDueAt,
   reservationWarning,
   undoCloseData,
   undoUntil,
@@ -17,8 +24,12 @@ import {
   type GiftStatusEvent,
   type GiftStatusEventKind,
   type HolderAccessInput,
+  type ReservationDueRow,
+  type ReservationPhaseMomentRow,
+  type ReservationReleaseRow,
 } from "./gift-status";
 import { GIFT_EDIT_EVENT_FIELDS, type GiftEditEventField } from "./gift-edit";
+import { addCalendarDays, calendarDayInZone, reservationDueOn } from "./reservation-due";
 import type { ViewerRelations } from "./visibility";
 
 const OWNER_ID = "u1";
@@ -416,4 +427,266 @@ describe("reservation attributes of Story 5.5", () => {
       expect(canSetReservationAttributes({ status })).toBe(status === "RESERVED");
     },
   );
+});
+
+/** Story 5.6 (AD-9): the reservation cycle, three steps and the owner's keep. */
+describe("the Story 5.6 reservation timers", () => {
+  const now = new Date("2026-11-20T12:00:00.000Z");
+
+  function dueRow(overrides: Partial<ReservationDueRow> = {}): ReservationDueRow {
+    return {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "ACTIVE",
+      reservationDueAt: now,
+      ...overrides,
+    };
+  }
+
+  function momentRow(
+    overrides: Partial<ReservationPhaseMomentRow> = {},
+  ): ReservationPhaseMomentRow {
+    return {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "AWAITING_GIVER",
+      reservationPhaseAt: now,
+      ...overrides,
+    };
+  }
+
+  function releaseRow(overrides: Partial<ReservationReleaseRow> = {}): ReservationReleaseRow {
+    return {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "AWAITING_OWNER",
+      reservationPhaseAt: now,
+      reservationBought: false,
+      ...overrides,
+    };
+  }
+
+  it("uses the two windows AD-9 names", () => {
+    expect(RESERVATION_GIVER_WINDOW_MS).toBe(72 * 60 * 60 * 1000);
+    expect(RESERVATION_OWNER_WINDOW_MS).toBe(168 * 60 * 60 * 1000);
+  });
+
+  describe("canExpireToGiver", () => {
+    /** `dueAt ≤ now`: at exactly the deadline the step already happens. */
+    it("moves at the deadline and after it", () => {
+      expect(canExpireToGiver(dueRow(), now)).toBe(true);
+      expect(canExpireToGiver(dueRow({ reservationDueAt: new Date(now.getTime() - 1) }), now)).toBe(
+        true,
+      );
+    });
+
+    it("waits one millisecond past the deadline", () => {
+      expect(
+        canExpireToGiver(dueRow({ reservationDueAt: new Date(now.getTime() + 1) }), now),
+      ).toBe(false);
+    });
+
+    it.each(["AWAITING_GIVER", "AWAITING_OWNER", "GIVEN", null] as const)(
+      "refuses the %s phase",
+      (reservationPhase) => {
+        expect(canExpireToGiver(dueRow({ reservationPhase }), now)).toBe(false);
+      },
+    );
+
+    it.each(["OPEN", "CLOSED"] as const)("refuses a %s wish", (status) => {
+      expect(canExpireToGiver(dueRow({ status }), now)).toBe(false);
+    });
+
+    /** CRON_ARCHIVED: an archived wish is read-only (AD-8). */
+    it("refuses an archived wish", () => {
+      expect(canExpireToGiver(dueRow({ archivedAt: now }), now)).toBe(false);
+    });
+
+    it("refuses a reservation without a deadline", () => {
+      expect(canExpireToGiver(dueRow({ reservationDueAt: null }), now)).toBe(false);
+    });
+  });
+
+  describe("canAskOwner", () => {
+    /** `phaseAt ≤ now − 72 ч`: the boundary is inclusive. */
+    it("asks at exactly 72 hours and later", () => {
+      const boundary = new Date(now.getTime() - RESERVATION_GIVER_WINDOW_MS);
+      expect(canAskOwner(momentRow({ reservationPhaseAt: boundary }), now)).toBe(true);
+      expect(canAskOwner(momentRow({ reservationPhaseAt: new Date(boundary.getTime() - 1) }), now)).toBe(
+        true,
+      );
+    });
+
+    it("waits one millisecond inside the window", () => {
+      const boundary = new Date(now.getTime() - RESERVATION_GIVER_WINDOW_MS + 1);
+      expect(canAskOwner(momentRow({ reservationPhaseAt: boundary }), now)).toBe(false);
+    });
+
+    it.each(["ACTIVE", "AWAITING_OWNER", "GIVEN", null] as const)(
+      "refuses the %s phase",
+      (reservationPhase) => {
+        expect(canAskOwner(momentRow({ reservationPhase }), now)).toBe(false);
+      },
+    );
+
+    it.each(["OPEN", "CLOSED"] as const)("refuses a %s wish", (status) => {
+      expect(canAskOwner(momentRow({ status }), now)).toBe(false);
+    });
+
+    it("refuses an archived wish and a phase without a moment", () => {
+      expect(canAskOwner(momentRow({ archivedAt: now }), now)).toBe(false);
+      expect(canAskOwner(momentRow({ reservationPhaseAt: null }), now)).toBe(false);
+    });
+  });
+
+  describe("canReleaseByExpiry", () => {
+    /** `phaseAt ≤ now − 168 ч` with `bought = false`. */
+    it("releases at exactly 168 hours and later", () => {
+      const boundary = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS);
+      expect(canReleaseByExpiry(releaseRow({ reservationPhaseAt: boundary }), now)).toBe(true);
+      expect(
+        canReleaseByExpiry(releaseRow({ reservationPhaseAt: new Date(boundary.getTime() - 1) }), now),
+      ).toBe(true);
+    });
+
+    it("waits one millisecond inside the window", () => {
+      const inside = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS + 1);
+      expect(canReleaseByExpiry(releaseRow({ reservationPhaseAt: inside }), now)).toBe(false);
+    });
+
+    /** CRON_BOUGHT: «Купил» always wins over the timer. */
+    it("never releases a gift the holder marked as bought", () => {
+      const boundary = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS);
+      expect(
+        canReleaseByExpiry(releaseRow({ reservationPhaseAt: boundary, reservationBought: true }), now),
+      ).toBe(false);
+    });
+
+    it.each(["ACTIVE", "AWAITING_GIVER", "GIVEN", null] as const)(
+      "refuses the %s phase",
+      (reservationPhase) => {
+        expect(canReleaseByExpiry(releaseRow({ reservationPhase }), now)).toBe(false);
+      },
+    );
+
+    it.each(["OPEN", "CLOSED"] as const)("refuses a %s wish", (status) => {
+      expect(canReleaseByExpiry(releaseRow({ status }), now)).toBe(false);
+    });
+
+    it("refuses an archived wish and a phase without a moment", () => {
+      expect(canReleaseByExpiry(releaseRow({ archivedAt: now }), now)).toBe(false);
+      expect(canReleaseByExpiry(releaseRow({ reservationPhaseAt: null }), now)).toBe(false);
+    });
+  });
+
+  describe("canKeepReservation", () => {
+    it("allows the owner's answer only in AWAITING_OWNER", () => {
+      expect(canKeepReservation(releaseRow())).toBe(true);
+    });
+
+    it.each(["ACTIVE", "AWAITING_GIVER", "GIVEN", null] as const)(
+      "refuses the %s phase",
+      (reservationPhase) => {
+        expect(canKeepReservation(releaseRow({ reservationPhase }))).toBe(false);
+      },
+    );
+
+    it.each(["OPEN", "CLOSED"] as const)("refuses a %s wish", (status) => {
+      expect(canKeepReservation(releaseRow({ status }))).toBe(false);
+    });
+
+    it("refuses an archived wish", () => {
+      expect(canKeepReservation(releaseRow({ archivedAt: now }))).toBe(false);
+    });
+  });
+
+  describe("keptReservationDueAt", () => {
+    it("ends the day «today + 7» in UTC", () => {
+      expect(keptReservationDueAt(now, "UTC")).toEqual(new Date("2026-11-28T00:00:00.000Z"));
+    });
+
+    it("ends the same calendar day in the saved zone, not in UTC", () => {
+      // 12:00 UTC is already 15:00 in Moscow, so the day is still 20.11 there.
+      expect(keptReservationDueAt(now, "Europe/Moscow")).toEqual(
+        new Date("2026-11-27T21:00:00.000Z"),
+      );
+    });
+
+    /** A DST edge: New York leaves DST on 2026-11-01, before the new deadline. */
+    it("crosses a DST change in the saved zone", () => {
+      const beforeTransition = new Date("2026-11-01T04:30:00.000Z");
+      expect(keptReservationDueAt(beforeTransition, "America/New_York")).toEqual(
+        new Date("2026-11-09T05:00:00.000Z"),
+      );
+    });
+
+    it.each([null, "", "Not/AZone"])("falls back to UTC for the zone %s", (timeZone) => {
+      expect(keptReservationDueAt(now, timeZone)).toEqual(
+        keptReservationDueAt(now, "UTC"),
+      );
+    });
+
+    it("keeps the picked day at «today + 7» of the zone", () => {
+      const zone = "Pacific/Kiritimati";
+      const dueAt = keptReservationDueAt(now, zone);
+      expect(reservationDueOn(dueAt, zone)).toBe(
+        addCalendarDays(calendarDayInZone(now, zone), 7),
+      );
+    });
+  });
+});
+
+/**
+ * Story 5.6 (NFR-6): four kinds join the seam. Three of the transitions keep
+ * `RESERVED → RESERVED`, so the `kind` is what tells them apart; a timer
+ * transition has no actor.
+ */
+describe("the Story 5.6 event payload", () => {
+  const at = new Date("2026-11-20T12:00:00.000Z");
+
+  it("adds the four reservation-timer kinds to the seam", () => {
+    const kinds: Record<GiftStatusEventKind, true> = {
+      RESERVATION_RELEASED_BY_HOLDER: true,
+      RESERVATION_RELEASED_BY_OWNER: true,
+      WISH_CLOSED: true,
+      WISH_REOPENED: true,
+      GIFT_EDITED: true,
+      GIFT_DELETED: true,
+      RESERVATION_GIVER_DEADLINE_PASSED: true,
+      RESERVATION_OWNER_ASKED: true,
+      RESERVATION_RELEASED_BY_EXPIRY: true,
+      RESERVATION_KEPT_BY_OWNER: true,
+    };
+
+    expect(Object.keys(kinds)).toHaveLength(10);
+  });
+
+  it("lets a timer transition carry no actor and a phase-only change", () => {
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: null,
+      from: "RESERVED",
+      to: "RESERVED",
+      at,
+      kind: "RESERVATION_OWNER_ASKED",
+    };
+
+    expect(event.actorId).toBeNull();
+    expect(event.from).toBe(event.to);
+    expect(event.fields).toBeUndefined();
+    expect(event.recipientId).toBeUndefined();
+  });
+
+  it("keeps the owner as the actor of the keep answer", () => {
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: "u1",
+      from: "RESERVED",
+      to: "RESERVED",
+      at,
+      kind: "RESERVATION_KEPT_BY_OWNER",
+    };
+
+    expect(event.actorId).toBe("u1");
+  });
 });

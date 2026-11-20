@@ -5,6 +5,8 @@ import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
 import {
   EXTENDABLE_RESERVATION_PHASES,
+  RESERVATION_GIVER_WINDOW_MS,
+  RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
   UNDO_WINDOW_MS,
   closeGiftData,
@@ -17,10 +19,19 @@ import {
 
 type GiftDb = Pick<PrismaClient, "gift">;
 
+/** Story 5.6: the timer reads candidates and runs one transaction per row. */
+type ReservationTimerDb = Pick<PrismaClient, "gift" | "$transaction">;
+
 /**
  * Story 5.4: the log name of every event kind. The four transitions of 5.2/5.3
  * keep `gift.status` and the exact line they had, so their tests and any log
  * consumer stay unchanged; the two events of 5.4 get a name of their own.
+ *
+ * Story 5.6 follows that rule instead of adding a `kind` key to the line: the
+ * timer transitions get four names under `gift.reservation.`, so a log query can
+ * tell them apart (needed because three of them keep `RESERVED → RESERVED`), and
+ * one seam keeps one line shape. The spec's `kind` field belongs to the event
+ * payload and reaches the future `Notification` record from there.
  */
 const EVENT_NAMES = {
   RESERVATION_RELEASED_BY_HOLDER: "gift.status",
@@ -29,6 +40,10 @@ const EVENT_NAMES = {
   WISH_REOPENED: "gift.status",
   GIFT_EDITED: "gift.edited",
   GIFT_DELETED: "gift.deleted",
+  RESERVATION_GIVER_DEADLINE_PASSED: "gift.reservation.giver-deadline-passed",
+  RESERVATION_OWNER_ASKED: "gift.reservation.owner-asked",
+  RESERVATION_RELEASED_BY_EXPIRY: "gift.reservation.released-by-expiry",
+  RESERVATION_KEPT_BY_OWNER: "gift.reservation.kept-by-owner",
 } as const satisfies Record<GiftStatusEventKind, string>;
 
 /**
@@ -44,7 +59,8 @@ const EVENT_NAMES = {
  * for that future record; the log line keeps the format the spec fixes, and the
  * keys an event does not carry (`from`/`to`, `fields`, `recipientId`) are
  * omitted rather than written as `null`, so lines of the first four kinds stay
- * byte-for-byte what they were.
+ * byte-for-byte what they were. A timer transition has no actor — cron is not a
+ * person — so its line carries `actorId: null` (Story 5.6).
  */
 export function recordGiftEvent(event: GiftStatusEvent): void {
   console.info(
@@ -246,6 +262,107 @@ export function giftStatusTransaction(
       });
       return "success";
     },
+    async moveReservationToAwaitingGiver(giftId, at) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "RESERVED",
+          archivedAt: null,
+          reservationPhase: "ACTIVE",
+          reservationDueAt: { lte: at },
+        },
+        data: { reservationPhase: "AWAITING_GIVER", reservationPhaseAt: at },
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId: null,
+        from: "RESERVED",
+        to: "RESERVED",
+        at,
+        kind: "RESERVATION_GIVER_DEADLINE_PASSED",
+      });
+      return "success";
+    },
+    async moveReservationToAwaitingOwner(giftId, at) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "RESERVED",
+          archivedAt: null,
+          reservationPhase: "AWAITING_GIVER",
+          // The window rides in the predicate, not in the caller: a phase moved
+          // a second ago (step 1 of this run) is never asked in the same run.
+          reservationPhaseAt: {
+            lte: new Date(at.getTime() - RESERVATION_GIVER_WINDOW_MS),
+          },
+        },
+        data: { reservationPhase: "AWAITING_OWNER", reservationPhaseAt: at },
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId: null,
+        from: "RESERVED",
+        to: "RESERVED",
+        at,
+        kind: "RESERVATION_OWNER_ASKED",
+      });
+      return "success";
+    },
+    async releaseReservationByExpiry(giftId, at) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "RESERVED",
+          archivedAt: null,
+          reservationPhase: "AWAITING_OWNER",
+          // `bought` is part of the CAS: a mark set between the read and the
+          // write keeps the gift from being opened by the timer.
+          reservationBought: false,
+          reservationPhaseAt: {
+            lte: new Date(at.getTime() - RESERVATION_OWNER_WINDOW_MS),
+          },
+        },
+        data: RESERVATION_RELEASE_DATA,
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId: null,
+        from: "RESERVED",
+        to: "OPEN",
+        at,
+        kind: "RESERVATION_RELEASED_BY_EXPIRY",
+      });
+      return "success";
+    },
+    async keepReservationByOwner(giftId, actorId, write) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "RESERVED",
+          archivedAt: null,
+          reservationPhase: "AWAITING_OWNER",
+          list: { ownerId: actorId },
+        },
+        data: {
+          reservationPhase: "ACTIVE",
+          reservationPhaseAt: write.at,
+          reservationDueAt: write.dueAt,
+        },
+      });
+      if (count !== 1) return "lost";
+      emit({
+        giftId,
+        actorId,
+        from: "RESERVED",
+        to: "RESERVED",
+        at: write.at,
+        kind: "RESERVATION_KEPT_BY_OWNER",
+      });
+      return "success";
+    },
   };
 }
 
@@ -272,6 +389,7 @@ export async function runGiftStatusTransaction<T>(
 }
 
 const EXPIRY_BATCH = 500;
+const RESERVATION_TIMERS_BATCH = 500;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -341,6 +459,142 @@ export async function processWishExpiry(
     lastId = rows[rows.length - 1]!.id;
   }
   return { archived, failed };
+}
+
+/** Story 5.6: the counters the cron route reports (only these three reach it). */
+export type ReservationTimersResult = {
+  readonly expiredToGiver: number;
+  readonly askedOwner: number;
+  readonly released: number;
+  readonly failed: number;
+};
+
+/**
+ * Story 5.6 (AD-9, ARCH-A15): the hourly reservation cycle. Three steps run in
+ * the order AD-9 fixes, with one `now` for the whole run:
+ *
+ * 1. `ACTIVE → AWAITING_GIVER` when `reservationDueAt ≤ now`;
+ * 2. `AWAITING_GIVER → AWAITING_OWNER` when `phaseAt ≤ now − 72 ч`;
+ * 3. `AWAITING_OWNER → OPEN` when `phaseAt ≤ now − 168 ч` and `bought = false`.
+ *
+ * A row moved by step 1 or 2 carries `phaseAt = now`, so it is not a candidate
+ * of the next step in the same run: a run moves a row at most one step. Steps
+ * are read in batches by `id`, and every row is its own CAS transaction, so one
+ * failing row is counted in `failed`, logged by id and error name only (no
+ * titles), and does not stop the rest. A lost CAS writes and reports nothing.
+ */
+export async function processReservationTimers(
+  now: Date = new Date(),
+  db: ReservationTimerDb = prisma,
+): Promise<ReservationTimersResult> {
+  const giverDeadline = new Date(now.getTime() - RESERVATION_GIVER_WINDOW_MS);
+  const ownerDeadline = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS);
+
+  const expired = await runReservationTimerStep(
+    db,
+    "expiredToGiver",
+    {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "ACTIVE",
+      reservationDueAt: { lte: now },
+    },
+    function moveToAwaitingGiver(service, giftId) {
+      return service.moveReservationToAwaitingGiver(giftId, now);
+    },
+  );
+
+  const asked = await runReservationTimerStep(
+    db,
+    "askedOwner",
+    {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "AWAITING_GIVER",
+      reservationPhaseAt: { lte: giverDeadline },
+    },
+    function moveToAwaitingOwner(service, giftId) {
+      return service.moveReservationToAwaitingOwner(giftId, now);
+    },
+  );
+
+  const released = await runReservationTimerStep(
+    db,
+    "released",
+    {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "AWAITING_OWNER",
+      reservationBought: false,
+      reservationPhaseAt: { lte: ownerDeadline },
+    },
+    function releaseByExpiry(service, giftId) {
+      return service.releaseReservationByExpiry(giftId, now);
+    },
+  );
+
+  return {
+    expiredToGiver: expired.done,
+    askedOwner: asked.done,
+    released: released.done,
+    failed: expired.failed + asked.failed + released.failed,
+  };
+}
+
+/**
+ * One step of {@link processReservationTimers}: candidates in batches of
+ * {@link RESERVATION_TIMERS_BATCH} by `id`, each row in its own transaction.
+ * The row stays a candidate only if its CAS was lost; the next run picks it up.
+ */
+async function runReservationTimerStep(
+  db: ReservationTimerDb,
+  step: "expiredToGiver" | "askedOwner" | "released",
+  where: Prisma.GiftWhereInput,
+  write: (
+    service: GiftStatusTransaction,
+    giftId: string,
+  ) => Promise<"success" | "lost">,
+): Promise<{ done: number; failed: number }> {
+  let done = 0;
+  let failed = 0;
+  let lastId: string | undefined;
+  for (;;) {
+    const rows = await db.gift.findMany({
+      where: {
+        ...where,
+        ...(lastId === undefined ? {} : { id: { gt: lastId } }),
+      },
+      select: { id: true },
+      orderBy: { id: "asc" },
+      take: RESERVATION_TIMERS_BATCH,
+    });
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      try {
+        const outcome = await runGiftStatusTransaction(
+          function timerCas(service) {
+            return write(service, row.id);
+          },
+          db,
+        );
+        if (outcome === "success") done += 1;
+      } catch (error) {
+        failed += 1;
+        const reason =
+          error instanceof Error
+            ? `${error.name}${"code" in error ? ` ${String(error.code)}` : ""}`
+            : "unknown";
+        console.error(
+          `reservation-timers: ${step} of wish ${row.id} failed: ${reason}`,
+        );
+      }
+    }
+
+    if (rows.length < RESERVATION_TIMERS_BATCH) break;
+    lastId = rows[rows.length - 1]!.id;
+  }
+  return { done, failed };
 }
 
 /**

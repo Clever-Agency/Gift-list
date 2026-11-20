@@ -64,6 +64,7 @@ vi.mock("@/lib/relationships", () => ({ relationshipReader: { relationsBetween }
 
 import { giftCardSchema } from "@gift-list/contracts";
 import { localCalendarDay } from "@/domain/calendar-day";
+import { RESERVATION_RELEASE_DATA } from "@/domain/gift-status";
 
 import { createGift, deleteGift, getGift, previewGiftVisibility, updateGift } from "./gifts";
 
@@ -118,6 +119,9 @@ function giftRow(overrides: Partial<Row> = {}): Row {
 
 /** The stored values `updateGift` and the preflight read before they decide. */
 type Stored = {
+  title: string;
+  description: string | null;
+  linkUrl: string | null;
   priceAmount: number | null;
   priceCurrency: "USD" | "EUR" | "CNY" | "BYN" | "RUB" | null;
   status: "OPEN" | "RESERVED" | "CLOSED";
@@ -131,6 +135,11 @@ type Stored = {
 
 function stored(overrides: Partial<Stored> = {}): Stored {
   return {
+    // Story 5.4: the significant fields the edit event compares, defaulted to
+    // the same values `giftRow` carries, so a test changes one thing at a time.
+    title: "Книга",
+    description: null,
+    linkUrl: null,
     priceAmount: null,
     priceCurrency: null,
     status: "OPEN",
@@ -173,6 +182,13 @@ function okData(result: Awaited<ReturnType<typeof createGift>>) {
   return result.data;
 }
 
+/** The audit lines `recordGiftEvent` wrote, parsed from their single JSON argument. */
+function auditLines(info: { mock: { calls: unknown[][] } }): Record<string, unknown>[] {
+  return info.mock.calls.map(function parseLine(call) {
+    return JSON.parse(String(call[0])) as Record<string, unknown>;
+  });
+}
+
 beforeEach(() => {
   getSession.mockReset();
   findUnique.mockReset();
@@ -205,7 +221,7 @@ beforeEach(() => {
   transaction.mockImplementation(
     async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        gift: { findFirst: txFindFirst, update, updateMany: releaseMany },
+        gift: { findFirst: txFindFirst, update, updateMany: releaseMany, deleteMany },
         tag: { findMany: tagFindMany },
         giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
       }),
@@ -564,6 +580,9 @@ describe("updateGift", () => {
     expect(txFindFirst).toHaveBeenCalledWith({
       where: { id: "g7", list: { ownerId: "u2" } },
       select: {
+        title: true,
+        description: true,
+        linkUrl: true,
         priceAmount: true,
         priceCurrency: true,
         status: true,
@@ -1273,6 +1292,217 @@ describe("updateGift", () => {
   });
 });
 
+/**
+ * Story 5.4 (FR-31, NFR-6): an edit of a `RESERVED` wish reports exactly one
+ * `GIFT_EDITED` line, after the commit, with the names of the significant fields
+ * that really changed. Values, titles and nicks never reach the line.
+ */
+describe("the Story 5.4 edit event", () => {
+  it("writes one gift.edited line with the changed names of a RESERVED wish", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored(
+      { status: "RESERVED", reservedById: "u2", title: "Книга", description: null, linkUrl: null },
+      giftRow({
+        status: "RESERVED",
+        title: "Новая книга",
+        description: "Описание",
+        linkUrl: "https://example.com/new",
+      }),
+    );
+
+    await updateGift(headers, "g1", {
+      title: "Новая книга",
+      description: "Описание",
+      linkUrl: "https://example.com/new",
+    });
+
+    expect(auditLines(info)).toEqual([
+      {
+        event: "gift.edited",
+        giftId: "g1",
+        actorId: "u1",
+        fields: ["title", "description", "linkUrl"],
+        at: expect.any(String),
+      },
+    ]);
+    const line = String(info.mock.calls[0]?.[0]);
+    expect(line).not.toContain("Новая книга");
+    expect(line).not.toContain("Описание");
+    expect(line).not.toContain("example.com");
+    info.mockRestore();
+  });
+
+  it("reports the price pair as the single field `price`", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored(
+      { status: "RESERVED", reservedById: "u2", priceAmount: 1000, priceCurrency: "RUB" },
+      giftRow({ status: "RESERVED", priceAmount: 1500, priceCurrency: "RUB" }),
+    );
+
+    await updateGift(headers, "g1", { priceAmount: 1500 });
+
+    expect(auditLines(info)).toEqual([
+      {
+        event: "gift.edited",
+        giftId: "g1",
+        actorId: "u1",
+        fields: ["price"],
+        at: expect.any(String),
+      },
+    ]);
+    info.mockRestore();
+  });
+
+  /** EDIT_RESERVED_UNCHANGED: a resent value is not a change, so nothing is reported. */
+  it("writes nothing when the form resends the stored values", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored({ status: "RESERVED", reservedById: "u2" }, giftRow({ status: "RESERVED" }));
+
+    await updateGift(headers, "g1", {
+      title: "Книга",
+      description: null,
+      linkUrl: null,
+      priceAmount: null,
+    });
+
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  /** EDIT_RESERVED_OTHER: tags, `expiresOn` and visibility are not significant. */
+  it("writes nothing when only the tags change", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored({ status: "RESERVED", reservedById: "u2" }, giftRow({ status: "RESERVED" }));
+
+    await updateGift(headers, "g1", { tags: [{ text: "своё" }] });
+
+    expect(tagDeleteMany).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("writes nothing when only expiresOn changes", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored(
+      { status: "RESERVED", reservedById: "u2", list: { owner: { timeZone: "UTC" } } },
+      giftRow({ status: "RESERVED" }),
+    );
+
+    await updateGift(headers, "g1", { expiresOn: "2099-01-01" });
+
+    expect(update.mock.calls[0]?.[0].data).toHaveProperty("expiresOn");
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("writes nothing when only the visibility changes and the holder keeps access", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored(
+      { status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" },
+      giftRow({ status: "RESERVED", visibility: "FRIENDS" }),
+    );
+    relationsBetween.mockResolvedValue(holderRelations({ friend: true }));
+
+    await updateGift(headers, "g1", { visibility: "FRIENDS" });
+
+    expect(releaseMany).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("writes nothing for an OPEN wish, even when a significant field changes", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored({ status: "OPEN" }, giftRow({ title: "Новая книга" }));
+
+    await updateGift(headers, "g1", { title: "Новая книга" });
+
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  /** EDIT_FIELDS_AND_DROP: a narrowing is silent, so no line even with a title change. */
+  it("writes nothing when the same PATCH releases the reservation by narrowing visibility", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored(
+      { status: "RESERVED", visibility: "PUBLIC", reservedById: "u2", title: "Книга" },
+      giftRow({ status: "OPEN", visibility: "SECRET", title: "Новая книга" }),
+    );
+
+    await updateGift(headers, "g1", { title: "Новая книга", visibility: "SECRET" });
+
+    expect(releaseMany).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("reports a field change when the holder keeps access through the narrowing", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    withStored(
+      { status: "RESERVED", visibility: "PUBLIC", reservedById: "u2", title: "Книга" },
+      giftRow({ status: "RESERVED", visibility: "FRIENDS", title: "Новая книга" }),
+    );
+    relationsBetween.mockResolvedValue(holderRelations({ friend: true }));
+
+    await updateGift(headers, "g1", { title: "Новая книга", visibility: "FRIENDS" });
+
+    expect(releaseMany).not.toHaveBeenCalled();
+    expect(auditLines(info)).toEqual([
+      {
+        event: "gift.edited",
+        giftId: "g1",
+        actorId: "u1",
+        fields: ["title"],
+        at: expect.any(String),
+      },
+    ]);
+    info.mockRestore();
+  });
+
+  /** A retry after a lost CAS reports the change exactly once. */
+  it("writes one line when the first attempt loses the CAS and the retry commits", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2", title: "Книга" }))
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2", title: "Книга" }))
+      .mockResolvedValueOnce(giftRow({ status: "RESERVED", title: "Новая книга" }));
+    update.mockRejectedValueOnce(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+    findFirst.mockResolvedValue({ status: "RESERVED", archivedAt: null });
+
+    const result = await updateGift(headers, "g1", { title: "Новая книга" });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(auditLines(info)).toEqual([
+      {
+        event: "gift.edited",
+        giftId: "g1",
+        actorId: "u1",
+        fields: ["title"],
+        at: expect.any(String),
+      },
+    ]);
+    info.mockRestore();
+  });
+
+  it("writes nothing when every attempt loses the CAS", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst.mockResolvedValue(stored({ status: "RESERVED", reservedById: "u2" }));
+    update.mockRejectedValue(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+    findFirst.mockResolvedValue({ status: "RESERVED", archivedAt: null });
+
+    expect(await updateGift(headers, "g1", { title: "Новая книга" })).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+    });
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+});
+
 describe("previewGiftVisibility", () => {
   it("requires a session and does not touch the db", async () => {
     getSession.mockResolvedValue(null);
@@ -1861,6 +2091,11 @@ describe("gift tags", () => {
   });
 });
 
+/**
+ * Story 5.4: the delete is one transaction for every status. `RESERVED` is taken
+ * off through `GiftStatusService` and deleted together, and only a release this
+ * transaction really made reports `gift.deleted`, after the commit.
+ */
 describe("deleteGift", () => {
   it("requires a session and does not touch the db", async () => {
     getSession.mockResolvedValue(null);
@@ -1869,15 +2104,24 @@ describe("deleteGift", () => {
       ok: false,
       code: "UNAUTHENTICATED",
     });
+    expect(transaction).not.toHaveBeenCalled();
     expect(deleteMany).not.toHaveBeenCalled();
-    expect(findFirst).not.toHaveBeenCalled();
   });
 
-  /** Story 2.3/5.3: the delete carries ownership, "not archived" and a deletable status. */
-  it("deletes an OPEN wish of the owner's list", async () => {
+  /** DELETE_OPEN: read in the owner's list, then delete under ownership and status. */
+  it("deletes an OPEN wish in one transaction and writes no event", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst.mockResolvedValueOnce(stored({ status: "OPEN" }));
     deleteMany.mockResolvedValue({ count: 1 });
 
     expect(await deleteGift(headers, "g1")).toEqual({ ok: true, data: { id: "g1" } });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(txFindFirst).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, list: { ownerId: "u1" } },
+      select: { status: true, reservedById: true },
+    });
+    expect(releaseMany).not.toHaveBeenCalled();
     expect(deleteMany).toHaveBeenCalledWith({
       where: {
         id: "g1",
@@ -1886,50 +2130,205 @@ describe("deleteGift", () => {
         list: { ownerId: "u1" },
       },
     });
-    expect(findFirst).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
   });
 
-  /** Story 5.3 (DELETE_CLOSED): a received wish can be removed with the same confirm. */
-  it("deletes a CLOSED wish of the owner's list", async () => {
+  /** DELETE_CLOSED: a received wish is removed with the same transaction and no event. */
+  it("deletes a CLOSED wish and writes no event", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst.mockResolvedValueOnce(stored({ status: "CLOSED" }));
     deleteMany.mockResolvedValue({ count: 1 });
 
     expect(await deleteGift(headers, "g1")).toEqual({ ok: true, data: { id: "g1" } });
-    expect(findFirst).not.toHaveBeenCalled();
+
+    expect(releaseMany).not.toHaveBeenCalled();
+    expect(deleteMany).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
   });
 
-  /** Story 5.4 owns the reserved wish: it conflicts here. */
-  it("answers CONFLICT and keeps a RESERVED wish", async () => {
-    findFirst.mockResolvedValue({ status: "RESERVED" });
+  /** DELETE_RESERVED: release through the service, delete, one event after the commit. */
+  it("releases the reservation and deletes it in one transaction, then writes one line", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst.mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    releaseMany.mockResolvedValue({ count: 1 });
+    deleteMany.mockResolvedValue({ count: 1 });
+
+    expect(await deleteGift(headers, "g1")).toEqual({ ok: true, data: { id: "g1" } });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(releaseMany).toHaveBeenCalledWith({
+      where: { id: "g1", status: "RESERVED" },
+      data: RESERVATION_RELEASE_DATA,
+    });
+    expect(deleteMany).toHaveBeenCalledTimes(1);
+    // Identifiers and the transition only — no title, no nick (FR-31).
+    expect(auditLines(info)).toEqual([
+      {
+        event: "gift.deleted",
+        giftId: "g1",
+        actorId: "u1",
+        from: "RESERVED",
+        to: "OPEN",
+        recipientId: "u2",
+        at: expect.any(String),
+      },
+    ]);
+    info.mockRestore();
+  });
+
+  /** NFR-6: nothing is reported before the transaction has committed. */
+  it("writes the event only after the transaction committed", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst.mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    releaseMany.mockResolvedValue({ count: 1 });
+    deleteMany.mockResolvedValue({ count: 1 });
+    transaction.mockImplementation(async function commit(callback: (tx: unknown) => Promise<unknown>) {
+      const outcome = await callback({
+        gift: { findFirst: txFindFirst, update, updateMany: releaseMany, deleteMany },
+      });
+      expect(info).not.toHaveBeenCalled();
+      return outcome;
+    });
+
+    await deleteGift(headers, "g1");
+
+    expect(info).toHaveBeenCalledTimes(1);
+    info.mockRestore();
+  });
+
+  /**
+   * DELETE_RACE_HOLDER_RELEASE: the holder released between the read and the
+   * release. The delete continues on `OPEN` and writes no line — it did not make
+   * the transition.
+   */
+  it("deletes without an event when the holder released the reservation first", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }))
+      .mockResolvedValueOnce(stored({ status: "OPEN", reservedById: null }));
+    releaseMany.mockResolvedValue({ count: 0 });
+    deleteMany.mockResolvedValue({ count: 1 });
+
+    expect(await deleteGift(headers, "g1")).toEqual({ ok: true, data: { id: "g1" } });
+
+    expect(deleteMany).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  /** DELETE_RACE_CLOSE: the owner closed the wish in another window. */
+  it("deletes without an event when the wish was closed in another window", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }))
+      .mockResolvedValueOnce(stored({ status: "CLOSED" }));
+    releaseMany.mockResolvedValue({ count: 0 });
+    deleteMany.mockResolvedValue({ count: 1 });
+
+    expect(await deleteGift(headers, "g1")).toEqual({ ok: true, data: { id: "g1" } });
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  /**
+   * DELETE_STILL_RESERVED: the release lost without the row leaving `RESERVED`.
+   * Deleting a reservation nobody confirmed is never allowed.
+   */
+  it("answers CONFLICT and keeps the row when it is still RESERVED after a lost release", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }))
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    releaseMany.mockResolvedValue({ count: 0 });
 
     expect(await deleteGift(headers, "g1")).toMatchObject({
       ok: false,
       code: "CONFLICT",
-      message: "Only an open or closed wish can be deleted here",
+      message: "The wish changed while deleting",
     });
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("answers NOT_FOUND when the wish disappeared after a lost release", async () => {
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }))
+      .mockResolvedValueOnce(null);
+    releaseMany.mockResolvedValue({ count: 0 });
+
+    expect(await deleteGift(headers, "g1")).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    expect(deleteMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * DELETE_RACE_RESERVE_OPEN: the read saw `OPEN`, a reservation landed before
+   * the DELETE. The guarded `deleteMany` matches nothing and the re-read tells
+   * the client to reload — the reservation is never deleted silently.
+   */
+  it("answers CONFLICT when a reservation landed between the read and the DELETE", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "OPEN" }))
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    deleteMany.mockResolvedValue({ count: 0 });
+
+    expect(await deleteGift(headers, "g1")).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+    });
+    expect(releaseMany).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("answers NOT_FOUND when the row is gone after a lost DELETE", async () => {
+    txFindFirst.mockResolvedValueOnce(stored({ status: "OPEN" })).mockResolvedValueOnce(null);
+    deleteMany.mockResolvedValue({ count: 0 });
+
+    expect(await deleteGift(headers, "g1")).toMatchObject({ ok: false, code: "NOT_FOUND" });
   });
 
   /** AD-7: a foreign, archived or missing gift answers one and the same NOT_FOUND. */
   it("answers NOT_FOUND for a foreign, archived or missing gift", async () => {
-    findFirst.mockResolvedValue(null);
+    txFindFirst.mockResolvedValueOnce(null);
 
     expect(await deleteGift(headers, "g-other")).toMatchObject({
       ok: false,
       code: "NOT_FOUND",
     });
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(releaseMany).not.toHaveBeenCalled();
   });
 
-  it("answers NOT_FOUND for the owner's archived wish", async () => {
-    // The delete `where` excludes the archive, and the re-read shares it.
-    findFirst.mockResolvedValue(null);
+  it("answers NOT_FOUND for the owner's archived wish through the same read", async () => {
+    txFindFirst.mockResolvedValueOnce(null);
 
     expect(await deleteGift(headers, "g-archived")).toMatchObject({
       ok: false,
       code: "NOT_FOUND",
     });
-    expect(findFirst).toHaveBeenCalledWith({
+    // The archive is excluded by the read itself, so no second answer can differ.
+    expect(txFindFirst).toHaveBeenCalledWith({
       where: { id: "g-archived", archivedAt: null, list: { ownerId: "u1" } },
-      select: { status: true },
+      select: { status: true, reservedById: true },
     });
+  });
+
+  /** A failed DELETE rolls back the release with it and reports nothing. */
+  it("writes no event when the delete fails after the release", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst.mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    releaseMany.mockResolvedValue({ count: 1 });
+    deleteMany.mockRejectedValue(new Error("database is down"));
+
+    await expect(deleteGift(headers, "g1")).rejects.toThrow("database is down");
+
+    expect(releaseMany).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
   });
 });
 

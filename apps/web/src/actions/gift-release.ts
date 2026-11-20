@@ -74,6 +74,11 @@ export async function releaseMyReservation(
  * reservation. It answers the warning and nothing else — no holder, no due
  * date, no phase and no `bought`.
  *
+ * Story 5.4: the same answer serves the owner's confirmation of a **delete** of a
+ * reserved wish — AD-7 lets the owner read the same warning for «снятие брони /
+ * удаление подарка», so the delete has no route of its own. The delete only reads
+ * this answer and decides on its own, so a stale `null` is harmless there too.
+ *
  * Until Story 5.7 the only answer is `BOUGHT` or `null`; a wish that is no
  * longer `RESERVED` warns about nothing. The preflight only reads: a stale
  * `null` is harmless, because the release decides on its own, so the owner's

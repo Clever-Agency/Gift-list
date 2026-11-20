@@ -7,6 +7,9 @@ import { notFoundResponse, toResponse } from "@/lib/api-v1";
  * no due date, no phase, no `bought`; a foreign or unknown id answers the same
  * NOT_FOUND body as `/me/gifts/[id]/visibility`. The preflight only reads, so a
  * stale `null` is harmless: the DELETE decides on its own.
+ *
+ * Story 5.4: the delete of a reserved wish reads the same answer (AD-7 gives the
+ * owner one warning for both releasing and deleting), so no second route exists.
  */
 export async function GET(
   request: Request,

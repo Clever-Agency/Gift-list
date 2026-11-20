@@ -555,4 +555,106 @@ describe("WishDetailDialog", () => {
       expect(document.activeElement).toBe(opener);
     });
   });
+
+  /**
+   * Story 5.6 (`DESIGN.md` → OwnerActionLabel, matrix DETAIL_LABEL / DETAIL_CONFIRM_GIVEN):
+   * the expired reservation puts the strip above the facts, does not repeat the
+   * `ownerAction` fact, does not repeat «Отметить полученным» and keeps the coral
+   * «Снять бронь». `CONFIRM_GIVEN` keeps the Story 5.5 behaviour.
+   */
+  describe("Story 5.6: истёкшая бронь у владельца", () => {
+    function expired(): GiftCard {
+      return gift({ ownerAction: "EXPIRED_NO_REPLY", reservedBy: null, reservationLabel: null });
+    }
+
+    function strip(): HTMLElement | null {
+      return dialogElement()?.querySelector<HTMLElement>("[data-testid='owner-action-label']") ?? null;
+    }
+
+    async function renderOwnerExpired(handlers: {
+      onKeep?: () => void;
+      onMarkReceived?: () => void;
+      busy?: boolean;
+    }) {
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={expired()}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onRelease={function noop() {}}
+          onMarkReceived={handlers.onMarkReceived ?? function noop() {}}
+          onKeep={handlers.onKeep ?? function noop() {}}
+          ownerBusy={handlers.busy}
+        />,
+      );
+    }
+
+    it("полоса над фактами, факт ownerAction не дублируется, «Отметить полученным» скрыт", async () => {
+      await renderOwnerExpired({});
+
+      expect(strip()).not.toBeNull();
+      expect(strip()?.textContent).toContain("Срок брони истёк");
+      // Once: the strip, not the fact list.
+      expect(body().split("Срок брони истёк").length - 1).toBe(1);
+      expect(body()).toContain("Кто видит");
+      expect(control("Отметить полученным")).toBeUndefined();
+      // The coral release stays in the detail actions.
+      expect(control(releaseCopy.confirm)).toBeDefined();
+
+      // The strip is the first block of the dialog body, above the facts.
+      const label = strip()?.querySelector("*");
+      expect(label).toBeDefined();
+    });
+
+    it("«Получил» запускает закрытие 5.3, «Не получал, оставить бронь» — keep", async () => {
+      const onReceived = vi.fn();
+      const onKeep = vi.fn();
+      await renderOwnerExpired({ onMarkReceived: onReceived, onKeep });
+
+      await click(control("Получил"));
+      expect(onReceived).toHaveBeenCalledTimes(1);
+      expect(onKeep).not.toHaveBeenCalled();
+
+      await click(control("Не получал, оставить бронь"));
+      expect(onKeep).toHaveBeenCalledTimes(1);
+      expect(onReceived).toHaveBeenCalledTimes(1);
+    });
+
+    it("busy: оба ответа полосы заняты и не нажимаются", async () => {
+      const onReceived = vi.fn();
+      const onKeep = vi.fn();
+      await renderOwnerExpired({ onMarkReceived: onReceived, onKeep, busy: true });
+
+      const buttons = Array.from(strip()?.querySelectorAll("button") ?? []);
+      expect(buttons).toHaveLength(2);
+      for (const node of buttons) {
+        expect(node.getAttribute("aria-disabled")).toBe("true");
+        expect(node.getAttribute("aria-busy")).toBe("true");
+      }
+      await click(buttons[0]);
+      await click(buttons[1]);
+      expect(onReceived).not.toHaveBeenCalled();
+      expect(onKeep).not.toHaveBeenCalled();
+    });
+
+    it("CONFIRM_GIVEN: полосы 5.6 нет, поведение 5.5 сохраняется", async () => {
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift({ ownerAction: "CONFIRM_GIVEN" })}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onMarkReceived={vi.fn()}
+          onKeep={vi.fn()}
+        />,
+      );
+
+      expect(strip()).toBeNull();
+      expect(body()).toContain("Ждёт вашего подтверждения");
+      expect(control("Отметить полученным")).toBeDefined();
+    });
+  });
 });

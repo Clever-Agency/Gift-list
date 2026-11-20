@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "./button";
 import { DetailDialog, type DetailFactView } from "./detail-dialog";
+import { YStack } from "./layout";
+import { Text } from "./text";
 
 /**
  * Подробности пожелания (CLE-84): диалог с именем желания. На compact он почти
@@ -87,4 +89,53 @@ export const Long: Story = {
 export const Desktop: Story = {
   args: { facts },
   globals: { viewport: { value: "w1280" } },
+};
+
+/**
+ * Story 5.6: the caller's strip above the facts (in the app that is the owner's
+ * `OwnerActionLabel`). It is a slot: the catalog has no strings for it, so the
+ * story passes the same kind of content the app does.
+ */
+export const WithBanner: Story = {
+  args: {
+    facts,
+    banner: (
+      <YStack
+        testID="detail-banner"
+        backgroundColor="$muted"
+        borderLeftWidth={3}
+        borderLeftColor="$accent-foreground"
+        borderRadius="$md"
+        paddingVertical="$2"
+        paddingHorizontal="$3"
+        gap="$2"
+      >
+        <Text kind="label">Срок брони истёк</Text>
+        <Button label="Получил" variant="secondary" onPress={function noop() {}} />
+      </YStack>
+    ),
+  },
+};
+
+/** The same strip on a phone width: the text and the button wrap, nothing is cut. */
+export const WithBannerNarrow: Story = {
+  args: {
+    facts,
+    banner: (
+      <YStack
+        testID="detail-banner"
+        backgroundColor="$muted"
+        borderLeftWidth={3}
+        borderLeftColor="$accent-foreground"
+        borderRadius="$md"
+        paddingVertical="$2"
+        paddingHorizontal="$3"
+        gap="$2"
+      >
+        <Text kind="label">Срок брони истёк</Text>
+        <Button label="Не получал, оставить бронь" variant="secondary" onPress={function noop() {}} />
+      </YStack>
+    ),
+  },
+  globals: { viewport: { value: "w360" } },
 };

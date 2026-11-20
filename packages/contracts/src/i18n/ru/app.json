@@ -264,6 +264,10 @@
       "CONFIRM_GIVEN": "Ждёт вашего подтверждения",
       "EXPIRED_NO_REPLY": "Срок брони истёк"
     },
+    "ownerRequest": {
+      "received": "Получил",
+      "keep": "Не получал, оставить бронь"
+    },
     "tagsMore": "+{count}",
     "tagsMoreLabel": "Ещё теги ({count}): {tags}",
     "toast": {

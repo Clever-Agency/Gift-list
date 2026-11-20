@@ -106,9 +106,16 @@ export const AwaitingConfirmation: Story = {
   },
 };
 
-/** The reservation ran out: the owner can see the expired phase. */
+/**
+ * The reservation ran out (Story 5.6): the strip under the card replaces the
+ * reservation line, and the answers are buttons of their own.
+ */
 export const ExpiredReservation: Story = {
-  args: { gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }) },
+  args: {
+    gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }),
+    onOwnerReceived: noop,
+    onOwnerKeep: noop,
+  },
   render: function ExpiredReservationStory(args) {
     return (
       <CardList>
@@ -116,6 +123,24 @@ export const ExpiredReservation: Story = {
       </CardList>
     );
   },
+};
+
+/** The keep request is in flight: both answers of the strip are busy. */
+export const ExpiredReservationBusy: Story = {
+  args: {
+    gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }),
+    onOwnerReceived: noop,
+    onOwnerKeep: noop,
+    ownerBusy: true,
+  },
+  render: function ExpiredReservationBusyStory(args) {
+    return (
+      <CardList>
+        <WishCard {...args} />
+      </CardList>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
 };
 
 /** A received wish: the card is muted, and the chip stays read-only even with a handler. */

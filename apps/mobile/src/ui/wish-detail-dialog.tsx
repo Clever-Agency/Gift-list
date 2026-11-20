@@ -10,6 +10,7 @@ import { openURL } from "expo-linking";
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useLocale, useTranslations } from "use-intl";
+import { OwnerActionLabel } from "@/ui/owner-action-label";
 import { useUndoWindow } from "@/ui/use-undo-window";
 import type { DetailLoadResult } from "@/ui/wish-detail-load";
 
@@ -72,6 +73,13 @@ export type WishDetailDialogProps = {
    */
   onMarkReceived?: () => void;
   /**
+   * Owner only (Story 5.6): «Не получал, оставить бронь» on an expired
+   * reservation. The screen owns the request; the dialog only draws the strip.
+   */
+  onKeep?: () => void;
+  /** Story 5.6: the keep request of this wish is in flight. */
+  ownerBusy?: boolean;
+  /**
    * Owner only (Story 5.3): «Вернуть в открытые · ещё N мин» on a closed wish,
    * shown only while the server's undo window is open.
    */
@@ -104,6 +112,8 @@ export function WishDetailDialog({
   onEdit,
   onRelease,
   onMarkReceived,
+  onKeep,
+  ownerBusy = false,
   onUndoClose,
   undoUntil,
   step,
@@ -206,7 +216,29 @@ export function WishDetailDialog({
             ? tGift("loadErrorGeneric")
             : undefined;
   const gift = view.status === "ready" ? view.gift : null;
-  const facts = gift ? toDetailFacts(gift, viewer, locale, detailCopy(getMessages(locale))) : [];
+  // Story 5.6: the expired reservation shows `OwnerActionLabel` above the facts.
+  // The phase fact is filtered out then (Open Questions of the 5.6 spec, п. 7), so
+  // the same sentence is never said twice, and «Отметить полученным» in the footer
+  // is not repeated: the strip's own «Получил» is that action.
+  const expired = gift?.ownerAction === "EXPIRED_NO_REPLY";
+  const ownerStrip =
+    expired && onKeep !== undefined && onMarkReceived !== undefined ? (
+      <OwnerActionLabel
+        action="EXPIRED_NO_REPLY"
+        busy={ownerBusy}
+        onReceived={onMarkReceived}
+        onKeep={onKeep}
+      />
+    ) : undefined;
+  const allFacts = gift
+    ? toDetailFacts(gift, viewer, locale, detailCopy(getMessages(locale)))
+    : [];
+  const facts =
+    ownerStrip !== undefined
+      ? allFacts.filter(function withoutOwnerAction(fact) {
+          return fact.id !== "ownerAction";
+        })
+      : allFacts;
   // Story 5.3: the owner's closed card carries the server moment; the refreshed
   // card wins. Ten minutes are not repeated here — the hook counts what is left.
   const undoWindow = useUndoWindow(gift ? (gift.undoUntil ?? undoUntil) : undoUntil);
@@ -219,7 +251,8 @@ export function WishDetailDialog({
     viewer === "owner" &&
     gift !== null &&
     onMarkReceived !== undefined &&
-    gift.status !== "CLOSED";
+    gift.status !== "CLOSED" &&
+    gift.ownerAction !== "EXPIRED_NO_REPLY";
   const canUndoClose =
     viewer === "owner" &&
     gift !== null &&
@@ -272,6 +305,7 @@ export function WishDetailDialog({
       title={snapshot.title}
       facts={facts}
       notice={notice}
+      banner={ownerStrip}
       retry={
         view.status === "network" || view.status === "unavailable"
           ? { label: tGift("retry"), onPress: retry }

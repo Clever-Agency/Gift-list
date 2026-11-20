@@ -63,6 +63,7 @@ function missing(): Promise<DetailLoadResult> {
 
 export const Guest: Story = {};
 
+/** Владелец, истёкшая бронь (Story 5.6): полоса над фактами вместо строки факта. */
 export const Owner: Story = {
   args: {
     viewer: "owner",
@@ -73,7 +74,29 @@ export const Owner: Story = {
       ownerAction: "EXPIRED_NO_REPLY",
     }),
     onEdit: function edit() {},
+    onRelease: function release() {},
+    onMarkReceived: function received() {},
+    onKeep: function keep() {},
   },
+};
+
+/** Ответ keep уже ушёл: оба ответа полосы заняты, «Снять бронь» по-прежнему доступна. */
+export const OwnerExpiredBusy: Story = {
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      visibility: "SECRET",
+      status: "RESERVED",
+      reservedBy: null,
+      ownerAction: "EXPIRED_NO_REPLY",
+    }),
+    onEdit: function edit() {},
+    onRelease: function release() {},
+    onMarkReceived: function received() {},
+    onKeep: function keep() {},
+    ownerBusy: true,
+  },
+  globals: { viewport: { value: "w360" } },
 };
 
 /** Владелец, чужая бронь: коралловая «Снять бронь» рядом с «Изменить желание». */

@@ -339,6 +339,21 @@ describe("reserved wish editing and deletion copy", () => {
       "Удалить «Наушники»?",
     );
   });
+
+  /**
+   * Story 5.6: ответ владельца на истёкшую бронь. Обе строки — дословно из epics
+   * (Story 5.6) и `DESIGN.md` → OwnerActionLabel; новых текстов нет, подстановок
+   * тоже.
+   */
+  it("keeps the two answers of the expired reservation verbatim and not empty", () => {
+    const ownerRequest = getMessages("ru").app.gift.ownerRequest;
+
+    expect(ownerRequest.received).toBe("Получил");
+    expect(ownerRequest.keep).toBe("Не получал, оставить бронь");
+    expect(ownerRequest.received.trim().length).toBeGreaterThan(0);
+    expect(ownerRequest.keep.trim().length).toBeGreaterThan(0);
+    expect(ownerRequest.keep).not.toContain("{");
+  });
 });
 
 describe("error catalog", () => {

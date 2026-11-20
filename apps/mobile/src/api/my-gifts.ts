@@ -288,6 +288,29 @@ export async function releaseReservation(id: string): Promise<ReleaseReservation
 }
 
 /**
+ * Story 5.6 (FR-29, AD-9): `POST /api/v1/me/gifts/{id}/reservation/keep` — the
+ * owner answers «Не получал, оставить бронь» on an expired reservation. The body
+ * is the contract's strict empty object (`{}`), so the transport sends
+ * `content-type: application/json`; a key nobody understands would be `VALIDATION`
+ * on the server, never a silent write. The answer is the owner's AD-12 card with
+ * the reservation back in `ACTIVE`, re-checked here like the close and the undo
+ * close. `CONFLICT` means cron or another request moved the row first: the screen
+ * rereads the list instead of retrying blindly.
+ */
+export async function keepReservation(id: string): Promise<GiftResult> {
+  const result = await apiRequest<unknown>(
+    `/api/v1/me/gifts/${encodeURIComponent(id)}/reservation/keep`,
+    { method: "POST", body: {} },
+  );
+  if (!result.ok) return result;
+
+  const parsed = giftCardSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, gift: parsed.data };
+}
+
+/**
  * Story 5.3 (FR-32, ARCH-A5): `POST /api/v1/me/gifts/{id}/close` marks an own
  * `OPEN` or `RESERVED` wish as received. The answer is the owner's AD-12 card,
  * re-checked with the shared contract; a closed card carries `undoUntil`, the

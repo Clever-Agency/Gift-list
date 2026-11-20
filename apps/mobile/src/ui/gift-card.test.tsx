@@ -705,3 +705,131 @@ describe("WishCard: теги", () => {
     expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
   });
 });
+
+/**
+ * Story 5.6 (`DESIGN.md` → OwnerActionLabel, matrix CARD_LABEL / CARD_NO_LABEL):
+ * the owner's expired reservation replaces the card's reservation line with the
+ * action strip under the card. The strip is a sibling of the card button, its two
+ * answers are separate controls, and `CONFIRM_GIVEN` keeps the plain line.
+ */
+describe("WishCard: полоса «Срок брони истёк» (Story 5.6)", () => {
+  function expiredCard(overrides: Partial<GiftCardData> = {}): GiftCardData {
+    return gift({
+      status: "RESERVED",
+      ownerAction: "EXPIRED_NO_REPLY",
+      reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+      ...overrides,
+    });
+  }
+
+  async function renderOwner(
+    card: GiftCardData,
+    handlers: { onPress?: () => void; onReceived?: () => void; onKeep?: () => void; busy?: boolean },
+  ) {
+    await act(async () => {
+      host.render(
+        <WishCard
+          gift={card}
+          width={343}
+          onPress={handlers.onPress}
+          onOwnerReceived={handlers.onReceived ?? vi.fn()}
+          onOwnerKeep={handlers.onKeep ?? vi.fn()}
+          ownerBusy={handlers.busy}
+        />,
+      );
+    });
+  }
+
+  function strip(): HTMLElement | null {
+    return container.querySelector<HTMLElement>("[data-testid='owner-action-label']");
+  }
+
+  it("полоса под карточкой вместо строки брони, текст входит в имя карточки", async () => {
+    await renderOwner(expiredCard(), { onPress: vi.fn() });
+
+    expect(strip()).not.toBeNull();
+    expect(strip()?.textContent).toContain("Срок брони истёк");
+    expect(strip()?.textContent).toContain("Получил");
+    expect(strip()?.textContent).toContain("Не получал, оставить бронь");
+
+    const card = container.querySelector(CARD);
+    // The line is gone from the card itself: the strip carries it once.
+    expect(card?.textContent).not.toContain("Срок брони истёк");
+    expect(card?.textContent).not.toContain("Берёт Олег");
+    // The accessible name still says what the card is about.
+    expect(card?.getAttribute("aria-label")).toContain("Срок брони истёк");
+
+    // The strip is a sibling of the card button, never inside it: the same-width
+    // wrapper holds the card first and the strip second.
+    const item = container.querySelector('[role="listitem"]');
+    expect(strip()?.parentElement?.firstElementChild).toBe(item);
+    expect(card?.contains(strip())).toBe(false);
+  });
+
+  it("«Получил» и «Не получал, оставить бронь» зовут свои обработчики, карточка не открывается", async () => {
+    const onPress = vi.fn();
+    const onReceived = vi.fn();
+    const onKeep = vi.fn();
+    await renderOwner(expiredCard(), { onPress, onReceived, onKeep });
+
+    await click(strip()?.querySelector("[data-testid='owner-action-received']"));
+    expect(onReceived).toHaveBeenCalledTimes(1);
+    await click(strip()?.querySelector("[data-testid='owner-action-keep']"));
+    expect(onKeep).toHaveBeenCalledTimes(1);
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it("busy: оба ответа заняты и не нажимаются", async () => {
+    const onReceived = vi.fn();
+    const onKeep = vi.fn();
+    await renderOwner(expiredCard(), { onReceived, onKeep, busy: true });
+
+    const buttons = Array.from(strip()?.querySelectorAll("button") ?? []);
+    expect(buttons).toHaveLength(2);
+    for (const node of buttons) {
+      expect(node.getAttribute("aria-disabled")).toBe("true");
+      expect(node.getAttribute("aria-busy")).toBe("true");
+    }
+    await click(buttons[0]);
+    await click(buttons[1]);
+    expect(onReceived).not.toHaveBeenCalled();
+    expect(onKeep).not.toHaveBeenCalled();
+  });
+
+  /** CARD_NO_LABEL: `CONFIRM_GIVEN` is Story 5.7 — the 5.5 line stays as it was. */
+  it("CONFIRM_GIVEN: полосы нет, строка «Ждёт вашего подтверждения» на месте", async () => {
+    await renderOwner(
+      gift({ status: "RESERVED", ownerAction: "CONFIRM_GIVEN" }),
+      { onPress: vi.fn() },
+    );
+
+    expect(strip()).toBeNull();
+    expect(container.querySelector(CARD)?.textContent).toContain("Ждёт вашего подтверждения");
+  });
+
+  it("без обработчиков полосы нет: карточка не показывает неработающих кнопок", async () => {
+    await act(async () => {
+      host.render(<WishCard gift={expiredCard()} width={343} onPress={vi.fn()} />);
+    });
+
+    expect(strip()).toBeNull();
+    // The phase label stays visible as the old reservation line.
+    expect(container.querySelector(CARD)?.textContent).toContain("Срок брони истёк");
+  });
+
+  it("360 px и длинная кириллица: полоса не переполняется, текст кнопок целый", async () => {
+    await renderOwner(expiredCard(), {});
+    Object.defineProperty(document.documentElement, "clientWidth", {
+      configurable: true,
+      value: 360,
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    expect(strip()?.textContent).toContain("Не получал, оставить бронь");
+    // No line clamping on the answer: the whole phrase is one node.
+    const keep = strip()?.querySelector("[data-testid='owner-action-keep']");
+    expect(keep?.textContent).toBe("Не получал, оставить бронь");
+  });
+});

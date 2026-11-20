@@ -108,6 +108,10 @@ export function recordGiftEvent(event: GiftStatusEvent): void {
  * `releaseReservation`, which stays silent on purpose (a release that is part of
  * a deletion is not a separate «owner released the reservation»), and an edit
  * has no CAS method here at all.
+ *
+ * Story 5.6 reads the holder's id in the expiry transaction before its CAS, so the
+ * release by expiry carries `recipientId` in the event — the caller of the future
+ * notification needs both sides, and the released row no longer knows the holder.
  */
 export function giftStatusTransaction(
   tx: Prisma.TransactionClient,
@@ -311,6 +315,14 @@ export function giftStatusTransaction(
       return "success";
     },
     async releaseReservationByExpiry(giftId, at) {
+      // Story 5.6 (R1): the holder is read in this same transaction before the
+      // release, because the released row no longer knows it and the future
+      // notification of Epic 6 must reach both sides. Only the id is read (FR-31).
+      const holder = await tx.gift.findUnique({
+        where: { id: giftId },
+        select: { status: true, reservedById: true },
+      });
+      if (holder === null || holder.status !== "RESERVED") return "lost";
       const { count } = await tx.gift.updateMany({
         where: {
           id: giftId,
@@ -334,6 +346,9 @@ export function giftStatusTransaction(
         to: "OPEN",
         at,
         kind: "RESERVATION_RELEASED_BY_EXPIRY",
+        // A `RESERVED` row always carries a holder; an anomalous row without one
+        // still reports the transition, only without a recipient.
+        ...(holder.reservedById === null ? {} : { recipientId: holder.reservedById }),
       });
       return "success";
     },

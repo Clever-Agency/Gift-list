@@ -19,9 +19,10 @@ import {
 
 const updateMany = vi.fn();
 const findMany = vi.fn();
+const findUnique = vi.fn();
 
 function transactionClient(): Prisma.TransactionClient {
-  return { gift: { updateMany } } as unknown as Prisma.TransactionClient;
+  return { gift: { updateMany, findUnique } } as unknown as Prisma.TransactionClient;
 }
 
 function expiryClient(): PrismaClient {
@@ -47,8 +48,11 @@ function commitEachTransaction(): void {
 beforeEach(() => {
   updateMany.mockReset();
   findMany.mockReset();
+  findUnique.mockReset();
   transaction.mockReset();
   updateMany.mockResolvedValue({ count: 1 });
+  // Story 5.6 (R1): the expiry release reads the holder before its CAS.
+  findUnique.mockResolvedValue({ status: "RESERVED", reservedById: "u2" });
 });
 
 /** NFR-6: one audit line per successful transition, none on a lost CAS. */
@@ -870,6 +874,11 @@ describe("the Story 5.6 timer CAS writes", () => {
     );
 
     expect(outcome).toBe("success");
+    // R1/F2: the holder is read in the same transaction, by id and two columns only.
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { id: "g1" },
+      select: { status: true, reservedById: true },
+    });
     expect(updateMany).toHaveBeenCalledWith({
       where: {
         id: "g1",
@@ -881,6 +890,43 @@ describe("the Story 5.6 timer CAS writes", () => {
       },
       data: RESERVATION_RELEASE_DATA,
     });
+    expectOneAuditLine(info.mock.calls, {
+      event: "gift.reservation.released-by-expiry",
+      giftId: "g1",
+      actorId: null,
+      from: "RESERVED",
+      to: "OPEN",
+      recipientId: "u2",
+      at: at.toISOString(),
+    });
+    info.mockRestore();
+  });
+
+  it.each([null, { status: "OPEN", reservedById: null }])(
+    "writes and logs nothing when the expiry finds %o instead of a live reservation",
+    async (row) => {
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+      findUnique.mockResolvedValue(row);
+
+      await expect(
+        giftStatusTransaction(transactionClient()).releaseReservationByExpiry("g1", at),
+      ).resolves.toBe("lost");
+
+      expect(updateMany).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
+      info.mockRestore();
+    },
+  );
+
+  /** An anomalous `RESERVED` row without a holder still reports its transition. */
+  it("reports the expiry without a recipient for a RESERVED row that carries no holder", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    findUnique.mockResolvedValue({ status: "RESERVED", reservedById: null });
+
+    await expect(
+      giftStatusTransaction(transactionClient()).releaseReservationByExpiry("g1", at),
+    ).resolves.toBe("success");
+
     expectOneAuditLine(info.mock.calls, {
       event: "gift.reservation.released-by-expiry",
       giftId: "g1",
@@ -986,6 +1032,7 @@ describe("recordGiftEvent of Story 5.6", () => {
       actorId: null,
       from: "RESERVED",
       to: "OPEN",
+      recipientId: "u2",
       at,
       kind: "RESERVATION_RELEASED_BY_EXPIRY",
     });
@@ -993,7 +1040,7 @@ describe("recordGiftEvent of Story 5.6", () => {
     expect(info.mock.calls.map((call) => String(call[0]))).toEqual([
       '{"event":"gift.reservation.giver-deadline-passed","giftId":"g1","actorId":null,"from":"RESERVED","to":"RESERVED","at":"2026-11-20T12:00:00.000Z"}',
       '{"event":"gift.reservation.owner-asked","giftId":"g1","actorId":null,"from":"RESERVED","to":"RESERVED","at":"2026-11-20T12:00:00.000Z"}',
-      '{"event":"gift.reservation.released-by-expiry","giftId":"g1","actorId":null,"from":"RESERVED","to":"OPEN","at":"2026-11-20T12:00:00.000Z"}',
+      '{"event":"gift.reservation.released-by-expiry","giftId":"g1","actorId":null,"from":"RESERVED","to":"OPEN","recipientId":"u2","at":"2026-11-20T12:00:00.000Z"}',
     ]);
     info.mockRestore();
   });
@@ -1124,6 +1171,7 @@ describe("processReservationTimers", () => {
         actorId: null,
         from: "RESERVED",
         to: "OPEN",
+        recipientId: "u2",
         at: now.toISOString(),
       },
     ]);

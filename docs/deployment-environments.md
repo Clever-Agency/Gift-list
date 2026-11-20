@@ -76,6 +76,43 @@ README, «Деплой вне Vercel»): `prisma migrate deploy` с `DATABASE_UR
   `wish-expiry.yml`, влитая в `staging`, сразу действует и на прод, ещё до
   выкладки в `main`. Код эндпоинта прода при этом остаётся из `main`.
 
+### Таймеры брони (Story 5.6)
+
+Таймеры брони двигают фазу брони по сроку (`ACTIVE → AWAITING_GIVER →
+AWAITING_OWNER → OPEN`) через `POST /api/cron/reservation-timers`. Устроены так
+же, как ночное архивирование, и новых секретов и окружений не требуют:
+
+- секрет и окружение — те же: `CRON_SECRET` (не короче 32 символов, совпадает
+  со значением на хосте) и GitHub Environment `cron-staging`;
+- `.github/workflows/reservation-timers.yml` раз в час (`20 * * * *`, чтобы не
+  совпадать с `wish-expiry.yml`) вызывает **только staging**. Если у
+  `cron-staging` пропадёт секрет, job получит прод-значение из секретов
+  репозитория, поэтому workflow падает, когда `APP_URL` не начинается с
+  `https://staging.`; пустые `APP_URL`/`CRON_SECRET` тоже валят job. Ручной
+  запуск во время планового ждёт его окончания (`concurrency` без отмены);
+- прода workflow не вызывает: job `cron-production` в нём нет, а сам маршрут
+  появится на проде только после выкладки в `main`. До этого брони прода по
+  сроку не двигаются — это осознанно (открытый вопрос спеки 5.6, п. 10);
+- ручной запуск: Actions → Reservation timers → Run workflow (выбора окружения
+  нет) или, если Actions недоступен,
+  `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://staging.wishmoon.clever-agency.dev/api/cron/reservation-timers`.
+  Успех — `{ "ok": true, "data": { "expiredToGiver", "askedOwner", "released" } }`;
+  частичный сбой строки даёт пустой 500, счётчики наружу не отдаются;
+- пропущенный запуск только откладывает переходы: за прогон строка делает не
+  больше одного шага, а следующие шаги ждут своих окон (72 ч и 168 ч от
+  `reservationPhaseAt`). Догона «сразу в `OPEN`» нет (ARCH-A15);
+- миграций нет: колонки брони и индексы для выборки уже есть в применённой
+  `20261103074333_gift_reservations`; схема Prisma не меняется;
+- смена `CRON_SECRET` — в том же порядке, что у `wish-expiry.yml`: сначала
+  новое значение на хосте Vercel и Redeploy, затем тот же секрет в GitHub
+  (`cron-staging`). Между шагами запуски получают 401, и это безопасно:
+  пропуск только откладывает переходы.
+- включение прода — отдельный шаг при переносе `staging → main`: после
+  выкладки добавить в `reservation-timers.yml` job `cron-production` (без своих
+  секретов, на существующих секретах репозитория `APP_URL` и `CRON_SECRET`, как
+  у `wish-expiry.yml`) и проверить первый запуск. Пока job не добавлен,
+  расписание трогает только staging.
+
 ### Хотфикс
 
 Срочный фикс идёт мимо `staging`, чтобы не выкатить недоделанное из неё:
@@ -127,8 +164,10 @@ Contents и Pull requests на запись только для этого ре�
   а не на Default branch: иначе при смене основной ветки защита переехала бы
   на неё.
 - Environments `cron-production` и `cron-staging` для `wish-expiry.yml` (см.
-  «Порядок выкладки»). `Production` и `Preview` создаёт Vercel под свои деплои,
-  их не трогать.
+  «Порядок выкладки»). `reservation-timers.yml` использует тот же `cron-staging`
+  и новых окружений и секретов не требует; `cron-production` добавится только
+  при включении таймеров брони на проде. `Production` и `Preview` создаёт Vercel
+  под свои деплои, их не трогать.
 
 ## Обновление мобильного приложения (CLE-86)
 

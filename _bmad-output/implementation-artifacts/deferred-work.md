@@ -324,3 +324,17 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
   summary: Публикация подсказки о брони и предупреждений об удалении на серверной странице `/l` не делается: владелец там ничего не правит и не удаляет, страница только читает публичный список. Если появится редактирование по ссылке — отдельная задача.
   evidence: Спека, «Отложено» п. 6; `apps/mobile/app/(app)/index.tsx`/`edit.tsx` несут подсказку и confirm, `/l` рендерится сервером из `apps/web`.
+
+## Deferred from: Story 5.6 — цикл истечения Срока брони, клиент владельца (CLE-121, 2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-tsikl-istecheniya-broni.md`
+  summary: Полоса `CONFIRM_GIVEN` («Ждёт вашего подтверждения» → «Получил» / «Не получал») не делается: в 5.6 `OwnerActionLabel` рисует только `EXPIRED_NO_REPLY`, а карточка и деталь с `CONFIRM_GIVEN` остаются как в Story 5.5. Ответ владельца на «Подарил», переход в `GIVEN` и его тексты — Story 5.7.
+  evidence: Спека, «Never» и «Open Questions» п. 7; `apps/mobile/src/ui/owner-action-label.tsx` принимает только `action: "EXPIRED_NO_REPLY"`, `gift-card.tsx` при `CONFIRM_GIVEN` рисует прежнюю строку брони, `wish-detail-dialog.tsx` не фильтрует факт `ownerAction` в этой фазе.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-tsikl-istecheniya-broni.md`
+  summary: После keep нет тоста и владелец не видит новый Срок брони: сервер по AD-7 не отдаёт владельцу `dueAt`/`phase`/`bought`, а каталог не содержит текста подтверждения. Строка брони просто становится «Забронирован», полоса исчезает. Если UX захочет подтверждение или дату «до DD.MM», это новая строка каталога и отдельное решение (Open Questions п. 4–5).
+  evidence: Спека, «Keep» и «Open Questions» п. 4–5; `apps/mobile/src/api/my-gifts.ts` (`keepReservation` разбирает owner card), `app/(app)/index.tsx` заменяет карточку ответом без тоста, `packages/contracts/src/i18n/ru/app.json` новых строк, кроме двух ответов, не получил.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-tsikl-istecheniya-broni.md`
+  summary: Уведомления о переходах таймеров («держателю — срок истёк», «владельцу — вопрос», «держателю — бронь снята») и о keep не создаются: вариант A оставляет только audit-строку `recordGiftEvent`. В приложении новых экранов и писем нет; `Notification` и `deliverAfter` — Epic 6, Story 6.1.
+  evidence: Спека, «Never» и «Design Notes»; строк `Notification` в `schema.prisma` нет, клиент 5.6 только заменяет карточку ответом сервера и показывает общие тосты `app.form.network` / `common.errors.code.*`.

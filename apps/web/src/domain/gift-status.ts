@@ -238,9 +238,10 @@ export type GiftStatusEventKind =
  *
  * Story 5.4: `from`/`to` are optional because an edit has no transition.
  * `fields` belongs to `GIFT_EDITED` and holds names from the closed set
- * {@link GiftEditEventField}, never values. `recipientId` belongs to
- * `GIFT_DELETED` and names the holder the deletion released — the row is gone by
- * then, so this is the only place the future notification can learn it.
+ * {@link GiftEditEventField}, never values. `recipientId` names the person the
+ * transition is about: the holder released by `GIFT_DELETED` (the row is gone by
+ * then, so this is the only place the future notification can learn it) and the
+ * holder released by `RESERVATION_RELEASED_BY_EXPIRY` (Story 5.6).
  *
  * Story 5.6: `actorId` is `null` for the timer transitions — cron is not a person
  * and a made-up `"system"` actor would blur the difference; keep carries the

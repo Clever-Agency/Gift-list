@@ -7,6 +7,7 @@
 // same adapter. Whether a day is already past is `isBeforeLocalToday`.
 
 import { RESERVATION_PHASES } from "@gift-list/contracts";
+import type { GiftEditEventField } from "./gift-edit";
 import {
   VisibilityPolicy,
   type GiftVisibility,
@@ -203,24 +204,40 @@ export function undoUntil(row: {
 }
 
 /**
- * Story 5.2/5.3 (NFR-6): the transitions the one seam reports. The list is
- * shared, so 5.2 and 5.3 cannot write the same event differently.
+ * Story 5.2/5.3/5.4 (NFR-6): the transitions and edits the one seam reports. The
+ * list is shared, so no two stories can write the same event differently.
+ *
+ * The first four are status transitions (5.2/5.3). `GIFT_EDITED` is not a
+ * transition: an owner's edit of a reserved wish never changes its status, so it
+ * carries `fields` and no `from`/`to`. `GIFT_DELETED` is the transition that the
+ * release performed by the delete really made (`RESERVED → OPEN`), because the
+ * model has no "deleted" status.
  */
 export type GiftStatusEventKind =
   | "RESERVATION_RELEASED_BY_HOLDER"
   | "RESERVATION_RELEASED_BY_OWNER"
   | "WISH_CLOSED"
-  | "WISH_REOPENED";
+  | "WISH_REOPENED"
+  | "GIFT_EDITED"
+  | "GIFT_DELETED";
 
 /**
  * The payload of {@link RecordGiftEvent}: identifiers and the transition only —
  * no names, nicks, emails or titles (FR-31).
+ *
+ * Story 5.4: `from`/`to` are optional because an edit has no transition.
+ * `fields` belongs to `GIFT_EDITED` and holds names from the closed set
+ * {@link GiftEditEventField}, never values. `recipientId` belongs to
+ * `GIFT_DELETED` and names the holder the deletion released — the row is gone by
+ * then, so this is the only place the future notification can learn it.
  */
 export type GiftStatusEvent = {
   readonly giftId: string;
   readonly actorId: string;
-  readonly from: GiftStatusRow["status"];
-  readonly to: GiftStatusRow["status"];
+  readonly from?: GiftStatusRow["status"];
+  readonly to?: GiftStatusRow["status"];
+  readonly fields?: readonly GiftEditEventField[];
+  readonly recipientId?: string;
   readonly at: Date;
   readonly kind: GiftStatusEventKind;
 };

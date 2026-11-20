@@ -14,8 +14,11 @@ import {
   undoCloseData,
   undoUntil,
   visibilityChangeDropsReservation,
+  type GiftStatusEvent,
+  type GiftStatusEventKind,
   type HolderAccessInput,
 } from "./gift-status";
+import { GIFT_EDIT_EVENT_FIELDS, type GiftEditEventField } from "./gift-edit";
 import type { ViewerRelations } from "./visibility";
 
 const OWNER_ID = "u1";
@@ -294,6 +297,79 @@ describe("undoUntil", () => {
 
   it("answers null for a closed wish without a moment", () => {
     expect(undoUntil({ status: "CLOSED", closedAt: null })).toBeNull();
+  });
+});
+
+/**
+ * Story 5.4 (FR-31): the shape of the two events the seam gained. An edit has no
+ * transition and carries field names; a deletion carries the transition the
+ * release made and the holder, and never a title or a nick.
+ */
+describe("the Story 5.4 event payload", () => {
+  const at = new Date("2026-11-20T10:00:00.000Z");
+
+  it("keeps the six kinds of the seam", () => {
+    const kinds: readonly GiftStatusEventKind[] = [
+      "RESERVATION_RELEASED_BY_HOLDER",
+      "RESERVATION_RELEASED_BY_OWNER",
+      "WISH_CLOSED",
+      "WISH_REOPENED",
+      "GIFT_EDITED",
+      "GIFT_DELETED",
+    ];
+
+    expect(new Set(kinds).size).toBe(6);
+  });
+
+  it("lets an edit omit the transition and carry field names only", () => {
+    const fields: readonly GiftEditEventField[] = ["title", "price"];
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: "u1",
+      at,
+      kind: "GIFT_EDITED",
+      fields,
+    };
+
+    expect(event.from).toBeUndefined();
+    expect(event.to).toBeUndefined();
+    expect(event.recipientId).toBeUndefined();
+    expect(event.fields).toEqual(["title", "price"]);
+  });
+
+  it("accepts only names from the closed set", () => {
+    expect([...GIFT_EDIT_EVENT_FIELDS]).toEqual(["title", "description", "linkUrl", "price"]);
+
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: "u1",
+      at,
+      kind: "GIFT_EDITED",
+      fields: GIFT_EDIT_EVENT_FIELDS,
+    };
+    // A name outside the set, e.g. a tag or a visibility value, is not reportable.
+    expect(event.fields).not.toContain("tags");
+    expect(event.fields).not.toContain("visibility");
+  });
+
+  it("carries the RESERVED → OPEN transition and the holder on a deletion", () => {
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: "u1",
+      from: "RESERVED",
+      to: "OPEN",
+      at,
+      kind: "GIFT_DELETED",
+      recipientId: "u2",
+    };
+
+    expect(event).toMatchObject({
+      kind: "GIFT_DELETED",
+      from: "RESERVED",
+      to: "OPEN",
+      recipientId: "u2",
+    });
+    expect(event.fields).toBeUndefined();
   });
 });
 

@@ -9,6 +9,7 @@ import {
   UNDO_WINDOW_MS,
   closeGiftData,
   type GiftStatusEvent,
+  type GiftStatusEventKind,
   type GiftStatusTransaction,
   type RecordGiftEvent,
   undoCloseData,
@@ -17,23 +18,44 @@ import {
 type GiftDb = Pick<PrismaClient, "gift">;
 
 /**
- * The single seam of NFR-6 (Story 5.2/5.3, variant A): one structured audit line
- * per successful transition — identifiers and the transition only, without
- * names, nicks, emails or titles (FR-31), so the line is not a leak channel.
+ * Story 5.4: the log name of every event kind. The four transitions of 5.2/5.3
+ * keep `gift.status` and the exact line they had, so their tests and any log
+ * consumer stay unchanged; the two events of 5.4 get a name of their own.
+ */
+const EVENT_NAMES = {
+  RESERVATION_RELEASED_BY_HOLDER: "gift.status",
+  RESERVATION_RELEASED_BY_OWNER: "gift.status",
+  WISH_CLOSED: "gift.status",
+  WISH_REOPENED: "gift.status",
+  GIFT_EDITED: "gift.edited",
+  GIFT_DELETED: "gift.deleted",
+} as const satisfies Record<GiftStatusEventKind, string>;
+
+/**
+ * The single seam of NFR-6 (Story 5.2/5.3, variant A; extended by 5.4): one
+ * structured audit line per successful transition or edit — identifiers and the
+ * transition only, without names, nicks, emails or titles (FR-31), so the line is
+ * not a leak channel. An edit reports the names of its significant fields and
+ * still no values.
  *
  * Variant B (a `Notification` row with `deliverAfter` from Epic 6) replaces only
  * this body: the CAS methods, the use-cases and the routes keep calling
  * `recordGiftEvent` and do not change. `kind` and `at` are already in the event
- * for that future record; the log line keeps the format the spec fixes.
+ * for that future record; the log line keeps the format the spec fixes, and the
+ * keys an event does not carry (`from`/`to`, `fields`, `recipientId`) are
+ * omitted rather than written as `null`, so lines of the first four kinds stay
+ * byte-for-byte what they were.
  */
 export function recordGiftEvent(event: GiftStatusEvent): void {
   console.info(
     JSON.stringify({
-      event: "gift.status",
+      event: EVENT_NAMES[event.kind],
       giftId: event.giftId,
       actorId: event.actorId,
-      from: event.from,
-      to: event.to,
+      ...(event.from === undefined ? {} : { from: event.from }),
+      ...(event.to === undefined ? {} : { to: event.to }),
+      ...(event.fields === undefined ? {} : { fields: event.fields }),
+      ...(event.recipientId === undefined ? {} : { recipientId: event.recipientId }),
       at: event.at.toISOString(),
     }),
   );
@@ -64,6 +86,12 @@ export function recordGiftEvent(event: GiftStatusEvent): void {
  * Story 5.5 adds the holder's extension, «Купил» and the two visibility toggles.
  * They change attributes of a live `RESERVED` row and never its status, so they
  * emit nothing: NFR-6 audits a status transition only, and 5.5 has none.
+ *
+ * Story 5.4 deletes a wish in the use-case's own transaction and reports its two
+ * events there, after the commit: the deletion takes the reservation off through
+ * `releaseReservation`, which stays silent on purpose (a release that is part of
+ * a deletion is not a separate «owner released the reservation»), and an edit
+ * has no CAS method here at all.
  */
 export function giftStatusTransaction(
   tx: Prisma.TransactionClient,

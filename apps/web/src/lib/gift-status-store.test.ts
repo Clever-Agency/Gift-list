@@ -11,6 +11,7 @@ import { RESERVATION_RELEASE_DATA } from "@/domain/gift-status";
 import {
   giftStatusTransaction,
   processWishExpiry,
+  recordGiftEvent,
   restoreFromArchive,
   runGiftStatusTransaction,
 } from "./gift-status-store";
@@ -420,6 +421,81 @@ describe("the Story 5.5 reservation attributes", () => {
     });
 
     expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+});
+
+/**
+ * Story 5.4 (FR-31): the two new lines of the seam. An edit has no `from`/`to`
+ * and carries names, not values; a deletion carries the transition and the
+ * holder. The four lines of 5.2/5.3 keep their shape (their tests above parse
+ * them unchanged).
+ */
+describe("recordGiftEvent of Story 5.4", () => {
+  const at = new Date("2026-11-20T10:00:00.000Z");
+
+  it("writes an edited line without a transition and without values", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    recordGiftEvent({
+      giftId: "g1",
+      actorId: "u1",
+      at,
+      kind: "GIFT_EDITED",
+      fields: ["title", "price"],
+    });
+
+    // Exactly one line, in the fixed key order, and no title or price value.
+    expect(info.mock.calls).toHaveLength(1);
+    expect(info.mock.calls[0]?.[0]).toBe(
+      '{"event":"gift.edited","giftId":"g1","actorId":"u1","fields":["title","price"],"at":"2026-11-20T10:00:00.000Z"}',
+    );
+    info.mockRestore();
+  });
+
+  it("writes a deleted line with the transition and the holder", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    recordGiftEvent({
+      giftId: "g1",
+      actorId: "u1",
+      from: "RESERVED",
+      to: "OPEN",
+      at,
+      kind: "GIFT_DELETED",
+      recipientId: "u2",
+    });
+
+    expect(info.mock.calls).toHaveLength(1);
+    expect(info.mock.calls[0]?.[0]).toBe(
+      '{"event":"gift.deleted","giftId":"g1","actorId":"u1","from":"RESERVED","to":"OPEN","recipientId":"u2","at":"2026-11-20T10:00:00.000Z"}',
+    );
+    info.mockRestore();
+  });
+
+  it("keeps the four lines of 5.2/5.3 on `gift.status` and without the new keys", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    const transitions = [
+      ["RESERVATION_RELEASED_BY_HOLDER", "RESERVED", "OPEN"],
+      ["RESERVATION_RELEASED_BY_OWNER", "RESERVED", "OPEN"],
+      ["WISH_CLOSED", "OPEN", "CLOSED"],
+      ["WISH_REOPENED", "CLOSED", "RESERVED"],
+    ] as const;
+    for (const [kind, from, to] of transitions) {
+      recordGiftEvent({ giftId: "g1", actorId: "u1", from, to, at, kind });
+    }
+
+    expect(info.mock.calls.map((call) => JSON.parse(String(call[0])))).toEqual(
+      transitions.map(([, from, to]) => ({
+        event: "gift.status",
+        giftId: "g1",
+        actorId: "u1",
+        from,
+        to,
+        at: "2026-11-20T10:00:00.000Z",
+      })),
+    );
     info.mockRestore();
   });
 });

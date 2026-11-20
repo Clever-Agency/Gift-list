@@ -35,20 +35,20 @@ context:
 
 **Always:**
 - Единственный писатель `status`, `reserved*`, `reservationPhase`, `reservationPhaseAt`, `reservationDueAt` и `reservationBought` — `GiftStatusService` (`apps/web/src/lib/gift-status-store.ts` + чистые правила в `apps/web/src/domain/gift-status.ts`); маршруты и клиент колонок не пишут (AD-1, AD-8, AD-9).
-- Cron делает **только** три перехода из AD-9 и ровно с теми предикатами:
-  - ACTIVE→AWAITING_GIVER: `WHERE id AND status="RESERVED" AND phase="ACTIVE" AND dueAt ≤ now`; `SET phase="AWAITING_GIVER", phaseAt=now`;
-  - AWAITING_GIVER→AWAITING_OWNER: `WHERE id AND status="RESERVED" AND phase="AWAITING_GIVER" AND phaseAt ≤ now−72h`; `SET phase="AWAITING_OWNER", phaseAt=now`;
-  - AWAITING_OWNER→OPEN: `WHERE id AND status="RESERVED" AND phase="AWAITING_OWNER" AND phaseAt ≤ now−168h AND bought=false`; `SET RESERVATION_RELEASE_DATA` (`status="OPEN"`, все колонки брони очищены).
+- Cron делает **только** три перехода из AD-9 и ровно с теми предикатами (плюс защитный `archivedAt IS NULL`: архивное желание только для просмотра, AD-8):
+  - ACTIVE→AWAITING_GIVER: `WHERE id AND status="RESERVED" AND archivedAt IS NULL AND phase="ACTIVE" AND dueAt ≤ now`; `SET phase="AWAITING_GIVER", phaseAt=now`;
+  - AWAITING_GIVER→AWAITING_OWNER: `WHERE id AND status="RESERVED" AND archivedAt IS NULL AND phase="AWAITING_GIVER" AND phaseAt ≤ now−72h`; `SET phase="AWAITING_OWNER", phaseAt=now`;
+  - AWAITING_OWNER→OPEN: `WHERE id AND status="RESERVED" AND archivedAt IS NULL AND phase="AWAITING_OWNER" AND phaseAt ≤ now−168h AND bought=false`; `SET RESERVATION_RELEASE_DATA` (`status="OPEN"`, все колонки брони очищены).
   Предикат `bought=false` входит в CAS третьего шага, чтобы «Купил», поставленный между чтением и записью, не дал открыть подарок.
 - Шаги выполняются в порядке 1→2→3 с одним `now` на весь прогон. Строка, переведённая в шаге 1 или 2, получает `phaseAt=now` и в этом же прогоне дальше не проходит следующий предикат: за один запуск строка двигается не более чем на один шаг, пропущенные запуски только откладывают переходы (ARCH-A15), а не ускоряют их.
-- Выборка кандидатов — `findMany` с тем же предикатом, `orderBy: { id: "asc" }`, `take: 500`, пагинация по `id > lastId` (константа `RESERVATION_TIMERS_BATCH = 500`). Запись — отдельный `updateMany` на строку в своей транзакции `runGiftStatusTransaction`; `count === 1` — успех, иначе `lost` и ничего не пишется. Ошибка одной строки ловится, считается в `failed`, пишется в лог только `id` и имя/код ошибки (без названий) и не останавливает остальные строки. Цикл шага заканчивается на неполной пачке.
+- Выборка кандидатов — `findMany` с тем же предикатом (включая `archivedAt: null`), `orderBy: { id: "asc" }`, `take: 500`, пагинация по `id > lastId` (константа `RESERVATION_TIMERS_BATCH = 500`). Запись — отдельный `updateMany` на строку в своей транзакции `runGiftStatusTransaction`; `count === 1` — успех, иначе `lost` и ничего не пишется. Ошибка одной строки ловится, считается в `failed`, пишется в лог только `id` и имя/код ошибки (без названий) и не останавливает остальные строки. Цикл шага заканчивается на неполной пачке.
 - Возврат `processReservationTimers(now, db)`: `{ expiredToGiver, askedOwner, released, failed }`; первые три — счётчики успешных переходов по шагам, `failed` — число упавших строк. `now` и `db` инъектируются для тестов; по умолчанию `new Date()` и `prisma`.
 - Событие — тот же шов `recordGiftEvent(event)` с `GiftStatusEvent` из 5.2/5.3. Новые `kind`: `RESERVATION_GIVER_DEADLINE_PASSED` (шаг 1), `RESERVATION_OWNER_ASKED` (шаг 2), `RESERVATION_RELEASED_BY_EXPIRY` (шаг 3), `RESERVATION_KEPT_BY_OWNER` (keep). Для шагов 1 и 2 `from=to="RESERVED"`, для шага 3 `RESERVED→OPEN`, для keep `RESERVED→RESERVED`; `kind` различает фазовые переходы, у которых статус не меняется. `at` — один `now` прогона, у keep — момент действия.
 - У системных переходов cron нет актора: `GiftStatusEvent.actorId` расширяется до `string | null`, cron пишет `actorId: null`. У keep актор — владелец. Событие пишется **после коммита** (`runGiftStatusTransaction`), ровно один раз на успешный CAS, и не пишется на `lost` и на упавшую строку. Персональных данных в событии нет (FR-31).
 - Audit-строка `recordGiftEvent` (вариант A) дополняется полем `kind`: JSON `{ event: "gift.status", giftId, actorId, from, to, kind, at }`. Поля 5.2/5.3 остаются, формат расширяется аддитивно; существующие ожидания в `gift-status-store.test.ts` и `release.pgtest.ts` обновляются на `kind`.
 - Keep (T6):
   - маршрут `POST /api/v1/me/gifts/:id/reservation/keep`, тело — строгая пустая схема `keepReservationBodySchema = z.strictObject({})`; лишний ключ или не-JSON тело — `VALIDATION` с `field`;
-  - предикат: `status="RESERVED" AND reservationPhase="AWAITING_OWNER"` и владение списком (`list.ownerId = actor`); архив (`archivedAt != null`) — `VALIDATION` (AD-8: архивное желание только для просмотра); `OPEN`/`CLOSED` или другая фаза (`ACTIVE`, `AWAITING_GIVER`, `GIVEN`) — `CONFLICT`; чужой/неизвестный id — `NOT_FOUND` с одним телом (AD-7);
+  - предикат: `status="RESERVED" AND archivedAt IS NULL AND reservationPhase="AWAITING_OWNER"` и владение списком (`list.ownerId = actor`); архив (`archivedAt != null`) — `VALIDATION` (AD-8: архивное желание только для просмотра); `OPEN`/`CLOSED` или другая фаза (`ACTIVE`, `AWAITING_GIVER`, `GIVEN`) — `CONFLICT`; чужой/неизвестный id — `NOT_FOUND` с одним телом (AD-7);
   - запись: `phase="ACTIVE"`, `phaseAt=now`, `reservationDueAt = конец дня «сегодня + 7»` в сохранённом `reservationTimeZone` (`addCalendarDays(calendarDayInZone(now, zone), 7)` → `reservationDueAtFromDueOn`), `reservationTimeZone` **не** пересчитывается и не меняется, `reservationBought` не меняется, `status` не меняется. Неизвестный/пустой пояс в аномальной строке — `canonicalTimeZone` даёт `UTC`;
   - ответ — owner gift card (`GiftCard`) после записи, а не `{ id }`: в ней уже есть `ownerAction`, и после keep он `null`; лишних полей брони (`dueAt`, `phase`, `bought`) владельцу не добавляется (AD-7);
   - проигранный CAS — `CONFLICT`; перед ответом строка перечитывается в своём списке: нет строки — `NOT_FOUND`, строка есть, но уже не `RESERVED`/`AWAITING_OWNER` — `CONFLICT`. Ни на один отказ событие не пишется.
@@ -77,7 +77,7 @@ context:
 - Vercel Cron и любые платформенные сервисы Vercel; новые GitHub Environments, секреты, настройки репозитория; job для прода в новом workflow.
 - Утечка в ответах и логах: названий желаний, ников, email, id строк в cron-ответе, `bought` владельцу, `dueAt`/`phase` владельцу, идентичности держателя без `holderVisibleToOwner`.
 - Новые пакеты, `npm install`, dev-серверы, Storybook, `npm run build` в этой подзадаче (сборка — координатор).
-- Новая вкладка/навигация, правка `apps/web/public/`, `packages/ui`-компонентов сверх слота полосы (если он понадобится) и текстов вне каталога.
+- Новая вкладка/навигация, правка `apps/web/public/`, компонентов `packages/ui` сверх слота `banner` в `DetailDialog` и текстов вне каталога.
 
 ## I/O & Edge-Case Matrix
 
@@ -92,7 +92,7 @@ context:
 | CRON_BOUGHT | `AWAITING_OWNER`, `bought=true`, срок вышел | ничего не меняется, события нет; владелец по-прежнему видит `ownerAction=EXPIRED_NO_REPLY` | — |
 | CRON_GIVEN | `phase=GIVEN` в любом сроке | строка не кандидат, перехода нет | — |
 | CRON_OPEN_CLOSED | `status=OPEN` или `CLOSED` | строка не кандидат | — |
-| CRON_ARCHIVED | `archivedAt != null` | строка не кандидат (у `RESERVED` архив снимает бронь по AD-9 и такой строки быть не должно) | — |
+| CRON_ARCHIVED | `archivedAt != null` | строка не кандидат, CAS тоже не проходит (`archivedAt IS NULL`): архивное желание read-only (AD-8); у `RESERVED` архив по AD-9 снимает бронь, такой строки быть не должно | — |
 | CRON_RERUN | второй прогон с тем же `now` после успешного | все счётчики 0, событий нет | — |
 | CRON_BATCH | больше 500 кандидатов в шаге | пачки по 500 по возрастанию `id`, все обработаны; повторной выдачи нет | — |
 | CRON_ROW_FAILS | одна строка падает в БД | остальные обработаны; `failed=1`; строка остаётся кандидатом на следующий прогон | лог без названия; маршрут — пустой 500 |
@@ -157,7 +157,7 @@ context:
 - `apps/web/src/app/api/cron/reservation-timers/route.test.ts` (новый) — 401 без/с неверным секретом и сервис не вызван; 200 только с тремя счётчиками; 500 пустой на исключении и на `failed>0`; лог без текста ошибки; `GET` 404.
 - `apps/web/src/app/api/cron/wish-expiry/route.ts` — только импорт общей проверки вместо локальной копии; поведение и `route.test.ts` не меняются.
 - `packages/contracts/src/gift.ts` — `keepReservationBodySchema = z.strictObject({})`, тип; `packages/contracts/src/index.ts` — экспорт; `packages/contracts/src/index.test.ts` — `{}` проходит, лишний ключ нет.
-- `apps/web/src/actions/gift-reservation-keep.ts` (новый) — `keepReservation(headers, giftId, body)` и чистая `keepReservationResult(row, actorId)`; сессия, zod, `prisma.gift.findFirst` с `{ status, archivedAt, reservationPhase, reservationTimeZone, list.ownerId }`, `archivedValidation`/`notFound`/`conflict` из существующих хелперов (`actions/gifts.ts`), `now`, `keptReservationDueAt`, `runGiftStatusTransaction` → `keepReservationByOwner`, классификация `lost`, owner card через `ownerGiftSelect` + `toOwnerGiftCard` + `giftCardSchema.parse`.
+- `apps/web/src/actions/gift-reservation-keep.ts` (новый) — `keepReservation(headers, giftId, body)` и чистая `keepReservationResult(row, actorId)`; сессия, zod, `prisma.gift.findFirst` с `{ status, archivedAt, reservationPhase, reservationTimeZone, list.ownerId }`, `unauthenticated`/`notFound`/`archivedValidation`/`ownerGiftSelect`/`requestLocale` из `actions/gifts.ts`, локальный `conflict` (как в `gift-release.ts`/`gift-close.ts`), `now`, `keptReservationDueAt`, `runGiftStatusTransaction` → `keepReservationByOwner`, классификация `lost`, owner card через `ownerGiftSelect` + `toOwnerGiftCard` + `giftCardSchema.parse`.
 - `apps/web/src/actions/gift-reservation-keep.test.ts` (новый) — 200 карточка с `ownerAction=null`; `phase`, `phaseAt`, `dueAt`, пояс и `bought`; 401/400/404/409; гонка; одно событие `RESERVATION_KEPT_BY_OWNER`, ноль на отказ.
 - `apps/web/src/app/api/v1/me/gifts/[id]/reservation/keep/route.ts` (новый) — `POST` → `parseJson` → `keepReservation`; `GET/PUT/PATCH/DELETE` → `notFoundResponse`; Next 16: `params` — промис.
 - `apps/web/src/app/api/v1/me/gifts/[id]/reservation/keep/route.test.ts` (новый) — тело `{}`, лишний ключ, не-JSON; 200/400/401/404/409; прочие методы 404.
@@ -216,7 +216,7 @@ context:
 
 **Acceptance Criteria:**
 - Given `RESERVED/ACTIVE` и `dueAt ≤ now`, when cron, then ровно один CAS в `AWAITING_GIVER` с `phaseAt=now`, одно событие `RESERVATION_GIVER_DEADLINE_PASSED` и `expiredToGiver=1`.
-- Given `AWAITING_GIVER` и `phaseAt` ровно `now−72 ч` (или старше), when cron, then `AWAITING_OWNER`, `phaseAt=now`, событие `RESERVATION_OWNER_ASKED`; на `+1 мс` раньше — ничего.
+- Given `AWAITING_GIVER` и `phaseAt` ровно `now−72 ч` (или старше), when cron, then `AWAITING_OWNER`, `phaseAt=now`, событие `RESERVATION_OWNER_ASKED`; на 1 мс позже границы — ничего.
 - Given `AWAITING_OWNER`, `phaseAt` ровно `now−168 ч` и `bought=false`, when cron, then `OPEN` с очищенными колонками брони, событие `RESERVATION_RELEASED_BY_EXPIRY`, `released=1`; при `bought=true`, `GIVEN`, `OPEN`, `CLOSED` или архиве — ничего.
 - Given успешный прогон, when он повторяется с тем же `now`, then счётчики 0 и новых событий нет; при гонке с продлением/снятием/закрытием/keep ровно один переход.
 - Given одна упавшая строка, when cron, then остальные обработаны, `failed=1`, ответ — пустой 500; в логе и ответе нет названий и id.
@@ -248,11 +248,15 @@ context:
 
 **Почему `phaseAt=now`, а не расчёт от `dueAt`.** AD-9 прямо задаёт окна от `reservationPhaseAt`. Если считать 72/168 ч от `dueAt`, пропущенный запуск мог бы «перескочить» сразу в `OPEN`, не дав владельцу шанса ответить. Один шаг за прогон гарантирует, что вопрос владельцу существует не меньше суток, даже после простоя.
 
+**AD-15-7 и два законных перехода.** Инвариант «ровно один переход» означает один CAS на одно ожидаемое состояние: cron и пользователь, читавшие одну и ту же строку, не могут оба записать её из этого состояния. Если cron успел перевести `ACTIVE → AWAITING_GIVER`, а держатель следом продлевает из `AWAITING_GIVER` (это действие предлагает само уведомление об истёкшем сроке), это не дубль гонки, а ответ на уже случившийся переход: продление возвращает `ACTIVE` с будущим `dueAt`, и следующий тик cron снова видит бронь как активную. Обратный порядок (продление первым) оставляет CAS cron без подходящей строки — перехода нет.
+
 **Почему keep не трогает `reservationTimeZone` и `bought`.** Пояс — снимок зоны держателя на момент брони (ARCH-A14); владелец не должен переписывать его своей зоной. `bought` — отметка держателя, а не ответ владельца; её снимает только держатель. Новый `dueAt` — конец дня «сегодня+7» в этом же поясе, поэтому следующий тик cron снова увидит будущую дату.
+
+**Почему у cron и keep есть `archivedAt IS NULL`.** AD-9 задаёт предикаты перехода, а AD-8 отдельно объявляет архивное желание read-only. При штатной работе `RESERVED` в архиве не бывает: архив снимает бронь в той же транзакции. Защитный `archivedAt IS NULL` в выборке и в CAS стоит копейки и не даёт кривой строке (например, после будущей Story 6.6) двинуться таймером или ответом владельца; он ничего не ослабляет и не меняет поведение остальных строк.
 
 **Почему keep возвращает карточку.** Владелец не получает `dueAt`/`phase`/`bought` (AD-7), но получает `ownerAction`; после keep он должен стать `null`. Ответ карточкой избавляет экран от лишнего чтения и не добавляет владельцу полей брони.
 
-**Почему полоса вне нажимаемой зоны карточки.** В карточке основная зона — кнопка. Кнопки «Получил»/«Не получал…» внутри неё были бы вложенными интерактивными элементами (недоступно с клавиатуры и для скринридера). Обёртка той же ширины ставит полосу сразу под карточкой; визуально это часть ячейки, а Tab идёт: карточка → полоса → ⋮.
+**Почему полоса вне нажимаемой зоны карточки.** В карточке основная зона — кнопка. Кнопки «Получил»/«Не получал…» внутри неё были бы вложенными интерактивными элементами (недоступно с клавиатуры и для скринридера). Обёртка той же ширины ставит полосу сразу под карточкой; визуально это часть ячейки, Tab не проваливается между карточкой и полосой, а кнопки полосы получают фокус обычным порядком.
 
 **Почему факт `ownerAction` скрывается в детали.** Полоса уже говорит «Срок брони истёк»; второй такой же строки в фактах не нужно. Фильтр — в `wish-detail-dialog`, контракт фактов не меняется.
 

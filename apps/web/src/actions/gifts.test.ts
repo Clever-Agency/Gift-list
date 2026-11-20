@@ -2291,6 +2291,61 @@ describe("deleteGift", () => {
     expect(await deleteGift(headers, "g1")).toMatchObject({ ok: false, code: "NOT_FOUND" });
   });
 
+  /**
+   * R1/F1: the release is the only write of this transaction so far, so a DELETE
+   * that matched nothing must roll it back instead of committing it. The answer
+   * stays the CONFLICT the client already handles.
+   */
+  it("rolls the release back and answers CONFLICT when the DELETE fails after it", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const rejections: unknown[] = [];
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }))
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    transaction.mockImplementation(
+      async function rollback(callback: (tx: unknown) => Promise<unknown>) {
+        try {
+          return await callback({
+            gift: { findFirst: txFindFirst, update, updateMany: releaseMany, deleteMany },
+          });
+        } catch (error) {
+          rejections.push(error);
+          throw error;
+        }
+      },
+    );
+    releaseMany.mockResolvedValue({ count: 1 });
+    deleteMany.mockResolvedValue({ count: 0 });
+
+    expect(await deleteGift(headers, "g1")).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      message: "The wish changed while deleting",
+    });
+
+    expect(releaseMany).toHaveBeenCalledTimes(1);
+    expect(deleteMany).toHaveBeenCalledTimes(1);
+    // The transaction really rejected, so the release did not commit with the answer.
+    expect(rejections).toHaveLength(1);
+    expect(rejections[0]).toMatchObject({ name: "DeleteGiftRollback" });
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  /** R1/F1: the same rollback when the row disappeared, answered as NOT_FOUND. */
+  it("rolls the release back and answers NOT_FOUND when the row is gone after it", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }))
+      .mockResolvedValueOnce(null);
+    releaseMany.mockResolvedValue({ count: 1 });
+    deleteMany.mockResolvedValue({ count: 0 });
+
+    expect(await deleteGift(headers, "g1")).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
   /** AD-7: a foreign, archived or missing gift answers one and the same NOT_FOUND. */
   it("answers NOT_FOUND for a foreign, archived or missing gift", async () => {
     txFindFirst.mockResolvedValueOnce(null);

@@ -832,6 +832,21 @@ type DeleteGiftOutcome =
   | { readonly kind: "deleted"; readonly event: GiftStatusEvent | null };
 
 /**
+ * Story 5.4 (R1): an internal rollback signal of the delete transaction. Returning
+ * a value from an interactive transaction commits it, so a `DELETE` that matched
+ * nothing after this transaction had already released the reservation would keep
+ * that release and leave the wish `OPEN` with the holder's reservation silently
+ * gone. Throwing rolls the whole transaction back; the use-case turns the signal
+ * into the same NOT_FOUND / CONFLICT answer outside, where nothing was written.
+ */
+class DeleteGiftRollback extends Error {
+  constructor(readonly outcome: "not-found" | "conflict") {
+    super(`deleteGift rolled back: ${outcome}`);
+    this.name = "DeleteGiftRollback";
+  }
+}
+
+/**
  * Story 2.3 (FR-10), Story 5.3 (FR-32), Story 5.4 (FR-17, AD-9): the owner
  * deletes a wish of their own list that is not archived — `OPEN`, `RESERVED` or
  * `CLOSED` (a received wish can be removed from the list too).
@@ -857,6 +872,11 @@ type DeleteGiftOutcome =
  * release somebody else made leaves no line: the deletion did not make that
  * transition. `OPEN` and `CLOSED` never write one — the closure of 5.3 is
  * already recorded. The event carries identifiers only (FR-31).
+ *
+ * A `DELETE` that matched nothing after this transaction released the reservation
+ * throws {@link DeleteGiftRollback} instead of returning: the release must not
+ * survive a delete that did not happen (Story 5.4, R1). No release was made on the
+ * `OPEN`/`CLOSED` path, so there the answer is simply returned.
  */
 export async function deleteGift(
   headers: Headers,
@@ -868,7 +888,7 @@ export async function deleteGift(
   const ownerId = session.user.id;
   const at = new Date();
 
-  const outcome: DeleteGiftOutcome = await prisma.$transaction(
+  const deleteRun = prisma.$transaction(
     async function deleteOwnGift(tx): Promise<DeleteGiftOutcome> {
       const stored = await tx.gift.findFirst({
         where: { id: giftId, archivedAt: null, list: { ownerId } },
@@ -913,8 +933,12 @@ export async function deleteGift(
           where: { id: giftId, archivedAt: null, list: { ownerId } },
           select: { status: true },
         });
-        if (!current) return { kind: "not-found" };
-        return { kind: "conflict" };
+        const refused: "not-found" | "conflict" = current ? "conflict" : "not-found";
+        // The release above is the only change this transaction made so far, and
+        // a return would commit it: throw so the release rolls back together with
+        // the DELETE that did not happen. Without a release nothing needs undoing.
+        if (released) throw new DeleteGiftRollback(refused);
+        return { kind: refused };
       }
 
       if (!released || recipientId === null) return { kind: "deleted", event: null };
@@ -930,6 +954,17 @@ export async function deleteGift(
           recipientId,
         },
       };
+    },
+  );
+  /**
+   * The rollback signal of {@link DeleteGiftRollback} becomes the ordinary answer
+   * here, after the transaction is over: the release did not commit with it, so
+   * the client reloads and repeats the delete with the preflight.
+   */
+  const outcome = await deleteRun.catch(
+    function rollbackAnswer(error: unknown): DeleteGiftOutcome {
+      if (error instanceof DeleteGiftRollback) return { kind: error.outcome };
+      throw error;
     },
   );
 

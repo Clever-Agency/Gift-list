@@ -344,6 +344,23 @@ export {
 
 export { AUTHOR_EMAIL, AUTHOR_MAILTO, PRODUCT_NAME, authorMailto } from "./brand";
 
+export {
+  APP_PLATFORMS,
+  APP_VERSION_PATTERN,
+  APP_VERSION_POLICY,
+  APP_VERSION_STATUSES,
+  DEFAULT_APP_VERSION,
+  appVersionDataSchema,
+  appVersionPolicySchema,
+  appVersionStatus,
+  compareAppVersions,
+  parseAppVersionPolicy,
+  type AppPlatform,
+  type AppVersionData,
+  type AppVersionPolicy,
+  type AppVersionStatus,
+} from "./app-version";
+
 export { textLength } from "./text";
 
 export {
@@ -458,6 +475,9 @@ export {
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
   giftVisibilityPreviewSchema,
+  reservationActionBodySchema,
+  reservationCardSchema,
+  reservationListSchema,
   type GiftInput,
   type GiftInputDraft,
   type GiftReservationWarning,
@@ -467,6 +487,9 @@ export {
   type GiftUpdate,
   type GiftVisibilityPreview,
   type GiftVisibilityPreviewQuery,
+  type ReservationActionBody,
+  type ReservationCard,
+  type ReservationList,
 } from "./gift";
 
 export {

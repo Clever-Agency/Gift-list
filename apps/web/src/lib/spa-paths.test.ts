@@ -19,12 +19,31 @@ describe("isNextOwnedPath", () => {
     },
   );
 
-  it.each(["/", "/login", "/register", "/forgot", "/reset", "/wishlist/x", "/lists", "/long", "/invite"])(
-    "leaves %s to the SPA",
-    (pathname) => {
-      expect(isNextOwnedPath(pathname)).toBe(false);
-    },
-  );
+  it.each([
+    "/",
+    "/login",
+    "/register",
+    "/forgot",
+    "/reset",
+    "/wishlist/x",
+    "/lists",
+    "/long",
+    "/invite",
+    "/reservations",
+  ])("leaves %s to the SPA", (pathname) => {
+    expect(isNextOwnedPath(pathname)).toBe(false);
+  });
+
+  /**
+   * Story 5.5: «Мои брони» is an Expo route, not a Next page — `/reservations`
+   * must fall into the same SPA fallback as the wishlist, so a browser opening the
+   * URL gets the app and not a Next 404.
+   */
+  it("leaves the holder's reservations to the SPA fallback", () => {
+    expect(isNextOwnedPath("/reservations")).toBe(false);
+    const source = spaFallbackRewriteSources()[1] ?? "";
+    expect(source).not.toContain("reservations");
+  });
 
   it("builds a fallback source that names every Next prefix", () => {
     const sources = spaFallbackRewriteSources();

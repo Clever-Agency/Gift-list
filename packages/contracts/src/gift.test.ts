@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
+import { CURRENCIES, QUANTITIES, RESERVATION_PHASES, VISIBILITIES } from "./enums";
 import {
   GIFT_DESCRIPTION_MAX,
   GIFT_LINK_URL_MAX,
@@ -11,6 +11,9 @@ import {
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
   giftVisibilityPreviewSchema,
+  reservationActionBodySchema,
+  reservationCardSchema,
+  reservationListSchema,
 } from "./gift";
 
 describe("giftInputSchema", () => {
@@ -599,3 +602,130 @@ describe("giftReservationWarning", () => {
   });
 });
 
+/**
+ * Story 5.5 (FR-25, AD-7/AD-12): the holder's reservation card, the list around
+ * it and the one-action body of `PATCH /me/reservations/:giftId`.
+ */
+describe("reservation cards and actions", () => {
+  const card = {
+    giftId: "g1",
+    titleSnapshot: "Наушники",
+    status: "RESERVED",
+    ownerNick: "anna",
+    dueAt: "2026-12-08",
+    phase: "ACTIVE",
+    bought: false,
+    holderVisibleToOwner: false,
+    holderVisibleToOthers: true,
+    canOpenGift: true,
+  };
+
+  it("accepts the closed card and the list around it", () => {
+    expect(reservationCardSchema.parse(card)).toEqual(card);
+    expect(reservationListSchema.parse({ reservations: [card] })).toEqual({ reservations: [card] });
+    expect(reservationListSchema.parse({ reservations: [] })).toEqual({ reservations: [] });
+  });
+
+  /** AD-7: the card is a closed set, so no price, tags, visibility or zone leaks in. */
+  it("rejects fields outside the card", () => {
+    for (const extra of [
+      { priceAmount: 100 },
+      { visibility: "PUBLIC" },
+      { reservationTimeZone: "UTC" },
+      { ownerName: "Анна" },
+      { listToken: "token" },
+    ]) {
+      expect(reservationCardSchema.safeParse({ ...card, ...extra }).success).toBe(false);
+    }
+    expect(reservationListSchema.safeParse({ reservations: [], publicToken: "t" }).success).toBe(false);
+  });
+
+  it.each(RESERVATION_PHASES)("accepts the %s phase", (phase) => {
+    expect(reservationCardSchema.safeParse({ ...card, phase }).success).toBe(true);
+  });
+
+  it("rejects an unknown phase, a non-RESERVED status and an impossible day", () => {
+    expect(reservationCardSchema.safeParse({ ...card, phase: "EXPIRED" }).success).toBe(false);
+    expect(reservationCardSchema.safeParse({ ...card, status: "CLOSED" }).success).toBe(false);
+    expect(reservationCardSchema.safeParse({ ...card, dueAt: "2026-02-31" }).success).toBe(false);
+    expect(reservationCardSchema.safeParse({ ...card, dueAt: "2026-12-08T00:00:00.000Z" }).success).toBe(
+      false,
+    );
+  });
+
+  it("requires every field of the closed set", () => {
+    for (const field of Object.keys(card)) {
+      const withoutField = Object.fromEntries(
+        Object.entries(card).filter(([key]) => key !== field),
+      );
+      expect(reservationCardSchema.safeParse(withoutField).success).toBe(false);
+    }
+  });
+
+  it.each([
+    { action: "extend", dueOn: "2026-12-08" },
+    { action: "bought", value: true },
+    { action: "visibility", holderVisibleToOwner: true, holderVisibleToOthers: false },
+  ])("accepts the %j action", (body) => {
+    expect(reservationActionBodySchema.parse(body)).toEqual(body);
+  });
+
+  it("rejects an extra key or two actions in one body", () => {
+    expect(
+      reservationActionBodySchema.safeParse({ action: "bought", value: true, dueOn: "2026-12-08" })
+        .success,
+    ).toBe(false);
+    expect(
+      reservationActionBodySchema.safeParse({ action: "extend", dueOn: "2026-12-08", value: true })
+        .success,
+    ).toBe(false);
+    expect(
+      reservationActionBodySchema.safeParse({
+        action: "visibility",
+        holderVisibleToOwner: true,
+        holderVisibleToOthers: false,
+        value: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an empty action, a missing field and an impossible day", () => {
+    expect(reservationActionBodySchema.safeParse({}).success).toBe(false);
+    expect(reservationActionBodySchema.safeParse({ action: "" }).success).toBe(false);
+    expect(reservationActionBodySchema.safeParse({ action: "remove" }).success).toBe(false);
+    expect(reservationActionBodySchema.safeParse({ action: "extend" }).success).toBe(false);
+    expect(reservationActionBodySchema.safeParse({ action: "extend", dueOn: "2026-02-31" }).success).toBe(
+      false,
+    );
+    expect(reservationActionBodySchema.safeParse({ action: "bought", value: "yes" }).success).toBe(false);
+    expect(
+      reservationActionBodySchema.safeParse({ action: "visibility", holderVisibleToOwner: true })
+        .success,
+    ).toBe(false);
+    expect(
+      reservationActionBodySchema.safeParse({ action: "visibility", holderVisibleToOwner: true, holderVisibleToOthers: false, extra: 1 })
+        .success,
+    ).toBe(false);
+  });
+
+  /** The action body is a flat body: a broken field names itself on the issue path. */
+  it("names the offending field on the issue path", () => {
+    const dueOn = reservationActionBodySchema.safeParse({ action: "extend", dueOn: "2026-02-31" });
+    const holder = reservationActionBodySchema.safeParse({ action: "visibility" });
+
+    expect(dueOn.success).toBe(false);
+    if (!dueOn.success) expect(dueOn.error.issues[0]?.path).toEqual(["dueOn"]);
+    expect(holder.success).toBe(false);
+    if (!holder.success) expect(holder.error.issues[0]?.path).toEqual(["holderVisibleToOwner"]);
+  });
+
+  it("tells a missing action apart from a field error", () => {
+    const empty = reservationActionBodySchema.safeParse({});
+    const unknown = reservationActionBodySchema.safeParse({ action: "remove" });
+
+    expect(empty.success).toBe(false);
+    if (!empty.success) expect(empty.error.issues[0]?.path).toEqual(["action"]);
+    expect(unknown.success).toBe(false);
+    if (!unknown.success) expect(unknown.error.issues[0]?.path).toEqual(["action"]);
+  });
+});

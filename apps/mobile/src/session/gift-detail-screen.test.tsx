@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import type { GiftCard } from "@gift-list/contracts";
+import type { GiftCard, ReservationCard as ReservationCardData } from "@gift-list/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
-import { click, dialogElement, settle } from "@/test/dom";
+import { click, dialogElement, settle, typeInto } from "@/test/dom";
+import { todayInZone } from "@/ui/reservation-extend-dialog";
 import GiftDetailScreen from "../../app/(app)/gifts/[id]/index";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -152,6 +153,23 @@ function giftReads(): number {
   return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/gifts/g1").length;
 }
 
+/** The holder's one-action route of Story 5.5. */
+function actionCalls(): unknown[][] {
+  return api.apiRequest.mock.calls.filter(
+    ([path, init]) =>
+      path === "/api/v1/me/reservations/g1" &&
+      typeof init === "object" &&
+      init !== null &&
+      (init as { method?: string }).method === "PATCH",
+  );
+}
+
+function switchNamed(label: string): HTMLElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="switch"]')).find(
+    (node) => node.getAttribute("aria-label") === label,
+  );
+}
+
 async function mount(extra?: ReactNode) {
   await act(async () => {
     root.render(
@@ -164,8 +182,32 @@ async function mount(extra?: ReactNode) {
   await settle();
 }
 
-/** The first read answers `card`, the release answers `release`. */
-function respond(card: GiftCard, release: unknown = { ok: true, data: { id: "g1" } }) {
+/** The answer of `PATCH /api/v1/me/reservations/:giftId` — the updated reservation card. */
+function reservationCard(overrides: Partial<ReservationCardData> = {}): ReservationCardData {
+  return {
+    giftId: "g1",
+    titleSnapshot: "Наушники",
+    status: "RESERVED",
+    ownerNick: "anya",
+    dueAt: "2026-12-01",
+    phase: "ACTIVE",
+    bought: false,
+    holderVisibleToOwner: false,
+    holderVisibleToOthers: true,
+    canOpenGift: true,
+    ...overrides,
+  };
+}
+
+/**
+ * The first read answers `card`, the release answers `release`, and the holder's
+ * action answers `action` (a reservation card by default).
+ */
+function respond(
+  card: GiftCard,
+  release: unknown = { ok: true, data: { id: "g1" } },
+  action: unknown = { ok: true, data: reservationCard() },
+) {
   api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
     if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
     if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
@@ -173,6 +215,9 @@ function respond(card: GiftCard, release: unknown = { ok: true, data: { id: "g1"
     }
     if (path === "/api/v1/gifts/g1/reserve" && init?.method === "DELETE") {
       return Promise.resolve(release);
+    }
+    if (path === "/api/v1/me/reservations/g1" && init?.method === "PATCH") {
+      return Promise.resolve(action);
     }
     return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
   });
@@ -289,5 +334,297 @@ describe("деталь желания: снятие своей брони", () =
     expect(dialog?.textContent).toContain("Снять бронь");
     const name = document.getElementById(dialog?.getAttribute("aria-labelledby") ?? "");
     expect(name?.textContent).toBe("Снять бронь? Желание снова станет открытым.");
+  });
+});
+
+/**
+ * Story 5.5 (`EXPERIENCE.md` → «Подписи брони», `DESIGN.md` → ReservationCard):
+ * у держателя в детали те же действия, что в «Моих бронях», — подпись фазы,
+ * «Продлить до…», «Купил» и «Кто видит, что это я». Снятие — из 5.2, одно.
+ */
+describe("деталь желания: действия держателя", () => {
+  it("держатель видит фазу, продление, «Купил» и переключатели", async () => {
+    respond(gift());
+    await mount();
+
+    // ACTIVE уже содержит полную дату детали, отдельной строки нет.
+    expect(text()).toContain("Вы берёте · до 01.12.2026");
+    expect(control("Продлить до…")).toBeDefined();
+    expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("false");
+    expect(control("Кто видит, что это я")).toBeDefined();
+    // Снятие из 5.2 не продублировано рядом с новыми действиями.
+    const releases = Array.from(
+      document.querySelectorAll<HTMLElement>('button, [role="button"]'),
+    ).filter((node) => (node.textContent ?? "").includes("Снять бронь"));
+    expect(releases).toHaveLength(1);
+  });
+
+  it("гость не видит действий держателя", async () => {
+    respond(
+      gift({
+        reservedBy: { id: "u3", nick: "petya", displayName: "Петя" },
+        reservation: undefined,
+      }),
+    );
+    await mount();
+
+    expect(text()).toContain("Уже забронирован");
+    expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Кто видит, что это я")).toBeUndefined();
+    expect(switchNamed("Купил")).toBeUndefined();
+  });
+
+  it("«Купил» шлёт одно действие и берёт карточку из ответа", async () => {
+    respond(gift(), undefined, { ok: true, data: reservationCard({ bought: true }) });
+    await mount();
+
+    await click(switchNamed("Купил"));
+    await settle();
+
+    const calls = actionCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]).toEqual({
+      method: "PATCH",
+      body: { action: "bought", value: true },
+    });
+    expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("true");
+    expect(text()).toContain("Куплено");
+  });
+
+  it("двойное нажатие «Купил» не отправляет два запроса", async () => {
+    let answer: (value: unknown) => void = function noop() {};
+    api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
+        return Promise.resolve({ ok: true, data: gift() });
+      }
+      return new Promise((resolve) => {
+        answer = resolve;
+      });
+    });
+    await mount();
+
+    await click(switchNamed("Купил"));
+    await click(switchNamed("Купил"));
+    expect(actionCalls()).toHaveLength(1);
+
+    await act(async () => {
+      answer({ ok: true, data: reservationCard({ bought: true }) });
+    });
+    await settle();
+    expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("сеть на действии: общий тост, карточка не меняется", async () => {
+    respond(gift(), undefined, { ok: false, network: true });
+    await mount();
+
+    await click(switchNamed("Купил"));
+    await settle();
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("false");
+    expect(text()).not.toContain("Куплено");
+  });
+
+  it("CONFLICT на действии: тост и перечитывание желания", async () => {
+    respond(gift(), undefined, {
+      ok: false,
+      code: "CONFLICT",
+      message: "Reservation changed",
+    });
+    await mount();
+
+    await click(switchNamed("Купил"));
+    await settle();
+
+    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
+    expect(giftReads()).toBe(2);
+  });
+
+  it("продление отправляет выбранный день и показывает дату из ответа", async () => {
+    respond(gift(), undefined, {
+      ok: true,
+      data: reservationCard({ dueAt: "2027-01-05", phase: "ACTIVE" }),
+    });
+    await mount();
+
+    await click(control("Продлить до…"));
+    await settle();
+    expect(dialogElement()?.textContent).toContain("Продлить до…");
+
+    const minDue = todayInZone("Europe/Minsk");
+    const input = dialogElement()?.querySelector<HTMLInputElement>('input[type="date"]');
+    expect(input).not.toBeNull();
+    await typeInto(input!, minDue);
+    await click(dialogControl("Подтвердить"));
+    await settle();
+
+    const calls = actionCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]).toEqual({
+      method: "PATCH",
+      body: { action: "extend", dueOn: minDue },
+    });
+    expect(dialogElement()).toBeNull();
+    expect(text()).toContain("Вы берёте · до 05.01.2027");
+  });
+
+  it("продление: день вне диапазона остаётся в диалоге с текстом сервера", async () => {
+    respond(gift(), undefined, {
+      ok: false,
+      code: "VALIDATION",
+      message: "Due date out of range",
+      reason: "DUE_OUT_OF_RANGE",
+      params: { max: "20.12.2026" },
+    });
+    await mount();
+
+    await click(control("Продлить до…"));
+    await settle();
+    await click(dialogControl("Подтвердить"));
+    await settle();
+
+    expect(text()).toContain("Выберите дату не позже 20.12.2026.");
+    expect(dialogElement()).not.toBeNull();
+    expect(text()).toContain("Вы берёте · до 01.12.2026");
+  });
+
+  it("переключатели видимости уходят одной парой", async () => {
+    respond(gift(), undefined, {
+      ok: true,
+      data: reservationCard({ holderVisibleToOwner: true, holderVisibleToOthers: true }),
+    });
+    await mount();
+
+    await click(control("Кто видит, что это я"));
+    await settle();
+    await click(switchNamed("Показать владельцу, что это я"));
+    await settle();
+
+    const calls = actionCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]).toEqual({
+      method: "PATCH",
+      body: {
+        action: "visibility",
+        holderVisibleToOwner: true,
+        holderVisibleToOthers: true,
+      },
+    });
+    expect(switchNamed("Показать владельцу, что это я")?.getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(text()).toContain("он может уже знать");
+  });
+
+  it("в GIVEN подпись «Ждёт подтверждения», продления нет, остальное на месте", async () => {
+    respond(
+      gift({
+        reservation: {
+          dueAt: "2026-12-01",
+          phase: "GIVEN",
+          bought: false,
+          holderVisibleToOwner: false,
+          holderVisibleToOthers: true,
+        },
+      }),
+    );
+    await mount();
+
+    expect(text()).toContain("до 01.12.2026");
+    expect(text()).toContain("Ждёт подтверждения");
+    expect(control("Продлить до…")).toBeUndefined();
+    expect(switchNamed("Купил")).toBeDefined();
+    expect(control("Кто видит, что это я")).toBeDefined();
+    expect(control("Снять бронь")).toBeDefined();
+  });
+
+  it("фазы AWAITING_* подписаны и продление остаётся", async () => {
+    respond(
+      gift({
+        reservation: {
+          dueAt: "2026-12-01",
+          phase: "AWAITING_OWNER",
+          bought: true,
+          holderVisibleToOwner: false,
+          holderVisibleToOthers: true,
+        },
+      }),
+    );
+    await mount();
+
+    expect(text()).toContain("Срок истёк · ждём ответа владельца");
+    expect(control("Продлить до…")).toBeDefined();
+    expect(text()).toContain("Куплено");
+  });
+});
+
+/**
+ * R1 (CLE-119): снятие брони (5.2) и действия держателя (5.5) — одна очередь
+ * запросов. Пока летит любое из них, остальные кнопки неактивны и второй запрос
+ * не уходит: иначе два PATCH/DELETE гоняются за одну и ту же бронь.
+ */
+describe("деталь желания: одно действие за раз", () => {
+  /** The session and the wish answer at once, every other request stays in flight. */
+  function respondPending() {
+    let answer: (value: unknown) => void = function noop() {};
+    api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
+        return Promise.resolve({ ok: true, data: gift() });
+      }
+      return new Promise((resolve) => {
+        answer = resolve;
+      });
+    });
+    return function resolvePending(value: unknown) {
+      answer(value);
+    };
+  }
+
+  it("пока летит действие держателя, «Снять бронь» неактивна и не открывает confirm", async () => {
+    const resolvePending = respondPending();
+    await mount();
+
+    await click(switchNamed("Купил"));
+    await settle(10);
+    expect(actionCalls()).toHaveLength(1);
+    expect(control("Снять бронь")?.getAttribute("aria-disabled")).toBe("true");
+
+    await click(control("Снять бронь"));
+    await settle(10);
+    expect(dialogElement()).toBeNull();
+    expect(releaseCalls()).toHaveLength(0);
+
+    await act(async () => {
+      resolvePending({ ok: true, data: reservationCard({ bought: true }) });
+    });
+    await settle();
+    expect(control("Снять бронь")?.getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("пока летит снятие, «Купил» и продление не отправляют запрос", async () => {
+    const resolvePending = respondPending();
+    await mount();
+
+    await click(control("Снять бронь"));
+    await settle();
+    await click(dialogControl("Снять бронь"));
+    await settle(10);
+    expect(releaseCalls()).toHaveLength(1);
+
+    await click(switchNamed("Купил"));
+    await click(control("Продлить до…"));
+    await settle(10);
+    expect(actionCalls()).toHaveLength(0);
+    // Продление не открылось: на экране всё ещё confirm снятия.
+    expect(dialogElement()?.textContent).toContain("Снять бронь?");
+
+    await act(async () => {
+      resolvePending({ ok: true, data: { id: "g1" } });
+    });
+    await settle();
+    expect(control("Снять бронь")).toBeUndefined();
   });
 });

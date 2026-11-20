@@ -9,6 +9,9 @@ import {
   meSchema,
   notFoundError,
   notFoundErrorSchema,
+  reservationActionBodySchema,
+  reservationCardSchema,
+  reservationListSchema,
   type ActionResult,
 } from "./index";
 
@@ -371,6 +374,40 @@ describe("meSchema", () => {
         nick: "anna",
         timeZone: null,
       }).success,
+    ).toBe(false);
+  });
+});
+
+/** Story 5.5: the holder's reservation contract is part of the package entry. */
+describe("reservation contract", () => {
+  const card = {
+    giftId: "g1",
+    titleSnapshot: "Наушники",
+    status: "RESERVED",
+    ownerNick: "anna",
+    dueAt: "2026-12-08",
+    phase: "ACTIVE",
+    bought: false,
+    holderVisibleToOwner: false,
+    holderVisibleToOthers: true,
+    canOpenGift: false,
+  };
+
+  it("exposes the card, the list and the action body from the package entry", () => {
+    expect(reservationCardSchema.parse(card)).toEqual(card);
+    expect(reservationListSchema.parse({ reservations: [card] }).reservations).toEqual([card]);
+    expect(reservationActionBodySchema.parse({ action: "extend", dueOn: "2026-12-08" })).toEqual({
+      action: "extend",
+      dueOn: "2026-12-08",
+    });
+  });
+
+  it("keeps the card and the body closed", () => {
+    expect(reservationCardSchema.safeParse({ ...card, visibility: "PUBLIC" }).success).toBe(false);
+    expect(reservationListSchema.safeParse({ reservations: [], publicToken: "t" }).success).toBe(false);
+    expect(
+      reservationActionBodySchema.safeParse({ action: "bought", value: true, dueOn: "2026-12-08" })
+        .success,
     ).toBe(false);
   });
 });

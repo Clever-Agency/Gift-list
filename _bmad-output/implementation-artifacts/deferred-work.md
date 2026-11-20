@@ -254,3 +254,51 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
   summary: Секция «Уже подарено» на серверной странице `/l` осталась открытым вопросом: страница сейчас рисует закрытые желания в общей сетке, а Story 5.3 меняет только приложение. Если решение будет «перенести секцию и туда», это отдельная правка `apps/web/src/app/l/[token]/public-wishlist-view.tsx` со своим порядком секций (активные, «Уже подарено», «Архив»).
   evidence: Спека 5.3, «Открытые вопросы» п. 1 и «Never» — страницу не трогаем до решения; в приложении секция закрытых собирается на клиенте из `gifts`, на `/l` такой разметки нет.
+
+## Deferred from: CLE-86 — проверка обновления приложения (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Play In-App Updates на Android не подключён: нужен новый пакет (`react-native-in-app-updates` или аналог), а в ночном заходе пакеты не ставятся. Пока Android открывает ссылку магазина через `Linking.openURL`, как iOS, — системного диалога обновления из Play нет.
+  evidence: Мягкое предложение (`apps/mobile/src/ui/app-update-soft-dialog.tsx`) и блокирующий экран (`app-update-block-screen.tsx`) открывают только `storeUrl` из ответа `GET /api/v1/app-version`; в `apps/mobile/package.json` нет пакета обновлений, а спека прямо относит Play In-App Updates к «Never» этой задачи.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Реальные значения политики и URL магазинов не заполнены: магазины не опубликованы, поэтому `APP_VERSION_POLICY` в `packages/contracts/src/app-version.ts` держит `latestVersion = minSupportedVersion = "0.1.0"` и `storeUrl = null` для обеих платформ. Никому ничего не показывается, и блокирующий экран до публикации — тупик без кнопки (`bodyNoStore`). Поднимать `latest`/`min` и вписывать ссылки — после публикации сборок (владелец — Евгений/Сергей), тогда же адреса появятся в ответе сервера без пересборки приложения.
+  evidence: Спека, «Отложено» п. 2 и «Открытые вопросы» п. 1–3; значение по умолчанию закреплено в контракте (`DEFAULT_APP_VERSION`), а клиент политику локально не читает — только из ответа `GET /api/v1/app-version`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Тексты «Доступно обновление» / «Обновите приложение» и переводы на другие языки ждут UX и локалей. Сейчас ключи `app.appVersion.*` лежат только в `packages/contracts/src/i18n/ru/app.json` (AD-27), переводы появятся вместе с первой не-русской локалью.
+  evidence: Спека, «Тексты (ru)» и «Отложено» п. 3: строк в `DESIGN.md`/`EXPERIENCE.md` нет, это новые тексты без утверждения в UX («Доступно обновление», «Вышла новая версия приложения. Обновите его, когда будет удобно.», «Обновить», «Закрыть», «Обновите приложение», «Эта версия больше не поддерживается. Обновите приложение в магазине, чтобы продолжить.», «…в магазине.», «Открыть магазин»).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: `expo-updates`/OTA, принудительное обновление без магазина, откат версии и телеметрия отказов не делаются — вне CLE-86. Обход fail open тоже остаётся открытым вопросом: человек ниже `minSupportedVersion` с выключенной сетью видит обычное приложение, потому что неудачная проверка ничего не меняет и показанный блок не снимает; «последний известный ответ» в хранилище не вводился.
+  evidence: Спека, «Отложено» п. 4 и «Открытые вопросы» п. 1; `apps/mobile/src/app-version/check.ts` (`resolveAppVersion` возвращает прежнее состояние на `ok: false`), `app-version-gate.native.tsx` не ждёт сеть на старте, `expo-updates` в зависимостях нет.
+
+## Deferred from: Story 5.5 — «Мои брони»: продление, «Купил», видимость (CLE-119, 2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Владелец не получает уведомление «Даритель уже ответил», когда продление из `AWAITING_OWNER` сняло запрос: `reservationPhase` стал `ACTIVE`, и следующий ответ владельцу уже отдаёт `ownerAction = null`. Отдельного флага «ответил» нет — Epic 6 читает `reservationPhase`/`reservationPhaseAt` в момент доставки. Вариант A: строк `Notification` и писем 5.5 не создаёт.
+  evidence: `ownerAction` — производная от фазы (`apps/web/src/domain/viewer-gift-card.ts`), а не колонка; продление пишет `reservationPhase = ACTIVE` и `reservationPhaseAt` через CAS `GiftStatusService` (`apps/web/src/lib/gift-status-store.ts`). Таблицы `Notification` в `schema.prisma` нет до Story 6.1.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Уведомления об изменении «Купил» и переключателей видимости не отправляются: FR-26 их не перечисляет. Если продукт захочет, это Epic 6 и отдельное решение, а не 5.5.
+  evidence: Спека, «Never» и «Отложено» п. 2; действия `bought` и `visibility` меняют только колонки `reservationBought` и `holderVisibleTo*`, статус не меняется, `recordGiftEvent` не вызывается.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: «Подарил», переход в `GIVEN`, подтверждение получения владельцем и ответы на запрос (`Получил` / `Не получал`) — Story 5.7. В 5.5 фазы `AWAITING_*` и `GIVEN` только отображаются: подписи есть, «Подарил» нигде нет, продление в `GIVEN` спрятано и сервер отвечает `CONFLICT`.
+  evidence: Спека, «Отложено» п. 3 и «Открытые вопросы» п. 2; карточка и деталь не рендерят «Подарил», `reservationActionBodySchema` содержит только `extend`, `bought`, `visibility`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Cron `reservation-timers`, расчёт `AWAITING_GIVER`/`AWAITING_OWNER` по сроку и автоматическое снятие брони — Story 5.6. 5.5 только показывает фазы, которые уже возможны в данных, и не заводит таймеров.
+  evidence: Спека, «Отложено» п. 4; маршрутов `app/api/cron/*` для брони нет, фазы приходят из `reservationPhase`, записываемой только действиями держателя.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Вкладка «Брони» и полная навигация — Story 6.2; до неё вход в «Мои брони» — временная строка в нижнем ряду «Моего вишлиста». После 6.2 строку убрать, экран станет вкладкой.
+  evidence: Спека, «Открытые вопросы» п. 8; `apps/mobile/app/(app)/index.tsx` содержит строку с комментарием «временный вход до Story 6.2», `spa-paths.ts` и навигация не менялись.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Деталь желания после unfriend/Block по A-14 не открывается: `getViewerGift` не знает A-14 и отвечает `NOT_FOUND`. Если продукт захочет открывать reservation card отдельным экраном — это вне 5.5; сейчас карточка «Моих броней» самодостаточна (`canOpenGift = false` убирает ссылку, действия остаются).
+  evidence: `canOpenGift` считает сервер через `VisibilityPolicy.canSee` без токена ссылки; экран `/gifts/{id}` ссылку не получает, управление живёт в `/reservations`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Audit NFR-6 для фаз и атрибутов брони (продление, «Купил», переключатели) не пишется: статус `Gift.status` при этих действиях не меняется, а `recordGiftEvent` фиксирует только смену статуса. Если Epic 6 или аудит потребует, отдельная задача; факт продления пока читается из `reservationPhase`/`reservationPhaseAt`.
+  evidence: Спека, «Отложено» п. 7 и «Always» про NFR-6; `recordGiftEvent` в `apps/web/src/lib/gift-status-store.ts` вызывают только CAS закрытия/отмены, три новых CAS `extend`/`bought`/`visibility` audit-строк не добавляют.

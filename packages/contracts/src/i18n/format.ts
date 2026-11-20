@@ -30,21 +30,26 @@ export function formatPrice(amountMinor: number, currency: string, locale: strin
 /**
  * Date-only values (`YYYY-MM-DD`) format in UTC so the calendar day does not shift.
  * Instants use `options.timeZone`, or UTC when it is omitted.
+ *
+ * Story 5.5: `options.year: false` yields the short `DD.MM` a reservation card
+ * shows («до DD.MM»); the year stays on by default, so every older call keeps the
+ * full date. One function formats every date, so no screen invents its own.
  */
 export function formatDate(
   value: string,
   locale: string,
-  options?: { timeZone?: string },
+  options?: { timeZone?: string; year?: boolean },
 ): string {
   const dateOnly = DATE_ONLY.test(value);
   const date = new Date(dateOnly ? `${value}T00:00:00.000Z` : value);
   const timeZone = dateOnly ? "UTC" : (options?.timeZone ?? "UTC");
-  return new Intl.DateTimeFormat(locale, {
+  const format: Intl.DateTimeFormatOptions = {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
     timeZone,
-  }).format(date);
+  };
+  if (options?.year !== false) format.year = "numeric";
+  return new Intl.DateTimeFormat(locale, format).format(date);
 }
 
 /** `Intl.Collator` for ordering only. Search must use {@link normalizeForSearch}. */

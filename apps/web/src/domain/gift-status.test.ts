@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EXTENDABLE_RESERVATION_PHASES,
   RESERVATION_RELEASE_DATA,
   UNDO_WINDOW_MS,
   canCloseGift,
+  canExtendReservation,
+  canSetReservationAttributes,
   canUndoClose,
   closeGiftData,
   hasActiveReservation,
@@ -292,4 +295,49 @@ describe("undoUntil", () => {
   it("answers null for a closed wish without a moment", () => {
     expect(undoUntil({ status: "CLOSED", closedAt: null })).toBeNull();
   });
+});
+
+/**
+ * Story 5.5 (AD-9): an extension leaves only ACTIVE/AWAITING_*; «Купил» and the
+ * toggles are attributes of any live reservation, `GIVEN` included.
+ */
+describe("reservation attributes of Story 5.5", () => {
+  it.each(EXTENDABLE_RESERVATION_PHASES)(
+    "allows extending a RESERVED %s reservation",
+    (phase) => {
+      expect(canExtendReservation({ status: "RESERVED", reservationPhase: phase })).toBe(true);
+    },
+  );
+
+  /** «Ждёт подтверждения» stops the timers (Story 5.7), so an extension is refused. */
+  it("refuses to extend a GIVEN reservation", () => {
+    expect(canExtendReservation({ status: "RESERVED", reservationPhase: "GIVEN" })).toBe(false);
+  });
+
+  it.each(["OPEN", "CLOSED"] as const)(
+    "refuses a %s wish even with a leftover phase",
+    (status) => {
+      expect(canExtendReservation({ status, reservationPhase: "ACTIVE" })).toBe(false);
+    },
+  );
+
+  it("refuses an incomplete reservation without a phase", () => {
+    expect(canExtendReservation({ status: "RESERVED", reservationPhase: null })).toBe(false);
+  });
+
+  it("keeps the extendable list exactly ACTIVE and both AWAITING phases", () => {
+    expect([...EXTENDABLE_RESERVATION_PHASES]).toEqual([
+      "ACTIVE",
+      "AWAITING_GIVER",
+      "AWAITING_OWNER",
+    ]);
+    expect([...EXTENDABLE_RESERVATION_PHASES]).not.toContain("GIVEN");
+  });
+
+  it.each(["OPEN", "RESERVED", "CLOSED"] as const)(
+    "answers %s for the attribute writes by status alone",
+    (status) => {
+      expect(canSetReservationAttributes({ status })).toBe(status === "RESERVED");
+    },
+  );
 });

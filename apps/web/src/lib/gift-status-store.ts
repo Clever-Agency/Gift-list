@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from "@/db/generated/client";
 import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
 import {
+  EXTENDABLE_RESERVATION_PHASES,
   RESERVATION_RELEASE_DATA,
   UNDO_WINDOW_MS,
   closeGiftData,
@@ -59,6 +60,10 @@ export function recordGiftEvent(event: GiftStatusEvent): void {
  * `runGiftStatusTransaction`, so a rolled back transaction leaves no line.
  * `giftStatusTransaction` defaults to writing the line immediately, but no
  * use-case calls the event methods that way.
+ *
+ * Story 5.5 adds the holder's extension, «Купил» and the two visibility toggles.
+ * They change attributes of a live `RESERVED` row and never its status, so they
+ * emit nothing: NFR-6 audits a status transition only, and 5.5 has none.
  */
 export function giftStatusTransaction(
   tx: Prisma.TransactionClient,
@@ -92,6 +97,42 @@ export function giftStatusTransaction(
           reservationBought: false,
           holderVisibleToOwner: data.holderVisibleToOwner,
           holderVisibleToOthers: data.holderVisibleToOthers,
+        },
+      });
+      return count === 1 ? "success" : "lost";
+    },
+    async extendReservation(giftId, actorId, write) {
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "RESERVED",
+          reservedById: actorId,
+          // The same phase list as `canExtendReservation`, so `GIVEN` is refused
+          // here even when a stale pre-check let the request through.
+          reservationPhase: { in: [...EXTENDABLE_RESERVATION_PHASES] },
+        },
+        data: {
+          reservationDueAt: write.dueAt,
+          reservationTimeZone: write.timeZone,
+          reservationPhase: "ACTIVE",
+          reservationPhaseAt: write.at,
+        },
+      });
+      return count === 1 ? "success" : "lost";
+    },
+    async setReservationBought(giftId, actorId, write) {
+      const { count } = await tx.gift.updateMany({
+        where: { id: giftId, status: "RESERVED", reservedById: actorId },
+        data: { reservationBought: write.value },
+      });
+      return count === 1 ? "success" : "lost";
+    },
+    async setReservationVisibility(giftId, actorId, write) {
+      const { count } = await tx.gift.updateMany({
+        where: { id: giftId, status: "RESERVED", reservedById: actorId },
+        data: {
+          holderVisibleToOwner: write.holderVisibleToOwner,
+          holderVisibleToOthers: write.holderVisibleToOthers,
         },
       });
       return count === 1 ? "success" : "lost";

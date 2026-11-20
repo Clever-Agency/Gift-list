@@ -4,7 +4,7 @@
 
 import { DEFAULT_LOCALE, type GiftCard, type SupportedLocale } from "@gift-list/contracts";
 import { calendarDay } from "./calendar-day";
-import { addCalendarDays, calendarDayInZone } from "./reservation-due";
+import { reservationDueOn } from "./reservation-due";
 import type { OwnerGiftRow } from "./owner-gift-card";
 import { toGiftTags } from "./tag";
 
@@ -60,9 +60,8 @@ function holderReservation(
   if (row.reservationPhase === null || row.reservationDueAt === null) return undefined;
 
   const timeZone = row.reservationTimeZone ?? "UTC";
-  const dayAfterDue = calendarDayInZone(row.reservationDueAt, timeZone);
   return {
-    dueAt: addCalendarDays(dayAfterDue, -1),
+    dueAt: reservationDueOn(row.reservationDueAt, timeZone),
     phase: row.reservationPhase,
     bought: row.reservationBought,
     holderVisibleToOwner: row.holderVisibleToOwner,

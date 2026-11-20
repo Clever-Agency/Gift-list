@@ -72,9 +72,23 @@ import { gzipSync } from "node:zlib";
 // компонентов (`ClosedSection`, `CloseGiftConfirm`, `GiftCardMenu`,
 // `ReservationReleaseConfirm`, `useUndoWindow`) — по одной копии каждый.
 // Потолок +7 КиБ минимальными шагами; запас 1 004 байта.
+// 206 КиБ (210 944) — CLE-86 + CLE-119 / Story 5.5: «Мои брони» и проверка
+// версии подняли прирост 202 772 → 209 788 (+7 016, превышение 6 012 байт над
+// 199 КиБ). Новый чанк — маршрут `/reservations` (11 895 raw / 3 991 gzip:
+// экран, ReservationsScreen, ReservationCard). Кода проверки версии CLE-86 в
+// вебе нет: ни `check.ts`, ни `/api/v1/app-version`, ни `subscribeForeground`,
+// ни SecureStore, ни экранов обновления; в `_layout-*.js` только 11-строчный
+// близнец гейта (200 байт gzip). `expo-constants` был в бандле и раньше — его
+// тянет expo-router. В общем чанке новые контракты `app-version.ts` (842 байта
+// gzip) и строки каталога `appVersion`: barrel контрактов и каталог попадают
+// целиком. Остальной рост — действия держателя в детали желания (+237 строк),
+// два общих компонента (`ReservationExtendDialog` 908 байт gzip,
+// `ReservationVisibility` 626) и контракты брони в `gift.ts`. Новых
+// зависимостей, библиотек и иконок нет, дублей компонентов нет. Потолок +7 КиБ
+// минимальными шагами; запас 1 156 байт.
 // В epics.md по-прежнему «150 КБ».
 export const BASE_GZIP_BYTES = 487_792;
-export const BUDGET_GROWTH_BYTES = 203_776;
+export const BUDGET_GROWTH_BYTES = 210_944;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

@@ -307,6 +307,123 @@ describe("the Story 5.3 close and undo", () => {
   });
 });
 
+/**
+ * Story 5.5 (AD-9): the holder's extension, «Купил» and the visibility toggles.
+ * Every one is a full-predicate CAS; the status stays `RESERVED`, so no audit
+ * line is written (NFR-6 counts a status transition only).
+ */
+describe("the Story 5.5 reservation attributes", () => {
+  const actorId = "u2";
+  const at = new Date("2026-11-20T09:00:00.000Z");
+  const dueAt = new Date("2026-12-08T21:00:00.000Z");
+
+  it("extends with the holder predicate and the extendable phases in one CAS", async () => {
+    const outcome = await giftStatusTransaction(transactionClient()).extendReservation(
+      "g1",
+      actorId,
+      { dueAt, timeZone: "Europe/Moscow", at },
+    );
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "g1",
+        status: "RESERVED",
+        reservedById: actorId,
+        reservationPhase: { in: ["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER"] },
+      },
+      data: {
+        reservationDueAt: dueAt,
+        reservationTimeZone: "Europe/Moscow",
+        reservationPhase: "ACTIVE",
+        reservationPhaseAt: at,
+      },
+    });
+  });
+
+  it("never writes bought, the toggles or the title snapshot on an extension", async () => {
+    await giftStatusTransaction(transactionClient()).extendReservation("g1", actorId, {
+      dueAt,
+      timeZone: "UTC",
+      at,
+    });
+
+    const { data } = updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(Object.keys(data).sort()).toEqual([
+      "reservationDueAt",
+      "reservationPhase",
+      "reservationPhaseAt",
+      "reservationTimeZone",
+    ]);
+  });
+
+  it("writes only reservationBought, so the phase and its moment stay", async () => {
+    const outcome = await giftStatusTransaction(transactionClient()).setReservationBought(
+      "g1",
+      actorId,
+      { value: true },
+    );
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "g1", status: "RESERVED", reservedById: actorId },
+      data: { reservationBought: true },
+    });
+    const { data } = updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(Object.keys(data)).toEqual(["reservationBought"]);
+  });
+
+  it("writes only the two toggles, so the phase, its moment and bought stay", async () => {
+    const outcome = await giftStatusTransaction(transactionClient()).setReservationVisibility(
+      "g1",
+      actorId,
+      { holderVisibleToOwner: true, holderVisibleToOthers: false },
+    );
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "g1", status: "RESERVED", reservedById: actorId },
+      data: { holderVisibleToOwner: true, holderVisibleToOthers: false },
+    });
+    const { data } = updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(Object.keys(data).sort()).toEqual(["holderVisibleToOthers", "holderVisibleToOwner"]);
+    expect(data).not.toHaveProperty("reservationPhaseAt");
+    expect(data).not.toHaveProperty("reservationBought");
+  });
+
+  it.each([0, 2])("answers lost when a Story 5.5 CAS touches %i rows", async (count) => {
+    updateMany.mockResolvedValue({ count });
+    const tx = giftStatusTransaction(transactionClient());
+
+    await expect(
+      tx.extendReservation("g1", actorId, { dueAt, timeZone: "UTC", at }),
+    ).resolves.toBe("lost");
+    await expect(tx.setReservationBought("g1", actorId, { value: false })).resolves.toBe("lost");
+    await expect(
+      tx.setReservationVisibility("g1", actorId, {
+        holderVisibleToOwner: false,
+        holderVisibleToOthers: true,
+      }),
+    ).resolves.toBe("lost");
+    expect(updateMany).toHaveBeenCalledTimes(3);
+  });
+
+  it("writes no audit line, because the status never changes", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const tx = giftStatusTransaction(transactionClient());
+
+    await tx.extendReservation("g1", actorId, { dueAt, timeZone: "UTC", at });
+    await tx.setReservationBought("g1", actorId, { value: true });
+    await tx.setReservationVisibility("g1", actorId, {
+      holderVisibleToOwner: true,
+      holderVisibleToOthers: true,
+    });
+
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+});
+
 describe("runGiftStatusTransaction", () => {
   const at = new Date("2026-11-19T12:00:00.000Z");
 

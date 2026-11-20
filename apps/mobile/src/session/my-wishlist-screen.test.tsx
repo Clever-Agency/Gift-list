@@ -1043,6 +1043,26 @@ describe("мой вишлист: список", () => {
 
     expect(navigation.push).toHaveBeenCalledWith("/friends");
   });
+
+  /**
+   * Story 5.5 creates «Мои брони» before Story 6.2 gives them a place in the
+   * navigation (вкладка «Брони»), so the wishlist footer carries a temporary
+   * entry point.
+   */
+  it("в подвале есть «Мои брони», нажатие открывает /reservations", async () => {
+    respond(giftsAnswer([]));
+    await mount();
+
+    const footer = container.querySelector('[data-testid="page-footer"]');
+    const reservations = footer?.querySelector('[data-testid="wishlist-reservations"]');
+    expect(reservations?.textContent).toContain("Мои брони");
+
+    await act(async () => {
+      reservations?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(navigation.push).toHaveBeenCalledWith("/reservations");
+  });
 });
 
 /**

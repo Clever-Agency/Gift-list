@@ -6,4 +6,11 @@ import type { ReactNode } from "react";
  */
 export type SafeAreaProps = {
   children?: ReactNode;
+  /**
+   * Keep the bottom inset. Default `true`: a nested screen or a page outside the
+   * tab shell holds the home indicator itself. A screen inside the tab bar passes
+   * `false` — the bar already keeps the bottom inset, and adding it again would
+   * fold the home indicator twice (`EXPERIENCE.md` → Навигация).
+   */
+  bottom?: boolean;
 };

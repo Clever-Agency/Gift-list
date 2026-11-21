@@ -140,6 +140,73 @@ describe("public shell copy", () => {
   });
 });
 
+/**
+ * Story 6.2: названия разделов навигации и подпись badge входящих запросов.
+ * «Разделы», «Вишлист», «Поиск», «Друзья», «Брони», «Профиль», «Мой вишлист»,
+ * «Мои брони» — дословно из `EXPERIENCE.md` и `DESIGN.md`; «Мой профиль» и формы
+ * множественного числа badge — новые, без утверждения в UX (Open Questions 6.2,
+ * п. 13). Шаблон badge повторяет «Друзья, N запроса» из `DESIGN.md` → Badge.
+ */
+describe("navigation copy", () => {
+  /** The ICU plural of the catalog, resolved the way next-intl does for Russian. */
+  function friendsBadge(count: number): string {
+    const template = getMessages("ru").app.nav.friendsBadge;
+    const start = template.indexOf("{count, plural,");
+    if (start < 0) throw new Error("app.nav.friendsBadge без ICU-плюрала");
+    // Everything after the plural header up to its closing brace: the four forms.
+    const body = template.slice(start + "{count, plural,".length, -1);
+    const forms = new Map<string, string>();
+    for (const [, category, text] of body.matchAll(/(\w+)\s*\{([^{}]*)\}/g)) {
+      forms.set(category, text);
+    }
+    const category = new Intl.PluralRules("ru").select(count);
+    const chosen = forms.get(category) ?? forms.get("other") ?? "";
+    return `${template.slice(0, start)}${chosen.replace("#", String(count))}`;
+  }
+
+  it("keeps the section names verbatim and not empty", () => {
+    const nav = getMessages("ru").app.nav;
+
+    expect(nav.sections).toBe("Разделы");
+    expect(nav.wishlist).toBe("Мой вишлист");
+    expect(nav.wishlistTab).toBe("Вишлист");
+    expect(nav.search).toBe("Поиск");
+    expect(nav.friends).toBe("Друзья");
+    expect(nav.reservations).toBe("Мои брони");
+    expect(nav.reservationsTab).toBe("Брони");
+    expect(nav.profile).toBe("Профиль");
+    expect(nav.myProfile).toBe("Мой профиль");
+
+    for (const text of Object.values(nav)) {
+      expect(text.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("carries only the navigation keys of Story 6.2", () => {
+    expect(Object.keys(getMessages("ru").app.nav).sort()).toEqual([
+      "friends",
+      "friendsBadge",
+      "myProfile",
+      "profile",
+      "reservations",
+      "reservationsTab",
+      "search",
+      "sections",
+      "wishlist",
+      "wishlistTab",
+    ]);
+  });
+
+  it("formats the incoming-request badge for 1, 2 and 5", () => {
+    const template = getMessages("ru").app.nav.friendsBadge;
+
+    expect(template).toContain("{count, plural");
+    expect(friendsBadge(1)).toBe("Друзья, 1 запрос");
+    expect(friendsBadge(2)).toBe("Друзья, 2 запроса");
+    expect(friendsBadge(5)).toBe("Друзья, 5 запросов");
+  });
+});
+
 describe("invite confirmation copy", () => {
   /**
    * CLE-73 followup: the name is not declined (AD-24), so the sentence names

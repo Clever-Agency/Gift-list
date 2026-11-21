@@ -338,3 +338,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-6-tsikl-istecheniya-broni.md`
   summary: Уведомления о переходах таймеров («держателю — срок истёк», «владельцу — вопрос», «держателю — бронь снята») и о keep не создаются: вариант A оставляет только audit-строку `recordGiftEvent`. В приложении новых экранов и писем нет; `Notification` и `deliverAfter` — Epic 6, Story 6.1.
   evidence: Спека, «Never» и «Design Notes»; строк `Notification` в `schema.prisma` нет, клиент 5.6 только заменяет карточку ответом сервера и показывает общие тосты `app.form.network` / `common.errors.code.*`.
+
+## Deferred from: Story 5.8 — обязательные автотесты инвариантов AD-15 (CLE-122, 2026-11-22)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
+  summary: Инвариант (5) закрыт только для gift card: Notification и письмо владельцу не проверяются, потому что модели `Notification`, транспорта и payload ещё нет. Вместе с Story 6.1 нужен тест, что при `holderVisibleToOwner=false` ни уведомление, ни письмо не несут держателя, `bought` и `dueAt`.
+  evidence: Спека, «Отложено» п. 1 и «Открытый вопрос» 3; в `apps/web/src/db/schema.prisma` нет `Notification`, `recordGiftEvent` пишет только audit-строку; `card-privacy.test.ts` проверяет лишь карточку владельца.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
+  summary: Инвариант (10) проверен только для `FRIENDS`/`PUBLIC`: подписчик не получает `FRIENDS`, но даты (`UserDate`) и поведение `visibility=everyone` (AD-23) не проверяются — дат в схеме нет, а сужение правила до «при `friends` подписчик не получает даты» (ревью архитектуры L4) требует решения Евгения и Сергея. После Epic 7 тест на даты добавить в suite или в AC истории.
+  evidence: Спека, «Отложено» п. 2 и «Открытый вопрос» 2; `subscriber.test.ts` проверяет `readWishlist` с `subscriber=true`, но `UserDate` в `schema.prisma` отсутствует.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
+  summary: Инвариант (12) «сопоставление телефонов не пишет сырые номера» непроверяем: нет полей `phoneE164`/`phoneHmac`, модели `ContactMatch` и экрана «Найти знакомых», а `relationships.ts` до 8.1 честно отвечает `contactMatch: false`. Тест «сырые номера не попадают ни в БД, ни в лог» появляется вместе со Story 8.1.
+  evidence: Спека, «Отложено» п. 3 и «Открытый вопрос» 4; `schema.prisma` не содержит телефонных полей и `ContactMatch`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
+  summary: Настоящая гонка двух транзакций (инварианты 1, 7, 9) в CI не проверяется: `ci.yml` гоняет только `npm test`, а `verify:reserve-concurrency`, `verify:disposable-pg` и `verify:friendship-concurrency` требуют одноразового PostgreSQL. Консервативно ручной `npm run verify:reserve-concurrency` остаётся шагом перед merge Epic 5; добавление сервиса PostgreSQL в workflow — отдельное решение.
+  evidence: Спека, «Отложено» п. 4 и «Открытый вопрос» 1; `db/disposable-pg/*.pgtest.ts` вне `vitest.config.ts`, `.github/workflows/ci.yml` без сервиса PostgreSQL; `timer-races.test.ts` проверяет сценарий на фейке.

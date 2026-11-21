@@ -9,8 +9,10 @@ import { describe, expect, it } from "vitest";
  * `count`). The status adapter also scans expiry candidates by status; that is
  * not a visibility bypass: the scan selects only `id`, `expiresOn` and the
  * owner's time zone, and writes `archivedAt` through the CAS, never a card.
- * So the adapter is exempt only for exactly one `.gift.findMany` with that
- * narrow `select`.
+ * Story 5.6 adds the reservation-timer scan of AD-9 in that same adapter: it
+ * selects only `id` as well, so it cannot hand a card to anybody. The adapter is
+ * therefore exempt only for exactly those two `.gift.findMany` calls with those
+ * narrow `select`s.
  *
  * Story 5.5 adds the one sanctioned A-14 read: «Мои брони» is read by
  * `reservedById` and must keep working after an unfriend or a block, so it does
@@ -37,6 +39,9 @@ const RAW_QUERY = /\$queryRaw(?:Unsafe)?/g;
 
 /** The one allowed scan `select`, whitespace removed, nested form included. */
 const EXPIRY_SELECT = "{id:true,expiresOn:true,list:{select:{owner:{select:{timeZone:true}}}}}";
+
+/** Story 5.6 (AD-9): the reservation-timer scan reads ids only. */
+const TIMER_SELECT = "{id:true}";
 
 /** The closed A-14 card `select` of `my-reservations.ts`, same normalisation. */
 const RESERVATION_CARD_SELECT =
@@ -114,7 +119,7 @@ async function findViolations(): Promise<Violation[]> {
     const resolved = path.resolve(file);
     if (resolved === WISHLIST_READ) continue;
     const text = await readFile(file, "utf8");
-    if (resolved === STATUS_SERVICE && isNarrowExpiryScan(text)) continue;
+    if (resolved === STATUS_SERVICE && isNarrowStatusScans(text)) continue;
     if (resolved === MY_RESERVATIONS_READ && isReservationCardScan(text)) continue;
     for (const call of GIFT_READS) {
       if (call.test(text)) violations.push({ file: relative, call: String(call) });
@@ -125,17 +130,32 @@ async function findViolations(): Promise<Violation[]> {
 }
 
 /**
- * The adapter's only allowed `Gift` read: one `.gift.findMany` whose `select`
- * holds `id`, `expiresOn` and `list` and nothing else, and no other read kind.
+ * The adapter's two allowed `Gift` reads (Story 2.6 and 5.6): the expiry scan of
+ * `id`, `expiresOn` and `list`, and the timer scan of `id` alone — and no other
+ * read kind.
  */
-function isNarrowExpiryScan(text: string): boolean {
-  if (countFindMany(text) !== 1) return false;
+function isNarrowStatusScans(text: string): boolean {
+  if (countFindMany(text) !== 2) return false;
   if (/\.gift\.(?:groupBy|count)\s*\(/.test(text) || rawGiftQueries(text).length > 0) return false;
-  const call = text.search(/\.gift\.findMany\s*\(/);
-  const select = /select:\s*\{/.exec(text.slice(call));
-  if (!select) return false;
-  const open = call + select.index + select[0].length - 1;
-  return objectAt(text, open) === EXPIRY_SELECT;
+  const selects = findManySelects(text);
+  return (
+    selects.length === 2 &&
+    selects.includes(EXPIRY_SELECT) &&
+    selects.includes(TIMER_SELECT)
+  );
+}
+
+/** Normalised `select` shape of every `.gift.findMany` in a file. */
+function findManySelects(text: string): string[] {
+  const selects: string[] = [];
+  for (const match of text.matchAll(new RegExp(GIFT_FIND_MANY.source, "g"))) {
+    const call = match.index ?? 0;
+    const select = /select:\s*\{/.exec(text.slice(call));
+    if (!select) continue;
+    const open = call + select.index + select[0].length - 1;
+    selects.push(objectAt(text, open));
+  }
+  return selects;
 }
 
 /**
@@ -185,18 +205,21 @@ function countFindMany(text: string): number {
 }
 
 describe("gift read guard (AD-7)", () => {
-  it("lets the status adapter scan only id, expiresOn and list", async () => {
+  it("lets the status adapter scan only id + expiresOn/list and id", async () => {
     const text = await readFile(STATUS_SERVICE, "utf8");
-    expect(isNarrowExpiryScan(text)).toBe(true);
+    expect(isNarrowStatusScans(text)).toBe(true);
     const wide = text.replace(/(select:\s*\{\s*id: true,)/, "$1 title: true,");
     expect(wide).not.toBe(text);
-    expect(isNarrowExpiryScan(wide)).toBe(false);
+    expect(isNarrowStatusScans(wide)).toBe(false);
     const nested = text.replace(
       "owner: { select: { timeZone: true } }",
       "owner: { select: { timeZone: true, email: true } }",
     );
     expect(nested).not.toBe(text);
-    expect(isNarrowExpiryScan(nested)).toBe(false);
+    expect(isNarrowStatusScans(nested)).toBe(false);
+    const timerWide = text.replace("select: { id: true }", "select: { id: true, title: true }");
+    expect(timerWide).not.toBe(text);
+    expect(isNarrowStatusScans(timerWide)).toBe(false);
   });
 
   it("lets «Мои брони» read only the closed reservation card select", async () => {

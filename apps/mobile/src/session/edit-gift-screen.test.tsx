@@ -27,6 +27,7 @@ const gifts = vi.hoisted(() => ({
   updateGift: vi.fn(),
   deleteGift: vi.fn(),
   previewGiftVisibility: vi.fn(),
+  fetchReservationWarning: vi.fn(),
 }));
 const tagApi = vi.hoisted(() => ({ fetchTagCatalog: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -409,6 +410,9 @@ beforeEach(() => {
     ok: true,
     preview: { wouldCancelReservation: false },
   });
+  // Story 5.4: the delete preflight of a reserved wish answers `BOUGHT | null`;
+  // without a reservation the answer has no warning.
+  gifts.fetchReservationWarning.mockResolvedValue({ ok: true, warning: null });
   // A direct link left nothing to go back to: the screen replaces itself with the list.
   navigation.canGoBack.mockReturnValue(false);
   // A router call that removes this screen is a removal like the system back.
@@ -1238,7 +1242,8 @@ describe("изменение желания: видимость, read-only и у
     }
     // Editing shows the stored type, even though the control is frozen.
     expect(selected("Можно дарить снова")).toBe(true);
-    expect(button("Удалить желание")).toBeUndefined();
+    // Story 5.4: a reserved wish is deleted from this same form.
+    expect(button("Удалить желание")).toBeDefined();
 
     await press("Сохранить");
 
@@ -1424,8 +1429,9 @@ describe("изменение желания: видимость, read-only и у
 
     expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
     expect(gifts.fetchGift).toHaveBeenCalledTimes(2);
-    // The wish is reserved now: visibility is editable again, deletion is gone.
-    expect(button("Удалить желание")).toBeUndefined();
+    // The wish is reserved now: visibility is editable again, and Story 5.4 keeps
+    // the delete action for a reserved wish — it now asks the preflight first.
+    expect(button("Удалить желание")).toBeDefined();
     expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
 
@@ -1438,6 +1444,8 @@ describe("изменение желания: видимость, read-only и у
     expect(dialogElement()).not.toBeNull();
     expect(text()).toContain("Удалить «Наушники»?");
     expect(text()).toContain("Желание исчезнет из вишлиста. Это нельзя отменить.");
+    // Story 5.4: an open wish has no reservation, so no preflight is asked.
+    expect(gifts.fetchReservationWarning).not.toHaveBeenCalled();
 
     await pressExact("Отмена");
 
@@ -1499,7 +1507,7 @@ describe("изменение желания: видимость, read-only и у
     expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
 
-  it("CONFLICT при удалении: toast, перечитывание желания и пропавшая кнопка удаления", async () => {
+  it("CONFLICT при удалении: toast, перечитывание желания и его настоящий статус", async () => {
     loaded();
     // The first read is the open wish; the reload after CONFLICT shows it reserved.
     gifts.fetchGift.mockResolvedValueOnce({ ok: true, gift: stored });
@@ -1516,7 +1524,8 @@ describe("изменение желания: видимость, read-only и у
     expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
     expect(gifts.fetchGift).toHaveBeenCalledTimes(2);
     expect(text()).toContain("Сколько раз можно дарить — меняется только у открытого желания.");
-    expect(button("Удалить желание")).toBeUndefined();
+    // Story 5.4: the re-read reserved wish still offers deletion.
+    expect(button("Удалить желание")).toBeDefined();
     expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
 
@@ -1550,6 +1559,160 @@ describe("изменение желания: видимость, read-only и у
       busy?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(gifts.deleteGift).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Story 5.4: a reserved wish is deleted from the same form. The press first asks
+ * the preflight — the same `warning` (`BOUGHT | null`) the release uses — then opens
+ * the same confirm with a body about the reservation; «уже куплен» adds its own
+ * sentence. The list gets `?toast=gift_deleted` exactly as for an open wish, and
+ * every failure keeps the form on screen.
+ */
+describe("изменение желания: удаление забронированного (Story 5.4)", () => {
+  const reservedCard: GiftCard = {
+    ...stored,
+    status: "RESERVED",
+    quantity: "UNLIMITED",
+  };
+
+  it("RESERVED: подсказка о брони стоит в форме под заголовком", async () => {
+    loaded(reservedCard);
+    await mount();
+
+    expect(text()).toContain("Желание забронировано — бронировавший получит уведомление");
+    expect(container.querySelector('[data-testid="gift-form-notice"]')).not.toBeNull();
+    // «Удалить желание» доступно и для забронированного желания.
+    expect(button("Удалить желание")).toBeDefined();
+  });
+
+  it("OPEN: подсказки о брони нет", async () => {
+    loaded();
+    await mount();
+
+    expect(text()).not.toContain("Желание забронировано — бронировавший получит уведомление");
+    expect(container.querySelector('[data-testid="gift-form-notice"]')).toBeNull();
+  });
+
+  it("RESERVED: сначала предпросмотр, затем confirm про бронь и одно удаление", async () => {
+    loaded(reservedCard);
+    gifts.deleteGift.mockResolvedValue({ ok: true });
+    await mount();
+
+    await press("Удалить желание");
+
+    expect(gifts.fetchReservationWarning).toHaveBeenCalledWith("g1");
+    expect(text()).toContain("Удалить «Наушники»?");
+    expect(text()).toContain(
+      "Бронь снимется, бронировавший получит уведомление. Это нельзя отменить.",
+    );
+    // Nothing is written before the confirm.
+    expect(gifts.deleteGift).not.toHaveBeenCalled();
+
+    await pressExact("Удалить");
+
+    expect(gifts.deleteGift).toHaveBeenCalledTimes(1);
+    expect(navigation.dismissTo).toHaveBeenCalledWith({
+      pathname: "/",
+      params: { toast: "gift_deleted" },
+    });
+  });
+
+  it("RESERVED + BOUGHT: confirm говорит, что подарок уже куплен", async () => {
+    loaded(reservedCard);
+    gifts.fetchReservationWarning.mockResolvedValue({ ok: true, warning: "BOUGHT" });
+    await mount();
+
+    await press("Удалить желание");
+
+    expect(text()).toContain(
+      "Даритель отметил, что подарок уже куплен. Бронь снимется, бронировавший получит уведомление. Это нельзя отменить.",
+    );
+    // The preflight carries only the warning: no holder, due date or phase on screen.
+    expect(text()).not.toContain("Берёт");
+    expect(gifts.deleteGift).not.toHaveBeenCalled();
+  });
+
+  it("RESERVED: «Отмена» в confirm ничего не удаляет и возвращает фокус на кнопку", async () => {
+    platform.os = "web";
+    loaded(reservedCard);
+    await mount();
+
+    const trigger = button("Удалить желание");
+    await press("Удалить желание");
+    expect(dialogElement()).not.toBeNull();
+    await pressExact("Отмена");
+    await settle(300);
+
+    expect(gifts.deleteGift).not.toHaveBeenCalled();
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("RESERVED: обрыв сети на предпросмотре — toast, confirm не открыт, DELETE не отправлен", async () => {
+    loaded(reservedCard);
+    gifts.fetchReservationWarning.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await press("Удалить желание");
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(dialogElement()).toBeNull();
+    expect(gifts.deleteGift).not.toHaveBeenCalled();
+    expect(button("Сохранить")).toBeDefined();
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("RESERVED: NOT_FOUND на предпросмотре — «Желание не найдено.»", async () => {
+    loaded(reservedCard);
+    gifts.fetchReservationWarning.mockResolvedValue({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "",
+    });
+    await mount();
+
+    await press("Удалить желание");
+
+    expect(text()).toContain("Желание не найдено.");
+    expect(dialogElement()).toBeNull();
+    expect(gifts.deleteGift).not.toHaveBeenCalled();
+    expect(button("Сохранить")).toBeUndefined();
+  });
+
+  it("RESERVED: пока предпросмотр идёт, кнопка занята и второй тап ничего не шлёт", async () => {
+    loaded(reservedCard);
+    gifts.fetchReservationWarning.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    await press("Удалить желание");
+
+    expect(gifts.fetchReservationWarning).toHaveBeenCalledTimes(1);
+    const trigger = buttonByLabel("Удалить желание");
+    expect(trigger?.getAttribute("aria-busy")).toBe("true");
+    expect(trigger?.getAttribute("aria-disabled")).toBe("true");
+    expect(dialogElement()).toBeNull();
+
+    await act(async () => {
+      trigger?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(gifts.fetchReservationWarning).toHaveBeenCalledTimes(1);
+    expect(gifts.deleteGift).not.toHaveBeenCalled();
+  });
+
+  it("RESERVED: CONFLICT при удалении — перечитывание, желание на месте и удаление доступно", async () => {
+    loaded(reservedCard);
+    gifts.deleteGift.mockResolvedValue({ ok: false, code: "CONFLICT", message: "" });
+    await mount();
+
+    await press("Удалить желание");
+    await pressExact("Удалить");
+
+    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
+    expect(gifts.fetchGift).toHaveBeenCalledTimes(2);
+    expect(button("Удалить желание")).toBeDefined();
+    expect(gifts.deleteGift).toHaveBeenCalledTimes(1);
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
   });
 });
 

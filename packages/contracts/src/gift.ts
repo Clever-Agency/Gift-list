@@ -371,6 +371,16 @@ export const giftReserveBodySchema = z.strictObject({
 export type GiftReserveBody = z.infer<typeof giftReserveBodySchema>;
 
 /**
+ * Story 5.6 (AD-9): body of `POST /api/v1/me/gifts/:id/reservation/keep`, the
+ * owner's answer «Не получал, оставить бронь». The keep needs nothing but the
+ * session and the route id, so the body is a strict empty object: a smuggled key
+ * is `VALIDATION` instead of being silently ignored.
+ */
+export const keepReservationBodySchema = z.strictObject({});
+
+export type KeepReservationBody = z.infer<typeof keepReservationBodySchema>;
+
+/**
  * A real calendar day on the wire (Story 5.5): the holder's `dueAt` and the
  * day an extension picks. Unlike {@link giftReserveBodySchema} — which only
  * checks the shape — an impossible day such as `2026-02-31` is refused here.

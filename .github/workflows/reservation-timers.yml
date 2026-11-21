@@ -1,0 +1,54 @@
+name: Reservation timers
+
+# Story 5.6 / AD-16: not Vercel Cron. The schedule runs only from the default
+# branch of this repository (staging), and calls only the staging deployment.
+# A delayed run only postpones the reservation phase changes (ARCH-A15).
+#
+# The job runs in the existing GitHub Environment cron-staging with the same
+# APP_URL and CRON_SECRET as wish-expiry.yml. Production is not called: the
+# /api/cron/reservation-timers route does not exist there until the change is
+# promoted to main, and the production job is added at that point (see
+# docs/deployment-environments.md, "Таймеры брони (Story 5.6)").
+on:
+  schedule:
+    # Not 0: wish-expiry.yml already runs at the top of every hour.
+    - cron: "20 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reservation-timers:
+    name: reservation-timers (cron-staging)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: cron-staging
+    # A manual run during the scheduled one waits instead of calling twice.
+    concurrency:
+      group: reservation-timers-cron-staging
+      cancel-in-progress: false
+    steps:
+      - name: Expire and ask about reservations
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::cron-staging: set APP_URL and CRON_SECRET (environment secrets)"
+            exit 1
+          fi
+          # A missing cron-staging secret silently falls back to the production
+          # repository secret; refuse to call anything but the staging host.
+          case "$APP_URL" in
+            https://staging.*) ;;
+            *)
+              echo "::error::cron-staging: APP_URL is not the staging host; set the cron-staging environment secrets"
+              exit 1
+              ;;
+          esac
+          echo "Calling ${APP_URL%/}/api/cron/reservation-timers"
+          curl --fail-with-body --silent --show-error --max-time 120 \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/cron/reservation-timers"

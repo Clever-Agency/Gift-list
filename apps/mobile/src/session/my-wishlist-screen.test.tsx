@@ -2903,6 +2903,309 @@ describe("мой вишлист: снятие чужой брони", () => {
 });
 
 /**
+ * Story 5.6 (`CARD_LABEL`, `CARD_KEEP`, `CARD_RELEASE_MENU`, `DETAIL_LABEL`):
+ * владелец отвечает на истёкшую бронь. «Получил» — существующий confirm 5.3,
+ * «Не получал, оставить бронь» — keep без второго подтверждения, «Снять бронь» —
+ * третий пункт ⋮, который открывает деталь и тот же preflight 5.2.
+ */
+describe("мой вишлист: истёкшая бронь (Story 5.6)", () => {
+  function expiredCard(overrides: Partial<GiftCard> = {}): GiftCard {
+    return gift({
+      status: "RESERVED",
+      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
+      reservationLabel: "BOUGHT",
+      ownerAction: "EXPIRED_NO_REPLY",
+      ...overrides,
+    });
+  }
+
+  function keptCard(overrides: Partial<GiftCard> = {}): GiftCard {
+    return gift({ status: "RESERVED", ...overrides });
+  }
+
+  function callsTo(suffix: string, method?: string): unknown[][] {
+    return api.apiRequest.mock.calls.filter(
+      ([path, init]) =>
+        String(path).endsWith(suffix) &&
+        (method === undefined || (init as { method?: string } | undefined)?.method === method),
+    );
+  }
+
+  function keepCalls(): unknown[][] {
+    return callsTo("/reservation/keep", "POST");
+  }
+
+  function preflightCalls(): unknown[][] {
+    // The preflight sends no `method`: the client defaults to GET, so a DELETE is
+    // the only call on this path that is not the preflight.
+    return callsTo("/reservation").filter(
+      ([, init]) => (init as { method?: string } | undefined)?.method !== "DELETE",
+    );
+  }
+
+  function releaseCalls(): unknown[][] {
+    return callsTo("/reservation", "DELETE");
+  }
+
+  function listReadsNow(): number {
+    return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
+  }
+
+  function respondExpired(handlers: {
+    cards: () => GiftCard[];
+    keep?: () => unknown;
+    preflight?: () => unknown;
+    release?: () => unknown;
+    close?: () => unknown;
+  }) {
+    api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
+      const method = init?.method ?? "GET";
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts") return Promise.resolve(giftsAnswer(handlers.cards()));
+      if (path === "/api/v1/me/gifts/g1/reservation/keep" && method === "POST") {
+        return Promise.resolve(
+          handlers.keep ? handlers.keep() : { ok: false, code: "CONFLICT", message: "" },
+        );
+      }
+      if (path === "/api/v1/me/gifts/g1/reservation") {
+        return Promise.resolve(
+          method === "DELETE"
+            ? handlers.release
+              ? handlers.release()
+              : { ok: false, code: "CONFLICT", message: "" }
+            : handlers.preflight
+              ? handlers.preflight()
+              : { ok: true, data: { warning: null } },
+        );
+      }
+      if (path === "/api/v1/me/gifts/g1/close" && method === "POST") {
+        return Promise.resolve(
+          handlers.close ? handlers.close() : { ok: false, code: "CONFLICT", message: "" },
+        );
+      }
+      if (path === "/api/v1/me/gifts/g1") {
+        const card = handlers.cards().find(function sameId(item) {
+          return item.id === "g1";
+        });
+        return Promise.resolve(
+          card ? { ok: true, data: card } : { ok: false, code: "NOT_FOUND", message: "" },
+        );
+      }
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
+    });
+  }
+
+  function strip(): HTMLElement | null {
+    return container.querySelector<HTMLElement>("[data-testid='owner-action-label']");
+  }
+
+  async function openFirstDetail() {
+    const cardButton = container.querySelector('[role="listitem"] [role="button"]') as HTMLElement;
+    await act(async () => {
+      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+  }
+
+  async function pressInDialog(label: string) {
+    const target = Array.from(
+      dialogElement()?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
+    ).find((node) => (node.textContent ?? "").includes(label));
+    expect(target, `кнопка «${label}» в слое`).toBeDefined();
+    await act(async () => {
+      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+  }
+
+  it("карточка: полоса вместо строки брони, «Снять бронь» — в ⋮", async () => {
+    respondExpired({ cards: () => [expiredCard()] });
+    await mount();
+
+    expect(strip()?.textContent).toContain("Срок брони истёк");
+    expect(strip()?.textContent).toContain("Получил");
+    expect(strip()?.textContent).toContain("Не получал, оставить бронь");
+
+    await act(async () => {
+      container
+        .querySelector<HTMLElement>('[data-testid="wishlist-card-menu-g1"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    expect(dialogElement()?.textContent).toContain("Снять бронь");
+    // «Получил» уже на полосе: меню не повторяет закрытие.
+    expect(dialogElement()?.textContent).not.toContain("Отметить полученным");
+  });
+
+  it("«Не получал, оставить бронь»: один POST keep, карточка заменена, полоса исчезла, без тоста", async () => {
+    let cards: GiftCard[] = [expiredCard()];
+    respondExpired({
+      cards: () => cards,
+      keep: function keep() {
+        cards = [keptCard()];
+        return { ok: true, data: cards[0] };
+      },
+    });
+    await mount();
+    const readsBefore = listReadsNow();
+
+    await press("Не получал, оставить бронь");
+    await settle(10);
+
+    expect(keepCalls()).toHaveLength(1);
+    expect(strip()).toBeNull();
+    expect(text()).toContain("Забронирован");
+    expect(text()).not.toContain("Срок брони истёк");
+    // The answer itself is the card: the list is not reread and no toast appears.
+    expect(listReadsNow()).toBe(readsBefore);
+    expect(text()).not.toContain("Отмечено полученным");
+  });
+
+  it("повторное нажатие, пока keep в пути, второй запрос не отправляет", async () => {
+    let resolveKeep!: (value: unknown) => void;
+    const pending = new Promise(function wait(resolve) {
+      resolveKeep = resolve;
+    });
+    respondExpired({ cards: () => [expiredCard()], keep: () => pending });
+    await mount();
+
+    await press("Не получал, оставить бронь");
+    expect(keepCalls()).toHaveLength(1);
+    // Both answers of the strip report the busy state while the answer is in flight.
+    expect(
+      container.querySelector<HTMLElement>("[data-testid='owner-action-keep']")?.getAttribute("aria-busy"),
+    ).toBe("true");
+
+    await act(async () => {
+      container
+        .querySelector<HTMLElement>("[data-testid='owner-action-keep']")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(keepCalls()).toHaveLength(1);
+
+    await act(async () => {
+      resolveKeep({ ok: false, code: "CONFLICT", message: "" });
+    });
+    await settle(10);
+  });
+
+  it("сеть при keep: общая фраза, полоса остаётся, второго запроса нет", async () => {
+    respondExpired({
+      cards: () => [expiredCard()],
+      keep: () => ({ ok: false, network: true }),
+    });
+    await mount();
+
+    await press("Не получал, оставить бронь");
+    await settle(10);
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(strip()?.textContent).toContain("Срок брони истёк");
+    expect(keepCalls()).toHaveLength(1);
+  });
+
+  it("CONFLICT при keep: тост и перечитывание списка", async () => {
+    respondExpired({
+      cards: () => [expiredCard()],
+      keep: () => ({ ok: false, code: "CONFLICT", message: "Reservation changed" }),
+    });
+    await mount();
+    const readsBefore = listReadsNow();
+
+    await press("Не получал, оставить бронь");
+    await settle(10);
+
+    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
+    expect(listReadsNow()).toBe(readsBefore + 1);
+  });
+
+  it("«Получил» на карточке: существующий confirm 5.3 и POST close", async () => {
+    let cards: GiftCard[] = [expiredCard()];
+    respondExpired({
+      cards: () => cards,
+      close: function close() {
+        cards = [gift({ status: "CLOSED", undoUntil: new Date(Date.now() + 600_000).toISOString() })];
+        return { ok: true, data: cards[0] };
+      },
+    });
+    await mount();
+
+    await press("Получил");
+    await settle(300);
+    expect(dialogElement()?.textContent).toContain("Подарок «Наушники» получен?");
+    expect(dialogElement()?.textContent).toContain("Бронь будет закрыта");
+
+    await pressInDialog("Подтвердить");
+    await settle(300);
+
+    expect(callsTo("/close", "POST")).toHaveLength(1);
+    expect(text()).toContain("Отмечено полученным");
+  });
+
+  it("⋮ → «Снять бронь»: деталь и тот же preflight, подтверждение — шаг 5.2", async () => {
+    let cards: GiftCard[] = [expiredCard()];
+    respondExpired({
+      cards: () => cards,
+      preflight: () => ({ ok: true, data: { warning: "BOUGHT" } }),
+      release: function release() {
+        cards = [gift()];
+        return { ok: true, data: { id: "g1" } };
+      },
+    });
+    await mount();
+    const readsBefore = listReadsNow();
+
+    await act(async () => {
+      container
+        .querySelector<HTMLElement>('[data-testid="wishlist-card-menu-g1"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    await pressInDialog("Снять бронь");
+    // The ⋯ leaves the tree first, then the details open and the preflight runs.
+    await settle(300);
+    await settle(10);
+
+    expect(preflightCalls()).toHaveLength(1);
+    expect(dialogElement()?.textContent).toContain(
+      "Снять бронь? Желание снова станет открытым.",
+    );
+    expect(dialogElement()?.textContent).toContain("Даритель отметил, что подарок уже куплен");
+
+    await pressInDialog("Снять бронь");
+    await settle(300);
+
+    expect(releaseCalls()).toHaveLength(1);
+    expect(listReadsNow()).toBe(readsBefore + 1);
+  });
+
+  it("деталь: полоса над фактами, без «Отметить полученным», keep убирает полосу", async () => {
+    let cards: GiftCard[] = [expiredCard()];
+    respondExpired({
+      cards: () => cards,
+      keep: function keep() {
+        cards = [keptCard()];
+        return { ok: true, data: cards[0] };
+      },
+    });
+    await mount();
+    await openFirstDetail();
+
+    expect(dialogElement()?.textContent).toContain("Срок брони истёк");
+    expect(dialogElement()?.textContent).toContain("Снять бронь");
+    expect(dialogElement()?.textContent).not.toContain("Отметить полученным");
+
+    await pressInDialog("Не получал, оставить бронь");
+    await settle(300);
+    await settle(10);
+
+    expect(keepCalls()).toHaveLength(1);
+    expect(dialogElement()?.textContent).not.toContain("Срок брони истёк");
+    expect(dialogElement()?.textContent).toContain("Снять бронь");
+  });
+});
+
+/**
  * Story 5.3 (FR-32, D-43): владелец отмечает желание полученным, отменяет это в
  * окне, копирует и удаляет закрытое; закрытые карточки лежат в свёрнутой секции
  * «Получено (N)» перед архивом. Окно отмены задаёт сервер (`undoUntil`), клиент

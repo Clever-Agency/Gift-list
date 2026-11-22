@@ -354,7 +354,7 @@
   evidence: Спека, «Отложено» п. 3 и «Открытый вопрос» 4; `schema.prisma` не содержит телефонных полей и `ContactMatch`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
-  summary: Настоящая гонка двух транзакций (инварианты 1, 7, 9) в CI не проверяется: `ci.yml` гоняет только `npm test`, а `verify:reserve-concurrency`, `verify:disposable-pg` и `verify:friendship-concurrency` требуют одноразового PostgreSQL. Консервативно ручной `npm run verify:reserve-concurrency` остаётся шагом перед merge Epic 5; добавление сервиса PostgreSQL в workflow — отдельное решение.
+  summary: Настоящая гонка двух транзакций (инварианты 1, 7, 9) в CI не проверяется: `ci.yml` гоняет только `npm test`, а `verify:reserve-concurrency`, `verify:disposable-pg` и `verify:friendship-concurrency` требуют одноразового PostgreSQL. Консервативно ручной `npm run verify:reserve-concurrency` остаётся шагом перед merge Epic 5; добавление сервиса PostgreSQL в workflow — отдельное решение. 2026-11-22 (CLE-87): ручной прогон на одноразовом PostgreSQL 18.7 (Docker, UTF8, 127.0.0.1): `verify:disposable-pg` 18/18, `verify:reserve-concurrency` 2/2, `verify:friendship-concurrency` 5/5; доказательства — `opencode-microtasks/fixup-F5-evidence-2026-11-22T005936.md`, `opencode-microtasks/4.1.1-R1-pg-evidence-2026-11-22T005946.md`. Подключение PostgreSQL к CI по-прежнему отдельное решение.
   evidence: Спека, «Отложено» п. 4 и «Открытый вопрос» 1; `db/disposable-pg/*.pgtest.ts` вне `vitest.config.ts`, `.github/workflows/ci.yml` без сервиса PostgreSQL; `timer-races.test.ts` проверяет сценарий на фейке.
 
 ## Deferred from: Story 6.2 — навигация приложения: вкладки, боковое меню, «назад» и ссылки (CLE-117, 2026-11-22)

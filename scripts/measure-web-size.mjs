@@ -86,9 +86,25 @@ import { gzipSync } from "node:zlib";
 // `ReservationVisibility` 626) и контракты брони в `gift.ts`. Новых
 // зависимостей, библиотек и иконок нет, дублей компонентов нет. Потолок +7 КиБ
 // минимальными шагами; запас 1 156 байт.
+// 216 КиБ (221 184) — CLE-117 / Story 6.2: навигация приложения подняла прирост
+// 209 788 → 220 247 (+10 459 байт, превышение 9 303 байта над 206 КиБ). Файлов
+// JS 23 вместо 20, новых зависимостей и целых библиотек нет: `package-lock.json`
+// и `package.json` с 28d2488 не менялись, `js-tabs`, `react-native-tab-view` и
+// `@react-navigation/bottom-tabs` в бандле нет (вкладки теперь headless из
+// `expo-router/ui`), дублей модулей нет — 1 521 модуль, все уникальны. Три новых
+// чанка: маршрут `/profile` (1 548 байт gzip: экран «Профиль» и `ProfileMenu`),
+// лэйаут группы `(app)` со `Stack` (326) и вкладки `(tabs)/_layout` (6 485). В
+// чанке вкладок 4 716 байт — код `expo-router/ui` (`useTabsWithTriggers`,
+// `TabList`, `TabSlot`, `TabTrigger`, `ExpoTabRouter`), 921 — `SidebarNav` и
+// `TAB_ITEMS`, остальное — сам лэйаут и служебные модули. Остальной рост в общем
+// чанке: шесть компонентов навигации (`NavItem`, `AppShell`, `SkipLink`,
+// `Sidebar`, `Badge`, `TabBar`) — 1 251 байт gzip, четыре иконки по одному
+// inline-SVG (`Heart`, `User`, `Users`, `CalendarCheck`) — 360, строки `app.nav`
+// и соседние ключи каталога — 198; словаря Material Symbols в JS нет. Потолок
+// +10 КиБ минимальными шагами; запас 937 байт.
 // В epics.md по-прежнему «150 КБ».
 export const BASE_GZIP_BYTES = 487_792;
-export const BUDGET_GROWTH_BYTES = 210_944;
+export const BUDGET_GROWTH_BYTES = 221_184;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

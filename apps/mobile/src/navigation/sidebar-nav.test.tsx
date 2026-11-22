@@ -120,6 +120,24 @@ function badge(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[data-testid="sidebar-nav-friends-badge"]');
 }
 
+/**
+ * A browser click on a link of the menu. The returned event shows whether the
+ * app took the click (`defaultPrevented`) or left it to the browser — that is
+ * exactly «перезагрузит страницу или нет».
+ */
+async function click(node: HTMLElement, init: MouseEventInit = {}): Promise<MouseEvent> {
+  const event = new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    ...init,
+  });
+  await act(async () => {
+    node.dispatchEvent(event);
+  });
+  return event;
+}
+
 /** The leaf element that shows exactly this text (the name or the `@ник` line). */
 function textNode(text: string): HTMLElement | undefined {
   return Array.from(document.querySelectorAll<HTMLElement>("span, div")).find(
@@ -242,6 +260,48 @@ describe("SidebarNav", () => {
       expect(card()).toBeNull();
     },
   );
+
+  it("обычный клик по пункту меню — переход в приложении, без перезагрузки", async () => {
+    await mount();
+
+    const event = await click(link("/reservations") as HTMLAnchorElement);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith("/reservations");
+  });
+
+  it.each([
+    ["Ctrl", { ctrlKey: true }],
+    ["Cmd", { metaKey: true }],
+    ["Shift", { shiftKey: true }],
+    ["средней кнопкой", { button: 1 }],
+  ] as const)("клик %s по пункту меню — браузеру, новой вкладке", async (_name, overrides) => {
+    await mount();
+
+    const event = await click(link("/friends") as HTMLAnchorElement, overrides);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  it("обычный клик по карточке пользователя — /profile в приложении", async () => {
+    await mount();
+
+    const event = await click(card() as HTMLElement);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(navigation.navigate).toHaveBeenCalledWith("/profile");
+  });
+
+  it("Ctrl-клик по карточке пользователя — браузеру", async () => {
+    await mount();
+
+    const event = await click(card() as HTMLElement, { ctrlKey: true });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(navigation.navigate).not.toHaveBeenCalled();
+  });
 
   it("displayName совпадает с именем компонента", () => {
     expect(SidebarNav.displayName).toBe("SidebarNav");

@@ -12,6 +12,7 @@ import { Platform } from "react-native";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { pressLink } from "@/navigation/link-press";
 import { TAB_ITEMS, sectionOf } from "@/navigation/tab-items";
 
 type SidebarUserCardProps = {
@@ -40,8 +41,10 @@ const USER_CARD_FRAME = {
  * the same actions (profile, settings, author, sign out) live as rows
  * (spec 6.2 → Open Question 4); the full popover menu is Story 6.3.
  *
- * The web half is a real `<a href>`; the phone navigates from the press. The
- * name is not clamped, so a long one wraps instead of losing its tail.
+ * The web half is a real `<a href>`; a plain left click goes through the router
+ * (`pressLink`) so the SPA is not reloaded, while a modified click still opens
+ * «Профиль» in a new tab. The phone navigates from the press. The name is not
+ * clamped, so a long one wraps instead of losing its tail.
  */
 function SidebarUserCard({ name, nick, testID }: SidebarUserCardProps) {
   function openProfile() {
@@ -61,7 +64,11 @@ function SidebarUserCard({ name, nick, testID }: SidebarUserCardProps) {
   );
 
   if (Platform.OS === "web") {
-    const link = { render: "a" as const, href: "/profile" };
+    const link = {
+      render: "a" as const,
+      href: "/profile",
+      onPress: pressLink("/profile"),
+    };
 
     return (
       <View {...link} testID={testID} {...USER_CARD_FRAME}>
@@ -139,7 +146,7 @@ export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
             selected={current}
             variant="side"
             href={section.href}
-            onPress={Platform.OS === "web" ? undefined : openSection}
+            onPress={Platform.OS === "web" ? pressLink(section.href) : openSection}
             testID={testID ? `${testID}-${section.key}` : `sidebar-nav-${section.key}`}
           />
         );

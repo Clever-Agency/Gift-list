@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { click, controlByText, dialogElement, settle } from "@/test/dom";
-import ReservationsScreen from "../../app/(app)/reservations";
+import ReservationsScreen from "../../app/(app)/(tabs)/reservations";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -255,6 +255,18 @@ describe("экран «Мои брони»", () => {
     expect(text()).toContain("Плед");
     expect(text()).toContain("у @anya");
     expect(text()).toContain("Вы берёте · до 01.12");
+  });
+
+  /**
+   * Story 6.2: «Брони» — корень вкладки. Ручной ссылки «К моему вишлисту» нет, за
+   * «назад» отвечает системная кнопка Android (она ведёт на «Вишлист»).
+   */
+  it("у корня вкладки нет ссылки «К моему вишлисту»", async () => {
+    respond(listAnswer([card()]));
+    await mount();
+
+    expect(container.querySelector('[data-testid="reservations-back"]')).toBeNull();
+    expect(text()).not.toContain("К моему вишлисту");
   });
 
   it("пустой список — «Броней нет» с подсказкой", async () => {

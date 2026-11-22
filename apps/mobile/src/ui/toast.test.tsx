@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AppShell, spacing } from "@gift-list/ui";
 import {
   TOAST_FADE_MS,
   TOAST_MIN_MS,
@@ -9,6 +10,61 @@ import {
   ToastHost,
   toastDurationMs,
 } from "@/ui/toast";
+
+/**
+ * Story 6.2: `ToastHost` stands above the bottom tabs, and the bar height comes
+ * from the `AppShell` context. `@tamagui/web` captures `window.matchMedia` when it
+ * is first imported, so the controllable mock is installed before the imports
+ * above (hence `vi.hoisted`): 360 px means the bar is on screen (56 px inset).
+ */
+const windowMedia = vi.hoisted(() => {
+  let width = 360;
+  const listeners = new Set<() => void>();
+
+  function matches(query: string): boolean {
+    const found = /min-width:\s*(\d+)px/.exec(query);
+    if (!found) return false;
+    return width >= Number(found[1]);
+  }
+
+  function matchMedia(query: string) {
+    return {
+      media: query,
+      get matches() {
+        return matches(query);
+      },
+      addListener(listener: () => void) {
+        listeners.add(listener);
+      },
+      removeListener(listener: () => void) {
+        listeners.delete(listener);
+      },
+      addEventListener(_: string, listener: () => void) {
+        listeners.add(listener);
+      },
+      removeEventListener(_: string, listener: () => void) {
+        listeners.delete(listener);
+      },
+      dispatchEvent() {
+        return false;
+      },
+      onchange: null,
+    };
+  }
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: matchMedia,
+  });
+
+  return {
+    setWidth(value: number) {
+      width = value;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+});
 
 const ACTION = "Отменить";
 
@@ -557,6 +613,46 @@ describe("ToastHost: фокус, который поставил экран", ()
 
     advance(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ToastHost: высота панели вкладок", () => {
+  it("внутри AppShell тост поднят над вкладками: 56 px сверх обычного отступа", async () => {
+    windowMedia.setWidth(360);
+    await act(async () => {
+      host.render(
+        <AppShell skipLabel="Перейти к содержимому">
+          <ToastHost message="Сохранено" tone="info" onDismiss={onDismiss} />
+        </AppShell>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const toast = element('[data-testid="toast-host"]');
+    expect(getComputedStyle(toast).bottom).toBe(
+      `${spacing["page-gutter"] + spacing["tab-bar"]}px`,
+    );
+    // The skip link and the one `main` landmark come with the shell, not the toast.
+    expect(container.querySelector("main#main-content")).not.toBeNull();
+  });
+
+  it("от 1024 px панели нет: смещение прежнее", async () => {
+    windowMedia.setWidth(1280);
+    await act(async () => {
+      host.render(
+        <AppShell skipLabel="Перейти к содержимому">
+          <ToastHost message="Сохранено" tone="info" onDismiss={onDismiss} />
+        </AppShell>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const toast = element('[data-testid="toast-host"]');
+    expect(getComputedStyle(toast).bottom).toBe(`${spacing["page-gutter"]}px`);
   });
 });
 

@@ -27,6 +27,12 @@ export { SafeArea } from "./safe-area";
 export type { SafeAreaProps } from "./safe-area.types";
 export { PageScroll, type PageScrollProps } from "./page-scroll";
 export { PageFooter, type PageFooterProps } from "./page-footer";
+export { Badge, type BadgeProps } from "./badge";
+export { NavItem, type NavItemProps, type NavItemVariant } from "./nav-item";
+export { TabBar, type TabBarProps } from "./tab-bar";
+export { Sidebar, type SidebarProps } from "./sidebar";
+export { AppShell, type AppShellProps, useTabBarInset } from "./app-shell";
+export { SkipLink, type SkipLinkProps } from "./skip-link";
 export { Heading, LinkText, Text, type HeadingProps, type TextProps } from "./text";
 export { ScrollView, type ScrollViewProps } from "./scroll";
 export { focusRing } from "./focus-ring";
@@ -40,7 +46,23 @@ export {
   type IconButtonSize,
   type IconButtonVariant,
 } from "./icon-button";
-export { AlertTriangle, Check, CheckCircle, CircleAlert, Close, Eye, EyeOff, Info, Moon, Search, Star } from "./icons";
+export {
+  AlertTriangle,
+  CalendarCheck,
+  Check,
+  CheckCircle,
+  CircleAlert,
+  Close,
+  Eye,
+  EyeOff,
+  Heart,
+  Info,
+  Moon,
+  Search,
+  Star,
+  User,
+  Users,
+} from "./icons";
 export { Photo, type PhotoProps } from "./photo";
 export { PhotoPlaceholder, type PhotoPlaceholderProps } from "./photo-placeholder";
 export {

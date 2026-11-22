@@ -977,15 +977,6 @@ export default function MyWishlistScreen() {
     return actions;
   }
 
-  async function endSession() {
-    const result = await auth.signOut();
-    if (!result.ok) setToast({ message: t("form.network"), tone: "error" });
-  }
-
-  function signOut() {
-    void endSession();
-  }
-
   function openVisibilityPicker(gift: GiftCard) {
     // A second tap while the save is in flight must not open the dialog again over
     // the optimistic value.
@@ -1172,18 +1163,6 @@ export default function MyWishlistScreen() {
     setVisibilityConfirm(null);
   }
 
-  function openSettings() {
-    // NOTE FOR UX: временный вход в «Настройки» до Story 6.2, где они появятся
-    // в «Профиле» (DESIGN.md:443, UX-A13).
-    router.push("/settings");
-  }
-
-  function openReservations() {
-    // NOTE FOR UX: временный вход в «Мои брони» до Story 6.2, где брони станут
-    // вкладкой «Брони» (Story 5.5, DESIGN.md → ReservationCard).
-    router.push("/reservations");
-  }
-
   function closeArchiveMenu() {
     setArchiveMenu(null);
     setRestoreStep(false);
@@ -1288,18 +1267,6 @@ export default function MyWishlistScreen() {
     setToast({ message: giftForm("error.form"), tone: "error" });
   }
 
-  function openSearch() {
-    // NOTE FOR UX: временный вход в «Поиск» до Story 6.2, где постоянное место —
-    // вкладка «Поиск» (DESIGN.md:449, UX-A13).
-    router.push("/search");
-  }
-
-  function openFriends() {
-    // NOTE FOR UX: временный вход в «Друзья» до Story 6.2, где постоянное место —
-    // вкладка «Друзья» в нижней навигации (DESIGN.md:455, UX-A13).
-    router.push("/friends");
-  }
-
   function handleVisibilitySelect(next: GiftCard["visibility"]) {
     if (picker) void changeVisibility(picker.gift, next);
   }
@@ -1390,7 +1357,9 @@ export default function MyWishlistScreen() {
 
   return (
     <Screen>
-      <SafeArea>
+      {/* Inside a tab: the bottom bar holds the home indicator, so this screen
+          takes the other three edges only (spec 6.2 → SafeArea bottom={false}). */}
+      <SafeArea bottom={false}>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
         <PageScroll testID="wishlist-page">
           <PageContainer>
@@ -1546,76 +1515,10 @@ export default function MyWishlistScreen() {
                 )}
               </YStack>
 
-              <SiteFooter
-                actions={
-                  <>
-                    <Pressable
-                      role="button"
-                      testID="wishlist-logout"
-                      onPress={signOut}
-                      minHeight="$touch-target"
-                      minWidth="$touch-target"
-                      justifyContent="center"
-                    >
-                      <Text kind="button" tone="destructive">
-                        {wishlist("logout")}
-                      </Text>
-                    </Pressable>
-                    {/* Temporary entry point: search becomes a tab in Story 6.2. */}
-                    <Pressable
-                      role="button"
-                      testID="wishlist-search"
-                      onPress={openSearch}
-                      minHeight="$touch-target"
-                      minWidth="$touch-target"
-                      justifyContent="center"
-                    >
-                      <Text kind="button" tone="primary">
-                        {wishlist("search")}
-                      </Text>
-                    </Pressable>
-                    {/* Temporary entry point: friends become a tab in Story 6.2. */}
-                    <Pressable
-                      role="button"
-                      testID="wishlist-friends"
-                      onPress={openFriends}
-                      minHeight="$touch-target"
-                      minWidth="$touch-target"
-                      justifyContent="center"
-                    >
-                      <Text kind="button" tone="primary">
-                        {wishlist("friends")}
-                      </Text>
-                    </Pressable>
-                    {/* Temporary entry point: «Мои брони» becomes a tab in Story 6.2. */}
-                    <Pressable
-                      role="button"
-                      testID="wishlist-reservations"
-                      onPress={openReservations}
-                      minHeight="$touch-target"
-                      minWidth="$touch-target"
-                      justifyContent="center"
-                    >
-                      <Text kind="button" tone="primary">
-                        {t("reservations.title")}
-                      </Text>
-                    </Pressable>
-                    {/* Temporary entry point: the settings live in «Профиль» from Story 6.2. */}
-                    <Pressable
-                      role="button"
-                      testID="wishlist-settings"
-                      onPress={openSettings}
-                      minHeight="$touch-target"
-                      minWidth="$touch-target"
-                      justifyContent="center"
-                    >
-                      <Text kind="button" tone="primary">
-                        {wishlist("settings")}
-                      </Text>
-                    </Pressable>
-                  </>
-                }
-              />
+              {/* Story 6.2: «Выйти» and the temporary section links moved to the
+                  «Профиль» tab and the navigation; the footer keeps «Написать
+                  автору» only. */}
+              <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>

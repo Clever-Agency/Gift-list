@@ -12,7 +12,6 @@ import {
   PageScroll,
   PersonRow,
   PersonRowSkeleton,
-  Pressable,
   SafeArea,
   Screen,
   SearchField,
@@ -485,19 +484,14 @@ function SearchScreenContent({
   // value, so the screen compares the nick with the session like the profile.
   const viewerNick = auth.state.status === "ready" ? auth.state.user.nick : null;
 
-  function goBack() {
-    // A direct link has no history behind it: fall back to the wishlist.
-    if (router.canGoBack()) router.back();
-    else router.replace("/");
-  }
-
   function dismissToast() {
     setToast(null);
   }
 
   return (
     <Screen>
-      <SafeArea>
+      {/* A tab root: the bottom bar holds the home indicator (spec 6.2). */}
+      <SafeArea bottom={false}>
         <Stack.Screen options={{ title: search("pageTitle", { brand }) }} />
         <PageScroll testID="search-page" keyboardShouldPersistTaps="handled">
           <PageContainer>
@@ -511,19 +505,6 @@ function SearchScreenContent({
               paddingTop="$page-gutter"
               gap="$2"
             >
-              <Pressable
-                role="button"
-                aria-label={search("back")}
-                onPress={goBack}
-                alignSelf="flex-start"
-                justifyContent="center"
-                minHeight="$touch-target"
-                minWidth="$touch-target"
-              >
-                <Text kind="button" tone="primary">
-                  {search("back")}
-                </Text>
-              </Pressable>
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>

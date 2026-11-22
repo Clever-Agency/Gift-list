@@ -9,7 +9,7 @@ import { controls, dialogElement, pressScrim, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
-import MyWishlistScreen from "../../app/(app)/index";
+import MyWishlistScreen from "../../app/(app)/(tabs)/index";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -872,30 +872,13 @@ describe("мой вишлист: список", () => {
     expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
   });
 
-  it("«Выйти» при обрыве сети оставляет человека на экране и показывает toast", async () => {
-    respond(giftsAnswer([]));
-    await mount();
-
-    api.apiRequest.mockImplementation((path: string) =>
-      Promise.resolve(
-        path === "/api/v1/session" ? { ok: false, network: true } : giftsAnswer([]),
-      ),
-    );
-    await press("Выйти");
-
-    expect(store.clearSessionToken).not.toHaveBeenCalled();
-    expect(navigation.replace).not.toHaveBeenCalled();
-    expect(text()).toContain("Мой вишлист");
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-  });
-
   /**
    * Review m4. `pointerEvents` is a View prop: in a style object react-native-web
    * drops it, the full-width overlay then swallows touches meant for the screen.
-   * The footer now scrolls with the page, so the toast keeps the plain bottom
-   * offset and no longer needs the old pinned-row clearance; «Выйти» stays usable.
+   * The footer scrolls with the page, so the toast keeps the plain bottom offset;
+   * a control under the toast stays usable.
    */
-  it("toast: pointerEvents — проп, а не стиль, и «Выйти» под toast остаётся нажимаемой", async () => {
+  it("toast: pointerEvents — проп, а не стиль, и кнопка под toast остаётся нажимаемой", async () => {
     respond({ ok: false, network: true });
     await mount();
 
@@ -912,157 +895,41 @@ describe("мой вишлист: список", () => {
     expect(hostStyle.bottom).toBe(`${spacing["page-gutter"]}px`);
 
     // And the control still works while the toast is on screen.
-    api.apiRequest.mockImplementation((path: string) =>
-      Promise.resolve(
-        path === "/api/v1/session"
-          ? { ok: true, data: { signedOut: true } }
-          : { ok: false, network: true },
-      ),
-    );
-    await press("Выйти");
-
-    expect(store.clearSessionToken).toHaveBeenCalled();
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/" },
-    });
+    await press("Повторить");
+    expect(listReads()).toBe(2);
   });
 
-  /** The footer button goes through the auth context, which owns the session call. */
-  it("«Выйти» вызывает signOut контекста: DELETE /api/v1/session", async () => {
+  /** Story 6.2: «Выйти» lives in «Профиль» now; the wishlist has no session call. */
+  it("на «Моём вишлисте» нет «Выйти»: сессию завершает только «Профиль»", async () => {
     respond(giftsAnswer([]));
     await mount();
 
-    api.apiRequest.mockImplementation((path: string) =>
-      Promise.resolve(
-        path === "/api/v1/session" ? { ok: true, data: { signedOut: true } } : giftsAnswer([]),
-      ),
-    );
-    await press("Выйти");
-
-    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/session", { method: "DELETE" });
-    expect(store.clearSessionToken).toHaveBeenCalledTimes(1);
-  });
-
-  it("«Выйти» при живой сессии открывает вход", async () => {
-    respond(giftsAnswer([]));
-    await mount();
-
-    api.apiRequest.mockImplementation((path: string) =>
-      Promise.resolve(
-        path === "/api/v1/session" ? { ok: true, data: { signedOut: true } } : user,
-      ),
-    );
-    await press("Выйти");
-
-    expect(store.clearSessionToken).toHaveBeenCalled();
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/" },
-    });
-    expect(text()).not.toContain("Мой вишлист");
-  });
-
-  it("«Выйти» при уже погашенной сессии всё равно открывает вход", async () => {
-    respond(giftsAnswer([]));
-    await mount();
-
-    api.apiRequest.mockImplementation((path: string) =>
-      Promise.resolve(
-        path === "/api/v1/session"
-          ? { ok: false, code: "UNAUTHENTICATED", message: "" }
-          : path === "/api/v1/me"
-            ? { ok: true, data: user }
-            : giftsAnswer([]),
-      ),
-    );
-    await press("Выйти");
-
-    expect(store.clearSessionToken).toHaveBeenCalled();
-    expect(navigation.replace).toHaveBeenCalledWith({
-      pathname: "/login",
-      params: { next: "/" },
-    });
+    expect(button("Выйти")).toBeUndefined();
+    expect(api.apiRequest).not.toHaveBeenCalledWith("/api/v1/session", { method: "DELETE" });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
   });
 
   /**
    * Story 3.5 creates «Поиск» before Story 6.2 gives it a place in the navigation
    * (вкладка «Поиск»), so the wishlist footer carries a temporary entry point.
    */
-  it("в подвале есть «Поиск», нажатие открывает /search", async () => {
+  it("в подвале «Моего вишлиста» нет временных разделов и «Выйти», «Написать автору» остаётся", async () => {
     respond(giftsAnswer([]));
     await mount();
 
     const footer = container.querySelector('[data-testid="page-footer"]');
-    const search = footer?.querySelector('[data-testid="wishlist-search"]');
-    expect(search?.textContent).toContain("Поиск");
+    expect(footer).not.toBeNull();
+    // Story 6.2: the sections moved to the tabs, the sign-out to «Профиль».
+    for (const gone of ["wishlist-search", "wishlist-friends", "wishlist-reservations", "wishlist-settings", "wishlist-logout"]) {
+      expect(footer?.querySelector(`[data-testid="${gone}"]`)).toBeNull();
+    }
+    expect(footer?.textContent).not.toContain("Выйти");
+    expect(footer?.textContent).toContain("Написать автору");
 
-    await act(async () => {
-      search?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(navigation.push).toHaveBeenCalledWith("/search");
+    // Nothing of the footer navigates: the tabs and «Профиль» own the routes now.
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 
-  /**
-   * Story 3.1 creates «Настройки» before Story 6.2 gives them a place in the
-   * navigation (Профиль → Настройки), so the wishlist footer carries a temporary
-   * entry point.
-   */
-  it("в подвале есть «Настройки», нажатие открывает /settings", async () => {
-    respond(giftsAnswer([]));
-    await mount();
-
-    const footer = container.querySelector('[data-testid="page-footer"]');
-    const settings = footer?.querySelector('[data-testid="wishlist-settings"]');
-    expect(settings?.textContent).toContain("Настройки");
-
-    await act(async () => {
-      settings?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(navigation.push).toHaveBeenCalledWith("/settings");
-  });
-
-  /**
-   * Story 4.3 creates «Друзья» before Story 6.2 gives them a place in the
-   * navigation (вкладка «Друзья»), so the wishlist footer carries a temporary
-   * entry point.
-   */
-  it("в подвале есть «Друзья», нажатие открывает /friends", async () => {
-    respond(giftsAnswer([]));
-    await mount();
-
-    const footer = container.querySelector('[data-testid="page-footer"]');
-    const friends = footer?.querySelector('[data-testid="wishlist-friends"]');
-    expect(friends?.textContent).toContain("Друзья");
-
-    await act(async () => {
-      friends?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(navigation.push).toHaveBeenCalledWith("/friends");
-  });
-
-  /**
-   * Story 5.5 creates «Мои брони» before Story 6.2 gives them a place in the
-   * navigation (вкладка «Брони»), so the wishlist footer carries a temporary
-   * entry point.
-   */
-  it("в подвале есть «Мои брони», нажатие открывает /reservations", async () => {
-    respond(giftsAnswer([]));
-    await mount();
-
-    const footer = container.querySelector('[data-testid="page-footer"]');
-    const reservations = footer?.querySelector('[data-testid="wishlist-reservations"]');
-    expect(reservations?.textContent).toContain("Мои брони");
-
-    await act(async () => {
-      reservations?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(navigation.push).toHaveBeenCalledWith("/reservations");
-  });
 });
 
 /**

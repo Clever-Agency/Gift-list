@@ -52,6 +52,18 @@
   "session": {
     "expired": "Сессия закончилась, войдите снова"
   },
+  "nav": {
+    "sections": "Разделы",
+    "wishlist": "Мой вишлист",
+    "wishlistTab": "Вишлист",
+    "search": "Поиск",
+    "friends": "Друзья",
+    "reservations": "Мои брони",
+    "reservationsTab": "Брони",
+    "profile": "Профиль",
+    "myProfile": "Мой профиль",
+    "friendsBadge": "Друзья, {count, plural, one {# запрос} few {# запроса} many {# запросов} other {# запроса}}"
+  },
   "appVersion": {
     "soft": {
       "title": "Доступно обновление",

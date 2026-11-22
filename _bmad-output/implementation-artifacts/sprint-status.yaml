@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-11-20'
+last_updated: '2026-11-22'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -84,12 +84,12 @@ development_status:
   5-5-мои-брони-продление-купил-видимость-reservation-card: review # CLE-119: typecheck/lint/test/build зелёные, ревью координатора + R1; ручная проверка с данными не делалась; не done до приёмки человеком
   5-6-цикл-истечения-срока-брони-cron: review
   5-7-подарил-и-подтверждение-получения-владельцем: backlog
-  5-8-обязательные-автотесты-инвариантов-ad-15: backlog
+  5-8-обязательные-автотесты-инвариантов-ad-15: review
   epic-5-retrospective: optional
 
   epic-6: backlog
   6-1-уведомления-in-app-и-email-каналы: backlog
-  6-2-навигация-приложения: backlog # UX-спека приложения готова 2026-10-28
+  6-2-навигация-приложения: review # UX-спека приложения готова 2026-10-28; реализовано 2026-11-22, ждёт ревью/merge
   6-3-настройки-контакт-автора-и-удаление-аккаунта: backlog
   6-4-доступность-ключевых-потоков: backlog
   6-5-приложение-в-браузере-на-одном-домене-с-next-js: backlog

@@ -83,6 +83,11 @@ export const List: Story = {
   args: base,
 };
 
+/** Корень вкладки «Брони»: ссылки «К моему вишлисту» нет, панель держит safe area. */
+export const WithoutBack: Story = {
+  args: { ...base, onBack: undefined },
+};
+
 /** Пустой список: «Броней нет» и подсказка про «Куплю сам». */
 export const Empty: Story = {
   args: { ...base, state: { status: "ready", reservations: [] } },

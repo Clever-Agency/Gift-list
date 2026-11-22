@@ -464,12 +464,6 @@ function ReservationsContent({
     router.push({ pathname: "/gifts/[id]", params: { id: card.giftId } });
   }
 
-  function goBack() {
-    // A direct link has no history behind it: fall back to the wishlist.
-    if (router.canGoBack()) router.back();
-    else router.replace("/");
-  }
-
   function dismissToast() {
     setToast(null);
   }
@@ -481,7 +475,6 @@ function ReservationsContent({
         expanded={expanded}
         busyIds={busyIds}
         onRetry={retry}
-        onBack={goBack}
         onOpenGift={openGift}
         onMenu={openMenu}
         onExtend={openExtend}

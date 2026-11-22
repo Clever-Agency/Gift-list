@@ -4,7 +4,7 @@ import { act, cloneElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
-import SearchScreen from "../../app/(app)/search";
+import SearchScreen from "../../app/(app)/(tabs)/search";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const search = vi.hoisted(() => ({ searchUsers: vi.fn() }));
@@ -288,6 +288,21 @@ describe("поиск: до ввода", () => {
 
     expect(text()).toContain("Найдите человека по нику или имени.");
     expect(search.searchUsers).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Story 6.2: «Поиск» is a tab root — a root has no history of its own, so the
+   * manual «Назад» is gone and the system back opens «Вишлист».
+   */
+  it("у корня вкладки нет ручной ссылки «Назад»", async () => {
+    signedIn();
+    await mount();
+
+    expect(container.querySelector('[aria-label="Назад"]')).toBeNull();
+    const back = Array.from(
+      container.querySelectorAll<HTMLElement>('button, [role="button"], [role="link"]'),
+    ).filter((node) => (node.textContent ?? "").trim() === "Назад");
+    expect(back).toHaveLength(0);
   });
 
   it("пробелы и одинокий @ — всё ещё «до ввода», без запроса", async () => {

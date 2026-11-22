@@ -1,4 +1,4 @@
-import { Toast, type FocusTarget, type ToastTone } from "@gift-list/ui";
+import { Toast, useTabBarInset, type FocusTarget, type ToastTone } from "@gift-list/ui";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { AccessibilityInfo, Platform } from "react-native";
 import { useTranslations } from "use-intl";
@@ -107,6 +107,13 @@ export function ToastHost({
   dismissible?: boolean;
 }) {
   const t = useTranslations("app.toast");
+  /**
+   * Story 6.2: the screen sits inside `AppShell`, and the bottom tabs take the
+   * lower strip (56 px on compact and medium, 0 on expanded and outside the shell).
+   * The toast stands above them, so its own offset grows by that height; on nested
+   * screens the context is 0 and nothing moves.
+   */
+  const tabBarInset = useTabBarInset();
   const stays = persistent ?? tone === "error";
   const hasAction = action != null;
 
@@ -272,7 +279,7 @@ export function ToastHost({
       actionRef={actionRef}
       loading={loading}
       dismissible={dismissible}
-      offsetBottom={offsetBottom}
+      offsetBottom={offsetBottom + tabBarInset}
       visible={!leaving}
       onHoverChange={setHovered}
       onFocusChange={handleFocusChange}

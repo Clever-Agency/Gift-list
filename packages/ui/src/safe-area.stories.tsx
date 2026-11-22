@@ -39,6 +39,26 @@ export const ScreenFrame: Story = {
   globals: { viewport: { value: "w360" } },
 };
 
+/**
+ * The frame of a screen inside the tab bar: `bottom={false}` leaves the home
+ * indicator to the bar, so the inset is not folded twice. In the browser every
+ * inset is 0 and the frame looks the same; on a phone the bottom edge is dropped.
+ */
+export const TabScreenWithoutBottom: Story = {
+  render: function TabScreenWithoutBottomStory() {
+    return (
+      <Screen width={360} height={420}>
+        <SafeArea bottom={false}>
+          <Text kind="caption" tone="muted" padding="$2">
+            Экран вкладки: нижний inset держит панель вкладок, не этот кадр
+          </Text>
+        </SafeArea>
+      </Screen>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
 /** Long Cyrillic copy inside the frame at 360 px: the column grows, nothing is clipped. */
 export const LongTextNarrow: Story = {
   render: function LongTextNarrowStory() {

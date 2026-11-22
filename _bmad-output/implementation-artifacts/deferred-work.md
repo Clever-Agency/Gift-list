@@ -356,3 +356,73 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
   summary: Настоящая гонка двух транзакций (инварианты 1, 7, 9) в CI не проверяется: `ci.yml` гоняет только `npm test`, а `verify:reserve-concurrency`, `verify:disposable-pg` и `verify:friendship-concurrency` требуют одноразового PostgreSQL. Консервативно ручной `npm run verify:reserve-concurrency` остаётся шагом перед merge Epic 5; добавление сервиса PostgreSQL в workflow — отдельное решение.
   evidence: Спека, «Отложено» п. 4 и «Открытый вопрос» 1; `db/disposable-pg/*.pgtest.ts` вне `vitest.config.ts`, `.github/workflows/ci.yml` без сервиса PostgreSQL; `timer-races.test.ts` проверяет сценарий на фейке.
+
+## Deferred from: Story 6.2 — навигация приложения: вкладки, боковое меню, «назад» и ссылки (CLE-117, 2026-11-22)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Раздел «Уведомления» не показывается: ни вкладки, ни маршрута `/notifications`, ни колокольчика в шапке, ни badge уведомлений. AC Story 6.2 в этой части закрывается только Story 6.1, которая заводит `Notification` и центр уведомлений; место в `AppShell`/`SidebarNav` для нового пункта оставлено.
+  evidence: Спека, «Открытый вопрос» 1 и «Отложено» п. 1; в `tab-items.ts` закрытый список из пяти разделов, в `app/(app)/(tabs)/` нет `notifications`, `SidebarNav` рисует только `TAB_ITEMS`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: «Подборки» в «Профиле» и маршрут `/collections` не делаются — Story 10.1.
+  evidence: Спека, «Открытый вопрос» 2 и «Отложено» п. 2; `apps/mobile/src/ui/profile-menu.tsx` содержит только «Мой профиль», «Настройки», «Написать автору» и «Выйти».
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: «Недавние вишлисты» в боковом меню не появляются: история просмотренных вишлистов нигде не хранится, источника данных нет ни в одном документе. Пункт вернётся вместе с данными/Story 6.5.
+  evidence: Спека, «Открытый вопрос» 5 и «Отложено» п. 3; `SidebarNav` строится из `TAB_ITEMS` и карточки пользователя, отдельного списка нет.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Полный user-menu бокового меню (email, профиль, настройки, автор, выход в popover) не делается — Story 6.3. Сейчас карточка пользователя (Avatar, имя, `@ник`) — простая ссылка на вкладку «Профиль», где те же действия стоят строками.
+  evidence: Спека, «Открытый вопрос» 4 и «Отложено» п. 4; `apps/mobile/src/navigation/sidebar-nav.tsx` передаёт карточку как ссылку `/profile`, `OverflowMenu` на desktop не используется.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Правая колонка `wide` с подсказкой установки не делается — Story 6.5 (UX-DR11). `AppShell` от 1024 px показывает боковое меню и растягивает контент, третьей колонки нет.
+  evidence: Спека, «Never» и «Отложено» п. 5; `packages/ui/src/app-shell.tsx` переключает только `media.expanded` (меню/вкладки), `media.wide` не используется.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Per-tab stacks и видимая подсветка вкладки на вложенных экранах (настройки, чужой профиль, деталь) не делаются: вложенные экраны живут в общем `Stack` поверх вкладок, панель там скрыта. Это открытый вопрос, а не AC 6.2.
+  evidence: Спека, «Открытый вопрос» 3 и «Отложено» п. 6; `apps/mobile/app/(app)/_layout.tsx` — один `Stack`, `settings`, `gifts/*` и `u/:nick` не входят в `(tabs)`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: «Залитых» (filled) иконок активной вкладки нет: в наборе только stroke-глифы, активность несут полоса 3 px, вес 600 и цвет `primary`. Filled-варианты — отдельная история иконок, если UX настоит.
+  evidence: Спека, «Открытый вопрос» 7; `packages/ui/src/icons/Heart.tsx` и соседи — один stroke-глиф, `NavItem` не меняет иконку при `selected`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Push, периодический опрос и real-time badge/уведомлений не делаются: число запросов читается один раз при появлении оболочки и повторно после собственных действий и `refresh()` из «Друзей». Число от других пользователей обновится при следующем запуске — Story 6.1.
+  evidence: Спека, «Открытый вопрос» 6 и «Отложено» п. 8; `apps/mobile/src/navigation/invite-badge.tsx` без polling/`AppState`/push.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Двухпанельные «Друзья» на `wide` (`FriendsTwoPane`) не делаются: нет запроса вишлиста выбранного друга. Появится вместе с этими данными.
+  evidence: Спека, «Отложено» п. 9; `apps/mobile/app/(app)/(tabs)/friends.tsx` и `friends-screen.tsx` рисуют один список с сегментами на всех ширинах.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Настоящая проверка App Links/Universal Links в сторах не делается: отпечатки `ANDROID_SHA256_CERT_FINGERPRINTS`, `APPLE_TEAM_ID`, публикация и ассоциации на устройстве — CLE-108/CLE-85 и выкладка. Story 6.2 добавляет только маршруты-двойники `app/l/[token].tsx` и `app/i/[token].tsx`; `.well-known` и `app.config.ts` уже были настроены и не менялись.
+  evidence: Спека, «Отложено» п. 10; `apps/mobile/app/l/[token].tsx` и `app/i/[token].tsx` — re-export существующих экранов, `app.config.ts` и `apps/web/.well-known` вне diff.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Стрелка «Назад» в шапке и общая шапка приложения не делаются — Story 6.3/6.4. Вложенные экраны по-прежнему показывают текстовое «Назад», корни вкладок его не показывают.
+  evidence: Спека, «Открытый вопрос» 12 и «Отложено» п. 11; `AppHeader` не заведён, `(app)/gifts/*` и `(app)/settings.tsx` используют прежние заголовки `Stack.Screen`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Отдельный `countOnly`-маршрут счётчика входящих запросов не заводится: badge переиспользует `fetchInvites`, который тянет обе страницы запросов (по 15). Оптимизация — после Story 6.1, если станет заметна цена запроса при старте оболочки.
+  evidence: Спека, «Открытый вопрос» 6 и «Отложено» п. 12; `GET /api/v1/me/invites` отдаёт `incomingCount` вместе со страницами, `fetchInvites` читает их целиком, серверных изменений 6.2 нет.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Сквозной прогон нативных вкладок, системного «назад» и App Links на устройстве не делался: в CI только unit-тесты, `typecheck` и `lint`, а эмулятор/dev-сборка в ночном заходе не запускались. Проверку на Android/iOS делает человек; при находках — Story 6.4 или отдельная задача.
+  evidence: Спека, «Отложено» п. 13 и «Manual checks»; `apps/mobile/src/navigation/app-link-routes.test.tsx` проверяет тождество экранов и чтение `token`, нативные переходы и ассоциации — только вручную.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Тост на экране вкладки поднимается ровно на 56 px (высота панели из контекста `AppShell`), без нижнего safe area панели. На iPhone с home indicator тост может заходить на её отступ (~34 px). Поднимать ли на `insets.bottom` — решение UX/координатора, меняет `AppShell` волны A.
+  evidence: Отчёт волны D (`T10-report.md`, «Риски» и «Открытые вопросы» 1); `apps/mobile/src/ui/toast.tsx` прибавляет `useTabBarInset()` (56 или 0) к `offsetBottom`, `packages/ui/src/app-shell.tsx` публикует `spacing["tab-bar"]` без safe area.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Badge «Друзья» после блокировки человека с входящим запросом может остаться завышенным до следующего действия или запуска: `refresh()` вызывается только после принять/отклонить/отменить, как в спеке. Решить, нужен ли пересчёт после блокировки.
+  evidence: Отчёт волны D (`T10-report.md`, «Риски» и «Открытые вопросы» 2); `apps/mobile/app/(app)/(tabs)/friends.tsx` зовёт `useInviteBadgeOptional().refresh()` только в обработчиках ответов на запрос.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: `document.title` у экранов вкладок не проверен в браузере: `Stack.Screen options={{ title }}` внутри `Tabs` может не обновлять заголовок. Это открытый вопрос 11 спеки и долг 6.4, а не AC 6.2.
+  evidence: Отчёт волны D (`T10-report.md`, «Риски»); экраны вкладок по-прежнему задают заголовок через `Stack.Screen`, а ближайший навигатор внутри `(tabs)` — `Tabs`, не `Stack`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Прежние ключи каталога `app.myWishlist.logout`, `app.myWishlist.search`, `app.myWishlist.friends`, `app.myWishlist.settings` больше не используются экраном «Мой вишлист» (строки и «Выйти» ушли в «Профиль»), но остаются в `app.json`. Удалять их или оставить ради совместимости — решение координатора/волны A; 6.2 каталог не трогает.
+  evidence: Отчёт волны D (`T10-report.md`, «Новые тексты интерфейса»); `apps/mobile/app/(app)/(tabs)/index.tsx` больше не ссылается на эти ключи, `packages/contracts/src/i18n/ru/app.json` вне diff подзадач E/F.

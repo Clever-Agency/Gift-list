@@ -35,7 +35,12 @@ export type ReservationsScreenProps = {
   /** The cards with a request in flight; every other card stays usable. */
   busyIds: ReadonlySet<string>;
   onRetry: () => void;
-  onBack: () => void;
+  /**
+   * The «К моему вишлисту» link of a nested screen. «Брони» is a tab root now, so
+   * the route passes nothing and the footer link is not drawn (spec 6.2 →
+   * TAB_ROOT_NO_BACK); a standalone preview may still hand one in.
+   */
+  onBack?: () => void;
   onOpenGift: (card: ReservationCardData) => void;
   onMenu: (card: ReservationCardData) => void;
   onExtend: (card: ReservationCardData) => void;
@@ -128,7 +133,8 @@ export function ReservationsScreen({
 
   return (
     <Screen>
-      <SafeArea>
+      {/* A tab root (spec 6.2): the bottom bar holds the home indicator. */}
+      <SafeArea bottom={false}>
         <Stack.Screen options={{ title: t("pageTitle", { brand }) }} />
         <PageScroll testID="reservations-page">
           <PageContainer>
@@ -139,20 +145,22 @@ export function ReservationsScreen({
               paddingTop="$page-gutter"
               gap="$2"
             >
-              <Pressable
-                role="button"
-                aria-label={tGift("backToList")}
-                onPress={onBack}
-                alignSelf="flex-start"
-                justifyContent="center"
-                minHeight="$touch-target"
-                minWidth="$touch-target"
-                testID="reservations-back"
-              >
-                <Text kind="button" tone="primary">
-                  {tGift("backToList")}
-                </Text>
-              </Pressable>
+              {onBack ? (
+                <Pressable
+                  role="button"
+                  aria-label={tGift("backToList")}
+                  onPress={onBack}
+                  alignSelf="flex-start"
+                  justifyContent="center"
+                  minHeight="$touch-target"
+                  minWidth="$touch-target"
+                  testID="reservations-back"
+                >
+                  <Text kind="button" tone="primary">
+                    {tGift("backToList")}
+                  </Text>
+                </Pressable>
+              ) : null}
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>

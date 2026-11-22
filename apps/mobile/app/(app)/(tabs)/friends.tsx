@@ -49,6 +49,7 @@ import {
   type SubscriptionView,
 } from "@/friends/subscription-view.types";
 import { readSubscriptionView, writeSubscriptionView } from "@/friends/subscription-view";
+import { useInviteBadgeOptional } from "@/navigation/invite-badge";
 import { requestBlock } from "@/profile/block-action";
 import { BlockConfirm } from "@/profile/block-confirm";
 import { profileRoute } from "@/profile/profile-route";
@@ -162,6 +163,10 @@ function FriendsContent({
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
+  // Story 6.2: the «Друзья» badge of the shell reads the same `incomingCount`. The
+  // screen asks for a fresh count after its own answer on a request; the optional
+  // accessor keeps the screen mountable without the shell (unit tests).
+  const inviteBadge = useInviteBadgeOptional();
 
   const [tab, setTab] = useState<TabKey>("friends");
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -892,6 +897,8 @@ function FriendsContent({
         message: profile("relationship.toast.friends", { name: card.displayName }),
         tone: "info",
       });
+      // Story 6.2: the «Друзья» badge follows the server's count, not the guess.
+      inviteBadge?.refresh();
       focusAfterRemoval(snapshot.incoming, card.nick);
       return;
     }
@@ -920,6 +927,7 @@ function FriendsContent({
     if (result.ok) {
       // The pair cooldown is written by the server; the row is gone and the
       // screen never calls it «Отклонено» (Story 4.3 decision 2).
+      inviteBadge?.refresh();
       focusAfterRemoval(snapshot.incoming, card.nick);
       return;
     }
@@ -946,6 +954,7 @@ function FriendsContent({
 
     if (result.ok) {
       setToast({ message: friends("toast.inviteCancelled"), tone: "info" });
+      inviteBadge?.refresh();
       focusAfterRemoval(snapshot.outgoing, card.nick);
       return;
     }
@@ -978,12 +987,6 @@ function FriendsContent({
     if (next !== "subscribed" && next !== "subscribers") return;
     setSubscriptionView(next);
     void writeSubscriptionView(user.nick, next);
-  }
-
-  function goBack() {
-    // A direct link has no history behind it: fall back to the wishlist.
-    if (router.canGoBack()) router.back();
-    else router.replace("/");
   }
 
   function dismissToast() {
@@ -1094,7 +1097,8 @@ function FriendsContent({
 
   return (
     <Screen>
-      <SafeArea>
+      {/* A tab root: the bottom bar holds the home indicator (spec 6.2). */}
+      <SafeArea bottom={false}>
         <Stack.Screen options={{ title: friends("pageTitle", { brand }) }} />
         <PageScroll
           testID="friends-page"
@@ -1110,19 +1114,6 @@ function FriendsContent({
               paddingTop="$page-gutter"
               gap="$2"
             >
-              <Pressable
-                role="button"
-                aria-label={friends("back")}
-                onPress={goBack}
-                alignSelf="flex-start"
-                justifyContent="center"
-                minHeight="$touch-target"
-                minWidth="$touch-target"
-              >
-                <Text kind="button" tone="primary">
-                  {friends("back")}
-                </Text>
-              </Pressable>
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>

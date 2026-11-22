@@ -113,3 +113,14 @@ export function useInviteBadge(): InviteBadgeValue {
   if (!value) throw new Error("useInviteBadge requires InviteBadgeProvider");
   return value;
 }
+
+/**
+ * The same count for a screen that may be mounted outside the shell (a screen
+ * unit test, a standalone preview): without `InviteBadgeProvider` it answers
+ * `null` instead of throwing, so «Друзья» keeps working and simply asks nobody for
+ * a fresh count. In the app the provider is always above the tabs, so the screen
+ * gets the real `refresh()`.
+ */
+export function useInviteBadgeOptional(): InviteBadgeValue | null {
+  return useContext(InviteBadgeContext);
+}

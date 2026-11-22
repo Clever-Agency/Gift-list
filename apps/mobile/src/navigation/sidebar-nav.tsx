@@ -1,52 +1,18 @@
 import {
   Avatar,
-  CalendarCheck,
   focusRing,
-  Heart,
   NavItem,
-  Search,
   Sidebar,
   Text,
-  User,
-  Users,
   View,
   YStack,
 } from "@gift-list/ui";
 import { router, usePathname } from "expo-router";
-import type { ComponentType } from "react";
 import { Platform } from "react-native";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
-
-/** The five sections of `UX-A13`, in the order of `DESIGN.md` → Навигация приложения. */
-type SectionKey = "wishlist" | "search" | "friends" | "reservations" | "profile";
-
-type Section = {
-  key: SectionKey;
-  href: "/" | "/search" | "/friends" | "/reservations" | "/profile";
-  /** The label key inside `app.nav`: the side menu keeps the full name. */
-  labelKey: SectionKey;
-  Icon: ComponentType<{ color?: string }>;
-};
-
-const SECTIONS: readonly Section[] = [
-  { key: "wishlist", href: "/", labelKey: "wishlist", Icon: Heart },
-  { key: "search", href: "/search", labelKey: "search", Icon: Search },
-  { key: "friends", href: "/friends", labelKey: "friends", Icon: Users },
-  { key: "reservations", href: "/reservations", labelKey: "reservations", Icon: CalendarCheck },
-  { key: "profile", href: "/profile", labelKey: "profile", Icon: User },
-];
-
-/**
- * A screen is the current one only when its path is exactly the section root:
- * nested screens (`/settings`, `/gifts/:id`) live above the tabs and show no
- * active item, as the side menu is hidden there anyway.
- */
-function isCurrent(pathname: string, href: Section["href"]): boolean {
-  const path = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
-  return path === href;
-}
+import { TAB_ITEMS, sectionOf } from "@/navigation/tab-items";
 
 type SidebarUserCardProps = {
   name: string;
@@ -154,8 +120,10 @@ export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
 
   return (
     <Sidebar brand={getBrandName()} label={t("sections")} footer={footer} testID={testID}>
-      {SECTIONS.map(function renderSection(section) {
-        const current = isCurrent(pathname, section.href);
+      {TAB_ITEMS.map(function renderSection(section) {
+        // Nested screens (`/settings`, `/gifts/:id`) live above the tabs and show
+        // no active item, as the side menu is hidden there anyway.
+        const current = sectionOf(pathname)?.key === section.key;
 
         function openSection() {
           router.navigate(section.href);
@@ -164,7 +132,7 @@ export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
         return (
           <NavItem
             key={section.key}
-            label={t(section.labelKey)}
+            label={t(section.menuLabel)}
             secondary={section.key === "friends" ? friendsLabel : undefined}
             icon={<section.Icon />}
             badge={section.key === "friends" ? count : undefined}

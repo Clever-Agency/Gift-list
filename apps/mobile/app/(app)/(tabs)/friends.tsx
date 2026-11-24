@@ -42,6 +42,7 @@ import {
 } from "@/api/circle";
 import { acceptFriendInvite, rejectFriendInvite, sendFriendInvite } from "@/api/friend-invite";
 import { subscribeToNick, unsubscribeFromNick } from "@/api/subscription";
+import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
 import { appendCirclePage, focusNeighbour, isNearListEnd } from "@/friends/circle-list";
 import {
@@ -1117,9 +1118,12 @@ function FriendsContent({
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>
-              <View ref={headingNode as never} tabIndex={-1} alignSelf="flex-start" outlineWidth={0}>
-                <Heading level={1}>{friends("title")}</Heading>
-              </View>
+              <XStack justifyContent="space-between" alignItems="center">
+                <View ref={headingNode as never} tabIndex={-1} alignSelf="flex-start" outlineWidth={0}>
+                  <Heading level={1}>{friends("title")}</Heading>
+                </View>
+                <NotificationBell />
+              </XStack>
               <Pressable
                 role="button"
                 testID="friends-find-contacts"

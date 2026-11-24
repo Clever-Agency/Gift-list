@@ -1,5 +1,6 @@
 import { useThemeColor } from "@gift-list/ui";
 import { Stack } from "expo-router";
+import { NotificationBadgeProvider } from "@/navigation/notification-badge-provider";
 
 /**
  * The signed-in part of the app (Story 6.2): a `Stack` whose first screen is the
@@ -17,7 +18,9 @@ export default function AppLayout() {
   const background = useThemeColor("background");
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: background } }} />
+    <NotificationBadgeProvider>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: background } }} />
+    </NotificationBadgeProvider>
   );
 }
 

@@ -221,7 +221,7 @@ beforeEach(() => {
   transaction.mockImplementation(
     async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        gift: { findFirst: txFindFirst, update, updateMany: releaseMany, deleteMany },
+        gift: { findFirst: txFindFirst, findUnique: vi.fn().mockResolvedValue(null), update, updateMany: releaseMany, deleteMany },
         tag: { findMany: tagFindMany },
         giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
       }),
@@ -590,6 +590,8 @@ describe("updateGift", () => {
         quantity: true,
         archivedAt: true,
         reservedById: true,
+        reservedAt: true,
+        updatedAt: true,
         expiresOn: true,
         list: { select: { owner: { select: { timeZone: true } } } },
       },
@@ -1255,6 +1257,22 @@ describe("updateGift", () => {
       code: "VALIDATION",
       field: "quantity",
     });
+  });
+
+  it("retries a quantity change after a concurrent edit leaves the wish OPEN", async function retryOpenQuantity() {
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "OPEN", quantity: "SINGLE" }))
+      .mockResolvedValueOnce(stored({ status: "OPEN", quantity: "SINGLE", title: "Название после правки" }))
+      .mockResolvedValueOnce(giftRow({ status: "OPEN", quantity: "UNLIMITED" }));
+    update.mockRejectedValueOnce(
+      new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
+    );
+    findFirst.mockResolvedValue({ status: "OPEN", archivedAt: null });
+
+    await expect(updateGift(headers, "g1", { quantity: "UNLIMITED" }))
+      .resolves.toMatchObject({ ok: true, data: { quantity: "UNLIMITED" } });
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenCalledTimes(2);
   });
 
   /**
@@ -2186,7 +2204,7 @@ describe("deleteGift", () => {
     deleteMany.mockResolvedValue({ count: 1 });
     transaction.mockImplementation(async function commit(callback: (tx: unknown) => Promise<unknown>) {
       const outcome = await callback({
-        gift: { findFirst: txFindFirst, update, updateMany: releaseMany, deleteMany },
+        gift: { findFirst: txFindFirst, findUnique: vi.fn().mockResolvedValue(null), update, updateMany: releaseMany, deleteMany },
       });
       expect(info).not.toHaveBeenCalled();
       return outcome;
@@ -2306,7 +2324,7 @@ describe("deleteGift", () => {
       async function rollback(callback: (tx: unknown) => Promise<unknown>) {
         try {
           return await callback({
-            gift: { findFirst: txFindFirst, update, updateMany: releaseMany, deleteMany },
+            gift: { findFirst: txFindFirst, findUnique: vi.fn().mockResolvedValue(null), update, updateMany: releaseMany, deleteMany },
           });
         } catch (error) {
           rejections.push(error);

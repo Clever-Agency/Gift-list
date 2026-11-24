@@ -259,10 +259,8 @@ export type GiftStatusEvent = {
 };
 
 /**
- * The single seam of NFR-6 that the store implements (Story 5.2 declares it,
- * Story 5.3 reuses it). Today the implementation writes one audit line
- * (variant A); a `Notification` row (variant B) replaces only that body, so no
- * caller or CAS method changes.
+ * The NFR-6 audit seam reports successful transitions after commit.
+ * Notifications are created inside the mutation transaction.
  *
  * The store reports a transition only after the surrounding transaction has
  * committed (`runGiftStatusTransaction`), so a rolled back write leaves no line
@@ -286,7 +284,7 @@ export interface GiftStatusTransaction {
    * Clears the reservation columns of a `RESERVED` row (AD-9). Touching a row
    * that is no longer `RESERVED` writes nothing and answers `false`.
    */
-  releaseReservation(giftId: string): Promise<boolean>;
+  releaseReservation(giftId: string, reservedAt?: Date | null): Promise<boolean>;
   /**
    * Story 5.1: CAS `OPEN → RESERVED` for a single, non-archived wish. A row that
    * no longer matches the predicate is left untouched and answers `lost`.

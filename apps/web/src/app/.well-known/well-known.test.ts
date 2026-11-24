@@ -29,7 +29,7 @@ describe("well-known app links", () => {
     });
     const appleBody = await (await apple()).json();
     const androidBody = await (await assetlinks()).json();
-    expect(appleBody.applinks.details[0].paths).toEqual(["/l/*", "/i/*", "/wishlist/*", "/reset"]);
+    expect(appleBody.applinks.details[0].paths).toEqual(["/l/*", "/i/*", "/wishlist/*", "/reset", "/notifications"]);
     expect(appleBody.applinks.details[0].appID).toBe("AB12CD34EF.app.giftlist.mobile");
     expect(androidBody[0].target.sha256_cert_fingerprints).toEqual(["AA:BB"]);
     expect(androidBody[0].target.package_name).toBe("app.giftlist.mobile");

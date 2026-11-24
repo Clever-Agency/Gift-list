@@ -102,9 +102,13 @@ import { gzipSync } from "node:zlib";
 // inline-SVG (`Heart`, `User`, `Users`, `CalendarCheck`) — 360, строки `app.nav`
 // и соседние ключи каталога — 198; словаря Material Symbols в JS нет. Потолок
 // +10 КиБ минимальными шагами; запас 937 байт.
+// 223 КиБ (228 352) — CLE-116 / Story 6.1: 715 276 байт gzip, прирост
+// 227 484 байт. Новый маршрут /notifications занимает 3 014 байт gzip;
+// остальной рост — данные и интерфейс уведомлений в общих модулях и настройках.
+// Зависимости те же. Минимальный шаг в целых КиБ даёт запас 868 байт.
 // В epics.md по-прежнему «150 КБ».
 export const BASE_GZIP_BYTES = 487_792;
-export const BUDGET_GROWTH_BYTES = 221_184;
+export const BUDGET_GROWTH_BYTES = 228_352;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

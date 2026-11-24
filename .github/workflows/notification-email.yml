@@ -1,0 +1,47 @@
+name: Notification email
+
+# Scheduled runs use the default branch (staging) and call staging only.
+# Add the production job after the endpoint is promoted.
+# Reuses the cron-staging GitHub Environment and its APP_URL and CRON_SECRET.
+on:
+  schedule:
+    - cron: "5,15,25,35,45,55 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notification-email:
+    name: notification-email (cron-staging)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: cron-staging
+    # A manual run during the scheduled one waits instead of calling twice.
+    concurrency:
+      group: notification-email-cron-staging
+      cancel-in-progress: false
+    steps:
+      - name: Deliver ready notification emails
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::cron-staging: set APP_URL and CRON_SECRET (environment secrets)"
+            exit 1
+          fi
+          # A missing cron-staging secret silently falls back to the production
+          # repository secret; refuse to call anything but the staging host.
+          case "$APP_URL" in
+            https://staging.*) ;;
+            *)
+              echo "::error::cron-staging: APP_URL is not the staging host; set the cron-staging environment secrets"
+              exit 1
+              ;;
+          esac
+          echo "Calling ${APP_URL%/}/api/cron/notification-email"
+          curl --fail-with-body --silent --show-error --max-time 120 \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/cron/notification-email"

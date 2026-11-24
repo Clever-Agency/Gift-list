@@ -44,6 +44,10 @@ vi.mock("use-intl", async () => {
     readFileSync(join(root, "packages/contracts/src/i18n/ru/common.json"), "utf8"),
   ) as Record<string, unknown>;
 
+  const notifications = JSON.parse(
+    readFileSync(join(root, "packages/contracts/src/i18n/ru/notifications.json"), "utf8"),
+  ) as Record<string, unknown>;
+
   /** The ICU plural of `app.nav.friendsBadge`: «1 запрос / 2 запроса / 5 запросов». */
   function plural(template: string, values?: Record<string, unknown>): string {
     const match = /\{(\w+),\s*plural,\s*([\s\S]*)\}/.exec(template);
@@ -77,7 +81,7 @@ vi.mock("use-intl", async () => {
   /** `app.nav` resolves the same way `useTranslations` prefixes a namespace. */
   function catalogFor(namespace: string): unknown {
     const [head, ...rest] = namespace.split(".");
-    const base = head === "common" ? common : app;
+    const base = head === "common" ? common : head === "notifications" ? notifications : app;
     return rest.reduce<unknown>(
       (node, part) =>
         typeof node === "object" && node !== null
@@ -184,6 +188,13 @@ describe("SidebarNav", () => {
       expect.stringContaining("Мои брони"),
       expect.stringContaining("Профиль"),
     ]);
+  });
+
+  it("показывает отдельный пункт уведомлений для получателя с сессией", async function notificationsLink() {
+    path.pathname = "/notifications";
+    await mount();
+    expect(link("/notifications")?.textContent).toContain("Уведомления");
+    expect(link("/notifications")?.getAttribute("aria-current")).toBe("page");
   });
 
   it("активный пункт — только точное совпадение корня", async () => {

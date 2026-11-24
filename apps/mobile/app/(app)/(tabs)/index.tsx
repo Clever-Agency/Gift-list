@@ -35,6 +35,7 @@ import {
 } from "@/api/my-gifts";
 import { loadOwnerDetail } from "@/ui/wish-detail-load";
 import { WishDetailDialog, type WishDetailStep } from "@/ui/wish-detail-dialog";
+import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
@@ -1394,9 +1395,8 @@ export default function MyWishlistScreen() {
                 flexWrap="wrap"
                 gap="$2"
               >
-                <Heading level={1} flexShrink={1}>
-                  {wishlist("title")}
-                </Heading>
+                <Heading level={1} flexShrink={1}>{wishlist("title")}</Heading>
+                <NotificationBell />
                 {state.status === "ready" ? (
                   <YStack testID="wishlist-actions" gap="$1" alignItems="flex-start">
                     <XStack flexWrap="wrap" alignItems="center" gap="$2">

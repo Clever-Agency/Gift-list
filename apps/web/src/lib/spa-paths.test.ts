@@ -30,6 +30,7 @@ describe("isNextOwnedPath", () => {
     "/long",
     "/invite",
     "/reservations",
+    "/notifications",
   ])("leaves %s to the SPA", (pathname) => {
     expect(isNextOwnedPath(pathname)).toBe(false);
   });

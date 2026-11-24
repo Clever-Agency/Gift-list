@@ -243,3 +243,23 @@ Contents и Pull requests на запись только для этого ре�
 - Ссылка сброса всегда имеет вид
   `https://<хост из BETTER_AUTH_URL>/reset?token=…`, поэтому она должна вести на
   тот же бэкенд, который выдал токен.
+
+### Доставка писем уведомлений
+
+`.github/workflows/notification-email.yml` каждые 10 минут вызывает
+`POST /api/cron/notification-email` на staging с `Authorization: Bearer <CRON_SECRET>`.
+Используется существующий GitHub Environment `cron-staging` с секретами `APP_URL`
+и `CRON_SECRET`. До ручного запуска примените миграцию к staging. Проверка хоста
+отклоняет любой адрес без префикса `https://staging.`. Для ручного запуска доступен
+`workflow_dispatch`. Запуски по расписанию идут из ветки по умолчанию (`staging`).
+GitHub может задерживать запуски при высокой нагрузке. См. [документацию расписаний GitHub](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+
+После продвижения в `main` и миграции production подключите отдельный job к
+`cron-production` по примеру таймеров брони. Укажите production `APP_URL`
+и `CRON_SECRET` и ограничьте job production-хостом. Отправитель использует
+`RESEND_API_KEY` и `EMAIL_FROM`, ссылки — HTTPS-адрес из `BETTER_AUTH_URL`.
+
+Обработчик захватывает запись на пять минут, затем отправляет письмо с постоянным
+ключом Resend вне транзакции. Повторы прекращаются через 23 часа от первой попытки
+при 24-часовом окне Resend. Записи с истёкшим окном закрываются и один раз попадают
+в операционный лог и счётчик `expired`. Ответ 500 сообщает планировщику о сбое попытки.

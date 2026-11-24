@@ -1,5 +1,6 @@
 import type { GiftCard } from "@gift-list/contracts";
 import {
+  Button,
   Column,
   Heading,
   LoadingCards,
@@ -23,7 +24,6 @@ import { ClosedSection } from "@/ui/closed-section";
 import { EmptyState } from "@/ui/empty-state";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
-import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
 import { loadViewerDetail } from "@/ui/wish-detail-load";
 import { SiteFooter } from "@/ui/site-footer";
@@ -425,7 +425,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       <Text tone="muted" textAlign="center">
         {text}
       </Text>
-      <PrimaryButton label={label} onPress={onPress} />
+      <Button label={label} onPress={onPress} />
     </YStack>
   );
 }

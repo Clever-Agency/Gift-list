@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { Text, YStack } from "@gift-list/ui";
+import { Button, Text, YStack } from "@gift-list/ui";
 import { AnonymousScreen } from "./anonymous-screen";
 import { NavLink } from "./nav-link";
-import { PrimaryButton } from "./primary-button";
 import { PasswordField, TextField } from "./text-field";
 
 /**
@@ -36,7 +35,7 @@ export const SignInForm: Story = {
         <YStack gap="$grid-gap">
           <TextField label="Email" value="" onChangeText={noop} />
           <TextField label="Пароль" value="" onChangeText={noop} />
-          <PrimaryButton label="Войти" onPress={noop} />
+          <Button label="Войти" onPress={noop} />
           <NavLink href="/register">Зарегистрироваться</NavLink>
         </YStack>
       </AnonymousScreen>
@@ -56,7 +55,7 @@ export const LongTitleNarrow: Story = {
             нескольких минут.
           </Text>
           <TextField label="Email" value="" onChangeText={noop} />
-          <PrimaryButton label="Отправить письмо" onPress={noop} />
+          <Button label="Отправить письмо" onPress={noop} />
         </YStack>
       </AnonymousScreen>
     );
@@ -86,7 +85,7 @@ export const RegisterConfirmMatches: Story = {
           />
           <TextField label="Имя" value="Анна" onChangeText={noop} />
           <TextField label="Ник" value="anna" onChangeText={noop} />
-          <PrimaryButton label="Зарегистрироваться" onPress={noop} />
+          <Button label="Зарегистрироваться" onPress={noop} />
         </YStack>
       </AnonymousScreen>
     );
@@ -120,7 +119,7 @@ export const RegisterConfirmMismatch: Story = {
           />
           <TextField label="Имя" value="Анна" onChangeText={noop} />
           <TextField label="Ник" value="anna" onChangeText={noop} />
-          <PrimaryButton label="Зарегистрироваться" onPress={noop} />
+          <Button label="Зарегистрироваться" onPress={noop} />
         </YStack>
       </AnonymousScreen>
     );
@@ -134,7 +133,7 @@ export const WideWindow: Story = {
       <AnonymousScreen {...args}>
         <YStack gap="$grid-gap">
           <TextField label="Email" value="" onChangeText={noop} />
-          <PrimaryButton label="Войти" onPress={noop} />
+          <Button label="Войти" onPress={noop} />
         </YStack>
       </AnonymousScreen>
     );

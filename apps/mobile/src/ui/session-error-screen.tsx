@@ -1,4 +1,5 @@
 import {
+  Button,
   Column,
   Heading,
   PageContainer,
@@ -9,7 +10,6 @@ import {
   YStack,
 } from "@gift-list/ui";
 import { useTranslations } from "use-intl";
-import { PrimaryButton } from "@/ui/primary-button";
 import { SiteFooter } from "@/ui/site-footer";
 
 export type SessionErrorScreenProps = {
@@ -71,7 +71,7 @@ export function SessionErrorScreen({
                 <Text tone="muted" textAlign="center">
                   {t("sessionError.body")}
                 </Text>
-                <PrimaryButton label={t("sessionError.retry")} onPress={onRetry} />
+                <Button label={t("sessionError.retry")} onPress={onRetry} />
               </YStack>
               <SiteFooter />
             </Column>

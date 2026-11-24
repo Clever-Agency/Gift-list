@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { WishCard } from "@/ui/gift-card";
 import { GiftForm } from "@/ui/gift-form";
-import { PrimaryButton } from "@/ui/primary-button";
 import { TextField } from "@/ui/text-field";
 import { ToastHost } from "@/ui/toast";
 import { VisibilityChip } from "@/ui/visibility-chip";
@@ -295,7 +294,6 @@ const samples: { name: string; element: ReactElement }[] = [
       />
     ),
   },
-  { name: "PrimaryButton", element: <PrimaryButton label="Сохранить" onPress={noop} /> },
   { name: "GiftForm", element: <GiftForm submitting={false} onSubmit={noop} /> },
   {
     name: "TextField",
@@ -327,7 +325,6 @@ describe("CLE-64: имена компонентов в src/ui", () => {
         "WishCard",
         "VisibilityChip",
         "VisibilityPicker",
-        "PrimaryButton",
         "GiftForm",
         "TextField",
       ]),

@@ -181,6 +181,8 @@ const MATRIX_STATES = [
  */
 export const AllVariants: Story = {
   name: "All variants",
+  // The matrix is a Docs illustration; the sidebar keeps Playground and Busy.
+  tags: ["!dev"],
   render: function AllVariantsStory() {
     return (
       <YStack width={360} gap="$4" alignItems="flex-start">
@@ -214,6 +216,7 @@ export const AllVariants: Story = {
  */
 export const FocusableWhenDisabled: Story = {
   name: "Focusable when disabled",
+  tags: ["!dev"],
   render: function FocusableWhenDisabledStory() {
     return (
       <YStack gap="$2" alignItems="flex-start">
@@ -239,6 +242,7 @@ export const FocusableWhenDisabled: Story = {
  */
 export const PrimaryFullWidth: Story = {
   name: "Full width",
+  tags: ["!dev"],
   args: { variant: "primary", fullWidth: true },
 };
 
@@ -252,6 +256,7 @@ export const PrimaryFullWidth: Story = {
  */
 export const AsLink: Story = {
   name: "As a link",
+  tags: ["!dev"],
   render: function AsLinkStory() {
     return (
       <YStack gap="$3" alignItems="flex-start">

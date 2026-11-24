@@ -17,6 +17,13 @@ import {
   undoCloseData,
 } from "@/domain/gift-status";
 
+import {
+  cancelCloseNotification,
+  enqueueGiftNotification,
+  lockClosureGift,
+  notificationGiftSnapshot,
+} from "@/lib/notification-store";
+
 type GiftDb = Pick<PrismaClient, "gift">;
 
 /** Story 5.6: the timer reads candidates and runs one transaction per row. */
@@ -53,14 +60,8 @@ const EVENT_NAMES = {
  * not a leak channel. An edit reports the names of its significant fields and
  * still no values.
  *
- * Variant B (a `Notification` row with `deliverAfter` from Epic 6) replaces only
- * this body: the CAS methods, the use-cases and the routes keep calling
- * `recordGiftEvent` and do not change. `kind` and `at` are already in the event
- * for that future record; the log line keeps the format the spec fixes, and the
- * keys an event does not carry (`from`/`to`, `fields`, `recipientId`) are
- * omitted rather than written as `null`, so lines of the first four kinds stay
- * byte-for-byte what they were. A timer transition has no actor — cron is not a
- * person — so its line carries `actorId: null` (Story 5.6).
+ * Notification rows are written within the mutation transaction. The audit
+ * remains a separate, post-commit signal.
  */
 export function recordGiftEvent(event: GiftStatusEvent): void {
   console.info(
@@ -103,24 +104,17 @@ export function recordGiftEvent(event: GiftStatusEvent): void {
  * They change attributes of a live `RESERVED` row and never its status, so they
  * emit nothing: NFR-6 audits a status transition only, and 5.5 has none.
  *
- * Story 5.4 deletes a wish in the use-case's own transaction and reports its two
- * events there, after the commit: the deletion takes the reservation off through
- * `releaseReservation`, which stays silent on purpose (a release that is part of
- * a deletion is not a separate «owner released the reservation»), and an edit
- * has no CAS method here at all.
- *
- * Story 5.6 reads the holder's id in the expiry transaction before its CAS, so the
- * release by expiry carries `recipientId` in the event — the caller of the future
- * notification needs both sides, and the released row no longer knows the holder.
+ * Deletion and edit enqueue from their use-case transactions. Destructive
+ * reservation CAS methods capture the instance before clearing its fields.
  */
 export function giftStatusTransaction(
   tx: Prisma.TransactionClient,
   emit: RecordGiftEvent = recordGiftEvent,
 ): GiftStatusTransaction {
   return {
-    async releaseReservation(giftId) {
+    async releaseReservation(giftId, reservedAt) {
       const { count } = await tx.gift.updateMany({
-        where: { id: giftId, status: "RESERVED" },
+        where: { id: giftId, status: "RESERVED", ...(reservedAt === undefined ? {} : { reservedAt }) },
         data: RESERVATION_RELEASE_DATA,
       });
       return count === 1;
@@ -147,7 +141,11 @@ export function giftStatusTransaction(
           holderVisibleToOthers: data.holderVisibleToOthers,
         },
       });
-      return count === 1 ? "success" : "lost";
+      if (count !== 1) return "lost";
+      await enqueueGiftNotification(tx, await notificationGiftSnapshot(tx, giftId), {
+        kind: "RESERVATION_CREATED", role: "owner", email: false, at: data.reservedAt,
+      });
+      return "success";
     },
     async extendReservation(giftId, actorId, write) {
       const { count } = await tx.gift.updateMany({
@@ -186,11 +184,14 @@ export function giftStatusTransaction(
       return count === 1 ? "success" : "lost";
     },
     async releaseReservationByHolder(giftId, actorId, at) {
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      if (gift === null) return "lost";
       const { count } = await tx.gift.updateMany({
-        where: { id: giftId, status: "RESERVED", reservedById: actorId },
+        where: { id: giftId, status: "RESERVED", reservedAt: gift.reservedAt, reservedById: actorId },
         data: RESERVATION_RELEASE_DATA,
       });
       if (count !== 1) return "lost";
+      await enqueueGiftNotification(tx, gift, { kind: "RESERVATION_RELEASED", role: "owner", email: false, at });
       emit({
         giftId,
         actorId,
@@ -202,11 +203,14 @@ export function giftStatusTransaction(
       return "success";
     },
     async releaseReservationByOwner(giftId, actorId, at) {
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      if (gift === null) return "lost";
       const { count } = await tx.gift.updateMany({
-        where: { id: giftId, status: "RESERVED", list: { ownerId: actorId } },
+        where: { id: giftId, status: "RESERVED", reservedAt: gift.reservedAt, list: { ownerId: actorId } },
         data: RESERVATION_RELEASE_DATA,
       });
       if (count !== 1) return "lost";
+      await enqueueGiftNotification(tx, gift, { kind: "RESERVATION_RELEASED", role: "holder", email: true, at });
       emit({
         giftId,
         actorId,
@@ -228,6 +232,9 @@ export function giftStatusTransaction(
         data: closeGiftData(from, at),
       });
       if (count !== 1) return "lost";
+      if (from === "RESERVED") await enqueueGiftNotification(tx, await notificationGiftSnapshot(tx, giftId), {
+        kind: "GIFT_CLOSED", role: "holder", email: true, at: at,
+      });
       emit({
         giftId,
         actorId,
@@ -239,6 +246,10 @@ export function giftStatusTransaction(
       return "success";
     },
     async undoClose(giftId, actorId, expected, at) {
+      const { gift, now } = await lockClosureGift(tx, giftId);
+      if (!gift) return "lost";
+      const effectiveAt = new Date(Math.max(at.getTime(), now.getTime()));
+      if (effectiveAt.getTime() >= expected.closedAt.getTime() + UNDO_WINDOW_MS) return "lost";
       const { count } = await tx.gift.updateMany({
         where: {
           id: giftId,
@@ -248,7 +259,7 @@ export function giftStatusTransaction(
           // `closedAt` and is never reopened by a stale request.
           closedAt: {
             equals: expected.closedAt,
-            gt: new Date(at.getTime() - UNDO_WINDOW_MS),
+            gt: new Date(effectiveAt.getTime() - UNDO_WINDOW_MS),
           },
           closedFromStatus: expected.closedFromStatus,
           list: { ownerId: actorId },
@@ -256,6 +267,7 @@ export function giftStatusTransaction(
         data: undoCloseData(expected.closedFromStatus),
       });
       if (count !== 1) return "lost";
+      await cancelCloseNotification(tx, giftId, expected.closedAt);
       emit({
         giftId,
         actorId,
@@ -278,6 +290,9 @@ export function giftStatusTransaction(
         data: { reservationPhase: "AWAITING_GIVER", reservationPhaseAt: at },
       });
       if (count !== 1) return "lost";
+      await enqueueGiftNotification(tx, await notificationGiftSnapshot(tx, giftId), {
+        kind: "RESERVATION_DUE", role: "holder", email: true, at: at,
+      });
       emit({
         giftId,
         actorId: null,
@@ -304,6 +319,9 @@ export function giftStatusTransaction(
         data: { reservationPhase: "AWAITING_OWNER", reservationPhaseAt: at },
       });
       if (count !== 1) return "lost";
+      await enqueueGiftNotification(tx, await notificationGiftSnapshot(tx, giftId), {
+        kind: "RESERVATION_OWNER_ASK", role: "owner", email: true, at: at,
+      });
       emit({
         giftId,
         actorId: null,
@@ -315,30 +333,27 @@ export function giftStatusTransaction(
       return "success";
     },
     async releaseReservationByExpiry(giftId, at) {
-      // Story 5.6 (R1): the holder is read in this same transaction before the
-      // release, because the released row no longer knows it and the future
-      // notification of Epic 6 must reach both sides. Only the id is read (FR-31).
-      const holder = await tx.gift.findUnique({
-        where: { id: giftId },
-        select: { status: true, reservedById: true },
-      });
-      if (holder === null || holder.status !== "RESERVED") return "lost";
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      if (gift === null || gift.status !== "RESERVED") return "lost";
       const { count } = await tx.gift.updateMany({
         where: {
           id: giftId,
-          status: "RESERVED",
+          status: "RESERVED", reservedAt: gift.reservedAt,
           archivedAt: null,
           reservationPhase: "AWAITING_OWNER",
           // `bought` is part of the CAS: a mark set between the read and the
           // write keeps the gift from being opened by the timer.
           reservationBought: false,
           reservationPhaseAt: {
+            equals: gift.reservationPhaseAt,
             lte: new Date(at.getTime() - RESERVATION_OWNER_WINDOW_MS),
           },
         },
         data: RESERVATION_RELEASE_DATA,
       });
       if (count !== 1) return "lost";
+      await enqueueGiftNotification(tx, gift, { kind: "RESERVATION_AUTO_RELEASE", role: "holder", email: true, at });
+      await enqueueGiftNotification(tx, gift, { kind: "RESERVATION_AUTO_RELEASE", role: "owner", email: true, at });
       emit({
         giftId,
         actorId: null,
@@ -348,7 +363,7 @@ export function giftStatusTransaction(
         kind: "RESERVATION_RELEASED_BY_EXPIRY",
         // A `RESERVED` row always carries a holder; an anomalous row without one
         // still reports the transition, only without a recipient.
-        ...(holder.reservedById === null ? {} : { recipientId: holder.reservedById }),
+        ...(gift.reservedById === null ? {} : { recipientId: gift.reservedById }),
       });
       return "success";
     },
@@ -368,6 +383,9 @@ export function giftStatusTransaction(
         },
       });
       if (count !== 1) return "lost";
+      await enqueueGiftNotification(tx, await notificationGiftSnapshot(tx, giftId), {
+        kind: "RESERVATION_KEPT_BY_OWNER", role: "holder", email: false, at: write.at,
+      });
       emit({
         giftId,
         actorId,
@@ -388,7 +406,7 @@ export function giftStatusTransaction(
  * never happened. Every use-case of 5.2 and 5.3 goes through this helper.
  */
 export async function runGiftStatusTransaction<T>(
-  work: (service: GiftStatusTransaction) => Promise<T>,
+  work: (service: GiftStatusTransaction, tx: Prisma.TransactionClient) => Promise<T>,
   db: Pick<PrismaClient, "$transaction"> = prisma,
 ): Promise<T> {
   const events: GiftStatusEvent[] = [];
@@ -397,6 +415,7 @@ export async function runGiftStatusTransaction<T>(
       giftStatusTransaction(tx, function collect(event) {
         events.push(event);
       }),
+      tx,
     );
   });
   for (const event of events) recordGiftEvent(event);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -20,9 +20,14 @@ import {
 const updateMany = vi.fn();
 const findMany = vi.fn();
 const findUnique = vi.fn();
+const createMany = vi.fn();
+const deleteMany = vi.fn();
+const queryRaw = vi.fn();
+const reservedAt = new Date("2026-11-10T12:00:00Z");
+const reservationPhaseAt = new Date("2026-11-11T12:00:00Z");
 
 function transactionClient(): Prisma.TransactionClient {
-  return { gift: { updateMany, findUnique } } as unknown as Prisma.TransactionClient;
+  return { $queryRaw: queryRaw, gift: { updateMany, findUnique }, notification: { createMany, deleteMany } } as unknown as Prisma.TransactionClient;
 }
 
 function expiryClient(): PrismaClient {
@@ -50,9 +55,26 @@ beforeEach(() => {
   findMany.mockReset();
   findUnique.mockReset();
   transaction.mockReset();
+  createMany.mockReset();
+  deleteMany.mockReset();
+  queryRaw.mockReset();
+  queryRaw.mockImplementation(async function query(strings: TemplateStringsArray) {
+    if (strings[0]?.includes("clock_timestamp")) return [{ now: new Date() }];
+    return [{ status: "CLOSED", closedAt: null }];
+  });
   updateMany.mockResolvedValue({ count: 1 });
   // Story 5.6 (R1): the expiry release reads the holder before its CAS.
-  findUnique.mockResolvedValue({ status: "RESERVED", reservedById: "u2" });
+  findUnique.mockResolvedValue({
+    id: "g1",
+    status: "RESERVED",
+    reservedById: "u2",
+    reservedAt,
+    reservationPhaseAt,
+    reservationTimeZone: "UTC",
+    title: "Плед",
+    titleSnapshotOnReserve: "Плед",
+    list: { ownerId: "u1" },
+  });
 });
 
 /** NFR-6: one audit line per successful transition, none on a lost CAS. */
@@ -139,7 +161,7 @@ describe("the Story 5.2 releases", () => {
 
     expect(outcome).toBe("success");
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: "g1", status: "RESERVED", reservedById: "u2" },
+      where: { id: "g1", status: "RESERVED", reservedAt, reservedById: "u2" },
       data: RESERVATION_RELEASE_DATA,
     });
     // The audit line carries ids and the transition only — no names, nicks or emails (FR-31).
@@ -166,7 +188,7 @@ describe("the Story 5.2 releases", () => {
 
     expect(outcome).toBe("success");
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: "g1", status: "RESERVED", list: { ownerId: "u1" } },
+      where: { id: "g1", status: "RESERVED", reservedAt, list: { ownerId: "u1" } },
       data: RESERVATION_RELEASE_DATA,
     });
     expectOneAuditLine(info.mock.calls, {
@@ -195,6 +217,7 @@ describe("the Story 5.2 releases", () => {
       expect(outcome).toBe("lost");
       expect(updateMany).toHaveBeenCalledTimes(1);
       expect(info).not.toHaveBeenCalled();
+      expect(createMany).not.toHaveBeenCalled();
       info.mockRestore();
     },
   );
@@ -219,6 +242,14 @@ describe("the Story 5.3 close and undo", () => {
   const at = new Date("2026-11-19T12:00:00.000Z");
   const WINDOW_MS = 10 * 60 * 1000;
 
+  beforeEach(function freezeClock() {
+    vi.useFakeTimers();
+    vi.setSystemTime(at);
+  });
+  afterEach(function restoreClock() {
+    vi.useRealTimers();
+  });
+
   it.each(["OPEN", "RESERVED"] as const)(
     "closes a %s wish of the owner with one CAS and one audit line",
     async (from) => {
@@ -241,6 +272,20 @@ describe("the Story 5.3 close and undo", () => {
         },
         data: { status: "CLOSED", closedAt: at, closedFromStatus: from },
       });
+      if (from === "RESERVED") {
+        expect(createMany).toHaveBeenCalledExactlyOnceWith({
+          skipDuplicates: true,
+          data: expect.objectContaining({
+            kind: "GIFT_CLOSED",
+            recipientId: "u2",
+            emailRequired: true,
+            createdAt: at,
+            deliverAfter: new Date(at.getTime() + WINDOW_MS),
+          }),
+        });
+      } else {
+        expect(createMany).not.toHaveBeenCalled();
+      }
       expectOneAuditLine(info.mock.calls, {
         event: "gift.status",
         giftId: "g1",
@@ -270,11 +315,12 @@ describe("the Story 5.3 close and undo", () => {
     const outcome = await giftStatusTransaction(transactionClient()).closeGift(
       "g1",
       "u1",
-      "OPEN",
+      "RESERVED",
       at,
     );
 
     expect(outcome).toBe("lost");
+    expect(createMany).not.toHaveBeenCalled();
     expect(info).not.toHaveBeenCalled();
     info.mockRestore();
   });
@@ -301,6 +347,11 @@ describe("the Story 5.3 close and undo", () => {
       },
       data: { status: "RESERVED", closedAt: null, closedFromStatus: null },
     });
+    expect(deleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { eventKey: `GIFT_CLOSED:g1:${closedAt.toISOString()}` },
+    });
+    expect(queryRaw.mock.invocationCallOrder[0]).toBeLessThan(updateMany.mock.invocationCallOrder[0]!);
+    expect(updateMany.mock.invocationCallOrder[0]).toBeLessThan(deleteMany.mock.invocationCallOrder[0]!);
     expectOneAuditLine(info.mock.calls, {
       event: "gift.status",
       giftId: "g1",
@@ -324,8 +375,21 @@ describe("the Story 5.3 close and undo", () => {
     );
 
     expect(outcome).toBe("lost");
+    expect(deleteMany).not.toHaveBeenCalled();
     expect(info).not.toHaveBeenCalled();
     info.mockRestore();
+  });
+  it("refuses undo when the deadline passes while waiting on the Gift lock", async function lateLock() {
+    const closedAt = new Date(at.getTime() - WINDOW_MS + 1);
+    queryRaw.mockImplementationOnce(async function waitedForLock() {
+      vi.setSystemTime(new Date(at.getTime() + 1));
+      return [{ status: "CLOSED", closedAt }];
+    });
+    await expect(giftStatusTransaction(transactionClient()).undoClose(
+      "g1", "u1", { closedAt, closedFromStatus: "RESERVED" }, at,
+    )).resolves.toBe("lost");
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(deleteMany).not.toHaveBeenCalled();
   });
 });
 
@@ -874,10 +938,14 @@ describe("the Story 5.6 timer CAS writes", () => {
     );
 
     expect(outcome).toBe("success");
-    // R1/F2: the holder is read in the same transaction, by id and two columns only.
+    expect(createMany.mock.calls.map(([args]) => args.data)).toEqual([
+      expect.objectContaining({ kind: "RESERVATION_AUTO_RELEASE", recipientId: "u2", emailRequired: true }),
+      expect.objectContaining({ kind: "RESERVATION_AUTO_RELEASE", recipientId: "u1", emailRequired: true }),
+    ]);
+    // The holder and reservation snapshot come from the transition transaction.
     expect(findUnique).toHaveBeenCalledWith({
       where: { id: "g1" },
-      select: { status: true, reservedById: true },
+      select: expect.objectContaining({ status: true, reservedById: true, reservedAt: true }),
     });
     expect(updateMany).toHaveBeenCalledWith({
       where: {
@@ -886,7 +954,8 @@ describe("the Story 5.6 timer CAS writes", () => {
         archivedAt: null,
         reservationPhase: "AWAITING_OWNER",
         reservationBought: false,
-        reservationPhaseAt: { lte: new Date(at.getTime() - OWNER_WINDOW_MS) },
+        reservedAt,
+        reservationPhaseAt: { equals: reservationPhaseAt, lte: new Date(at.getTime() - OWNER_WINDOW_MS) },
       },
       data: RESERVATION_RELEASE_DATA,
     });
@@ -942,6 +1011,14 @@ describe("the Story 5.6 timer CAS writes", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const dueAt = new Date("2026-11-28T00:00:00.000Z");
 
+    findUnique.mockImplementationOnce(async function readCommittedFields() {
+      const { data } = updateMany.mock.calls[0]![0];
+      return {
+        id: "g1", reservedById: "u2", reservedAt, list: { ownerId: "u1" },
+        reservationDueAt: data.reservationDueAt, reservationPhaseAt: data.reservationPhaseAt,
+        titleSnapshotOnReserve: "Плед", reservationTimeZone: "Europe/Minsk",
+      };
+    });
     const outcome = await giftStatusTransaction(transactionClient()).keepReservationByOwner(
       "g1",
       "u1",
@@ -968,6 +1045,13 @@ describe("the Story 5.6 timer CAS writes", () => {
     expect(data).not.toHaveProperty("reservationTimeZone");
     expect(data).not.toHaveProperty("reservationBought");
     expect(data).not.toHaveProperty("status");
+    expect(createMany).toHaveBeenCalledExactlyOnceWith({
+      skipDuplicates: true,
+      data: expect.objectContaining({
+        kind: "RESERVATION_KEPT_BY_OWNER", recipientId: "u2", emailRequired: false,
+        payload: { role: "holder", titleSnapshot: "Плед", dueAt: dueAt.toISOString(), timeZone: "Europe/Minsk" },
+      }),
+    });
     expectOneAuditLine(info.mock.calls, {
       event: "gift.reservation.kept-by-owner",
       giftId: "g1",
@@ -995,6 +1079,7 @@ describe("the Story 5.6 timer CAS writes", () => {
       ).resolves.toBe("lost");
 
       expect(updateMany).toHaveBeenCalledTimes(4);
+      expect(createMany).not.toHaveBeenCalled();
       expect(info).not.toHaveBeenCalled();
       info.mockRestore();
     },
@@ -1141,7 +1226,8 @@ describe("processReservationTimers", () => {
         archivedAt: null,
         reservationPhase: "AWAITING_OWNER",
         reservationBought: false,
-        reservationPhaseAt: { lte: new Date(now.getTime() - OWNER_WINDOW_MS) },
+        reservedAt,
+        reservationPhaseAt: { equals: reservationPhaseAt, lte: new Date(now.getTime() - OWNER_WINDOW_MS) },
       },
     ]);
     expect((updateMany.mock.calls[2]?.[0] as { data: unknown }).data).toBe(

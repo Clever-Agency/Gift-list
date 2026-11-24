@@ -33,6 +33,7 @@ export function linkData(host: { hostname: string; port?: string }) {
     { ...base, path: "/wishlist" },
     { ...base, pathPrefix: "/wishlist/" },
     { ...base, path: "/reset" },
+    { ...base, path: "/notifications" },
   ];
 }
 

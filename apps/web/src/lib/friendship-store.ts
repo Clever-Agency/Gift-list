@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/db/client";
+import { enqueueFriendNotification } from "@/lib/notification-store";
 import { Prisma } from "@/db/generated/client";
 import type { BlockedReader } from "@/domain/block";
 import type {
@@ -133,7 +134,8 @@ async function createInvite(
   fromUserId: string,
   toUserId: string,
 ): Promise<void> {
-  await tx.friendshipInvite.create({ data: { fromUserId, toUserId } });
+  const invite = await tx.friendshipInvite.create({ data: { fromUserId, toUserId } });
+  await enqueueFriendNotification(tx, "FRIEND_INVITE", invite.id, fromUserId, toUserId, invite.createdAt);
 }
 
 async function createFriendship(
@@ -264,6 +266,13 @@ export function transactionAdapter(tx: TransactionClient): FriendshipTransaction
     },
     deleteSubscriptionsBetween(firstUserId, secondUserId) {
       return deleteSubscriptionsBetween(tx, firstUserId, secondUserId);
+    },
+    async notifyInviteResponse(kind, inviterId, inviteeId) {
+      const invite = await tx.friendshipInvite.findUnique({
+        where: { fromUserId_toUserId: { fromUserId: inviterId, toUserId: inviteeId } },
+        select: { id: true },
+      });
+      if (invite) await enqueueFriendNotification(tx, kind, invite.id, inviteeId, inviterId);
     },
     deleteInvite(fromUserId, toUserId) {
       return deleteInvite(tx, fromUserId, toUserId);

@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, findFirst, updateMany, transaction } = vi.hoisted(() => ({
+const { getSession, findFirst, updateMany, transaction, createMany } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findFirst: vi.fn(),
   updateMany: vi.fn(),
   transaction: vi.fn(),
+  createMany: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
@@ -70,7 +71,16 @@ beforeEach(() => {
   getSession.mockResolvedValue({ user: { id: "owner" } });
   updateMany.mockResolvedValue({ count: 1 });
   transaction.mockImplementation(async function run(work) {
-    return work({ gift: { updateMany } });
+    const snapshot = ownerRow({
+      reservedAt: NOW,
+      reservedById: "holder",
+      reservationPhaseAt: NOW,
+      reservationDueAt: new Date("2026-11-27T21:00:00.000Z"),
+      reservationTimeZone: "Europe/Moscow",
+      titleSnapshotOnReserve: "Наушники",
+      list: { ownerId: "owner" },
+    });
+    return work({ gift: { updateMany, findUnique: vi.fn().mockResolvedValue(snapshot) }, notification: { createMany } });
   });
 });
 

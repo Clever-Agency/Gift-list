@@ -137,7 +137,7 @@ beforeEach(() => {
   transaction.mockImplementation(
     async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        gift: { findFirst: txFindFirst, update, updateMany: releaseMany },
+        gift: { findFirst: txFindFirst, findUnique: vi.fn().mockResolvedValue(null), update, updateMany: releaseMany },
       }),
   );
 });

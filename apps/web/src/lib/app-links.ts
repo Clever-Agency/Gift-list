@@ -1,5 +1,5 @@
-/** Paths App Links and Universal Links open in the app (AD-26 plus `/reset`). */
-export const APP_LINK_PATHS = ["/l/*", "/i/*", "/wishlist/*", "/reset"] as const;
+/** Paths App Links and Universal Links open in the app (AD-26, reset and notifications). */
+export const APP_LINK_PATHS = ["/l/*", "/i/*", "/wishlist/*", "/reset", "/notifications"] as const;
 
 export const APP_BUNDLE_ID = "app.giftlist.mobile";
 

@@ -23,6 +23,7 @@ import { Link, router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { searchUsers } from "@/api/search";
+import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
 import { requestBlock } from "@/profile/block-action";
 import { BlockConfirm } from "@/profile/block-confirm";
@@ -508,7 +509,10 @@ function SearchScreenContent({
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>
-              <Heading level={1}>{search("title")}</Heading>
+              <XStack justifyContent="space-between" alignItems="center">
+                <Heading level={1}>{search("title")}</Heading>
+                <NotificationBell />
+              </XStack>
               <SearchField
                 label={search("fieldPlaceholder")}
                 placeholder={search("fieldPlaceholder")}

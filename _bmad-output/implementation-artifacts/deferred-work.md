@@ -187,8 +187,8 @@
 ## Deferred from: S23.1 — видимость забронированного желания (CLE-82, 2026-11-11)
 
 - source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-11-reserved-visibility.md` (§1, §7)
-  summary: Уведомление держателю, когда владелец сузил видимость и бронь снята (in-app + email), не отправляется — инфраструктуры уведомлений ещё нет. Снятие тихое; в коде его нельзя обещать как работающее. Тот же долг — подсказка «Желание забронировано — бронировавший получит уведомление» при правке других полей: уведомление появится с Epic 5–6.
-  evidence: В `apps/web/src` нет ни одного упоминания Notification; правила снятия брони по видимости внесены в AD-7/AD-8 и FR-10 (S23.1), код — S23.2–S23.3. Когда появятся Notification и Resend, снятие по сужению видимости должно слать событие как удаление/правка `RESERVED` (AD-14, FR-26).
+  summary: Закрыто Story 6.1 (CLE-116): снятие при сужении видимости и правка значимых полей создают событие держателю в той же транзакции. Держателю доступен снимок названия брони.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 ## Deferred from: ссылка сброса на loopback (2026-11-15)
 
@@ -234,18 +234,18 @@
 ## Deferred from: Story 5.2 — снятие брони держателем и владельцем (CLE-114, 2026-11-19)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-2-снятие-брони-держателем-и-владельцем.md`
-  summary: Владелец не получает событие «держатель снял бронь» (in-app + email). Уведомлений нет: решение A оставляет факт перехода только в audit-строке `gift.status`, строки `Notification` и письма не создаются. Появится с Epic 6 — Story 6.1 заводит `Notification` и `deliverAfter`; источником события будет либо лог, либо запись в момент перехода через шов `recordGiftEvent`.
-  evidence: `recordGiftEvent` в `apps/web/src/lib/gift-status-store.ts` пишет только `console.info` с `{ event, giftId, actorId, from, to, at }`; после CAS колонки `reserved*` очищены, поэтому payload для письма из строки желания уже не собрать.
+  summary: Закрыто Story 6.1 (CLE-116): снятие держателем создаёт in-app уведомление владельцу по FR-26.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-2-снятие-брони-держателем-и-владельцем.md`
-  summary: Держатель не получает событие «владелец снял бронь» (in-app + email) — тот же вариант A и та же зависимость от Epic 6 / Story 6.1. От перехода остаётся audit-строка с актором-владельцем; уведомление о снятии владелец-инициировал сам, но держателю оно нужно по AC.
-  evidence: Снятие владельцем — CAS `RESERVED → OPEN` в `gift-status-store.ts` с тем же `recordGiftEvent`; таблицы `Notification` в `schema.prisma` нет до Story 6.1, Resend в этой истории не подключается.
+  summary: Закрыто Story 6.1 (CLE-116): снятие владельцем создаёт уведомление и письмо держателю.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 ## Deferred from: Story 5.3 — закрытие желания владельцем, отмена и «Хочу ещё такой» (CLE-115, 2026-11-19)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
-  summary: Держатель не получает событие «владелец отметил подарок полученным» (in-app + email) ни сразу, ни после окна отмены. Решение A: строки `Notification` нет, факт перехода лежит в колонках `Gift` (`closedAt`, `closedFromStatus`) и сохранённом снимке брони (`reservedById`, `titleSnapshotOnReserve`). Уведомление и `deliverAfter = closedAt + UNDO_WINDOW` — Epic 6, Story 6.1; тексты «Владелец отметил «Y» полученным. Если вы его ещё не вручали — подарок пришёл от кого-то другого» и (из `GIVEN`) «Владелец подтвердил получение «Y»» тоже там. Отмена внутри окна очищает `closedAt`, поэтому отложенная доставка перестаёт вычисляться сама.
-  evidence: `recordGiftEvent` в `apps/web/src/lib/gift-status-store.ts` пишет только `console.info` с `{ event, giftId, actorId, from, to, at }`; после закрытия `reserved*` сохранены, поэтому payload для письма из строки желания ещё собирается, а вот очереди доставки нет.
+  summary: Закрыто Story 6.1 (CLE-116): закрытие создаёт уведомление и письмо держателю через 10 минут. Успешная отмена удаляет запись в той же транзакции. Ответ на вручение остаётся в Story 5.7.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
   summary: Аудит NFR-6 покрывает только закрытие и отмену (плюс снятие брони из 5.2). Бронь, снятие своей брони держателем и уход в архив по сроку статус меняют, но audit-строку `gift.status` не пишут. Нужна отдельная задача после 5.3 — расширить шов `recordGiftEvent` на `reserveGift`, `releaseReservation` и архивацию, не смешивая её с текущими историями.
@@ -276,8 +276,8 @@
 ## Deferred from: Story 5.5 — «Мои брони»: продление, «Купил», видимость (CLE-119, 2026-11-20)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
-  summary: Владелец не получает уведомление «Даритель уже ответил», когда продление из `AWAITING_OWNER` сняло запрос: `reservationPhase` стал `ACTIVE`, и следующий ответ владельцу уже отдаёт `ownerAction = null`. Отдельного флага «ответил» нет — Epic 6 читает `reservationPhase`/`reservationPhaseAt` в момент доставки. Вариант A: строк `Notification` и писем 5.5 не создаёт.
-  evidence: `ownerAction` — производная от фазы (`apps/web/src/domain/viewer-gift-card.ts`), а не колонка; продление пишет `reservationPhase = ACTIVE` и `reservationPhaseAt` через CAS `GiftStatusService` (`apps/web/src/lib/gift-status-store.ts`). Таблицы `Notification` в `schema.prisma` нет до Story 6.1.
+  summary: Закрыто Story 6.1 (CLE-116): после смены фазы или экземпляра брони уведомление показывает «Даритель уже ответил» без действий.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
   summary: Уведомления об изменении «Купил» и переключателей видимости не отправляются: FR-26 их не перечисляет. Если продукт захочет, это Epic 6 и отдельное решение, а не 5.5.
@@ -306,12 +306,12 @@
 ## Deferred from: Story 5.4 — удаление и правка забронированного желания (CLE-118, 2026-11-20)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
-  summary: Уведомление держателю «Владелец удалил «Y» из списка» (in-app + email) не отправляется. Вариант A оставляет только строку `gift.deleted` в шве `recordGiftEvent`: после удаления строки названия в событии нет (только `giftId`, `recipientId` и переход `RESERVED → OPEN`). Epic 6 либо заводит запись `Notification` в момент удаления (вариант B), либо отправляет сообщение без названия. Story 6.1.
-  evidence: Спека, «Отложено» п. 1 и «Открытые вопросы» п. 5; `Notification` в `schema.prisma` нет, писем и `deliverAfter` 5.4 не создаёт; клиент показывает лишь «Желание удалено.» владельцу.
+  summary: Закрыто Story 6.1 (CLE-116): уведомление и письмо держателю сохраняются вместе с удалением.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
-  summary: Уведомление держателю «Владелец изменил «Y»» со списком полей (in-app + email) не отправляется. Событие `gift.edited` несёт только имена из закрытого набора `title | description | linkUrl | price` (FR-31, AD-14 — без значений и названий), а сам текст соберёт Epic 6; `deliverAfter` не нужен, событие немедленное. Story 6.1.
-  evidence: Спека, «Отложено» п. 2 и «Design Notes» про имена полей; строка лога `gift.edited` пишется после коммита, таблицы `Notification` нет.
+  summary: Закрыто Story 6.1 (CLE-116): уведомление и письмо держателю сохраняются вместе с правкой. В payload хранятся имена изменённых полей.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
   summary: Ветка `GIVEN` («Подарил» и основное действие «Отметить полученным», удаление — вторично) в предпросмотре и confirm удаления не реализована: до Story 5.7 строк с этой фазой нет, `GET /me/gifts/:id/reservation` отдаёт только `BOUGHT | null`, а тексты и порядок действий появятся вместе с 5.7.
@@ -336,14 +336,14 @@
   evidence: Спека, «Keep» и «Open Questions» п. 4–5; `apps/mobile/src/api/my-gifts.ts` (`keepReservation` разбирает owner card), `app/(app)/index.tsx` заменяет карточку ответом без тоста, `packages/contracts/src/i18n/ru/app.json` новых строк, кроме двух ответов, не получил.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-6-tsikl-istecheniya-broni.md`
-  summary: Уведомления о переходах таймеров («держателю — срок истёк», «владельцу — вопрос», «держателю — бронь снята») и о keep не создаются: вариант A оставляет только audit-строку `recordGiftEvent`. В приложении новых экранов и писем нет; `Notification` и `deliverAfter` — Epic 6, Story 6.1.
-  evidence: Спека, «Never» и «Design Notes»; строк `Notification` в `schema.prisma` нет, клиент 5.6 только заменяет карточку ответом сервера и показывает общие тосты `app.form.network` / `common.errors.code.*`.
+  summary: Закрыто Story 6.1 (CLE-116): уведомления и письма по фазам таймера, включая автоснятие обоим участникам. Продление владельцем создаёт уведомление только держателю в приложении.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 ## Deferred from: Story 5.8 — обязательные автотесты инвариантов AD-15 (CLE-122, 2026-11-22)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
-  summary: Инвариант (5) закрыт только для gift card: Notification и письмо владельцу не проверяются, потому что модели `Notification`, транспорта и payload ещё нет. Вместе с Story 6.1 нужен тест, что при `holderVisibleToOwner=false` ни уведомление, ни письмо не несут держателя, `bought` и `dueAt`.
-  evidence: Спека, «Отложено» п. 1 и «Открытый вопрос» 3; в `apps/web/src/db/schema.prisma` нет `Notification`, `recordGiftEvent` пишет только audit-строку; `card-privacy.test.ts` проверяет лишь карточку владельца.
+  summary: Закрыто Story 6.1 (CLE-116): тесты проверяют отсутствие имени скрытого держателя, отметки «Купил» и срока в ленте и письме владельцу.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
   summary: Инвариант (10) проверен только для `FRIENDS`/`PUBLIC`: подписчик не получает `FRIENDS`, но даты (`UserDate`) и поведение `visibility=everyone` (AD-23) не проверяются — дат в схеме нет, а сужение правила до «при `friends` подписчик не получает даты» (ревью архитектуры L4) требует решения Евгения и Сергея. После Epic 7 тест на даты добавить в suite или в AC истории.
@@ -360,8 +360,8 @@
 ## Deferred from: Story 6.2 — навигация приложения: вкладки, боковое меню, «назад» и ссылки (CLE-117, 2026-11-22)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
-  summary: Раздел «Уведомления» не показывается: ни вкладки, ни маршрута `/notifications`, ни колокольчика в шапке, ни badge уведомлений. AC Story 6.2 в этой части закрывается только Story 6.1, которая заводит `Notification` и центр уведомлений; место в `AppShell`/`SidebarNav` для нового пункта оставлено.
-  evidence: Спека, «Открытый вопрос» 1 и «Отложено» п. 1; в `tab-items.ts` закрытый список из пяти разделов, в `app/(app)/(tabs)/` нет `notifications`, `SidebarNav` рисует только `TAB_ITEMS`.
+  summary: Закрыто Story 6.1 (CLE-116): маршрут /notifications, колокольчик с бейджем и пункт бокового меню добавлены.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
   summary: «Подборки» в «Профиле» и маршрут `/collections` не делаются — Story 10.1.

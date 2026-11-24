@@ -9,7 +9,7 @@ describe("app link intent", () => {
     expect(appLinkHost("giftlist://app")).toBeNull();
   });
 
-  it("claims /l/, /i/, /wishlist and an exact /reset", () => {
+  it("claims /l/, /i/, /wishlist, exact /reset and exact /notifications", () => {
     const host = appLinkHost("https://gift.example:8443");
     expect(host).toEqual({ hostname: "gift.example", port: "8443" });
     const data = linkData(host!);
@@ -19,6 +19,7 @@ describe("app link intent", () => {
       "/wishlist",
       "/wishlist/",
       "/reset",
+      "/notifications",
     ]);
     expect(data.find((item) => "path" in item && item.path === "/reset")).toMatchObject({
       scheme: "https",
@@ -26,6 +27,7 @@ describe("app link intent", () => {
       port: "8443",
       path: "/reset",
     });
+    expect(data).toContainEqual({ scheme: "https", host: "gift.example", port: "8443", path: "/notifications" });
     expect(data.some((item) => "pathPrefix" in item && item.pathPrefix === "/l")).toBe(false);
     expect(data.some((item) => "pathPrefix" in item && item.pathPrefix === "/wishlist")).toBe(false);
   });

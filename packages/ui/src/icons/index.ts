@@ -13,3 +13,4 @@ export { Search } from "./Search";
 export { Star } from "./Star";
 export { User } from "./User";
 export { Users } from "./Users";
+export { Bell } from "./Bell";

@@ -138,3 +138,5 @@ export { useReduceMotion } from "./use-reduce";
 export { useThemeColor } from "./theme-color";
 export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";
+export { Bell } from "./icons";
+export { NotificationRow, type NotificationRowProps } from "./notification-row";

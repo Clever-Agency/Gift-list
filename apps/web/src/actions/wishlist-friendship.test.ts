@@ -42,7 +42,7 @@ const fake = vi.hoisted(() => {
       findUnique(args: {
         where: { fromUserId_toUserId: { fromUserId: string; toUserId: string } };
       }): Promise<{ id: string } | null>;
-      create(args: { data: Invite }): Promise<{ id: string }>;
+      create(args: { data: Invite }): Promise<{ id: string; createdAt: Date }>;
       deleteMany(args: {
         where: { OR: Invite[] } | Invite;
       }): Promise<{ count: number }>;
@@ -85,6 +85,9 @@ const fake = vi.hoisted(() => {
         where: { OR: Subscription[] } | Subscription;
       }): Promise<{ count: number }>;
     };
+    notification: {
+      createMany(args: { data: { eventKey: string; kind: string; actorId: string; recipientId: string }; skipDuplicates: boolean }): Promise<{ count: number }>;
+    };
     $executeRaw(strings: TemplateStringsArray, ...values: unknown[]): Promise<number>;
     $transaction(
       work: (tx: PrismaLike) => Promise<unknown>,
@@ -96,6 +99,7 @@ const fake = vi.hoisted(() => {
     list: null as ListRow | null,
     gifts: [] as GiftRow[],
     invites: [] as Invite[],
+    notifications: [] as { eventKey: string; kind: string; actorId: string; recipientId: string }[],
     friendships: [] as Friendship[],
     blocks: [] as Block[],
     cooldowns: [] as Cooldown[],
@@ -138,7 +142,7 @@ const fake = vi.hoisted(() => {
       },
       async create(args) {
         state.invites.push({ ...args.data });
-        return { id: "invite_1" };
+        return { id: "invite_1", createdAt: new Date() };
       },
       async deleteMany(args) {
         const pairs = "OR" in args.where ? args.where.OR : [args.where];
@@ -271,6 +275,15 @@ const fake = vi.hoisted(() => {
         return { count: before - state.subscriptions.length };
       },
     },
+    notification: {
+      async createMany({ data, skipDuplicates }) {
+        if (skipDuplicates && state.notifications.some(row => row.eventKey === data.eventKey && row.recipientId === data.recipientId)) {
+          return { count: 0 };
+        }
+        state.notifications.push(data);
+        return { count: 1 };
+      },
+    },
     async $executeRaw(strings, ...values) {
       state.lockStatements.push(strings.join("?"));
       state.locks.push(values.join(":"));
@@ -365,6 +378,7 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
     fake.state.locks = [];
     fake.state.lockStatements = [];
     fake.state.transactionOptions = [];
+    fake.state.notifications = [];
   });
 
   it("hides FRIENDS wishes while the invite is only pending", async () => {
@@ -390,6 +404,10 @@ describe("readWishlist with the friendship protocol (AD-7, AD-10)", () => {
       friendshipStore,
     );
     expect(accepted).toEqual({ ok: true, outcome: "FRIENDS_CREATED" });
+    expect(fake.state.notifications).toMatchObject([
+      { kind: "FRIEND_INVITE", actorId: VIEWER_ID, recipientId: OWNER_ID },
+      { kind: "FRIEND_ACCEPT", actorId: OWNER_ID, recipientId: VIEWER_ID },
+    ]);
     // Both directions asked for the same canonical pair lock, with the blocking
     // statement the adapter must keep, and both transactions pinned to READ COMMITTED.
     expect(fake.state.locks).toEqual(["owner_1:viewer_1", "owner_1:viewer_1"]);

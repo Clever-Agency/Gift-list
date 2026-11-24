@@ -11,6 +11,7 @@ import {
   Screen,
   Skeleton,
   Text,
+  XStack,
   YStack,
   type FocusTarget,
 } from "@gift-list/ui";
@@ -18,6 +19,7 @@ import { Stack } from "expo-router";
 import type { ReactNode } from "react";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
+import { NotificationBell } from "@/ui/notification-bell";
 import { ReservationCard } from "@/ui/reservation-card";
 import type { ReservationVisibilityValues } from "@/ui/reservation-visibility";
 import { SiteFooter } from "@/ui/site-footer";
@@ -164,7 +166,10 @@ export function ReservationsScreen({
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>
-              <Heading level={1}>{t("title")}</Heading>
+              <XStack justifyContent="space-between" alignItems="center">
+                <Heading level={1}>{t("title")}</Heading>
+                <NotificationBell />
+              </XStack>
               <YStack
                 testID="reservations-content"
                 paddingTop="$2"

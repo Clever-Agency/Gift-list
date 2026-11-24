@@ -27,6 +27,7 @@ import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
 import { firstIssueField } from "@/lib/api-v1";
 import { auth } from "@/lib/auth";
 import { giftStatusTransaction, recordGiftEvent } from "@/lib/gift-status-store";
+import { enqueueGiftNotification, notificationGiftSnapshot } from "@/lib/notification-store";
 import { relationshipReader } from "@/lib/relationships";
 
 export const unauthenticated = {
@@ -127,6 +128,8 @@ const formGiftSelect = {
  * edit event compares against).
  */
 const storedGiftSelect = {
+  updatedAt: true,
+  reservedAt: true,
   title: true,
   description: true,
   linkUrl: true,
@@ -531,8 +534,7 @@ export async function updateGift(
 
   /**
    * Set inside the transaction when a changed `quantity` requires the wish to
-   * stay `OPEN`. The race answer below reads it to name `quantity` instead of
-   * retrying, which would only reject the same change on the fresh read.
+   * stay `OPEN`. A fresh read only rejects the change if the status also moved.
    */
   let quantityRequiresOpen = false;
 
@@ -674,13 +676,27 @@ export async function updateGift(
             archivedAt: null,
             status: stored.status,
             reservedById: stored.reservedById,
+            reservedAt: stored.reservedAt,
+            updatedAt: stored.updatedAt,
           },
           data: toStoredGiftFields(fields),
           select: { id: true },
         });
 
         // AD-8: status and the reservation columns are written only by the service.
-        if (dropsReservation) await giftStatusTransaction(tx).releaseReservation(updated.id);
+        if (dropsReservation || editFields.length > 0) {
+          const snapshot = await notificationGiftSnapshot(tx, updated.id);
+          if (dropsReservation) {
+            const released = await giftStatusTransaction(tx).releaseReservation(updated.id);
+            if (released) await enqueueGiftNotification(tx, snapshot, {
+              kind: "RESERVATION_RELEASED", role: "holder", email: true, at: new Date(),
+            });
+          } else {
+            await enqueueGiftNotification(tx, snapshot, {
+              kind: "GIFT_EDITED", role: "holder", email: true, at: new Date(), fields: editFields,
+            });
+          }
+        }
 
         // Story 2.5: the tag set is replaced atomically with the field write.
         if (tags !== undefined) {
@@ -744,10 +760,10 @@ export async function updateGift(
         if (current === null) return notFound;
         if (current.archivedAt !== null) return archivedValidation;
         if (current.status === "CLOSED") return closedValidation;
-        if (quantityRequiresOpen) return validation("quantity");
+        if (quantityRequiresOpen && current.status !== "OPEN") return validation("quantity");
 
-        // The wish is still editable, only its status or holder is not the one
-        // this attempt decided on: it was reserved (or released) in between.
+        // The wish is still editable. Its status, holder or other fields
+        // changed since the snapshot, so repeat the checks.
         // Re-run the transaction so the visibility rule meets the reservation
         // that actually exists (CLE-82/S23.2b). A reservation is not a reason to
         // answer NOT_FOUND — the wish is there.
@@ -886,7 +902,6 @@ export async function deleteGift(
   if (!session) return unauthenticated;
 
   const ownerId = session.user.id;
-  const at = new Date();
 
   const deleteRun = prisma.$transaction(
     async function deleteOwnGift(tx): Promise<DeleteGiftOutcome> {
@@ -900,9 +915,12 @@ export async function deleteGift(
       // it, and the event of a successful delete needs it (FR-31: id only).
       let released = false;
       let recipientId: string | null = null;
+      let snapshot: Awaited<ReturnType<typeof notificationGiftSnapshot>> = null;
       if (stored.status === "RESERVED") {
         recipientId = stored.reservedById;
-        released = await giftStatusTransaction(tx).releaseReservation(giftId);
+        snapshot = await notificationGiftSnapshot(tx, giftId);
+        released = await giftStatusTransaction(tx).releaseReservation(giftId, snapshot?.reservedAt);
+        recipientId = snapshot?.reservedById ?? recipientId;
         if (!released) {
           const raced = await tx.gift.findFirst({
             where: { id: giftId, archivedAt: null, list: { ownerId } },
@@ -942,6 +960,8 @@ export async function deleteGift(
       }
 
       if (!released || recipientId === null) return { kind: "deleted", event: null };
+      const at = new Date();
+      await enqueueGiftNotification(tx, snapshot, { kind: "GIFT_DELETED", role: "holder", email: true, at });
       return {
         kind: "deleted",
         event: {

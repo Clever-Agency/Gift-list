@@ -1,5 +1,6 @@
 import {
   Avatar,
+  Bell,
   focusRing,
   NavItem,
   Sidebar,
@@ -13,6 +14,7 @@ import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { pressLink } from "@/navigation/link-press";
+import { useNotificationBadge } from "@/navigation/notification-badge";
 import { TAB_ITEMS, sectionOf } from "@/navigation/tab-items";
 
 type SidebarUserCardProps = {
@@ -109,6 +111,8 @@ export type SidebarNavProps = {
  */
 export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
   const t = useTranslations("app.nav");
+  const notices = useTranslations("notifications");
+  const notificationCount = useNotificationBadge()?.count ?? 0;
   const pathname = usePathname();
   const auth = useAuth();
 
@@ -124,6 +128,10 @@ export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
         testID={testID ? `${testID}-user` : "sidebar-nav-user"}
       />
     ) : undefined;
+
+  function openNotifications() {
+    router.navigate("/notifications");
+  }
 
   return (
     <Sidebar brand={getBrandName()} label={t("sections")} footer={footer} testID={testID}>
@@ -151,6 +159,14 @@ export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
           />
         );
       })}
+      {auth.state.status === "ready" ? (
+        <NavItem label={notices("title")} icon={<Bell />} selected={pathname === "/notifications"}
+          secondary={notificationCount ? notices("unread", { count: notificationCount }) : undefined}
+          badge={notificationCount} variant="side" href="/notifications"
+          onPress={Platform.OS === "web" ? pressLink("/notifications") : openNotifications}
+          testID="sidebar-nav-notifications"
+        />
+      ) : null}
     </Sidebar>
   );
 }

@@ -524,7 +524,11 @@ export {
   getMessages,
   negotiateLocale,
   normalizeForSearch,
+  notificationChangedFields,
+  notificationText,
   preferredFromAcceptLanguage,
   type Messages,
   type SupportedLocale,
 } from "./i18n/index";
+
+export * from "./notifications";

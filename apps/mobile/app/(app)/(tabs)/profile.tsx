@@ -6,11 +6,13 @@ import {
   SafeArea,
   Screen,
   Text,
+  XStack,
   YStack,
 } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
+import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
 import { profileRoute } from "@/profile/profile-route";
 import { useAuth } from "@/session/auth-context";
@@ -114,7 +116,10 @@ export default function MyProfileScreen() {
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>
-              <Heading level={1}>{nav("profile")}</Heading>
+              <XStack justifyContent="space-between" alignItems="center">
+                <Heading level={1}>{nav("profile")}</Heading>
+                <NotificationBell />
+              </XStack>
               <YStack flexGrow={1} paddingTop="$2" paddingBottom="$section-gap">
                 <ProfileMenu
                   onOpenProfile={openOwnProfile}

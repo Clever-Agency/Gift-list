@@ -9,6 +9,7 @@ import { updateHideFromSearch, updateNick } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { formIssue, mutationErrorMessage, nickErrorText, nickFieldText } from "@/session/form-issue";
+import { NotificationSettings } from "@/ui/notification-settings";
 import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
@@ -337,6 +338,7 @@ function SettingsForm({
                     (`EXPERIENCE.md` → Block); the friendship and the subscriptions
                     are not restored by it. */}
                 <BlockedSection onToast={showToast} onExpired={expireSession} />
+                <NotificationSettings key={user.id} />
               </YStack>
               <SiteFooter />
             </Column>

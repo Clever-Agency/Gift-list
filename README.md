@@ -79,8 +79,13 @@ npm run mobile:build:emulator  # 10.0.2.2 разрешён (только эму�
 npm run typecheck   # tsc в web, mobile и packages/contracts
 npm run lint        # ESLint web, mobile, contracts и границы AD-17
 npm test            # Vitest во всех workspaces с тестами
+npm run test:affected # тесты, затронутые изменениями относительно origin/staging
 npm run build       # expo export (web) + prisma generate + next build (output: 'standalone')
 ```
+
+`npm run test:affected` учитывает локальные изменения, включая новые файлы. Для прогона конкретного PR используйте `npm run test:affected -- --base <ref>` на его чистом checkout, указав SHA базового коммита PR. Для уже влитого squash-коммита это его первый родитель (`HEAD^`). Если база недоступна или изменились общие пакеты, настройки либо миграции, команда запускает полный набор.
+
+CI использует выборочный прогон для PR в `staging` и полный `npm test` для PR в `main` и push в обе ветки.
 
 ### Миграции БД
 

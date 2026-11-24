@@ -14,6 +14,7 @@
     "build": "npm run build -w @gift-list/web",
     "start": "npm run start -w @gift-list/web",
     "test": "node scripts/run-suite.mjs",
+    "test:affected": "node scripts/run-suite.mjs --affected",
     "lint": "npm run lint -w @gift-list/web && npm run lint -w @gift-list/mobile && npm run lint -w @gift-list/contracts && npm run lint -w @gift-list/ui && node scripts/check-boundaries.mjs && npm run lint:storybook",
     "lint:storybook": "eslint .storybook",
     "mobile:start": "npm run start -w @gift-list/mobile",

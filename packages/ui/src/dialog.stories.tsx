@@ -24,6 +24,11 @@ const DIALOG_LAYOUTS = ["default", "detail"] as const;
  * `medium` breakpoint and up to `detail-width` above it, with a scrolling body.
  * The same slot content is used for the guest, loading, error and banner examples
  * below, so `DetailDialog` and `BottomSheet` keep no separate catalog pages.
+ *
+ * Every showcase on the docs page runs in its own iframe
+ * (`docs.story.inline: false`): a layer paints its scrim over the whole
+ * document, so an inline open window would cover the description, the controls
+ * and the neighbouring showcases.
  */
 const meta = {
   title: "UI/Dialog",
@@ -43,6 +48,11 @@ What is not a prop:
 - \`BottomSheet\` is a different layer (a phone sheet, not a centred window) and keeps its own component. The last two showcases below show how the same content looks in it.
         `.trim(),
       },
+      // `@storybook/react` turns `docs.story.inline` on by default for every
+      // story; an inline layer then paints its scrim and panel over the whole
+      // docs page. Each showcase gets its own iframe instead, tall enough for an
+      // open dialog or a bottom sheet (`iframeHeight` is the frame height).
+      story: { inline: false, iframeHeight: "420px" },
     },
   },
   argTypes: {
@@ -420,6 +430,7 @@ DetailDialogStory.displayName = "DetailDialogStory";
 export const DetailGuest: Story = {
   name: "Detail: guest",
   tags: ["!dev"],
+  parameters: { docs: { story: { iframeHeight: "640px" } } },
   render: function DetailGuestStory() {
     return <DetailDialogStory />;
   },
@@ -429,6 +440,7 @@ export const DetailGuest: Story = {
 export const DetailLoading: Story = {
   name: "Detail: loading",
   tags: ["!dev"],
+  parameters: { docs: { story: { iframeHeight: "640px" } } },
   render: function DetailLoadingStory() {
     return <DetailDialogStory notice="Загружаем желание" />;
   },
@@ -438,6 +450,7 @@ export const DetailLoading: Story = {
 export const DetailNetworkError: Story = {
   name: "Detail: network error",
   tags: ["!dev"],
+  parameters: { docs: { story: { iframeHeight: "640px" } } },
   render: function DetailNetworkErrorStory() {
     return (
       <DetailDialogStory
@@ -452,6 +465,7 @@ export const DetailNetworkError: Story = {
 export const DetailWithBanner: Story = {
   name: "Detail: banner",
   tags: ["!dev"],
+  parameters: { docs: { story: { iframeHeight: "640px" } } },
   render: function DetailWithBannerStory() {
     return <DetailDialogStory banner={DETAIL_BANNER} />;
   },
@@ -461,6 +475,7 @@ export const DetailWithBanner: Story = {
 export const AsBottomSheet: Story = {
   name: "As a bottom sheet",
   tags: ["!dev"],
+  parameters: { docs: { story: { iframeHeight: "480px" } } },
   render: function AsBottomSheetStory() {
     return (
       <BottomSheet
@@ -485,6 +500,7 @@ export const AsBottomSheet: Story = {
 export const AsBottomSheetNarrow: Story = {
   name: "Bottom sheet on a phone",
   tags: ["!dev"],
+  parameters: { docs: { story: { iframeHeight: "520px" } } },
   render: function AsBottomSheetNarrowStory() {
     return (
       <BottomSheet

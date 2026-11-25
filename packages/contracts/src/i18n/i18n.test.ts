@@ -4,6 +4,7 @@ import { ERROR_CODES, ERROR_REASONS, PASSWORD_MAX, PASSWORD_MIN } from "../index
 import {
   compareForSort,
   formatDate,
+  formatDay,
   formatPrice,
   getMessages,
   negotiateLocale,
@@ -65,6 +66,27 @@ describe("formatDate", () => {
     expect(formatDate("2026-11-20", "ru", { year: false })).toBe("20.11");
     expect(formatDate("2026-11-20", "ru")).toBe("20.11.2026");
     expect(formatDate("2026-11-20", "ru", { year: true })).toBe("20.11.2026");
+  });
+});
+
+/**
+ * CLE-124/S9c: one day in words for the user's language. `Intl` decides the
+ * order, so `ru` reads «3 декабря» and `en` reads «December 3» with no month
+ * table in the code.
+ */
+describe("formatDay", () => {
+  it("writes the day and the month in words for the locale", () => {
+    expect(formatDay("2026-12-03", "ru")).toBe("3 декабря");
+    expect(formatDay("2026-12-03", "en")).toBe("December 3");
+  });
+
+  it("keeps a calendar day from shifting in any zone", () => {
+    expect(formatDay("2026-12-03", "ru", "Pacific/Kiritimati")).toBe("3 декабря");
+  });
+
+  it("formats an instant in the recipient's zone across midnight", () => {
+    expect(formatDay("2026-11-25T21:00:00.000Z", "ru", "Europe/Minsk")).toBe("26 ноября");
+    expect(formatDay("2026-11-25T21:00:00.000Z", "ru", "UTC")).toBe("25 ноября");
   });
 });
 

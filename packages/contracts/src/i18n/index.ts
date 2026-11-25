@@ -5,6 +5,6 @@ export {
   preferredFromAcceptLanguage,
   type SupportedLocale,
 } from "./locale";
-export { compareForSort, formatDate, formatPrice, normalizeForSearch } from "./format";
+export { compareForSort, formatDate, formatDay, formatPrice, normalizeForSearch } from "./format";
 export { getMessages, type Messages } from "./messages";
 export { notificationChangedFields, notificationText } from "./notification-text";

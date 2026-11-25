@@ -1,13 +1,14 @@
 import type { NotificationItem } from "../notifications";
 import { RESERVATION_RELEASE_AFTER_MS } from "../notifications";
+import { formatDay } from "./format";
 import { getMessages } from "./messages";
 import { negotiateLocale } from "./locale";
 
 /**
- * The same shape every notification date uses (Story 5.6 / CLE-124/S9b-2):
- * a localized day of the recipient's zone, without a year. `shiftMs` moves the
- * instant off the exclusive end of a calendar day (`−1` ms lands on the day
- * itself) or onto the release moment (`+168 ч`).
+ * The same shape every notification date uses (Story 5.6 / CLE-124/S9c): a
+ * localized day of the recipient's zone in words, without a year. `shiftMs`
+ * moves the instant off the exclusive end of a calendar day (`−1` ms lands on
+ * the day itself) or onto the release moment (`+168 ч`).
  */
 function notificationDay(
   instant: string,
@@ -15,11 +16,7 @@ function notificationDay(
   locale: string,
   shiftMs: number,
 ): string {
-  return new Intl.DateTimeFormat(locale, {
-    day: "numeric",
-    month: "long",
-    timeZone,
-  }).format(new Date(Date.parse(instant) + shiftMs));
+  return formatDay(new Date(Date.parse(instant) + shiftMs), locale, timeZone);
 }
 
 export function notificationChangedFields(event: NotificationItem["event"], locale: string): string | null {
@@ -60,11 +57,7 @@ export function notificationText(event: NotificationItem["event"], locale: strin
   }
 
   if (event.kind === "RESERVATION_KEPT_BY_OWNER") {
-    date = new Intl.DateTimeFormat(resolved, {
-      day: "numeric",
-      month: "long",
-      timeZone: event.timeZone,
-    }).format(new Date(Date.parse(event.dueAt) - 1));
+    date = notificationDay(event.dueAt, event.timeZone, resolved, -1);
   }
   return copy[event.kind].replace(/\{(title|person|date)\}/g, function value(_, key: string) {
     if (key === "title") return title;

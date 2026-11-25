@@ -523,6 +523,7 @@ export {
   SUPPORTED_LOCALES,
   compareForSort,
   formatDate,
+  formatDay,
   formatPrice,
   getMessages,
   negotiateLocale,

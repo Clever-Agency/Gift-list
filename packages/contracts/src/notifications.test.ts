@@ -5,6 +5,8 @@ import {
   notificationItemSchema,
   notificationPayloadSchema,
 } from "./notifications";
+import { notificationText } from "./i18n/notification-text";
+import type { NotificationItem } from "./notifications";
 
 describe("CLE-124/S9b-2: notification payloads", () => {
   it("keeps GIFT_GIVEN a bare kind, so no title or holder can travel", () => {
@@ -72,6 +74,38 @@ describe("CLE-124/S9b-2: notification payloads", () => {
       },
     });
     expect(item.event).toMatchObject({ dueAt: "2026-11-25T21:00:00.000Z" });
+  });
+});
+
+describe("CLE-124/S9c: notification dates come from the one day formatter", () => {
+  const due = {
+    kind: "RESERVATION_DUE",
+    giftId: "g1",
+    titleSnapshot: "Плед",
+    actionable: true,
+    dueAt: "2026-11-25T21:00:00.000Z",
+    timeZone: "Europe/Minsk",
+  } satisfies NotificationItem["event"];
+
+  it("names the deadline day and the release day in words, in the recipient's zone", () => {
+    expect(notificationText({ ...due, reminder: true }, "ru")).toBe(
+      "Срок брони «Плед» — 25 ноября. Продлите или отметьте «Купил»; если не продлить, бронь снимется через 7 дней после этой даты",
+    );
+    expect(notificationText(due, "ru")).toBe(
+      "Срок брони «Плед» истёк. Если ничего не сделать, бронь снимется 3 декабря",
+    );
+  });
+
+  it("names the kept day in words, in the recipient's zone", () => {
+    const kept = {
+      kind: "RESERVATION_KEPT_BY_OWNER",
+      giftId: "g1",
+      titleSnapshot: "Плед",
+      dueAt: "2026-11-25T21:00:00.000Z",
+      timeZone: "Europe/Minsk",
+    } satisfies NotificationItem["event"];
+
+    expect(notificationText(kept, "ru")).toBe("Владелец продлил вашу бронь «Плед» до 25 ноября");
   });
 });
 

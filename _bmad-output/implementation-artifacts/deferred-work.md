@@ -426,3 +426,13 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
   summary: Прежние ключи каталога `app.myWishlist.logout`, `app.myWishlist.search`, `app.myWishlist.friends`, `app.myWishlist.settings` больше не используются экраном «Мой вишлист» (строки и «Выйти» ушли в «Профиль»), но остаются в `app.json`. Удалять их или оставить ради совместимости — решение координатора/волны A; 6.2 каталог не трогает.
   evidence: Отчёт волны D (`T10-report.md`, «Новые тексты интерфейса»); `apps/mobile/app/(app)/(tabs)/index.tsx` больше не ссылается на эти ключи, `packages/contracts/src/i18n/ru/app.json` вне diff подзадач E/F.
+
+## Deferred from: CLE-124 — подарок всегда сюрприз (2026-11-25)
+
+- source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-25-surprise.md` (§1, §4)
+  summary: Закрыто/отменено решением D-49. Владельческие уведомления `RESERVATION_CREATED`, `RESERVATION_RELEASED` (owner), `RESERVATION_OWNER_ASK`, `RESERVATION_AUTO_RELEASE` (owner) не создаются; `GIFT_GIVEN` с вопросом «Подарок у вас?» владельцу не создаётся. Прежние долги Story 5.2, 5.4, 5.5, 5.6, 5.8 про владельческие уведомления и действия с бронью закрыты/отменены; `deferred-work.md` не дублирует их новыми.
+  evidence: PR #120 (S4a) уже выключил создание; старые строки прячутся при чтении, миграции и чистки БД нет. Нормативная запись — PRD D-49, AD-7, AD-14, Story 5.2/5.6/5.7.
+
+- source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-25-surprise.md` (§1, §4)
+  summary: Открыто до S5/S9b: что делать с уже существующими в БД бронями в фазе `GIVEN` и старыми владельческими уведомлениями после выката. Старые уведомления только скрываются при чтении; `GIVEN` больше не наступает, но строки могут остаться. Решение о судьбе таких броней (показывать держателю как «Срок истёк» / снимать / оставить до закрытия) — вопрос реализации S5, новых полей и миграции не требуется.
+  evidence: `ARCHITECTURE-SPINE.md` AD-9 (`GIVEN` помечен «не используется в MVP»); `gift-status-store.ts` и `reservationPhase` в схеме остаются; данные staging содержат старые фазы.

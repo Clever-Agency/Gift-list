@@ -1,30 +1,67 @@
 name: Wish expiry
 
 # Story 2.6 / AD-16: not Vercel Cron. The schedule runs only from the default
-# branch of this repository. A delayed run only postpones the archive (ARCH-A15).
+# branch of this repository (staging), but calls both deployments. A delayed run
+# only postpones the archive (ARCH-A15).
+#
+# Each job runs in a GitHub Environment that resolves APP_URL and CRON_SECRET:
+# - cron-production has no secrets of its own and falls back to the repository
+#   secrets APP_URL and CRON_SECRET (production);
+# - cron-staging overrides both with the staging values.
 on:
   schedule:
     - cron: "0 * * * *"
   workflow_dispatch:
+    inputs:
+      target:
+        description: Which deployment to archive
+        type: choice
+        options: [all, production, staging]
+        default: all
 
 permissions:
   contents: read
 
 jobs:
   wish-expiry:
-    name: wish-expiry
+    name: wish-expiry (${{ matrix.environment }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      # A staging outage must not cancel the production run.
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.target != 'all' && format('["cron-{0}"]', inputs.target) || '["cron-production","cron-staging"]') }}
+    environment: ${{ matrix.environment }}
+    # A manual run during the scheduled one waits instead of calling twice.
+    concurrency:
+      group: wish-expiry-${{ matrix.environment }}
+      cancel-in-progress: false
     steps:
       - name: Archive expired wishes
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TARGET: ${{ matrix.environment }}
         run: |
           if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
-            echo "::error::Set the APP_URL and CRON_SECRET repository secrets"
+            echo "::error::$TARGET: set APP_URL and CRON_SECRET (environment or repository secrets)"
             exit 1
           fi
+          # A missing cron-staging secret silently falls back to the production
+          # repository secret; refuse to call production from the staging job.
+          case "$TARGET:$APP_URL" in
+            cron-staging:https://staging.*) ;;
+            cron-staging:*)
+              echo "::error::cron-staging: APP_URL is not the staging host; set the cron-staging environment secrets"
+              exit 1
+              ;;
+            *:https://staging.*)
+              echo "::error::$TARGET: APP_URL points to staging"
+              exit 1
+              ;;
+          esac
+          echo "Calling ${APP_URL%/}/api/cron/wish-expiry"
           curl --fail-with-body --silent --show-error --max-time 60 \
             -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \

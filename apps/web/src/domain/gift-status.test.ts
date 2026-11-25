@@ -1,11 +1,35 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EXTENDABLE_RESERVATION_PHASES,
+  RESERVATION_GIVER_WINDOW_MS,
+  RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
+  UNDO_WINDOW_MS,
+  canAskOwner,
+  canCloseGift,
+  canExpireToGiver,
+  canExtendReservation,
+  canKeepReservation,
+  canReleaseByExpiry,
+  canSetReservationAttributes,
+  canUndoClose,
+  closeGiftData,
   hasActiveReservation,
+  keptReservationDueAt,
+  reservationWarning,
+  undoCloseData,
+  undoUntil,
   visibilityChangeDropsReservation,
+  type GiftStatusEvent,
+  type GiftStatusEventKind,
   type HolderAccessInput,
+  type ReservationDueRow,
+  type ReservationPhaseMomentRow,
+  type ReservationReleaseRow,
 } from "./gift-status";
+import { GIFT_EDIT_EVENT_FIELDS, type GiftEditEventField } from "./gift-edit";
+import { addCalendarDays, calendarDayInZone, reservationDueOn } from "./reservation-due";
 import type { ViewerRelations } from "./visibility";
 
 const OWNER_ID = "u1";
@@ -137,5 +161,532 @@ describe("the RESERVED → OPEN release", () => {
     expect(hasActiveReservation({ status: "RESERVED" })).toBe(true);
     expect(hasActiveReservation({ status: "OPEN" })).toBe(false);
     expect(hasActiveReservation({ status: "CLOSED" })).toBe(false);
+  });
+});
+
+/** Story 5.2 (FR-31, AD-12): the owner's preflight of a foreign reservation. */
+describe("reservationWarning", () => {
+  it("warns BOUGHT when the holder marked the gift as bought", () => {
+    expect(reservationWarning({ status: "RESERVED", reservationBought: true })).toBe("BOUGHT");
+  });
+
+  it("answers null when the holder marked nothing", () => {
+    expect(reservationWarning({ status: "RESERVED", reservationBought: false })).toBeNull();
+  });
+
+  /** PREFLIGHT_STALE: the preflight only reads, so a stale state warns about nothing. */
+  it.each(["OPEN", "CLOSED"] as const)("answers null for a %s wish", (status) => {
+    expect(reservationWarning({ status, reservationBought: true })).toBeNull();
+  });
+
+  /** `GIVEN` is a Story 5.7 branch: 5.2 has no row with that phase and no branch for it. */
+  it("never answers GIVEN in Story 5.2", () => {
+    const answers = [true, false].map((reservationBought) =>
+      reservationWarning({ status: "RESERVED", reservationBought }),
+    );
+    expect(answers).not.toContain("GIVEN");
+  });
+});
+
+/** Story 5.3 (FR-32, AD-8): the owner closes an open or reserved, non-archived wish. */
+describe("canCloseGift", () => {
+  it.each(["OPEN", "RESERVED"] as const)("allows a non-archived %s wish", (status) => {
+    expect(canCloseGift({ status, archivedAt: null })).toBe(true);
+  });
+
+  it("refuses a CLOSED wish", () => {
+    expect(canCloseGift({ status: "CLOSED", archivedAt: null })).toBe(false);
+  });
+
+  /** AD-8: an archived wish is read-only, whatever its status. */
+  it.each(["OPEN", "RESERVED", "CLOSED"] as const)("refuses an archived %s wish", (status) => {
+    expect(canCloseGift({ status, archivedAt: new Date("2026-01-01T00:00:00.000Z") })).toBe(false);
+  });
+});
+
+/** Story 5.3 (AD-8): the close writes the origin status and keeps the snapshot. */
+describe("closeGiftData", () => {
+  const at = new Date("2026-11-19T12:00:00.000Z");
+
+  it.each(["OPEN", "RESERVED"] as const)("closes from %s and records the moment", (from) => {
+    expect(closeGiftData(from, at)).toEqual({
+      status: "CLOSED",
+      closedAt: at,
+      closedFromStatus: from,
+    });
+  });
+
+  it("never carries reservation, quantity or visibility columns", () => {
+    const keys = Object.keys(closeGiftData("RESERVED", at)).sort();
+    expect(keys).toEqual(["closedAt", "closedFromStatus", "status"]);
+  });
+});
+
+/** Story 5.3 (D-43, ARCH-A5): the undo window is ten minutes, server side. */
+describe("canUndoClose", () => {
+  const now = new Date("2026-11-19T12:00:00.000Z");
+  const tenMinutesAgo = new Date(now.getTime() - UNDO_WINDOW_MS);
+
+  it("has one ten-minute window", () => {
+    expect(UNDO_WINDOW_MS).toBe(10 * 60 * 1000);
+  });
+
+  /** The boundary is exclusive: at exactly ten minutes the undo is already late. */
+  it("refuses a wish closed exactly ten minutes ago", () => {
+    expect(canUndoClose({ status: "CLOSED", closedAt: tenMinutesAgo, closedFromStatus: "OPEN" }, now)).toBe(
+      false,
+    );
+  });
+
+  it("allows a wish closed one millisecond inside the window", () => {
+    const justInside = new Date(tenMinutesAgo.getTime() + 1);
+    expect(
+      canUndoClose({ status: "CLOSED", closedAt: justInside, closedFromStatus: "OPEN" }, now),
+    ).toBe(true);
+  });
+
+  it("refuses a wish closed one millisecond after the window", () => {
+    const justOutside = new Date(tenMinutesAgo.getTime() - 1);
+    expect(
+      canUndoClose({ status: "CLOSED", closedAt: justOutside, closedFromStatus: "RESERVED" }, now),
+    ).toBe(false);
+  });
+
+  /** UNDO_RACE / UNDO_NO_ORIGIN: no origin status or not closed at all. */
+  it.each(["OPEN", "RESERVED"] as const)("refuses a %s wish", (status) => {
+    expect(canUndoClose({ status, closedAt: now, closedFromStatus: "OPEN" }, now)).toBe(false);
+  });
+
+  it("refuses a closed wish without an origin status", () => {
+    expect(canUndoClose({ status: "CLOSED", closedAt: now, closedFromStatus: null }, now)).toBe(false);
+  });
+
+  it("refuses a closed wish without a closing moment", () => {
+    expect(canUndoClose({ status: "CLOSED", closedAt: null, closedFromStatus: "OPEN" }, now)).toBe(false);
+  });
+});
+
+/** Story 5.3: the undo restores the origin status and clears only the closure. */
+describe("undoCloseData", () => {
+  it.each(["OPEN", "RESERVED"] as const)("restores %s and clears the closure columns", (from) => {
+    expect(undoCloseData(from)).toEqual({
+      status: from,
+      closedAt: null,
+      closedFromStatus: null,
+    });
+  });
+
+  it("never carries reservation, quantity or visibility columns", () => {
+    expect(Object.keys(undoCloseData("RESERVED")).sort()).toEqual([
+      "closedAt",
+      "closedFromStatus",
+      "status",
+    ]);
+  });
+});
+
+/** Story 5.3 (ARCH-A5): `undoUntil` is `closedAt + UNDO_WINDOW`, returned even after the window. */
+describe("undoUntil", () => {
+  const closedAt = new Date("2026-11-19T12:00:00.000Z");
+
+  it("adds the window to a closed wish", () => {
+    expect(undoUntil({ status: "CLOSED", closedAt })).toEqual(
+      new Date(closedAt.getTime() + UNDO_WINDOW_MS),
+    );
+  });
+
+  it("still answers the moment after the window has passed", () => {
+    const old = new Date("2020-01-01T00:00:00.000Z");
+    expect(undoUntil({ status: "CLOSED", closedAt: old })).toEqual(
+      new Date(old.getTime() + UNDO_WINDOW_MS),
+    );
+  });
+
+  it.each(["OPEN", "RESERVED"] as const)("answers null for a %s wish", (status) => {
+    expect(undoUntil({ status, closedAt })).toBeNull();
+  });
+
+  it("answers null for a closed wish without a moment", () => {
+    expect(undoUntil({ status: "CLOSED", closedAt: null })).toBeNull();
+  });
+});
+
+/**
+ * Story 5.4 (FR-31): the shape of the two events the seam gained. An edit has no
+ * transition and carries field names; a deletion carries the transition the
+ * release made and the holder, and never a title or a nick.
+ */
+describe("the Story 5.4 event payload", () => {
+  const at = new Date("2026-11-20T10:00:00.000Z");
+
+  it("keeps the six kinds of the seam", () => {
+    const kinds: readonly GiftStatusEventKind[] = [
+      "RESERVATION_RELEASED_BY_HOLDER",
+      "RESERVATION_RELEASED_BY_OWNER",
+      "WISH_CLOSED",
+      "WISH_REOPENED",
+      "GIFT_EDITED",
+      "GIFT_DELETED",
+    ];
+
+    expect(new Set(kinds).size).toBe(6);
+  });
+
+  it("lets an edit omit the transition and carry field names only", () => {
+    const fields: readonly GiftEditEventField[] = ["title", "price"];
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: "u1",
+      at,
+      kind: "GIFT_EDITED",
+      fields,
+    };
+
+    expect(event.from).toBeUndefined();
+    expect(event.to).toBeUndefined();
+    expect(event.recipientId).toBeUndefined();
+    expect(event.fields).toEqual(["title", "price"]);
+  });
+
+  it("accepts only names from the closed set", () => {
+    expect([...GIFT_EDIT_EVENT_FIELDS]).toEqual(["title", "description", "linkUrl", "price"]);
+
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: "u1",
+      at,
+      kind: "GIFT_EDITED",
+      fields: GIFT_EDIT_EVENT_FIELDS,
+    };
+    // A name outside the set, e.g. a tag or a visibility value, is not reportable.
+    expect(event.fields).not.toContain("tags");
+    expect(event.fields).not.toContain("visibility");
+  });
+
+  it("carries the RESERVED → OPEN transition and the holder on a deletion", () => {
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: "u1",
+      from: "RESERVED",
+      to: "OPEN",
+      at,
+      kind: "GIFT_DELETED",
+      recipientId: "u2",
+    };
+
+    expect(event).toMatchObject({
+      kind: "GIFT_DELETED",
+      from: "RESERVED",
+      to: "OPEN",
+      recipientId: "u2",
+    });
+    expect(event.fields).toBeUndefined();
+  });
+});
+
+/**
+ * Story 5.5 (AD-9): an extension leaves only ACTIVE/AWAITING_*; «Купил» and the
+ * toggles are attributes of any live reservation, `GIVEN` included.
+ */
+describe("reservation attributes of Story 5.5", () => {
+  it.each(EXTENDABLE_RESERVATION_PHASES)(
+    "allows extending a RESERVED %s reservation",
+    (phase) => {
+      expect(canExtendReservation({ status: "RESERVED", reservationPhase: phase })).toBe(true);
+    },
+  );
+
+  /** «Ждёт подтверждения» stops the timers (Story 5.7), so an extension is refused. */
+  it("refuses to extend a GIVEN reservation", () => {
+    expect(canExtendReservation({ status: "RESERVED", reservationPhase: "GIVEN" })).toBe(false);
+  });
+
+  it.each(["OPEN", "CLOSED"] as const)(
+    "refuses a %s wish even with a leftover phase",
+    (status) => {
+      expect(canExtendReservation({ status, reservationPhase: "ACTIVE" })).toBe(false);
+    },
+  );
+
+  it("refuses an incomplete reservation without a phase", () => {
+    expect(canExtendReservation({ status: "RESERVED", reservationPhase: null })).toBe(false);
+  });
+
+  it("keeps the extendable list exactly ACTIVE and both AWAITING phases", () => {
+    expect([...EXTENDABLE_RESERVATION_PHASES]).toEqual([
+      "ACTIVE",
+      "AWAITING_GIVER",
+      "AWAITING_OWNER",
+    ]);
+    expect([...EXTENDABLE_RESERVATION_PHASES]).not.toContain("GIVEN");
+  });
+
+  it.each(["OPEN", "RESERVED", "CLOSED"] as const)(
+    "answers %s for the attribute writes by status alone",
+    (status) => {
+      expect(canSetReservationAttributes({ status })).toBe(status === "RESERVED");
+    },
+  );
+});
+
+/** Story 5.6 (AD-9): the reservation cycle, three steps and the owner's keep. */
+describe("the Story 5.6 reservation timers", () => {
+  const now = new Date("2026-11-20T12:00:00.000Z");
+
+  function dueRow(overrides: Partial<ReservationDueRow> = {}): ReservationDueRow {
+    return {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "ACTIVE",
+      reservationDueAt: now,
+      ...overrides,
+    };
+  }
+
+  function momentRow(
+    overrides: Partial<ReservationPhaseMomentRow> = {},
+  ): ReservationPhaseMomentRow {
+    return {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "AWAITING_GIVER",
+      reservationPhaseAt: now,
+      ...overrides,
+    };
+  }
+
+  function releaseRow(overrides: Partial<ReservationReleaseRow> = {}): ReservationReleaseRow {
+    return {
+      status: "RESERVED",
+      archivedAt: null,
+      reservationPhase: "AWAITING_OWNER",
+      reservationPhaseAt: now,
+      reservationBought: false,
+      ...overrides,
+    };
+  }
+
+  it("uses the two windows AD-9 names", () => {
+    expect(RESERVATION_GIVER_WINDOW_MS).toBe(72 * 60 * 60 * 1000);
+    expect(RESERVATION_OWNER_WINDOW_MS).toBe(168 * 60 * 60 * 1000);
+  });
+
+  describe("canExpireToGiver", () => {
+    /** `dueAt ≤ now`: at exactly the deadline the step already happens. */
+    it("moves at the deadline and after it", () => {
+      expect(canExpireToGiver(dueRow(), now)).toBe(true);
+      expect(canExpireToGiver(dueRow({ reservationDueAt: new Date(now.getTime() - 1) }), now)).toBe(
+        true,
+      );
+    });
+
+    it("waits one millisecond past the deadline", () => {
+      expect(
+        canExpireToGiver(dueRow({ reservationDueAt: new Date(now.getTime() + 1) }), now),
+      ).toBe(false);
+    });
+
+    it.each(["AWAITING_GIVER", "AWAITING_OWNER", "GIVEN", null] as const)(
+      "refuses the %s phase",
+      (reservationPhase) => {
+        expect(canExpireToGiver(dueRow({ reservationPhase }), now)).toBe(false);
+      },
+    );
+
+    it.each(["OPEN", "CLOSED"] as const)("refuses a %s wish", (status) => {
+      expect(canExpireToGiver(dueRow({ status }), now)).toBe(false);
+    });
+
+    /** CRON_ARCHIVED: an archived wish is read-only (AD-8). */
+    it("refuses an archived wish", () => {
+      expect(canExpireToGiver(dueRow({ archivedAt: now }), now)).toBe(false);
+    });
+
+    it("refuses a reservation without a deadline", () => {
+      expect(canExpireToGiver(dueRow({ reservationDueAt: null }), now)).toBe(false);
+    });
+  });
+
+  describe("canAskOwner", () => {
+    /** `phaseAt ≤ now − 72 ч`: the boundary is inclusive. */
+    it("asks at exactly 72 hours and later", () => {
+      const boundary = new Date(now.getTime() - RESERVATION_GIVER_WINDOW_MS);
+      expect(canAskOwner(momentRow({ reservationPhaseAt: boundary }), now)).toBe(true);
+      expect(canAskOwner(momentRow({ reservationPhaseAt: new Date(boundary.getTime() - 1) }), now)).toBe(
+        true,
+      );
+    });
+
+    it("waits one millisecond inside the window", () => {
+      const boundary = new Date(now.getTime() - RESERVATION_GIVER_WINDOW_MS + 1);
+      expect(canAskOwner(momentRow({ reservationPhaseAt: boundary }), now)).toBe(false);
+    });
+
+    it.each(["ACTIVE", "AWAITING_OWNER", "GIVEN", null] as const)(
+      "refuses the %s phase",
+      (reservationPhase) => {
+        expect(canAskOwner(momentRow({ reservationPhase }), now)).toBe(false);
+      },
+    );
+
+    it.each(["OPEN", "CLOSED"] as const)("refuses a %s wish", (status) => {
+      expect(canAskOwner(momentRow({ status }), now)).toBe(false);
+    });
+
+    it("refuses an archived wish and a phase without a moment", () => {
+      expect(canAskOwner(momentRow({ archivedAt: now }), now)).toBe(false);
+      expect(canAskOwner(momentRow({ reservationPhaseAt: null }), now)).toBe(false);
+    });
+  });
+
+  describe("canReleaseByExpiry", () => {
+    /** `phaseAt ≤ now − 168 ч` with `bought = false`. */
+    it("releases at exactly 168 hours and later", () => {
+      const boundary = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS);
+      expect(canReleaseByExpiry(releaseRow({ reservationPhaseAt: boundary }), now)).toBe(true);
+      expect(
+        canReleaseByExpiry(releaseRow({ reservationPhaseAt: new Date(boundary.getTime() - 1) }), now),
+      ).toBe(true);
+    });
+
+    it("waits one millisecond inside the window", () => {
+      const inside = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS + 1);
+      expect(canReleaseByExpiry(releaseRow({ reservationPhaseAt: inside }), now)).toBe(false);
+    });
+
+    /** CRON_BOUGHT: «Купил» always wins over the timer. */
+    it("never releases a gift the holder marked as bought", () => {
+      const boundary = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS);
+      expect(
+        canReleaseByExpiry(releaseRow({ reservationPhaseAt: boundary, reservationBought: true }), now),
+      ).toBe(false);
+    });
+
+    it.each(["ACTIVE", "AWAITING_GIVER", "GIVEN", null] as const)(
+      "refuses the %s phase",
+      (reservationPhase) => {
+        expect(canReleaseByExpiry(releaseRow({ reservationPhase }), now)).toBe(false);
+      },
+    );
+
+    it.each(["OPEN", "CLOSED"] as const)("refuses a %s wish", (status) => {
+      expect(canReleaseByExpiry(releaseRow({ status }), now)).toBe(false);
+    });
+
+    it("refuses an archived wish and a phase without a moment", () => {
+      expect(canReleaseByExpiry(releaseRow({ archivedAt: now }), now)).toBe(false);
+      expect(canReleaseByExpiry(releaseRow({ reservationPhaseAt: null }), now)).toBe(false);
+    });
+  });
+
+  describe("canKeepReservation", () => {
+    it("allows the owner's answer only in AWAITING_OWNER", () => {
+      expect(canKeepReservation(releaseRow())).toBe(true);
+    });
+
+    it.each(["ACTIVE", "AWAITING_GIVER", "GIVEN", null] as const)(
+      "refuses the %s phase",
+      (reservationPhase) => {
+        expect(canKeepReservation(releaseRow({ reservationPhase }))).toBe(false);
+      },
+    );
+
+    it.each(["OPEN", "CLOSED"] as const)("refuses a %s wish", (status) => {
+      expect(canKeepReservation(releaseRow({ status }))).toBe(false);
+    });
+
+    it("refuses an archived wish", () => {
+      expect(canKeepReservation(releaseRow({ archivedAt: now }))).toBe(false);
+    });
+  });
+
+  describe("keptReservationDueAt", () => {
+    it("ends the day «today + 7» in UTC", () => {
+      expect(keptReservationDueAt(now, "UTC")).toEqual(new Date("2026-11-28T00:00:00.000Z"));
+    });
+
+    it("ends the same calendar day in the saved zone, not in UTC", () => {
+      // 12:00 UTC is already 15:00 in Moscow, so the day is still 20.11 there.
+      expect(keptReservationDueAt(now, "Europe/Moscow")).toEqual(
+        new Date("2026-11-27T21:00:00.000Z"),
+      );
+    });
+
+    /** A DST edge: New York leaves DST on 2026-11-01, before the new deadline. */
+    it("crosses a DST change in the saved zone", () => {
+      const beforeTransition = new Date("2026-11-01T04:30:00.000Z");
+      expect(keptReservationDueAt(beforeTransition, "America/New_York")).toEqual(
+        new Date("2026-11-09T05:00:00.000Z"),
+      );
+    });
+
+    it.each([null, "", "Not/AZone"])("falls back to UTC for the zone %s", (timeZone) => {
+      expect(keptReservationDueAt(now, timeZone)).toEqual(
+        keptReservationDueAt(now, "UTC"),
+      );
+    });
+
+    it("keeps the picked day at «today + 7» of the zone", () => {
+      const zone = "Pacific/Kiritimati";
+      const dueAt = keptReservationDueAt(now, zone);
+      expect(reservationDueOn(dueAt, zone)).toBe(
+        addCalendarDays(calendarDayInZone(now, zone), 7),
+      );
+    });
+  });
+});
+
+/**
+ * Story 5.6 (NFR-6): four kinds join the seam. Three of the transitions keep
+ * `RESERVED → RESERVED`, so the `kind` is what tells them apart; a timer
+ * transition has no actor.
+ */
+describe("the Story 5.6 event payload", () => {
+  const at = new Date("2026-11-20T12:00:00.000Z");
+
+  it("adds the four reservation-timer kinds to the seam", () => {
+    const kinds: Record<GiftStatusEventKind, true> = {
+      RESERVATION_RELEASED_BY_HOLDER: true,
+      RESERVATION_RELEASED_BY_OWNER: true,
+      WISH_CLOSED: true,
+      WISH_REOPENED: true,
+      GIFT_EDITED: true,
+      GIFT_DELETED: true,
+      RESERVATION_GIVER_DEADLINE_PASSED: true,
+      RESERVATION_OWNER_ASKED: true,
+      RESERVATION_RELEASED_BY_EXPIRY: true,
+      RESERVATION_KEPT_BY_OWNER: true,
+    };
+
+    expect(Object.keys(kinds)).toHaveLength(10);
+  });
+
+  it("lets a timer transition carry no actor and a phase-only change", () => {
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: null,
+      from: "RESERVED",
+      to: "RESERVED",
+      at,
+      kind: "RESERVATION_OWNER_ASKED",
+    };
+
+    expect(event.actorId).toBeNull();
+    expect(event.from).toBe(event.to);
+    expect(event.fields).toBeUndefined();
+    expect(event.recipientId).toBeUndefined();
+  });
+
+  it("keeps the owner as the actor of the keep answer", () => {
+    const event: GiftStatusEvent = {
+      giftId: "g1",
+      actorId: "u1",
+      from: "RESERVED",
+      to: "RESERVED",
+      at,
+      kind: "RESERVATION_KEPT_BY_OWNER",
+    };
+
+    expect(event.actorId).toBe("u1");
   });
 });

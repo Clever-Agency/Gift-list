@@ -59,6 +59,13 @@ describe("formatDate", () => {
       "01.11.2026",
     );
   });
+
+  /** Story 5.5: the reservation card shows «до DD.MM»; the detail keeps the full date. */
+  it("drops the year only when the caller asks for the short form", () => {
+    expect(formatDate("2026-11-20", "ru", { year: false })).toBe("20.11");
+    expect(formatDate("2026-11-20", "ru")).toBe("20.11.2026");
+    expect(formatDate("2026-11-20", "ru", { year: true })).toBe("20.11.2026");
+  });
 });
 
 describe("formatPrice", () => {
@@ -133,6 +140,73 @@ describe("public shell copy", () => {
   });
 });
 
+/**
+ * Story 6.2: названия разделов навигации и подпись badge входящих запросов.
+ * «Разделы», «Вишлист», «Поиск», «Друзья», «Брони», «Профиль», «Мой вишлист»,
+ * «Мои брони» — дословно из `EXPERIENCE.md` и `DESIGN.md`; «Мой профиль» и формы
+ * множественного числа badge — новые, без утверждения в UX (Open Questions 6.2,
+ * п. 13). Шаблон badge повторяет «Друзья, N запроса» из `DESIGN.md` → Badge.
+ */
+describe("navigation copy", () => {
+  /** The ICU plural of the catalog, resolved the way next-intl does for Russian. */
+  function friendsBadge(count: number): string {
+    const template = getMessages("ru").app.nav.friendsBadge;
+    const start = template.indexOf("{count, plural,");
+    if (start < 0) throw new Error("app.nav.friendsBadge без ICU-плюрала");
+    // Everything after the plural header up to its closing brace: the four forms.
+    const body = template.slice(start + "{count, plural,".length, -1);
+    const forms = new Map<string, string>();
+    for (const [, category, text] of body.matchAll(/(\w+)\s*\{([^{}]*)\}/g)) {
+      forms.set(category, text);
+    }
+    const category = new Intl.PluralRules("ru").select(count);
+    const chosen = forms.get(category) ?? forms.get("other") ?? "";
+    return `${template.slice(0, start)}${chosen.replace("#", String(count))}`;
+  }
+
+  it("keeps the section names verbatim and not empty", () => {
+    const nav = getMessages("ru").app.nav;
+
+    expect(nav.sections).toBe("Разделы");
+    expect(nav.wishlist).toBe("Мой вишлист");
+    expect(nav.wishlistTab).toBe("Вишлист");
+    expect(nav.search).toBe("Поиск");
+    expect(nav.friends).toBe("Друзья");
+    expect(nav.reservations).toBe("Мои брони");
+    expect(nav.reservationsTab).toBe("Брони");
+    expect(nav.profile).toBe("Профиль");
+    expect(nav.myProfile).toBe("Мой профиль");
+
+    for (const text of Object.values(nav)) {
+      expect(text.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("carries only the navigation keys of Story 6.2", () => {
+    expect(Object.keys(getMessages("ru").app.nav).sort()).toEqual([
+      "friends",
+      "friendsBadge",
+      "myProfile",
+      "profile",
+      "reservations",
+      "reservationsTab",
+      "search",
+      "sections",
+      "wishlist",
+      "wishlistTab",
+    ]);
+  });
+
+  it("formats the incoming-request badge for 1, 2 and 5", () => {
+    const template = getMessages("ru").app.nav.friendsBadge;
+
+    expect(template).toContain("{count, plural");
+    expect(friendsBadge(1)).toBe("Друзья, 1 запрос");
+    expect(friendsBadge(2)).toBe("Друзья, 2 запроса");
+    expect(friendsBadge(5)).toBe("Друзья, 5 запросов");
+  });
+});
+
 describe("invite confirmation copy", () => {
   /**
    * CLE-73 followup: the name is not declined (AD-24), so the sentence names
@@ -145,6 +219,207 @@ describe("invite confirmation copy", () => {
     expect(text).toBe("Добавить пользователя «{name}» в друзья?");
     expect(text.match(/\{name\}/g)).toHaveLength(1);
     expect(text.replace("{name}", "Сергей")).toBe("Добавить пользователя «Сергей» в друзья?");
+  });
+});
+
+describe("reservation release copy", () => {
+  /**
+   * Story 5.2: the holder's confirm and the owner's step are worded by the AC of
+   * the story and by `EXPERIENCE.md`, so the catalog keeps the sentences verbatim.
+   */
+  it("keeps the release texts verbatim and not empty", () => {
+    const release = getMessages("ru").app.gift.release;
+
+    expect(release.title).toBe("Снять бронь? Желание снова станет открытым.");
+    expect(release.confirm).toBe("Снять бронь");
+    expect(release.cancel).toBe("Отмена");
+    expect(release.warningBought).toBe(
+      "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё",
+    );
+    expect(release.warningGiven).toBe("Даритель отметил, что уже вручил");
+    for (const text of Object.values(release)) {
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("closing copy", () => {
+  /**
+   * Story 5.3: закрытие владельцем, секция «Получено» и undo-тост — дословно из
+   * epics (Story 5.3), EXPERIENCE (Undo toast, Received section) и DESIGN
+   * (Archive section, мелкие элементы: «Вернуть в открытые · ещё N мин»).
+   */
+  it("keeps the close, closed and undo texts verbatim", () => {
+    const { app, common } = getMessages("ru");
+    const { close, closed, toast } = app.gift;
+
+    expect(close.menuAction).toBe("Отметить полученным");
+    expect(close.title).toBe("Подарок «{title}» получен?");
+    expect(close.reservedBody).toBe("Бронь будет закрыта, бронировавший получит уведомление");
+    expect(close.confirm).toBe("Подтвердить");
+    expect(close.cancel).toBe("Отмена");
+
+    expect(closed.undo).toBe("Вернуть в открытые");
+    expect(closed.undoWithTime).toBe("Вернуть в открытые · ещё {minutes} мин");
+    expect(closed.copy).toBe("Хочу ещё такой");
+    expect(closed.delete).toBe("Удалить");
+    expect(closed.sectionOwner).toBe("Получено ({count})");
+    expect(closed.sectionViewer).toBe("Уже подарено");
+    expect(closed.menuLabel).toBe("Меню");
+
+    expect(toast.closed).toBe("Отмечено полученным");
+    expect(toast.undo).toBe("Отменить");
+
+    expect(common.errors.reason.UNDO_WINDOW_EXPIRED).toBe("Время на отмену вышло");
+
+    for (const text of [...Object.values(close), ...Object.values(closed)]) {
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("substitutes the title and the minutes exactly once", () => {
+    const { app } = getMessages("ru");
+
+    expect(app.gift.close.title.replace("{title}", "Наушники")).toBe(
+      "Подарок «Наушники» получен?",
+    );
+    expect(app.gift.closed.undoWithTime.replace("{minutes}", "7")).toBe(
+      "Вернуть в открытые · ещё 7 мин",
+    );
+  });
+
+  it("counts the received section the same way as the archive", () => {
+    const { app } = getMessages("ru");
+
+    expect(app.gift.closed.sectionOwner).toContain("{count}");
+    expect(app.myWishlist.archiveSection).toContain("{count}");
+  });
+});
+
+/**
+ * Story 5.5: «Мои брони» — экран держателя. Тексты из epics (Story 5.5),
+ * EXPERIENCE (Empty states, Reservation actions, Подписи брони) и DESIGN
+ * (ReservationCard), дословно. Три строки новых, без утверждения в UX:
+ * `pageTitle`, `loading`, `openGift` (Open Questions спеки 5.5, п. 5).
+ */
+describe("reservation copy", () => {
+  it("keeps the card, empty and action texts verbatim and not empty", () => {
+    const reservations = getMessages("ru").app.reservations;
+
+    expect(reservations.title).toBe("Мои брони");
+    expect(reservations.pageTitle).toBe("Мои брони — {brand}");
+    expect(reservations.loading).toBe("Загружаем брони");
+    expect(reservations.emptyTitle).toBe("Броней нет");
+    expect(reservations.emptyText).toBe(
+      "Нажмите «Куплю сам» у желания друга — бронь появится здесь.",
+    );
+    expect(reservations.openGift).toBe("Открыть желание «{title}»");
+    expect(reservations.owner).toBe("у @{nick}");
+    expect(reservations.due).toBe("до {date}");
+    expect(reservations.bought).toBe("Купил");
+    expect(reservations.boughtChip).toBe("Куплено");
+
+    expect(reservations.visibility.title).toBe("Кто видит, что это я");
+    expect(reservations.visibility.owner).toBe("Показать владельцу, что это я");
+    expect(reservations.visibility.others).toBe("Показать другим, кто берёт");
+    expect(reservations.visibility.hint).toBe(
+      "Владелец сразу увидит ваше имя; если потом выключить, он может уже знать",
+    );
+
+    expect(reservations.extend).toBe("Продлить до…");
+    expect(reservations.extendCaption).toBe("Не позже {max}");
+    expect(reservations.release).toBe("Снять бронь");
+
+    for (const value of Object.values(reservations)) {
+      if (typeof value === "string") expect(value.length).toBeGreaterThan(0);
+    }
+    for (const value of Object.values(reservations.visibility)) {
+      expect(value.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("substitutes the day, the nick, the title and the max day exactly once", () => {
+    const reservations = getMessages("ru").app.reservations;
+
+    expect(reservations.due.replace("{date}", "08.12")).toBe("до 08.12");
+    expect(reservations.owner.replace("{nick}", "anna")).toBe("у @anna");
+    expect(reservations.openGift.replace("{title}", "Наушники")).toBe(
+      "Открыть желание «Наушники»",
+    );
+    expect(reservations.extendCaption.replace("{max}", "20.12.2026")).toBe(
+      "Не позже 20.12.2026",
+    );
+  });
+
+  /** New texts of 5.5 that no source in epics/EXPERIENCE/DESIGN approved. */
+  it("marks the three new texts of Story 5.5", () => {
+    const reservations = getMessages("ru").app.reservations;
+
+    expect(reservations.pageTitle.endsWith("{brand}")).toBe(true);
+    expect(reservations.loading).toBe("Загружаем брони");
+    expect(reservations.openGift).toContain("«{title}»");
+  });
+});
+
+/**
+ * Story 5.4: правка и удаление забронированного желания. Подсказка правки —
+ * дословно из EXPERIENCE (Interaction Primitives); тела confirm про бронь —
+ * новые, без утверждения в UX (Open Questions спеки 5.4, п. 1). Прежние строки
+ * удаления («Удалить «{title}»?», «Удалить», «Отмена», «Удаляем…»,
+ * «Желание удалено.») не меняются.
+ */
+describe("reserved wish editing and deletion copy", () => {
+  it("keeps the edit notice of a reserved wish verbatim", () => {
+    const notice = getMessages("ru").app.giftForm.notice;
+
+    expect(notice.reserved).toBe(
+      "Желание забронировано — бронировавший получит уведомление",
+    );
+    expect(notice.reserved.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the delete texts of a reserved wish verbatim and not empty", () => {
+    const { delete: remove } = getMessages("ru").app.giftForm;
+
+    expect(remove.action).toBe("Удалить желание");
+    expect(remove.confirmTitle).toBe("Удалить «{title}»?");
+    expect(remove.confirm).toBe("Удалить");
+    expect(remove.cancel).toBe("Отмена");
+    expect(remove.deleting).toBe("Удаляем…");
+    expect(remove.reservedBody).toBe(
+      "Бронь снимется, бронировавший получит уведомление. Это нельзя отменить.",
+    );
+    expect(remove.reservedBoughtBody).toBe(
+      "Даритель отметил, что подарок уже куплен. Бронь снимется, бронировавший получит уведомление. Это нельзя отменить.",
+    );
+    expect(getMessages("ru").app.giftForm.toast.deleted).toBe("Желание удалено.");
+
+    for (const text of Object.values(remove)) {
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("substitutes the title exactly once in the confirm question", () => {
+    const remove = getMessages("ru").app.giftForm.delete;
+
+    expect(remove.confirmTitle.replace("{title}", "Наушники")).toBe(
+      "Удалить «Наушники»?",
+    );
+  });
+
+  /**
+   * Story 5.6: ответ владельца на истёкшую бронь. Обе строки — дословно из epics
+   * (Story 5.6) и `DESIGN.md` → OwnerActionLabel; новых текстов нет, подстановок
+   * тоже.
+   */
+  it("keeps the two answers of the expired reservation verbatim and not empty", () => {
+    const ownerRequest = getMessages("ru").app.gift.ownerRequest;
+
+    expect(ownerRequest.received).toBe("Получил");
+    expect(ownerRequest.keep).toBe("Не получал, оставить бронь");
+    expect(ownerRequest.received.trim().length).toBeGreaterThan(0);
+    expect(ownerRequest.keep.trim().length).toBeGreaterThan(0);
+    expect(ownerRequest.keep).not.toContain("{");
   });
 });
 

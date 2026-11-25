@@ -187,8 +187,8 @@
 ## Deferred from: S23.1 — видимость забронированного желания (CLE-82, 2026-11-11)
 
 - source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-11-reserved-visibility.md` (§1, §7)
-  summary: Уведомление держателю, когда владелец сузил видимость и бронь снята (in-app + email), не отправляется — инфраструктуры уведомлений ещё нет. Снятие тихое; в коде его нельзя обещать как работающее. Тот же долг — подсказка «Желание забронировано — бронировавший получит уведомление» при правке других полей: уведомление появится с Epic 5–6.
-  evidence: В `apps/web/src` нет ни одного упоминания Notification; правила снятия брони по видимости внесены в AD-7/AD-8 и FR-10 (S23.1), код — S23.2–S23.3. Когда появятся Notification и Resend, снятие по сужению видимости должно слать событие как удаление/правка `RESERVED` (AD-14, FR-26).
+  summary: Закрыто Story 6.1 (CLE-116): снятие при сужении видимости и правка значимых полей создают событие держателю в той же транзакции. Держателю доступен снимок названия брони.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
 
 ## Deferred from: ссылка сброса на loopback (2026-11-15)
 
@@ -230,3 +230,199 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-cle-76-dolgi-2-6.md`
   summary: Карточки секции «Архив» не открывают диалог подробностей CLE-84, хотя активные открывают.
   evidence: `ArchiveSection` не передаёт `onPress`. Остальное из ревью переноса (шаги выкладки, долги кода, stories `WishCard` с `menu` и `DateField`) закрыто в `spec-cle-76-dolgi-2-6.md`.
+
+## Deferred from: Story 5.2 — снятие брони держателем и владельцем (CLE-114, 2026-11-19)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-снятие-брони-держателем-и-владельцем.md`
+  summary: Закрыто Story 6.1 (CLE-116): снятие держателем создаёт in-app уведомление владельцу по FR-26.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-снятие-брони-держателем-и-владельцем.md`
+  summary: Закрыто Story 6.1 (CLE-116): снятие владельцем создаёт уведомление и письмо держателю.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+## Deferred from: Story 5.3 — закрытие желания владельцем, отмена и «Хочу ещё такой» (CLE-115, 2026-11-19)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
+  summary: Закрыто Story 6.1 (CLE-116): закрытие создаёт уведомление и письмо держателю через 10 минут. Успешная отмена удаляет запись в той же транзакции. Ответ на вручение остаётся в Story 5.7.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
+  summary: Аудит NFR-6 покрывает только закрытие и отмену (плюс снятие брони из 5.2). Бронь, снятие своей брони держателем и уход в архив по сроку статус меняют, но audit-строку `gift.status` не пишут. Нужна отдельная задача после 5.3 — расширить шов `recordGiftEvent` на `reserveGift`, `releaseReservation` и архивацию, не смешивая её с текущими историями.
+  evidence: `recordGiftEvent` вызывают только CAS закрытия и отмены в `gift-status-store.ts`; в `schema.prisma` под это нет таблицы (NFR-6 — logging, ARCHITECTURE-SPINE → Consistency Conventions), поэтому аудит остальных переходов — та же строка `console.info`, а не миграция.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-закрытие-желания-владельцем-отмена-и-хочу-ещё-такой.md`
+  summary: Секция «Уже подарено» на серверной странице `/l` осталась открытым вопросом: страница сейчас рисует закрытые желания в общей сетке, а Story 5.3 меняет только приложение. Если решение будет «перенести секцию и туда», это отдельная правка `apps/web/src/app/l/[token]/public-wishlist-view.tsx` со своим порядком секций (активные, «Уже подарено», «Архив»).
+  evidence: Спека 5.3, «Открытые вопросы» п. 1 и «Never» — страницу не трогаем до решения; в приложении секция закрытых собирается на клиенте из `gifts`, на `/l` такой разметки нет.
+
+## Deferred from: CLE-86 — проверка обновления приложения (2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Play In-App Updates на Android не подключён: нужен новый пакет (`react-native-in-app-updates` или аналог), а в ночном заходе пакеты не ставятся. Пока Android открывает ссылку магазина через `Linking.openURL`, как iOS, — системного диалога обновления из Play нет.
+  evidence: Мягкое предложение (`apps/mobile/src/ui/app-update-soft-dialog.tsx`) и блокирующий экран (`app-update-block-screen.tsx`) открывают только `storeUrl` из ответа `GET /api/v1/app-version`; в `apps/mobile/package.json` нет пакета обновлений, а спека прямо относит Play In-App Updates к «Never» этой задачи.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Реальные значения политики и URL магазинов не заполнены: магазины не опубликованы, поэтому `APP_VERSION_POLICY` в `packages/contracts/src/app-version.ts` держит `latestVersion = minSupportedVersion = "0.1.0"` и `storeUrl = null` для обеих платформ. Никому ничего не показывается, и блокирующий экран до публикации — тупик без кнопки (`bodyNoStore`). Поднимать `latest`/`min` и вписывать ссылки — после публикации сборок (владелец — Евгений/Сергей), тогда же адреса появятся в ответе сервера без пересборки приложения.
+  evidence: Спека, «Отложено» п. 2 и «Открытые вопросы» п. 1–3; значение по умолчанию закреплено в контракте (`DEFAULT_APP_VERSION`), а клиент политику локально не читает — только из ответа `GET /api/v1/app-version`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: Тексты «Доступно обновление» / «Обновите приложение» и переводы на другие языки ждут UX и локалей. Сейчас ключи `app.appVersion.*` лежат только в `packages/contracts/src/i18n/ru/app.json` (AD-27), переводы появятся вместе с первой не-русской локалью.
+  evidence: Спека, «Тексты (ru)» и «Отложено» п. 3: строк в `DESIGN.md`/`EXPERIENCE.md` нет, это новые тексты без утверждения в UX («Доступно обновление», «Вышла новая версия приложения. Обновите его, когда будет удобно.», «Обновить», «Закрыть», «Обновите приложение», «Эта версия больше не поддерживается. Обновите приложение в магазине, чтобы продолжить.», «…в магазине.», «Открыть магазин»).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-cle-86-obnovlenie-prilozheniya.md`
+  summary: `expo-updates`/OTA, принудительное обновление без магазина, откат версии и телеметрия отказов не делаются — вне CLE-86. Обход fail open тоже остаётся открытым вопросом: человек ниже `minSupportedVersion` с выключенной сетью видит обычное приложение, потому что неудачная проверка ничего не меняет и показанный блок не снимает; «последний известный ответ» в хранилище не вводился.
+  evidence: Спека, «Отложено» п. 4 и «Открытые вопросы» п. 1; `apps/mobile/src/app-version/check.ts` (`resolveAppVersion` возвращает прежнее состояние на `ok: false`), `app-version-gate.native.tsx` не ждёт сеть на старте, `expo-updates` в зависимостях нет.
+
+## Deferred from: Story 5.5 — «Мои брони»: продление, «Купил», видимость (CLE-119, 2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Закрыто Story 6.1 (CLE-116): после смены фазы или экземпляра брони уведомление показывает «Даритель уже ответил» без действий.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Уведомления об изменении «Купил» и переключателей видимости не отправляются: FR-26 их не перечисляет. Если продукт захочет, это Epic 6 и отдельное решение, а не 5.5.
+  evidence: Спека, «Never» и «Отложено» п. 2; действия `bought` и `visibility` меняют только колонки `reservationBought` и `holderVisibleTo*`, статус не меняется, `recordGiftEvent` не вызывается.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: «Подарил», переход в `GIVEN`, подтверждение получения владельцем и ответы на запрос (`Получил` / `Не получал`) — Story 5.7. В 5.5 фазы `AWAITING_*` и `GIVEN` только отображаются: подписи есть, «Подарил» нигде нет, продление в `GIVEN` спрятано и сервер отвечает `CONFLICT`.
+  evidence: Спека, «Отложено» п. 3 и «Открытые вопросы» п. 2; карточка и деталь не рендерят «Подарил», `reservationActionBodySchema` содержит только `extend`, `bought`, `visibility`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Cron `reservation-timers`, расчёт `AWAITING_GIVER`/`AWAITING_OWNER` по сроку и автоматическое снятие брони — Story 5.6. 5.5 только показывает фазы, которые уже возможны в данных, и не заводит таймеров.
+  evidence: Спека, «Отложено» п. 4; маршрутов `app/api/cron/*` для брони нет, фазы приходят из `reservationPhase`, записываемой только действиями держателя.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Вкладка «Брони» и полная навигация — Story 6.2; до неё вход в «Мои брони» — временная строка в нижнем ряду «Моего вишлиста». После 6.2 строку убрать, экран станет вкладкой.
+  evidence: Спека, «Открытые вопросы» п. 8; `apps/mobile/app/(app)/index.tsx` содержит строку с комментарием «временный вход до Story 6.2», `spa-paths.ts` и навигация не менялись.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Деталь желания после unfriend/Block по A-14 не открывается: `getViewerGift` не знает A-14 и отвечает `NOT_FOUND`. Если продукт захочет открывать reservation card отдельным экраном — это вне 5.5; сейчас карточка «Моих броней» самодостаточна (`canOpenGift = false` убирает ссылку, действия остаются).
+  evidence: `canOpenGift` считает сервер через `VisibilityPolicy.canSee` без токена ссылки; экран `/gifts/{id}` ссылку не получает, управление живёт в `/reservations`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-moi-broni.md`
+  summary: Audit NFR-6 для фаз и атрибутов брони (продление, «Купил», переключатели) не пишется: статус `Gift.status` при этих действиях не меняется, а `recordGiftEvent` фиксирует только смену статуса. Если Epic 6 или аудит потребует, отдельная задача; факт продления пока читается из `reservationPhase`/`reservationPhaseAt`.
+  evidence: Спека, «Отложено» п. 7 и «Always» про NFR-6; `recordGiftEvent` в `apps/web/src/lib/gift-status-store.ts` вызывают только CAS закрытия/отмены, три новых CAS `extend`/`bought`/`visibility` audit-строк не добавляют.
+
+## Deferred from: Story 5.4 — удаление и правка забронированного желания (CLE-118, 2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
+  summary: Закрыто Story 6.1 (CLE-116): уведомление и письмо держателю сохраняются вместе с удалением.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
+  summary: Закрыто Story 6.1 (CLE-116): уведомление и письмо держателю сохраняются вместе с правкой. В payload хранятся имена изменённых полей.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
+  summary: Ветка `GIVEN` («Подарил» и основное действие «Отметить полученным», удаление — вторично) в предпросмотре и confirm удаления не реализована: до Story 5.7 строк с этой фазой нет, `GET /me/gifts/:id/reservation` отдаёт только `BOUGHT | null`, а тексты и порядок действий появятся вместе с 5.7.
+  evidence: Спека, «Отложено» п. 3 и «Never» про 5.7; `giftReservationWarningSchema` допускает `GIVEN`, но сервер до 5.7 его не возвращает, клиент различает только `BOUGHT`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
+  summary: Пункта «Удалить» в ⋯-меню активной карточки и удаления из детали желания нет: удаление живёт только в форме правки, как и у `OPEN`. Меню ⋯ для активных карточек — существующий долг R1 (решение 5.4, «Открытые вопросы» п. 3), а не часть этой истории.
+  evidence: Спека, «Never» и «Отложено» п. 5; `wish-detail-dialog.tsx` и ⋯-меню активной карточки не менялись, `apps/mobile/app/(app)/gifts/[id]/edit.tsx` — единственный вход в удаление забронированного желания.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-udalenie-i-pravka-broni.md`
+  summary: Публикация подсказки о брони и предупреждений об удалении на серверной странице `/l` не делается: владелец там ничего не правит и не удаляет, страница только читает публичный список. Если появится редактирование по ссылке — отдельная задача.
+  evidence: Спека, «Отложено» п. 6; `apps/mobile/app/(app)/index.tsx`/`edit.tsx` несут подсказку и confirm, `/l` рендерится сервером из `apps/web`.
+
+## Deferred from: Story 5.6 — цикл истечения Срока брони, клиент владельца (CLE-121, 2026-11-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-tsikl-istecheniya-broni.md`
+  summary: Полоса `CONFIRM_GIVEN` («Ждёт вашего подтверждения» → «Получил» / «Не получал») не делается: в 5.6 `OwnerActionLabel` рисует только `EXPIRED_NO_REPLY`, а карточка и деталь с `CONFIRM_GIVEN` остаются как в Story 5.5. Ответ владельца на «Подарил», переход в `GIVEN` и его тексты — Story 5.7.
+  evidence: Спека, «Never» и «Open Questions» п. 7; `apps/mobile/src/ui/owner-action-label.tsx` принимает только `action: "EXPIRED_NO_REPLY"`, `gift-card.tsx` при `CONFIRM_GIVEN` рисует прежнюю строку брони, `wish-detail-dialog.tsx` не фильтрует факт `ownerAction` в этой фазе.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-tsikl-istecheniya-broni.md`
+  summary: После keep нет тоста и владелец не видит новый Срок брони: сервер по AD-7 не отдаёт владельцу `dueAt`/`phase`/`bought`, а каталог не содержит текста подтверждения. Строка брони просто становится «Забронирован», полоса исчезает. Если UX захочет подтверждение или дату «до DD.MM», это новая строка каталога и отдельное решение (Open Questions п. 4–5).
+  evidence: Спека, «Keep» и «Open Questions» п. 4–5; `apps/mobile/src/api/my-gifts.ts` (`keepReservation` разбирает owner card), `app/(app)/index.tsx` заменяет карточку ответом без тоста, `packages/contracts/src/i18n/ru/app.json` новых строк, кроме двух ответов, не получил.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-tsikl-istecheniya-broni.md`
+  summary: Закрыто Story 6.1 (CLE-116): уведомления и письма по фазам таймера, включая автоснятие обоим участникам. Продление владельцем создаёт уведомление только держателю в приложении.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+## Deferred from: Story 5.8 — обязательные автотесты инвариантов AD-15 (CLE-122, 2026-11-22)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
+  summary: Закрыто Story 6.1 (CLE-116): тесты проверяют отсутствие имени скрытого держателя, отметки «Купил» и срока в ленте и письме владельцу.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
+  summary: Инвариант (10) проверен только для `FRIENDS`/`PUBLIC`: подписчик не получает `FRIENDS`, но даты (`UserDate`) и поведение `visibility=everyone` (AD-23) не проверяются — дат в схеме нет, а сужение правила до «при `friends` подписчик не получает даты» (ревью архитектуры L4) требует решения Евгения и Сергея. После Epic 7 тест на даты добавить в suite или в AC истории.
+  evidence: Спека, «Отложено» п. 2 и «Открытый вопрос» 2; `subscriber.test.ts` проверяет `readWishlist` с `subscriber=true`, но `UserDate` в `schema.prisma` отсутствует.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
+  summary: Инвариант (12) «сопоставление телефонов не пишет сырые номера» непроверяем: нет полей `phoneE164`/`phoneHmac`, модели `ContactMatch` и экрана «Найти знакомых», а `relationships.ts` до 8.1 честно отвечает `contactMatch: false`. Тест «сырые номера не попадают ни в БД, ни в лог» появляется вместе со Story 8.1.
+  evidence: Спека, «Отложено» п. 3 и «Открытый вопрос» 4; `schema.prisma` не содержит телефонных полей и `ContactMatch`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-avtotesty-invariantov-ad15.md`
+  summary: Настоящая гонка двух транзакций (инварианты 1, 7, 9) в CI не проверяется: `ci.yml` гоняет только `npm test`, а `verify:reserve-concurrency`, `verify:disposable-pg` и `verify:friendship-concurrency` требуют одноразового PostgreSQL. Консервативно ручной `npm run verify:reserve-concurrency` остаётся шагом перед merge Epic 5; добавление сервиса PostgreSQL в workflow — отдельное решение. 2026-11-22 (CLE-87): ручной прогон на одноразовом PostgreSQL 18.7 (Docker, UTF8, 127.0.0.1): `verify:disposable-pg` 18/18, `verify:reserve-concurrency` 2/2, `verify:friendship-concurrency` 5/5; доказательства — `opencode-microtasks/fixup-F5-evidence-2026-11-22T005936.md`, `opencode-microtasks/4.1.1-R1-pg-evidence-2026-11-22T005946.md`. Подключение PostgreSQL к CI по-прежнему отдельное решение.
+  evidence: Спека, «Отложено» п. 4 и «Открытый вопрос» 1; `db/disposable-pg/*.pgtest.ts` вне `vitest.config.ts`, `.github/workflows/ci.yml` без сервиса PostgreSQL; `timer-races.test.ts` проверяет сценарий на фейке.
+
+## Deferred from: Story 6.2 — навигация приложения: вкладки, боковое меню, «назад» и ссылки (CLE-117, 2026-11-22)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Закрыто Story 6.1 (CLE-116): маршрут /notifications, колокольчик с бейджем и пункт бокового меню добавлены.
+  evidence: `_bmad-output/implementation-artifacts/spec-6-1-uvedomleniya.md`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: «Подборки» в «Профиле» и маршрут `/collections` не делаются — Story 10.1.
+  evidence: Спека, «Открытый вопрос» 2 и «Отложено» п. 2; `apps/mobile/src/ui/profile-menu.tsx` содержит только «Мой профиль», «Настройки», «Написать автору» и «Выйти».
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: «Недавние вишлисты» в боковом меню не появляются: история просмотренных вишлистов нигде не хранится, источника данных нет ни в одном документе. Пункт вернётся вместе с данными/Story 6.5.
+  evidence: Спека, «Открытый вопрос» 5 и «Отложено» п. 3; `SidebarNav` строится из `TAB_ITEMS` и карточки пользователя, отдельного списка нет.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Полный user-menu бокового меню (email, профиль, настройки, автор, выход в popover) не делается — Story 6.3. Сейчас карточка пользователя (Avatar, имя, `@ник`) — простая ссылка на вкладку «Профиль», где те же действия стоят строками.
+  evidence: Спека, «Открытый вопрос» 4 и «Отложено» п. 4; `apps/mobile/src/navigation/sidebar-nav.tsx` передаёт карточку как ссылку `/profile`, `OverflowMenu` на desktop не используется.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Правая колонка `wide` с подсказкой установки не делается — Story 6.5 (UX-DR11). `AppShell` от 1024 px показывает боковое меню и растягивает контент, третьей колонки нет.
+  evidence: Спека, «Never» и «Отложено» п. 5; `packages/ui/src/app-shell.tsx` переключает только `media.expanded` (меню/вкладки), `media.wide` не используется.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Per-tab stacks и видимая подсветка вкладки на вложенных экранах (настройки, чужой профиль, деталь) не делаются: вложенные экраны живут в общем `Stack` поверх вкладок, панель там скрыта. Это открытый вопрос, а не AC 6.2.
+  evidence: Спека, «Открытый вопрос» 3 и «Отложено» п. 6; `apps/mobile/app/(app)/_layout.tsx` — один `Stack`, `settings`, `gifts/*` и `u/:nick` не входят в `(tabs)`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: «Залитых» (filled) иконок активной вкладки нет: в наборе только stroke-глифы, активность несут полоса 3 px, вес 600 и цвет `primary`. Filled-варианты — отдельная история иконок, если UX настоит.
+  evidence: Спека, «Открытый вопрос» 7; `packages/ui/src/icons/Heart.tsx` и соседи — один stroke-глиф, `NavItem` не меняет иконку при `selected`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Push, периодический опрос и real-time badge/уведомлений не делаются: число запросов читается один раз при появлении оболочки и повторно после собственных действий и `refresh()` из «Друзей». Число от других пользователей обновится при следующем запуске — Story 6.1.
+  evidence: Спека, «Открытый вопрос» 6 и «Отложено» п. 8; `apps/mobile/src/navigation/invite-badge.tsx` без polling/`AppState`/push.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Двухпанельные «Друзья» на `wide` (`FriendsTwoPane`) не делаются: нет запроса вишлиста выбранного друга. Появится вместе с этими данными.
+  evidence: Спека, «Отложено» п. 9; `apps/mobile/app/(app)/(tabs)/friends.tsx` и `friends-screen.tsx` рисуют один список с сегментами на всех ширинах.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Настоящая проверка App Links/Universal Links в сторах не делается: отпечатки `ANDROID_SHA256_CERT_FINGERPRINTS`, `APPLE_TEAM_ID`, публикация и ассоциации на устройстве — CLE-108/CLE-85 и выкладка. Story 6.2 добавляет только маршруты-двойники `app/l/[token].tsx` и `app/i/[token].tsx`; `.well-known` и `app.config.ts` уже были настроены и не менялись.
+  evidence: Спека, «Отложено» п. 10; `apps/mobile/app/l/[token].tsx` и `app/i/[token].tsx` — re-export существующих экранов, `app.config.ts` и `apps/web/.well-known` вне diff.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Стрелка «Назад» в шапке и общая шапка приложения не делаются — Story 6.3/6.4. Вложенные экраны по-прежнему показывают текстовое «Назад», корни вкладок его не показывают.
+  evidence: Спека, «Открытый вопрос» 12 и «Отложено» п. 11; `AppHeader` не заведён, `(app)/gifts/*` и `(app)/settings.tsx` используют прежние заголовки `Stack.Screen`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Отдельный `countOnly`-маршрут счётчика входящих запросов не заводится: badge переиспользует `fetchInvites`, который тянет обе страницы запросов (по 15). Оптимизация — после Story 6.1, если станет заметна цена запроса при старте оболочки.
+  evidence: Спека, «Открытый вопрос» 6 и «Отложено» п. 12; `GET /api/v1/me/invites` отдаёт `incomingCount` вместе со страницами, `fetchInvites` читает их целиком, серверных изменений 6.2 нет.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Сквозной прогон нативных вкладок, системного «назад» и App Links на устройстве не делался: в CI только unit-тесты, `typecheck` и `lint`, а эмулятор/dev-сборка в ночном заходе не запускались. Проверку на Android/iOS делает человек; при находках — Story 6.4 или отдельная задача.
+  evidence: Спека, «Отложено» п. 13 и «Manual checks»; `apps/mobile/src/navigation/app-link-routes.test.tsx` проверяет тождество экранов и чтение `token`, нативные переходы и ассоциации — только вручную.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Тост на экране вкладки поднимается ровно на 56 px (высота панели из контекста `AppShell`), без нижнего safe area панели. На iPhone с home indicator тост может заходить на её отступ (~34 px). Поднимать ли на `insets.bottom` — решение UX/координатора, меняет `AppShell` волны A.
+  evidence: Отчёт волны D (`T10-report.md`, «Риски» и «Открытые вопросы» 1); `apps/mobile/src/ui/toast.tsx` прибавляет `useTabBarInset()` (56 или 0) к `offsetBottom`, `packages/ui/src/app-shell.tsx` публикует `spacing["tab-bar"]` без safe area.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Badge «Друзья» после блокировки человека с входящим запросом может остаться завышенным до следующего действия или запуска: `refresh()` вызывается только после принять/отклонить/отменить, как в спеке. Решить, нужен ли пересчёт после блокировки.
+  evidence: Отчёт волны D (`T10-report.md`, «Риски» и «Открытые вопросы» 2); `apps/mobile/app/(app)/(tabs)/friends.tsx` зовёт `useInviteBadgeOptional().refresh()` только в обработчиках ответов на запрос.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: `document.title` у экранов вкладок не проверен в браузере: `Stack.Screen options={{ title }}` внутри `Tabs` может не обновлять заголовок. Это открытый вопрос 11 спеки и долг 6.4, а не AC 6.2.
+  evidence: Отчёт волны D (`T10-report.md`, «Риски»); экраны вкладок по-прежнему задают заголовок через `Stack.Screen`, а ближайший навигатор внутри `(tabs)` — `Tabs`, не `Stack`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-2-navigatsiya-prilozheniya.md`
+  summary: Прежние ключи каталога `app.myWishlist.logout`, `app.myWishlist.search`, `app.myWishlist.friends`, `app.myWishlist.settings` больше не используются экраном «Мой вишлист» (строки и «Выйти» ушли в «Профиль»), но остаются в `app.json`. Удалять их или оставить ради совместимости — решение координатора/волны A; 6.2 каталог не трогает.
+  evidence: Отчёт волны D (`T10-report.md`, «Новые тексты интерфейса»); `apps/mobile/app/(app)/(tabs)/index.tsx` больше не ссылается на эти ключи, `packages/contracts/src/i18n/ru/app.json` вне diff подзадач E/F.

@@ -11,6 +11,12 @@ import { VisibilityPicker } from "./visibility-picker";
 const meta = {
   title: "App/VisibilityPicker",
   component: VisibilityPicker,
+  tags: ["autodocs"],
+  parameters: {
+    // The layer paints its scrim over the whole document; on the Docs page every
+    // showcase runs in its own iframe, so an open picker stays inside its frame.
+    docs: { story: { inline: false, iframeHeight: "520px" } },
+  },
   args: {
     visible: true,
     title: "Плед из шерсти мериноса",
@@ -32,6 +38,7 @@ export const OpenPublic: Story = {};
 
 /** Open on a secret wish. */
 export const OpenSecret: Story = {
+  tags: ["!dev"],
   args: { value: "SECRET" },
 };
 
@@ -51,6 +58,7 @@ function openPicker({ canvasElement }: { canvasElement: HTMLElement }) {
 
 /** A long wish title at 360 px: «Кто видит «…»» wraps above the rows. */
 export const LongTitleNarrow: Story = {
+  tags: ["!dev"],
   args: {
     title: "Плед из шерсти мериноса с длинной бахромой и подогревом",
     value: "FRIENDS",

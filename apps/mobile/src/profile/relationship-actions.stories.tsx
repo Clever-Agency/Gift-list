@@ -22,6 +22,7 @@ import { RelationshipActions } from "./relationship-actions";
 const meta = {
   title: "App/RelationshipActions",
   component: RelationshipActions,
+  tags: ["autodocs"],
   args: {
     relationship: "NONE",
     inviteCooldown: null,
@@ -38,10 +39,13 @@ type Story = StoryObj<typeof meta>;
 function noop() {}
 
 /** No edge and no window: one «Добавить в друзья» button. */
-export const NoRelation: Story = {};
+export const NoRelation: Story = {
+  tags: ["!dev"],
+};
 
 /** The viewer sent an invite: the chip only, the owner still has to answer. */
 export const OutgoingPending: Story = {
+  tags: ["!dev"],
   args: { relationship: "OUTGOING_PENDING" },
 };
 
@@ -61,21 +65,25 @@ export const Friends: Story = {
  * search row passes no `onRemoveFriend`, so it keeps the chip alone.
  */
 export const FriendOnProfile: Story = {
+  tags: ["!dev"],
   args: { relationship: "FRIENDS", onRemoveFriend: noop, onBlock: noop },
 };
 
 /** No edge (Story 4.5): «Добавить в друзья» plus the ghost «Заблокировать». */
 export const BlockAvailable: Story = {
+  tags: ["!dev"],
   args: { onBlock: noop },
 };
 
 /** The unfriend press is in flight: the button is busy and takes no second press. */
 export const BusyRemoveFriend: Story = {
+  tags: ["!dev"],
   args: { relationship: "FRIENDS", onRemoveFriend: noop, busy: true },
 };
 
 /** The friend row at 360 px: the chip, «Удалить из друзей» and «Заблокировать» wrap inside the gutter. */
 export const FriendOnProfileNarrow: Story = {
+  tags: ["!dev"],
   args: { relationship: "FRIENDS", onRemoveFriend: noop, onBlock: noop },
   render: function FriendOnProfileNarrowStory(args) {
     return (
@@ -89,6 +97,7 @@ export const FriendOnProfileNarrow: Story = {
 
 /** The viewer's own card: «Это вы» instead of any action. */
 export const OwnProfile: Story = {
+  tags: ["!dev"],
   args: { ownProfile: true },
 };
 
@@ -98,32 +107,38 @@ export const OwnProfile: Story = {
  * caption names the remaining hours.
  */
 export const InviteCooldown: Story = {
+  tags: ["!dev"],
   args: { inviteCooldown: { hours: 24, rejected: false } },
 };
 
 /** The shortest window: «Можно снова через 1 ч» at 360 px. */
 export const InviteCooldownShort: Story = {
+  tags: ["!dev"],
   args: { inviteCooldown: { hours: 1, rejected: false } },
   globals: { viewport: { value: "w360" } },
 };
 
 /** The sender of the rejected invite: the chip says «Отклонено», not the disabled button. */
 export const Rejected: Story = {
+  tags: ["!dev"],
   args: { inviteCooldown: { hours: 24, rejected: true } },
 };
 
 /** The add press is in flight: the label keeps its width, the button takes no second press. */
 export const BusyAddFriend: Story = {
+  tags: ["!dev"],
   args: { busy: true },
 };
 
 /** An invite answer is in flight: both incoming buttons are busy. */
 export const BusyIncoming: Story = {
+  tags: ["!dev"],
   args: { relationship: "INCOMING_PENDING", busy: true },
 };
 
 /** The incoming invite at 360 px: the chip and two buttons wrap inside the page gutter. */
 export const IncomingPendingNarrow: Story = {
+  tags: ["!dev"],
   args: { relationship: "INCOMING_PENDING" },
   render: function IncomingPendingNarrowStory(args) {
     return (

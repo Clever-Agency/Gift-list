@@ -258,11 +258,15 @@ describe("DELETE /api/v1/me/gifts/[id]", () => {
     });
   });
 
-  it("maps CONFLICT to 409 without deleting a reserved wish", async () => {
+  /**
+   * Story 5.4: the row moved under the delete (a reservation landed, the wish
+   * changed in another window). The route only maps the action's answer to 409.
+   */
+  it("maps CONFLICT to 409 when the wish changed under the delete", async () => {
     deleteGift.mockResolvedValue({
       ok: false,
       code: "CONFLICT",
-      message: "Only an open wish can be deleted here",
+      message: "The wish changed while deleting",
     });
     const { DELETE } = await import("./route");
     const res = await DELETE(remove(), context());
@@ -271,8 +275,38 @@ describe("DELETE /api/v1/me/gifts/[id]", () => {
     expect(await res.json()).toEqual({
       ok: false,
       code: "CONFLICT",
-      message: "Only an open wish can be deleted here",
+      message: "The wish changed while deleting",
     });
+  });
+
+  /**
+   * Story 5.4 (DELETE_RESERVED): a reserved wish is deleted by the same route —
+   * `deleteGift` releases the reservation and deletes the row in one transaction,
+   * so the route needs no second path.
+   */
+  it("returns 200 for a reserved wish without a different route", async () => {
+    deleteGift.mockResolvedValue({ ok: true, data: { id: "g-reserved" } });
+    const { DELETE } = await import("./route");
+    const res = await DELETE(remove({ authorization: "Bearer t" }), context("g-reserved"));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, data: { id: "g-reserved" } });
+    expect(deleteGift).toHaveBeenCalledWith(expect.any(Headers), "g-reserved");
+  });
+
+  /**
+   * Story 5.3 (DELETE_CLOSED): a received wish is deleted by the same route. The
+   * `CLOSED` branch lives in `deleteGift` (its own test), so here the route only
+   * has to answer the action's success as 200 with the deleted id.
+   */
+  it("returns 200 for a closed wish and does not need a different route", async () => {
+    deleteGift.mockResolvedValue({ ok: true, data: { id: "g-closed" } });
+    const { DELETE } = await import("./route");
+    const res = await DELETE(remove({ authorization: "Bearer t" }), context("g-closed"));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, data: { id: "g-closed" } });
+    expect(deleteGift).toHaveBeenCalledWith(expect.any(Headers), "g-closed");
   });
 
   it("maps NOT_FOUND to 404", async () => {

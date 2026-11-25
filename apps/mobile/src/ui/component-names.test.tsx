@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { WishCard } from "@/ui/gift-card";
 import { GiftForm } from "@/ui/gift-form";
-import { PrimaryButton } from "@/ui/primary-button";
 import { TextField } from "@/ui/text-field";
 import { ToastHost } from "@/ui/toast";
 import { VisibilityChip } from "@/ui/visibility-chip";
@@ -96,6 +95,44 @@ vi.mock("expo-router/html", async () => {
 });
 
 vi.mock("expo-router/react-navigation", () => ({ usePreventRemove() {} }));
+
+/**
+ * Story 6.2: the tabs layout (`app/(app)/(tabs)/_layout.tsx`) imports the headless
+ * navigator. Its ESM build pulls TypeScript declarations of `expo-modules-core`,
+ * which the browser test runner cannot load; the screens here are only imported for
+ * their names, never rendered, so plain stubs are enough. The two app-level pieces
+ * of the shell are stubbed for the same reason: they read the session and the API.
+ */
+vi.mock("expo-router/ui", async () => {
+  const React = await import("react");
+  function Slot({ children }: { children?: React.ReactNode }) {
+    return React.createElement(React.Fragment, null, children);
+  }
+  function Nothing() {
+    return null;
+  }
+  return {
+    Tabs: Slot,
+    TabList: Slot,
+    TabSlot: Nothing,
+    TabTrigger: Slot,
+    useTabsWithTriggers: () => ({ NavigationContent: Slot }),
+  };
+});
+
+vi.mock("@/navigation/sidebar-nav", () => ({ SidebarNav: () => null }));
+
+vi.mock("@/navigation/invite-badge", async () => {
+  const React = await import("react");
+  function InviteBadgeProvider({ children }: { children?: React.ReactNode }) {
+    return React.createElement(React.Fragment, null, children);
+  }
+  return {
+    InviteBadgeProvider,
+    useInviteBadge: () => ({ count: null, refresh: () => {} }),
+    useInviteBadgeOptional: () => null,
+  };
+});
 
 vi.mock("@expo-google-fonts/lora", () => ({ Lora_600SemiBold: {} }));
 
@@ -257,7 +294,6 @@ const samples: { name: string; element: ReactElement }[] = [
       />
     ),
   },
-  { name: "PrimaryButton", element: <PrimaryButton label="Сохранить" onPress={noop} /> },
   { name: "GiftForm", element: <GiftForm submitting={false} onSubmit={noop} /> },
   {
     name: "TextField",
@@ -289,7 +325,6 @@ describe("CLE-64: имена компонентов в src/ui", () => {
         "WishCard",
         "VisibilityChip",
         "VisibilityPicker",
-        "PrimaryButton",
         "GiftForm",
         "TextField",
       ]),

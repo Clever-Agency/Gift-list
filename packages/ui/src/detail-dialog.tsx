@@ -18,6 +18,11 @@ export type DetailDialogProps = {
   facts?: DetailFactView[];
   /** Loading, error or unavailable copy. Facts stay hidden while it is set. */
   notice?: string;
+  /**
+   * A full-width strip above the facts, e.g. the owner's `OwnerActionLabel`
+   * (Story 5.6). The caller owns its content and its texts.
+   */
+  banner?: ReactNode;
   retry?: { label: string; onPress: () => void };
   closeLabel: string;
   /** Native only: the web uses `href`. A phone has no anchor navigation. */
@@ -39,6 +44,7 @@ export function DetailDialog({
   title,
   facts = [],
   notice,
+  banner,
   retry,
   closeLabel,
   onOpenHref,
@@ -74,6 +80,7 @@ export function DetailDialog({
         </YStack>
       ) : (
         <YStack gap="$3">
+          {banner}
           {facts.map(function renderFact(fact) {
             return (
               <YStack key={fact.id} gap="$1">

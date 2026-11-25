@@ -24,6 +24,11 @@ model User {
   hideFromSearch Boolean  @default(false)
   /// Set once from Accept-Language at registration (AD-27).
   locale         String   @default("ru")
+  datesInApp     Boolean  @default(true)
+  datesEmail     Boolean  @default(true)
+  wishExpiryInApp Boolean @default(true)
+  wishExpiryEmail Boolean @default(true)
+  notifications Notification[]
   /// Null until the client reports an IANA zone. A stored value is not overwritten (Story 1.8).
   timeZone       String?
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
@@ -371,4 +376,50 @@ model InviteCooldown {
   /// One cooldown per canonical pair (CHECK low < high in the migration).
   @@unique([userLowId, userHighId])
   @@index([userHighId])
+}
+
+enum NotificationKind {
+  FRIEND_INVITE
+  FRIEND_ACCEPT
+  FRIEND_REJECT
+  RESERVATION_CREATED
+  RESERVATION_RELEASED
+  RESERVATION_DUE
+  RESERVATION_OWNER_ASK
+  RESERVATION_KEPT_BY_OWNER
+  RESERVATION_AUTO_RELEASE
+  GIFT_EDITED
+  GIFT_DELETED
+  GIFT_CLOSED
+  GIFT_GIVEN
+  DATE_FRIEND
+  DATE_OWN
+  SUGGESTION
+  WISH_EXPIRY_SOON
+  WISH_EXPIRY
+}
+
+model Notification {
+  id                  String           @id @default(cuid(2))
+  recipientId         String
+  recipient           User             @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  eventKey            String
+  kind                NotificationKind
+  giftId              String?
+  actorId             String?
+  reservationAt       DateTime?        @db.Timestamptz(3)
+  phaseAt             DateTime?        @db.Timestamptz(3)
+  payload             Json
+  createdAt           DateTime         @db.Timestamptz(3)
+  deliverAfter        DateTime         @db.Timestamptz(3)
+  readAt              DateTime?        @db.Timestamptz(3)
+  emailRequired       Boolean          @default(false)
+  emailFirstAttemptAt DateTime?        @db.Timestamptz(3)
+  emailLeaseUntil     DateTime?        @db.Timestamptz(3)
+  emailDoneAt         DateTime?        @db.Timestamptz(3)
+
+  @@unique([recipientId, eventKey])
+  @@index([recipientId, createdAt, id])
+  @@index([recipientId, readAt, deliverAfter])
+  @@index([emailRequired, emailDoneAt, deliverAfter])
 }

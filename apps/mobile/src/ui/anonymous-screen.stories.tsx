@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { Text, YStack } from "@gift-list/ui";
+import { Button, Text, YStack } from "@gift-list/ui";
 import { AnonymousScreen } from "./anonymous-screen";
 import { NavLink } from "./nav-link";
-import { PrimaryButton } from "./primary-button";
 import { PasswordField, TextField } from "./text-field";
 
 /**
@@ -14,6 +13,7 @@ import { PasswordField, TextField } from "./text-field";
 const meta = {
   title: "App/AnonymousScreen",
   component: AnonymousScreen,
+  tags: ["autodocs"],
   // `screenFrame`: the frame is the page itself, so the catalog gives it the viewport.
   parameters: { layout: "fullscreen", screenFrame: true },
   args: { title: "Вход" },
@@ -26,7 +26,9 @@ type Story = StoryObj<typeof meta>;
 function noop() {}
 
 /** A title only: the invite and other stub screens use the frame as it is. */
-export const TitleOnly: Story = {};
+export const TitleOnly: Story = {
+  tags: ["!dev"],
+};
 
 /** The sign-in screen: fields, the primary action and a link to registration. */
 export const SignInForm: Story = {
@@ -36,7 +38,7 @@ export const SignInForm: Story = {
         <YStack gap="$grid-gap">
           <TextField label="Email" value="" onChangeText={noop} />
           <TextField label="Пароль" value="" onChangeText={noop} />
-          <PrimaryButton label="Войти" onPress={noop} />
+          <Button label="Войти" onPress={noop} />
           <NavLink href="/register">Зарегистрироваться</NavLink>
         </YStack>
       </AnonymousScreen>
@@ -46,6 +48,7 @@ export const SignInForm: Story = {
 
 /** A long title at 360 px: the heading wraps, the footer stays at the bottom. */
 export const LongTitleNarrow: Story = {
+  tags: ["!dev"],
   args: { title: "Сброс пароля для аккаунта WishMoon" },
   render: function LongTitleNarrowStory(args) {
     return (
@@ -56,7 +59,7 @@ export const LongTitleNarrow: Story = {
             нескольких минут.
           </Text>
           <TextField label="Email" value="" onChangeText={noop} />
-          <PrimaryButton label="Отправить письмо" onPress={noop} />
+          <Button label="Отправить письмо" onPress={noop} />
         </YStack>
       </AnonymousScreen>
     );
@@ -86,7 +89,7 @@ export const RegisterConfirmMatches: Story = {
           />
           <TextField label="Имя" value="Анна" onChangeText={noop} />
           <TextField label="Ник" value="anna" onChangeText={noop} />
-          <PrimaryButton label="Зарегистрироваться" onPress={noop} />
+          <Button label="Зарегистрироваться" onPress={noop} />
         </YStack>
       </AnonymousScreen>
     );
@@ -99,6 +102,7 @@ export const RegisterConfirmMatches: Story = {
  * destructive, as every field error does.
  */
 export const RegisterConfirmMismatch: Story = {
+  tags: ["!dev"],
   args: { title: "Регистрация" },
   render: function RegisterConfirmMismatchStory(args) {
     return (
@@ -120,7 +124,7 @@ export const RegisterConfirmMismatch: Story = {
           />
           <TextField label="Имя" value="Анна" onChangeText={noop} />
           <TextField label="Ник" value="anna" onChangeText={noop} />
-          <PrimaryButton label="Зарегистрироваться" onPress={noop} />
+          <Button label="Зарегистрироваться" onPress={noop} />
         </YStack>
       </AnonymousScreen>
     );
@@ -129,12 +133,13 @@ export const RegisterConfirmMismatch: Story = {
 
 /** Two anonymous screens share one frame: the page column keeps `max-form`. */
 export const WideWindow: Story = {
+  tags: ["!dev"],
   render: function WideWindowStory(args) {
     return (
       <AnonymousScreen {...args}>
         <YStack gap="$grid-gap">
           <TextField label="Email" value="" onChangeText={noop} />
-          <PrimaryButton label="Войти" onPress={noop} />
+          <Button label="Войти" onPress={noop} />
         </YStack>
       </AnonymousScreen>
     );

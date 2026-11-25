@@ -14,6 +14,7 @@ import { PublicGiftCard } from "./public-gift-card";
 const meta = {
   title: "App/PublicGiftCard",
   component: PublicGiftCard,
+  tags: ["autodocs"],
   args: { gift: publicGift(), width: 328 },
 } satisfies Meta<typeof PublicGiftCard>;
 
@@ -86,6 +87,7 @@ export const Reserved: Story = {
 
 /** A received wish stays visible on a public list, muted. */
 export const Received: Story = {
+  tags: ["!dev"],
   args: { gift: publicGift({ status: "CLOSED" }) },
   render: function ReceivedStory(args) {
     return (
@@ -98,6 +100,7 @@ export const Received: Story = {
 
 /** The server hid the holder's name: only the status pill labels the wish. */
 export const ReservedNameHidden: Story = {
+  tags: ["!dev"],
   args: { gift: publicGift({ status: "RESERVED", reservedBy: null }) },
   render: function ReservedNameHiddenStory(args) {
     return (
@@ -110,6 +113,7 @@ export const ReservedNameHidden: Story = {
 
 /** More than three tags collapse into «+N», like on the owner's card. */
 export const ManyTags: Story = {
+  tags: ["!dev"],
   args: {
     gift: publicGift({
       tags: [
@@ -131,6 +135,7 @@ export const ManyTags: Story = {
 
 /** A long title and long tags at 360 px: the visitor's card wraps like the owner's. */
 export const LongCopyNarrow: Story = {
+  tags: ["!dev"],
   args: {
     gift: publicGift({
       title: "Плед из шерсти мериноса с длинной бахромой и подогревом для холодных вечеров",

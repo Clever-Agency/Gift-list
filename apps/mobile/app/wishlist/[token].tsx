@@ -1,5 +1,6 @@
 import type { GiftCard } from "@gift-list/contracts";
 import {
+  Button,
   Column,
   Heading,
   LoadingCards,
@@ -19,10 +20,10 @@ import { fetchPublicWishlist, type PublicWishlistOwner } from "@/api/public-wish
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
+import { ClosedSection } from "@/ui/closed-section";
 import { EmptyState } from "@/ui/empty-state";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
-import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
 import { loadViewerDetail } from "@/ui/wish-detail-load";
 import { SiteFooter } from "@/ui/site-footer";
@@ -57,6 +58,7 @@ export default function PublicWishlistScreen() {
   const t = useTranslations("app");
   const wishlist = useTranslations("app.wishlist");
   const myWishlist = useTranslations("app.myWishlist");
+  const closedCopy = useTranslations("app.gift.closed");
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
@@ -79,6 +81,8 @@ export default function PublicWishlistScreen() {
   );
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
+  // Story 5.3: «Уже подарено» is closed until the visitor opens it.
+  const [closedExpanded, setClosedExpanded] = useState(false);
 
   // A guest is a first-class visitor here: the server's link read already opens
   // only PUBLIC wishes, so the screen never sends an anonymous visitor to login.
@@ -205,6 +209,15 @@ export default function PublicWishlistScreen() {
     authPending || (state.status === "ready" && state.token !== token)
       ? { status: "loading" }
       : state;
+  // Story 5.3: the one list is split on the client; the closed wishes of the
+  // visitor go into «Уже подарено» without any action.
+  const allGifts = view.status === "ready" ? view.gifts : [];
+  const activeGifts = allGifts.filter(function notClosed(gift) {
+    return gift.status !== "CLOSED";
+  });
+  const closedGifts = allGifts.filter(function onlyClosed(gift) {
+    return gift.status === "CLOSED" && gift.archivedAt === null;
+  });
 
   function retry() {
     setToast(null);
@@ -286,28 +299,66 @@ export default function PublicWishlistScreen() {
                         {t("form.nickPreview", { nick: view.owner.nick })}
                       </Text>
                     </YStack>
-                    {view.gifts.length === 0 ? (
+                    {allGifts.length === 0 ? (
                       <EmptyState title={wishlist("emptyTitle")} />
                     ) : (
-                      <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
-                        {view.gifts.map(function renderGift(gift) {
-                          return (
-                            <PublicGiftCard
-                              key={gift.id}
-                              gift={gift}
-                              width={cardWidth}
-                              listToken={token}
-                              loadDetail={
-                                auth.state.status === "ready"
-                                  ? function loadThisGift() {
-                                      return loadViewerDetail(gift.id, token, gift);
-                                    }
-                                  : undefined
-                              }
-                            />
-                          );
-                        })}
-                      </XStack>
+                      <>
+                        {activeGifts.length > 0 ? (
+                          <XStack
+                            role="list"
+                            flexWrap="wrap"
+                            gap="$grid-gap"
+                            alignItems="flex-start"
+                          >
+                            {activeGifts.map(function renderGift(gift) {
+                              return (
+                                <PublicGiftCard
+                                  key={gift.id}
+                                  gift={gift}
+                                  width={cardWidth}
+                                  listToken={token}
+                                  loadDetail={
+                                    auth.state.status === "ready"
+                                      ? function loadThisGift() {
+                                          return loadViewerDetail(gift.id, token, gift);
+                                        }
+                                      : undefined
+                                  }
+                                />
+                              );
+                            })}
+                          </XStack>
+                        ) : null}
+                        {closedGifts.length > 0 ? (
+                          <ClosedSection
+                            label={closedCopy("sectionViewer")}
+                            expanded={closedExpanded}
+                            onToggle={function toggleClosed() {
+                              setClosedExpanded((open) => !open);
+                            }}
+                            testID="wishlist-closed"
+                            toggleTestID="wishlist-closed-toggle"
+                          >
+                            {closedGifts.map(function renderClosed(gift) {
+                              return (
+                                <PublicGiftCard
+                                  key={gift.id}
+                                  gift={gift}
+                                  width={cardWidth}
+                                  listToken={token}
+                                  loadDetail={
+                                    auth.state.status === "ready"
+                                      ? function loadThisGift() {
+                                          return loadViewerDetail(gift.id, token, gift);
+                                        }
+                                      : undefined
+                                  }
+                                />
+                              );
+                            })}
+                          </ClosedSection>
+                        ) : null}
+                      </>
                     )}
                   </>
                 )}
@@ -374,7 +425,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       <Text tone="muted" textAlign="center">
         {text}
       </Text>
-      <PrimaryButton label={label} onPress={onPress} />
+      <Button label={label} onPress={onPress} />
     </YStack>
   );
 }

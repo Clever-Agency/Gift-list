@@ -2,12 +2,17 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
 import {
   actionResultSchema,
+  errorReasonSchema,
   giftCardSchema,
   isNotFound,
+  keepReservationBodySchema,
   listDataSchema,
   meSchema,
   notFoundError,
   notFoundErrorSchema,
+  reservationActionBodySchema,
+  reservationCardSchema,
+  reservationListSchema,
   type ActionResult,
 } from "./index";
 
@@ -134,9 +139,10 @@ const GIFT_CARD_FIELDS = [
   "reservationLabel",
   "ownerAction",
   "reservation",
+  "undoUntil",
 ] as const;
 
-const OPTIONAL_GIFT_CARD_FIELDS = new Set<string>(["reservation"]);
+const OPTIONAL_GIFT_CARD_FIELDS = new Set<string>(["reservation", "undoUntil"]);
 
 describe("giftCardSchema", () => {
   it("accepts an AD-12 gift card with nullable fields", () => {
@@ -198,6 +204,29 @@ describe("giftCardSchema", () => {
     expect(giftCardSchema.safeParse({ ...card, status: "CLOSED", ownerAction: "EXPIRED_NO_REPLY" }).success).toBe(
       true,
     );
+  });
+
+  /** Story 5.3 (ARCH-A5): only the owner card carries the undo moment, and it may be null. */
+  it("accepts undoUntil as an ISO moment, null, or an absent key", () => {
+    expect(giftCardSchema.safeParse({ ...giftCard, undoUntil: "2026-11-19T10:10:00.000Z" }).success).toBe(true);
+    expect(giftCardSchema.safeParse({ ...giftCard, status: "CLOSED", undoUntil: null }).success).toBe(true);
+    expect(giftCardSchema.safeParse(giftCard).success).toBe(true);
+  });
+
+  it("rejects a non-string undoUntil", () => {
+    expect(giftCardSchema.safeParse({ ...giftCard, undoUntil: 1_760_000_000_000 }).success).toBe(false);
+  });
+
+  /** Story 5.3: the late-undo refusal is one of the closed reasons. */
+  it("accepts the UNDO_WINDOW_EXPIRED reason", () => {
+    expect(errorReasonSchema.safeParse("UNDO_WINDOW_EXPIRED").success).toBe(true);
+    const refusal = {
+      ok: false,
+      code: "CONFLICT",
+      message: "The undo window is closed",
+      reason: "UNDO_WINDOW_EXPIRED",
+    };
+    expect(actionResultSchema(z.object({ id: z.string() })).safeParse(refusal).success).toBe(true);
   });
 });
 
@@ -347,5 +376,51 @@ describe("meSchema", () => {
         timeZone: null,
       }).success,
     ).toBe(false);
+  });
+});
+
+/** Story 5.5: the holder's reservation contract is part of the package entry. */
+describe("reservation contract", () => {
+  const card = {
+    giftId: "g1",
+    titleSnapshot: "Наушники",
+    status: "RESERVED",
+    ownerNick: "anna",
+    dueAt: "2026-12-08",
+    phase: "ACTIVE",
+    bought: false,
+    holderVisibleToOwner: false,
+    holderVisibleToOthers: true,
+    canOpenGift: false,
+  };
+
+  it("exposes the card, the list and the action body from the package entry", () => {
+    expect(reservationCardSchema.parse(card)).toEqual(card);
+    expect(reservationListSchema.parse({ reservations: [card] }).reservations).toEqual([card]);
+    expect(reservationActionBodySchema.parse({ action: "extend", dueOn: "2026-12-08" })).toEqual({
+      action: "extend",
+      dueOn: "2026-12-08",
+    });
+  });
+
+  it("keeps the card and the body closed", () => {
+    expect(reservationCardSchema.safeParse({ ...card, visibility: "PUBLIC" }).success).toBe(false);
+    expect(reservationListSchema.safeParse({ reservations: [], publicToken: "t" }).success).toBe(false);
+    expect(
+      reservationActionBodySchema.safeParse({ action: "bought", value: true, dueOn: "2026-12-08" })
+        .success,
+    ).toBe(false);
+  });
+});
+
+/** Story 5.6: the owner's «Не получал, оставить бронь» takes a strict empty body. */
+describe("keep reservation contract", () => {
+  it("exposes the strict empty body from the package entry", () => {
+    expect(keepReservationBodySchema.parse({})).toEqual({});
+  });
+
+  it("rejects a smuggled key", () => {
+    expect(keepReservationBodySchema.safeParse({ dueOn: "2026-12-08" }).success).toBe(false);
+    expect(keepReservationBodySchema.safeParse(null).success).toBe(false);
   });
 });

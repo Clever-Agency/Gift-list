@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { planAffectedTests } from "./run-suite.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const suite = path.join(root, "scripts/run-suite.mjs");
@@ -42,5 +43,34 @@ describe("run-suite", () => {
       [process.execPath, ["-e", "process.exit(2)"]],
     ]);
     assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+  });
+});
+
+describe("выбор затронутых тестов", function affectedTests() {
+  it("подбирает приложения по добавленным и изменённым исходникам", function selectsApps() {
+    assert.deepEqual(planAffectedTests([
+      { status: "M", file: "apps/web/src/lib/auth.ts" },
+      { status: "A", file: "apps/mobile/app/(app)/gifts/[id]/index.tsx" },
+      { status: "M", file: "docs/deployment-environments.md" },
+    ]), {
+      filesByApp: { web: ["src/lib/auth.ts"], mobile: ["app/(app)/gifts/[id]/index.tsx"] },
+    });
+  });
+
+  it("назначает полный набор для общих файлов и удалений", function usesFullSuite() {
+    for (const [status, file] of [
+      ["M", "packages/contracts/src/index.ts"],
+      ["M", "_bmad-output/planning-artifacts/ux-designs/ux-gift-list-2026-09-30/DESIGN.md"],
+      ["M", "apps/mobile/src/test/setup.tsx"],
+      ["D", "apps/web/src/lib/auth.ts"],
+    ]) {
+      assert.deepEqual(planAffectedTests([{ status, file }]), { fullReason: `${status} ${file}` });
+    }
+  });
+
+  it("для Markdown без тестовых зависимостей оставляет проверки скриптов", function skipsVitest() {
+    assert.deepEqual(planAffectedTests([{ status: "M", file: "docs/deployment-environments.md" }]), {
+      filesByApp: { web: [], mobile: [] },
+    });
   });
 });

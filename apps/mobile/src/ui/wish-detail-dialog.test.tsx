@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
-import type { GiftCard } from "@gift-list/contracts";
+import { getMessages, type GiftCard } from "@gift-list/contracts";
 import { act, useRef, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { click, dialogElement, escape, settle } from "@/test/dom";
 import { restoreFocus } from "@/ui/focus";
-import { WishDetailDialog } from "@/ui/wish-detail-dialog";
+import { WishDetailDialog, type WishDetailStep } from "@/ui/wish-detail-dialog";
 import type { DetailLoadResult } from "@/ui/wish-detail-load";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -95,6 +95,65 @@ function body(): string {
   return dialogElement()?.textContent ?? "";
 }
 
+function control(label: string): HTMLElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]')).find(
+    (node) => (node.textContent ?? "").includes(label),
+  );
+}
+
+const releaseCopy = getMessages("ru").app.gift.release;
+
+/**
+ * Story 5.2: the screen owns the step, the dialog only draws it. The harness is the
+ * owner screen in miniature: «Снять бронь» opens the step after the preflight.
+ */
+function OwnerReleaseHarness({
+  warning,
+  busy,
+  onConfirm,
+}: {
+  warning: "BOUGHT" | "GIVEN" | null;
+  busy?: boolean;
+  onConfirm?: () => void;
+}) {
+  const [step, setStep] = useState<WishDetailStep | null>(null);
+
+  function openRelease() {
+    setStep({
+      key: "release",
+      title: releaseCopy.title,
+      body:
+        warning === "BOUGHT"
+          ? releaseCopy.warningBought
+          : warning === "GIVEN"
+            ? releaseCopy.warningGiven
+            : undefined,
+      cancelLabel: releaseCopy.cancel,
+      confirmLabel: releaseCopy.confirm,
+      destructive: true,
+      busy,
+      onConfirm: onConfirm ?? function confirm() {},
+      onCancel: function cancel() {
+        setStep(null);
+      },
+    });
+  }
+
+  return (
+    <WishDetailDialog
+      open
+      viewer="owner"
+      snapshot={gift()}
+      onClose={function noop() {}}
+      onEdit={function noop() {}}
+      onRelease={openRelease}
+      step={step}
+    />
+  );
+}
+
+OwnerReleaseHarness.displayName = "OwnerReleaseHarness";
+
 describe("WishDetailDialog", () => {
   it("гость видит разрешённые поля и не видит видимость", async () => {
     await render(
@@ -174,6 +233,100 @@ describe("WishDetailDialog", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it("владелец у забронированного видит «Снять бронь», у открытого — нет", async () => {
+    const onRelease = vi.fn();
+    await render(
+      <WishDetailDialog
+        open
+        viewer="owner"
+        snapshot={gift()}
+        onClose={function noop() {}}
+        onEdit={function noop() {}}
+        onRelease={onRelease}
+      />,
+    );
+
+    expect(control("Изменить желание")).toBeDefined();
+    const releaseButton = control(releaseCopy.confirm);
+    expect(releaseButton).toBeDefined();
+    await click(releaseButton);
+    expect(onRelease).toHaveBeenCalledTimes(1);
+
+    await render(
+      <WishDetailDialog
+        open
+        viewer="owner"
+        snapshot={gift({
+          status: "OPEN",
+          reservedBy: null,
+          reservationLabel: null,
+          ownerAction: null,
+          reservation: undefined,
+        })}
+        onClose={function noop() {}}
+        onEdit={function noop() {}}
+        onRelease={onRelease}
+      />,
+    );
+
+    expect(control(releaseCopy.confirm)).toBeUndefined();
+  });
+
+  it.each(["BOUGHT", "GIVEN"] as const)(
+    "шаг снятия с предупреждением %s — тот же слой, фокус на безопасной «Отмене»",
+    async (warning) => {
+      await render(<OwnerReleaseHarness warning={warning} />);
+      await click(control(releaseCopy.confirm));
+      await settle();
+
+      expect(body()).toContain(releaseCopy.title);
+      expect(body()).toContain(
+        warning === "BOUGHT" ? releaseCopy.warningBought : releaseCopy.warningGiven,
+      );
+      expect(body()).not.toContain("Кто видит");
+      expect(document.activeElement?.textContent).toContain(releaseCopy.cancel);
+
+      await act(async () => {
+        escape();
+      });
+      await settle();
+      // Back to the details of the same layer: no second dialog, the facts are here.
+      expect(body()).toContain("Кто видит");
+      expect(body()).not.toContain(releaseCopy.title);
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    },
+  );
+
+  it("шаг без отметки дарителя показывает только вопрос", async () => {
+    await render(<OwnerReleaseHarness warning={null} />);
+    await click(control(releaseCopy.confirm));
+    await settle();
+
+    expect(body()).toContain(releaseCopy.title);
+    expect(body()).not.toContain(releaseCopy.warningBought);
+    expect(body()).not.toContain(releaseCopy.warningGiven);
+  });
+
+  it("подтверждение в шаге уходит один раз, busy не даёт второго", async () => {
+    const onConfirm = vi.fn();
+    await render(<OwnerReleaseHarness warning="BOUGHT" onConfirm={onConfirm} />);
+    await click(control(releaseCopy.confirm));
+    await settle();
+
+    await click(control(releaseCopy.confirm));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+
+    await act(async () => host.unmount());
+    host = createRoot(container);
+    await render(<OwnerReleaseHarness warning="BOUGHT" busy onConfirm={onConfirm} />);
+    await click(control(releaseCopy.confirm));
+    await settle();
+
+    expect(control(releaseCopy.confirm)?.getAttribute("aria-disabled")).toBe("true");
+    await click(control(releaseCopy.confirm));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
   it("закрытие крестиком и Escape возвращает фокус на карточку", async () => {
     function Screen() {
       const [open, setOpen] = useState(false);
@@ -229,5 +382,279 @@ describe("WishDetailDialog", () => {
     await settle(300);
     expect(dialogElement()).toBeNull();
     expect(document.activeElement).toBe(opener);
+  });
+
+  /**
+   * Story 5.3: владелец закрытого желания. «Изменить желание» нет — закрытое
+   * желание только для просмотра; «Вернуть в открытые · ещё N мин» живёт ровно
+   * столько, сколько окно сервера (`undoUntil`), и открывает ту же строку минут.
+   */
+  describe("Story 5.3: закрытое желание у владельца", () => {
+    const inWindow = {
+      status: "CLOSED" as const,
+      undoUntil: new Date(Date.now() + 5 * 60_000).toISOString(),
+    };
+
+    it("в окне отмены: нет «Изменить желание», есть возврат с остатком минут", async () => {
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift(inWindow)}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onUndoClose={function noop() {}}
+        />,
+      );
+
+      expect(control("Изменить желание")).toBeUndefined();
+      expect(control("Вернуть в открытые · ещё 5 мин")).toBeDefined();
+    });
+
+    it("нажатие возврата зовёт onUndoClose, второго подтверждения нет", async () => {
+      const onUndoClose = vi.fn();
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift(inWindow)}
+          onClose={function noop() {}}
+          onUndoClose={onUndoClose}
+        />,
+      );
+
+      await click(control("Вернуть в открытые · ещё 5 мин"));
+      expect(onUndoClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("окно вышло: у закрытого желания действий нет", async () => {
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift({
+            status: "CLOSED",
+            undoUntil: new Date(Date.now() - 60_000).toISOString(),
+          })}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onUndoClose={function noop() {}}
+        />,
+      );
+
+      expect(control("Изменить желание")).toBeUndefined();
+      expect(control("Вернуть в открытые · ещё 5 мин")).toBeUndefined();
+      expect(control("Отметить полученным")).toBeUndefined();
+    });
+
+    it("открытое и забронированное: «Отметить полученным» есть, у закрытого — нет", async () => {
+      const onMarkReceived = vi.fn();
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift({
+            status: "OPEN",
+            reservedBy: null,
+            reservationLabel: null,
+            ownerAction: null,
+            reservation: undefined,
+          })}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onMarkReceived={onMarkReceived}
+        />,
+      );
+
+      await click(control("Отметить полученным"));
+      expect(onMarkReceived).toHaveBeenCalledTimes(1);
+
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift()}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onRelease={function noop() {}}
+          onMarkReceived={onMarkReceived}
+        />,
+      );
+      expect(control("Отметить полученным")).toBeDefined();
+      expect(control(releaseCopy.confirm)).toBeDefined();
+    });
+  });
+
+  /**
+   * Story 5.3: шаг закрытия — тот же механизм шагов, что у снятия брони. После
+   * «Отмены» фокус возвращается на «Отметить полученным», а не на коралловую
+   * «Снять бронь» (замечание S5).
+   */
+  describe("Story 5.3: шаг «Подарок получен?»", () => {
+    function OwnerCloseHarness() {
+      const [step, setStep] = useState<WishDetailStep | null>(null);
+
+      function openStep() {
+        setStep({
+          key: "close",
+          origin: "received",
+          title: "Подарок «Плед» получен?",
+          body: "Бронь будет закрыта, бронировавший получит уведомление",
+          cancelLabel: "Отмена",
+          confirmLabel: "Подтвердить",
+          onConfirm: function confirm() {},
+          onCancel: function cancel() {
+            setStep(null);
+          },
+        });
+      }
+
+      return (
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift()}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onRelease={function noop() {}}
+          onMarkReceived={openStep}
+          step={step}
+        />
+      );
+    }
+    OwnerCloseHarness.displayName = "OwnerCloseHarness";
+
+    it("вопрос, тело про бронь, некрасная кнопка и фокус на «Отмене»", async () => {
+      await render(<OwnerCloseHarness />);
+
+      await click(control("Отметить полученным"));
+      await settle();
+
+      expect(body()).toContain("Подарок «Плед» получен?");
+      expect(body()).toContain("Бронь будет закрыта, бронировавший получит уведомление");
+      expect(control("Подтвердить")).toBeDefined();
+      expect(document.activeElement?.textContent).toContain("Отмена");
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    });
+
+    it("«Отмена» возвращает к подробностям и ставит фокус на «Отметить полученным»", async () => {
+      await render(<OwnerCloseHarness />);
+
+      const opener = control("Отметить полученным") as HTMLElement;
+      await click(opener);
+      await settle();
+      expect(document.activeElement?.textContent).toContain("Отмена");
+
+      await act(async () => {
+        escape();
+      });
+      await settle();
+
+      expect(body()).toContain("Кто видит");
+      expect(body()).not.toContain("Подарок «Плед» получен?");
+      expect(document.activeElement).toBe(opener);
+    });
+  });
+
+  /**
+   * Story 5.6 (`DESIGN.md` → OwnerActionLabel, matrix DETAIL_LABEL / DETAIL_CONFIRM_GIVEN):
+   * the expired reservation puts the strip above the facts, does not repeat the
+   * `ownerAction` fact, does not repeat «Отметить полученным» and keeps the coral
+   * «Снять бронь». `CONFIRM_GIVEN` keeps the Story 5.5 behaviour.
+   */
+  describe("Story 5.6: истёкшая бронь у владельца", () => {
+    function expired(): GiftCard {
+      return gift({ ownerAction: "EXPIRED_NO_REPLY", reservedBy: null, reservationLabel: null });
+    }
+
+    function strip(): HTMLElement | null {
+      return dialogElement()?.querySelector<HTMLElement>("[data-testid='owner-action-label']") ?? null;
+    }
+
+    async function renderOwnerExpired(handlers: {
+      onKeep?: () => void;
+      onMarkReceived?: () => void;
+      busy?: boolean;
+    }) {
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={expired()}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onRelease={function noop() {}}
+          onMarkReceived={handlers.onMarkReceived ?? function noop() {}}
+          onKeep={handlers.onKeep ?? function noop() {}}
+          ownerBusy={handlers.busy}
+        />,
+      );
+    }
+
+    it("полоса над фактами, факт ownerAction не дублируется, «Отметить полученным» скрыт", async () => {
+      await renderOwnerExpired({});
+
+      expect(strip()).not.toBeNull();
+      expect(strip()?.textContent).toContain("Срок брони истёк");
+      // Once: the strip, not the fact list.
+      expect(body().split("Срок брони истёк").length - 1).toBe(1);
+      expect(body()).toContain("Кто видит");
+      expect(control("Отметить полученным")).toBeUndefined();
+      // The coral release stays in the detail actions.
+      expect(control(releaseCopy.confirm)).toBeDefined();
+
+      // The strip is the first block of the dialog body, above the facts.
+      const label = strip()?.querySelector("*");
+      expect(label).toBeDefined();
+    });
+
+    it("«Получил» запускает закрытие 5.3, «Не получал, оставить бронь» — keep", async () => {
+      const onReceived = vi.fn();
+      const onKeep = vi.fn();
+      await renderOwnerExpired({ onMarkReceived: onReceived, onKeep });
+
+      await click(control("Получил"));
+      expect(onReceived).toHaveBeenCalledTimes(1);
+      expect(onKeep).not.toHaveBeenCalled();
+
+      await click(control("Не получал, оставить бронь"));
+      expect(onKeep).toHaveBeenCalledTimes(1);
+      expect(onReceived).toHaveBeenCalledTimes(1);
+    });
+
+    it("busy: оба ответа полосы заняты и не нажимаются", async () => {
+      const onReceived = vi.fn();
+      const onKeep = vi.fn();
+      await renderOwnerExpired({ onMarkReceived: onReceived, onKeep, busy: true });
+
+      const buttons = Array.from(strip()?.querySelectorAll("button") ?? []);
+      expect(buttons).toHaveLength(2);
+      for (const node of buttons) {
+        expect(node.getAttribute("aria-disabled")).toBe("true");
+        expect(node.getAttribute("aria-busy")).toBe("true");
+      }
+      await click(buttons[0]);
+      await click(buttons[1]);
+      expect(onReceived).not.toHaveBeenCalled();
+      expect(onKeep).not.toHaveBeenCalled();
+    });
+
+    it("CONFIRM_GIVEN: полосы 5.6 нет, поведение 5.5 сохраняется", async () => {
+      await render(
+        <WishDetailDialog
+          open
+          viewer="owner"
+          snapshot={gift({ ownerAction: "CONFIRM_GIVEN" })}
+          onClose={function noop() {}}
+          onEdit={function noop() {}}
+          onMarkReceived={vi.fn()}
+          onKeep={vi.fn()}
+        />,
+      );
+
+      expect(strip()).toBeNull();
+      expect(body()).toContain("Ждёт вашего подтверждения");
+      expect(control("Отметить полученным")).toBeDefined();
+    });
   });
 });

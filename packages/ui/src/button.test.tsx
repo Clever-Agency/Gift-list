@@ -2,6 +2,7 @@
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Button } from "./button";
+import { Star } from "./icons";
 import {
   allDeclarations,
   createMount,
@@ -549,5 +550,114 @@ describe("Button", () => {
         });
       expect(label, variant).toContain(color);
     }
+  });
+
+  /**
+   * The icon-only mode (`icon`): `IconButton` is a thin wrapper over it. The label is
+   * not drawn — it stays the accessible name — and the look lives in the 44 px box
+   * inside a transparent 44 px target, so a text button is not touched.
+   */
+  describe("только иконка", () => {
+    it("icon: цель 44 × 44 без подписи в разметке, имя из label", async () => {
+      const { container, render } = mounted();
+      await render(<Button label="Поделиться" icon={<Star size={20} />} onPress={vi.fn()} />);
+
+      const button = container.querySelector("button") as HTMLButtonElement;
+      expect(button.getAttribute("aria-label")).toBe("Поделиться");
+      expect(button.textContent).toBe("");
+      expect(stateValues(button, "base", "min-width")).toContain("var(--t-size-touch-target)");
+      expect(stateValues(button, "base", "min-height")).toContain("var(--t-size-touch-target)");
+      // The frame keeps no paddings and no frame of its own: the box draws them.
+      expect(stateValues(button, "base", "padding-inline")).toContain("0px");
+      expect(stateValues(button, "base", "border-width")).toContain("0px");
+
+      const box = container.querySelector('[data-testid="button-icon"]') as HTMLElement;
+      expect(box.parentElement).toBe(button);
+      // Phrasing content only: a `<button>` may not hold a block-level `div`.
+      expect(box.tagName.toLowerCase()).toBe("span");
+      expect(stateValues(box, "base", "width")).toEqual(["44px"]);
+      expect(stateValues(box, "base", "height")).toEqual(["44px"]);
+      expect(stateValues(box, "base", "border-radius")).toEqual(["var(--t-radius-md)"]);
+      // The glyph is the picture, not a second name.
+      expect(box.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("icon: sm и round — коробка 32 px в круге внутри той же цели 44 px", async () => {
+      const { container, render } = mounted();
+      await render(
+        <Button
+          label="Принять: Екатерина"
+          icon={<Star size={16} />}
+          iconSize="sm"
+          shape="round"
+          variant="primary"
+          onPress={vi.fn()}
+        />,
+      );
+
+      const button = container.querySelector("button") as HTMLElement;
+      expect(stateValues(button, "base", "min-width")).toContain("var(--t-size-touch-target)");
+      const box = container.querySelector('[data-testid="button-icon"]') as HTMLElement;
+      expect(stateValues(box, "base", "width")).toEqual(["32px"]);
+      expect(stateValues(box, "base", "height")).toEqual(["32px"]);
+      expect(stateValues(box, "base", "border-radius")).toEqual(["var(--t-radius-full)"]);
+      expect(stateValues(box, "base", "background-color")).toEqual(["var(--primary)"]);
+      expect(stateValues(box, "base", "color")).toEqual(["var(--primary-foreground)"]);
+    });
+
+    it("icon outline: рамка $border, hover $muted, нажатие — 90% цели", async () => {
+      const { container, render } = mounted();
+      await render(
+        <Button label="Поделиться" icon={<Star size={20} />} variant="outline" onPress={vi.fn()} />,
+      );
+
+      const button = container.querySelector("button") as HTMLElement;
+      const box = container.querySelector('[data-testid="button-icon"]') as HTMLElement;
+      // The icon frame of v8 is `$border` (not the `$border-strong` of a text outline).
+      expect(stateValues(box, "base", "border-color")).toEqual(["var(--border)"]);
+      expect(stateValues(box, "hover", "border-color")).toEqual(["var(--foreground)"]);
+      expect(stateValues(box, "hover", "background-color")).toEqual(["var(--muted)"]);
+      expect(stateValues(button, "press", "opacity")).toEqual(["0.9"]);
+
+      await render(
+        <Button label="Поделиться" icon={<Star size={20} />} variant="outline" onPress={vi.fn()} disabled />,
+      );
+      const off = container.querySelector("button") as HTMLElement;
+      expect(stateValues(off, "base", "opacity")).toEqual(["0.4"]);
+      expect(stateValues(off, "press", "opacity")).toEqual([]);
+    });
+
+    it("icon: нажатие работает, disabled и busy — нет, спиннер в слоте", async () => {
+      const onPress = vi.fn();
+      const { container, render } = mounted();
+
+      await render(<Button label="Поделиться" icon={<Star size={20} />} onPress={onPress} />);
+      await act(async () => {
+        (container.querySelector("button") as HTMLButtonElement).click();
+      });
+      expect(onPress).toHaveBeenCalledTimes(1);
+
+      await render(
+        <Button label="Поделиться" icon={<Star size={20} />} onPress={onPress} disabled />,
+      );
+      await act(async () => {
+        (container.querySelector("button") as HTMLButtonElement).click();
+      });
+      expect(onPress).toHaveBeenCalledTimes(1);
+
+      await render(
+        <Button label="Поделиться" icon={<Star size={20} />} onPress={onPress} busy />,
+      );
+      await act(async () => {
+        (container.querySelector("button") as HTMLButtonElement).click();
+      });
+      expect(onPress).toHaveBeenCalledTimes(1);
+      // The box stays in the row at opacity 0, the spinner takes its place.
+      const box = container.querySelector('[data-testid="button-icon"]') as HTMLElement;
+      expect(stateValues(box, "base", "opacity")).toEqual(["0"]);
+      expect(container.querySelector('[data-testid="spinner"]')?.parentElement).toBe(
+        (container.querySelector("button") as HTMLElement).lastElementChild,
+      );
+    });
   });
 });

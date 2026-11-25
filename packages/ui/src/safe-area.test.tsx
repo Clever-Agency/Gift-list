@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { SafeArea } from "./safe-area";
+import safeAreaNativeSource from "./safe-area.native.tsx?raw";
 import { createMount, declarationsFor } from "./test-utils";
 
 const mounted = createMount();
@@ -32,6 +33,29 @@ describe("SafeArea", () => {
     await render(<SafeArea />);
 
     expect(container.textContent).toBe("");
+  });
+
+  it("bottom={false} на web ничего не меняет: тот же кадр без inset", async () => {
+    const { container, render } = mounted();
+    await render(
+      <SafeArea bottom={false}>
+        <span data-testid="tab-page" />
+      </SafeArea>,
+    );
+
+    const page = container.querySelector<HTMLElement>('[data-testid="tab-page"]');
+    expect(page).not.toBeNull();
+    const frame = page?.parentElement as HTMLElement;
+    expect(declarationsFor(frame, "flex-grow").at(-1)?.value).toBe("1");
+    // The browser has no safe-area inset (the exported page has no viewport-fit=cover).
+    expect(declarationsFor(frame, "padding-bottom")).toHaveLength(0);
+  });
+
+  it("bottom={false} на телефоне снимает только нижнюю грань", () => {
+    expect(safeAreaNativeSource).toContain(
+      'const edgesWithoutBottom: readonly Edge[] = ["top", "right", "left"];',
+    );
+    expect(safeAreaNativeSource).toContain("edges={bottom ? edgesWithBottom : edgesWithoutBottom}");
   });
 
   it("displayName совпадает с именем компонента", () => {

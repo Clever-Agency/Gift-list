@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { GiftCard } from "@gift-list/contracts";
-import { WishDetailDialog } from "./wish-detail-dialog";
+import { WishDetailDialog, type WishDetailStep } from "./wish-detail-dialog";
 import type { DetailLoadResult } from "./wish-detail-load";
 
 /**
@@ -11,6 +11,13 @@ import type { DetailLoadResult } from "./wish-detail-load";
 const meta = {
   title: "App/WishDetailDialog",
   component: WishDetailDialog,
+  tags: ["autodocs"],
+  parameters: {
+    // The detail layer is almost the full screen and paints a scrim over the
+    // document; on the Docs page every showcase runs in its own iframe, so an
+    // open dialog cannot cover the description.
+    docs: { story: { inline: false, iframeHeight: "640px" } },
+  },
   args: {
     open: true,
     viewer: "guest",
@@ -63,6 +70,7 @@ function missing(): Promise<DetailLoadResult> {
 
 export const Guest: Story = {};
 
+/** Владелец, истёкшая бронь (Story 5.6): полоса над фактами вместо строки факта. */
 export const Owner: Story = {
   args: {
     viewer: "owner",
@@ -73,21 +81,181 @@ export const Owner: Story = {
       ownerAction: "EXPIRED_NO_REPLY",
     }),
     onEdit: function edit() {},
+    onRelease: function release() {},
+    onMarkReceived: function received() {},
+    onKeep: function keep() {},
+  },
+};
+
+/** Ответ keep уже ушёл: оба ответа полосы заняты, «Снять бронь» по-прежнему доступна. */
+export const OwnerExpiredBusy: Story = {
+  tags: ["!dev"],
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      visibility: "SECRET",
+      status: "RESERVED",
+      reservedBy: null,
+      ownerAction: "EXPIRED_NO_REPLY",
+    }),
+    onEdit: function edit() {},
+    onRelease: function release() {},
+    onMarkReceived: function received() {},
+    onKeep: function keep() {},
+    ownerBusy: true,
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
+/** Владелец, чужая бронь: коралловая «Снять бронь» рядом с «Изменить желание». */
+export const OwnerReserved: Story = {
+  tags: ["!dev"],
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      visibility: "FRIENDS",
+      status: "RESERVED",
+      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
+      reservationLabel: "BOUGHT",
+      ownerAction: "CONFIRM_GIVEN",
+    }),
+    onEdit: function edit() {},
+    onRelease: function release() {},
+  },
+};
+
+/** Шаг снятия без отметки дарителя: только вопрос и две кнопки. */
+const RELEASE_STEP = {
+  key: "release",
+  title: "Снять бронь? Желание снова станет открытым.",
+  cancelLabel: "Отмена",
+  confirmLabel: "Снять бронь",
+  destructive: true,
+  onConfirm: function confirm() {},
+  onCancel: function cancel() {},
+} satisfies WishDetailStep;
+
+const BOUGHT_WARNING =
+  "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё";
+
+/** The owner detail with a step: the screen owns both, the story only draws them. */
+function releaseArgs(step: WishDetailStep) {
+  return {
+    viewer: "owner" as const,
+    snapshot: sample({ visibility: "FRIENDS" as const, status: "RESERVED" as const }),
+    onEdit: function edit() {},
+    onRelease: function release() {},
+    step,
+  };
+}
+
+export const ReleaseStep: Story = {
+  tags: ["!dev"],
+  args: releaseArgs(RELEASE_STEP),
+};
+
+/** Шаг снятия, даритель отметил «Купил»: предупреждение в описании шага. */
+export const ReleaseStepBought: Story = {
+  tags: ["!dev"],
+  args: releaseArgs({ ...RELEASE_STEP, body: BOUGHT_WARNING }),
+};
+
+/** Шаг снятия после Story 5.7: даритель отметил «Подарил». */
+export const ReleaseStepGiven: Story = {
+  tags: ["!dev"],
+  args: releaseArgs({ ...RELEASE_STEP, body: "Даритель отметил, что уже вручил" }),
+};
+
+/** Подтверждение уже ушло: обе кнопки недоступны. */
+export const ReleaseStepBusy: Story = {
+  tags: ["!dev"],
+  args: releaseArgs({ ...RELEASE_STEP, body: BOUGHT_WARNING, busy: true }),
+};
+
+/** Story 5.3: шаг закрытия — тот же слой, фокус на «Отмене», кнопка не коралловая. */
+const CLOSE_STEP = {
+  key: "close",
+  origin: "received",
+  title: "Подарок «Плед из шерсти мериноса» получен?",
+  body: "Бронь будет закрыта, бронировавший получит уведомление",
+  cancelLabel: "Отмена",
+  confirmLabel: "Подтвердить",
+  onConfirm: function confirm() {},
+  onCancel: function cancel() {},
+} satisfies WishDetailStep;
+
+/** Владелец закрытого желания: «Изменить желание» нет, в окне отмены — возврат. */
+export const OwnerClosedUndo: Story = {
+  tags: ["!dev"],
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      status: "CLOSED",
+      undoUntil: new Date(Date.now() + 7 * 60_000).toISOString(),
+    }),
+    onEdit: function edit() {},
+    onUndoClose: function undo() {},
+  },
+};
+
+/** Окно отмены вышло: у закрытого желания действий нет, только просмотр. */
+export const OwnerClosedExpired: Story = {
+  tags: ["!dev"],
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      status: "CLOSED",
+      undoUntil: new Date(Date.now() - 60_000).toISOString(),
+    }),
+    onEdit: function edit() {},
+    onUndoClose: function undo() {},
+  },
+};
+
+/** Владелец открытого желания: рядом с «Изменить желание» — «Отметить полученным». */
+export const OwnerOpenReceived: Story = {
+  tags: ["!dev"],
+  args: {
+    viewer: "owner",
+    snapshot: sample({ visibility: "FRIENDS" }),
+    onEdit: function edit() {},
+    onMarkReceived: function received() {},
+  },
+};
+
+/** Шаг закрытия поверх подробностей: вопрос, тело про бронь и две кнопки. */
+export const ReceivedStep: Story = {
+  tags: ["!dev"],
+  args: {
+    viewer: "owner",
+    snapshot: sample({
+      status: "RESERVED",
+      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
+      reservationLabel: "BOUGHT",
+      ownerAction: "CONFIRM_GIVEN",
+    }),
+    onEdit: function edit() {},
+    onMarkReceived: function received() {},
+    step: CLOSE_STEP,
   },
 };
 
 export const Loading: Story = {
+  tags: ["!dev"],
   args: { load: hang },
 };
 
 export const NetworkError: Story = {
+  tags: ["!dev"],
   args: { load: offline },
 };
 
 export const Unavailable: Story = {
+  tags: ["!dev"],
   args: { load: missing },
 };
 
 export const Desktop: Story = {
+  tags: ["!dev"],
   globals: { viewport: { value: "w1280" } },
 };

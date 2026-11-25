@@ -1,5 +1,7 @@
 import { View } from "@tamagui/core";
 import { XStack, YStack } from "@tamagui/stacks";
+import type { RefObject } from "react";
+import type { FocusTarget } from "./focus";
 import { AlertTriangle, CheckCircle, CircleAlert, Close, Info } from "./icons";
 import { layerFade } from "./motion";
 import { Pressable } from "./pressable";
@@ -42,6 +44,13 @@ export type ToastProps = {
    * long action label wraps with the text instead of squeezing it.
    */
   action?: { label: string; onPress: () => void };
+  /**
+   * The action button itself, so the screen can move focus onto it after the
+   * action that raised the toast (`DESIGN.md` → «Куда уходит фокус»: после
+   * закрытия желания фокус уходит на «Отменить» в тосте). The ref is `null`
+   * when there is no `action`.
+   */
+  actionRef?: RefObject<FocusTarget | null>;
   /** The action is running: a spinner replaces the tone icon and the card is announced busy. */
   loading?: boolean;
   /** Show the close button. Defaults to `true`; a blocking toast can hide it. */
@@ -53,8 +62,12 @@ export type ToastProps = {
   offsetBottom?: number;
   /** The pointer is over the toast or left it; for pausing the countdown. */
   onHoverChange?: (hovered: boolean) => void;
-  /** Focus entered or left one of the toast's buttons; for pausing the countdown. */
-  onFocusChange?: (focused: boolean) => void;
+  /**
+   * Focus entered or left one of the toast's controls; for pausing the countdown.
+   * The `control` says which one: the host needs it to tell the focus the screen
+   * moved onto `action` (`actionRef`) from the focus a person set with Tab or a click.
+   */
+  onFocusChange?: (focused: boolean, control: "action" | "close") => void;
   /**
    * The host is taking the toast away: the toast fades out and stops taking
    * touches. The host unmounts it when the fade is over.
@@ -70,7 +83,9 @@ export type ToastProps = {
  * the tone is carried by a small icon and its calm ink, the text stays neutral, so
  * every pair keeps AA contrast. `error` and `warning` are announced assertively
  * (`role="alert"`), `info` and `success` politely (`role="status"`). The overlay lets
- * touches through; only the toast itself takes them.
+ * touches through; only the toast itself takes them. `actionRef` hands the action
+ * button to the screen, which moves focus onto it when the toast appears
+ * (`DESIGN.md` → «Куда уходит фокус», пункт «а»).
  *
  * `DESIGN.md` → Движение: it fades in with `quick` (160 ms) and fades out the same
  * way; with «уменьшить движение» both fades last 100 ms, with no shift.
@@ -82,6 +97,7 @@ export function Toast({
   closeLabel,
   onClose,
   action,
+  actionRef,
   loading = false,
   dismissible = true,
   offsetBottom = 0,
@@ -104,12 +120,20 @@ export function Toast({
     onHoverChange?.(false);
   }
 
-  function handleFocus() {
-    onFocusChange?.(true);
+  function handleActionFocus() {
+    onFocusChange?.(true, "action");
   }
 
-  function handleBlur() {
-    onFocusChange?.(false);
+  function handleActionBlur() {
+    onFocusChange?.(false, "action");
+  }
+
+  function handleCloseFocus() {
+    onFocusChange?.(true, "close");
+  }
+
+  function handleCloseBlur() {
+    onFocusChange?.(false, "close");
   }
 
   return (
@@ -164,11 +188,12 @@ export function Toast({
           </Text>
           {action ? (
             <Pressable
+              ref={actionRef as never}
               role="button"
               aria-label={action.label}
               onPress={action.onPress}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
+              onFocus={handleActionFocus}
+              onBlur={handleActionBlur}
               alignSelf="flex-start"
               minHeight="$touch-target"
               justifyContent="center"
@@ -183,8 +208,8 @@ export function Toast({
           <Pressable
             aria-label={closeLabel}
             onPress={onClose}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
+            onFocus={handleCloseFocus}
+            onBlur={handleCloseBlur}
             minHeight="$touch-target"
             minWidth="$touch-target"
             alignItems="center"

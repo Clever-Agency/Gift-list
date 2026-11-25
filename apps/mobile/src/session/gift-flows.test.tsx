@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { controls, settle, typeInto } from "@/test/dom";
-import MyWishlistScreen from "../../app/(app)/index";
+import MyWishlistScreen from "../../app/(app)/(tabs)/index";
 import EditGiftScreen from "../../app/(app)/gifts/[id]/edit";
 import NewGiftScreen from "../../app/(app)/gifts/new";
 

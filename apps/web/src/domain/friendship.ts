@@ -183,6 +183,11 @@ export interface FriendshipTransaction {
   createInvite(fromUserId: string, toUserId: string): Promise<void>;
   /** Removes exactly one directed invite (recipient rejection). */
   deleteInvite(fromUserId: string, toUserId: string): Promise<void>;
+  notifyInviteResponse?(
+    kind: "FRIEND_ACCEPT" | "FRIEND_REJECT",
+    inviterId: string,
+    inviteeId: string,
+  ): Promise<void>;
   /** Inserts the single edge of the pair; the UNIQUE index is the last guard. */
   createFriendship(pair: FriendshipPair): Promise<void>;
   /** Removes the single edge of the pair (unfriend, AD-10 step 4). */
@@ -264,6 +269,7 @@ async function acceptFriendPair(
   secondUserId: string,
 ): Promise<void> {
   await tx.createFriendship(pair);
+  await tx.notifyInviteResponse?.("FRIEND_ACCEPT", firstUserId, secondUserId);
   await tx.deleteInvitesBetween(firstUserId, secondUserId);
   await tx.deleteInviteCooldown(pair);
 }
@@ -338,7 +344,7 @@ export async function sendFriendInvite(
     // A reverse invite means both people asked; accept the pair right away
     // through the same primitive an explicit acceptance uses (Story 4.2.1).
     if (await tx.findPendingInvite(toUserId, fromUserId)) {
-      await acceptFriendPair(tx, pair, fromUserId, toUserId);
+      await acceptFriendPair(tx, pair, toUserId, fromUserId);
       return { ok: true, outcome: "FRIENDS_CREATED" };
     }
 
@@ -408,6 +414,7 @@ export async function rejectFriendInvite(
     if (await tx.hasBlockBetween(fromUserId, viewerId)) return FORBIDDEN_RESULT;
     if (!(await tx.findPendingInvite(fromUserId, viewerId))) return NOT_FOUND_RESULT;
 
+    await tx.notifyInviteResponse?.("FRIEND_REJECT", fromUserId, viewerId);
     await tx.deleteInvite(fromUserId, viewerId);
     await tx.createInviteCooldown(pair, fromUserId, new Date(Date.now() + INVITE_COOLDOWN_MS));
     return { ok: true, outcome: "REJECTED" };

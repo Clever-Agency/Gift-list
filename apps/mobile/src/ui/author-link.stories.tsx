@@ -11,6 +11,7 @@ import { AuthorLink } from "./author-link";
 const meta = {
   title: "App/AuthorLink",
   component: AuthorLink,
+  tags: ["autodocs"],
 } satisfies Meta<typeof AuthorLink>;
 
 export default meta;
@@ -26,6 +27,7 @@ export const Default: Story = {
       </YStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
 };
 

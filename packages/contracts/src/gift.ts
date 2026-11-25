@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { CURRENCIES, QUANTITIES, VISIBILITIES } from "./enums";
+import {
+  CURRENCIES,
+  QUANTITIES,
+  RESERVATION_LABELS,
+  RESERVATION_PHASES,
+  VISIBILITIES,
+} from "./enums";
 import { textLength } from "./text";
 
 /**
@@ -363,6 +369,102 @@ export const giftReserveBodySchema = z.strictObject({
 });
 
 export type GiftReserveBody = z.infer<typeof giftReserveBodySchema>;
+
+/**
+ * Story 5.6 (AD-9): body of `POST /api/v1/me/gifts/:id/reservation/keep`, the
+ * owner's answer «Не получал, оставить бронь». The keep needs nothing but the
+ * session and the route id, so the body is a strict empty object: a smuggled key
+ * is `VALIDATION` instead of being silently ignored.
+ */
+export const keepReservationBodySchema = z.strictObject({});
+
+export type KeepReservationBody = z.infer<typeof keepReservationBodySchema>;
+
+/**
+ * A real calendar day on the wire (Story 5.5): the holder's `dueAt` and the
+ * day an extension picks. Unlike {@link giftReserveBodySchema} — which only
+ * checks the shape — an impossible day such as `2026-02-31` is refused here.
+ */
+const calendarDayFieldSchema = z
+  .string()
+  .regex(CALENDAR_DAY)
+  .refine(isCalendarDay, { message: "must be a calendar day" });
+
+/**
+ * Story 5.5 (FR-25, A-14, AD-7/AD-12): one card of «Мои брони». This is the
+ * whole closed set a holder learns about a reservation they made, and it does
+ * not depend on the wish still being visible: after an unfriend or a block the
+ * card stays and the other wishes of the owner never join it. No price, tags,
+ * description, link, owner name, `visibility`, `reservationTimeZone` or list
+ * token, so the card cannot become a second read of the wishlist.
+ *
+ * `status` is the literal `"RESERVED"` on purpose: a future `CLOSED` row in this
+ * list has to widen the contract explicitly instead of slipping through.
+ * `dueAt` is the calendar day the holder picked (not an instant); `phase` and
+ * `bought` let the client tell available actions from the ones of Story 5.6/5.7,
+ * and `canOpenGift` is the server's answer whether the detail is still reachable
+ * (it never explains why not).
+ */
+export const reservationCardSchema = z.strictObject({
+  giftId: z.string(),
+  /** The title as it was at the moment of reserving; a rename never rewrites it. */
+  titleSnapshot: z.string(),
+  status: z.literal("RESERVED"),
+  ownerNick: z.string(),
+  dueAt: calendarDayFieldSchema,
+  phase: z.enum(RESERVATION_PHASES),
+  bought: z.boolean(),
+  holderVisibleToOwner: z.boolean(),
+  holderVisibleToOthers: z.boolean(),
+  canOpenGift: z.boolean(),
+});
+
+export type ReservationCard = z.infer<typeof reservationCardSchema>;
+
+/** Story 5.5: `GET /api/v1/me/reservations` — the holder's cards and nothing else. */
+export const reservationListSchema = z.strictObject({
+  reservations: z.array(reservationCardSchema),
+});
+
+export type ReservationList = z.infer<typeof reservationListSchema>;
+
+/**
+ * Story 5.5 (FR-25, FR-29–FR-31): one action per request on
+ * `PATCH /api/v1/me/reservations/:giftId`. A closed discriminated union, so two
+ * actions in one body, an extra key or an empty `action` are `VALIDATION`; the
+ * server reads `firstIssueField` to name the field. Removing a reservation stays
+ * with `DELETE /api/v1/gifts/:id/reserve` (Story 5.2) and is not listed here.
+ */
+export const reservationActionBodySchema = z.discriminatedUnion("action", [
+  z.strictObject({
+    action: z.literal("extend"),
+    dueOn: calendarDayFieldSchema,
+  }),
+  z.strictObject({
+    action: z.literal("bought"),
+    value: z.boolean(),
+  }),
+  z.strictObject({
+    action: z.literal("visibility"),
+    holderVisibleToOwner: z.boolean(),
+    holderVisibleToOthers: z.boolean(),
+  }),
+]);
+
+export type ReservationActionBody = z.infer<typeof reservationActionBodySchema>;
+
+/**
+ * Story 5.2 (FR-31, AD-12): the owner's preflight before releasing someone
+ * else's reservation answers the warning and nothing else — no holder, no due
+ * date, no phase, no `bought`. `GIVEN` is already allowed here so the client and
+ * the contract do not change twice: until Story 5.7 no row carries that phase,
+ * so the server answers `BOUGHT` or `null` only.
+ */
+export const giftReservationWarningSchema = z.strictObject({
+  warning: z.enum(RESERVATION_LABELS).nullable(),
+});
+
+export type GiftReservationWarning = z.infer<typeof giftReservationWarningSchema>;
 
 /**
  * Story 2.6: the owner puts an archived wish back. An absent or empty date

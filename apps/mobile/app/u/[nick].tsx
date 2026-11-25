@@ -4,6 +4,7 @@ import type {
   ProfileRelationship,
 } from "@gift-list/contracts";
 import {
+  Button,
   Column,
   Heading,
   LoadingCards,
@@ -38,10 +39,10 @@ import {
 import { SubscriptionActions } from "@/profile/subscription-actions";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
+import { ClosedSection } from "@/ui/closed-section";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
-import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
 import { loadViewerDetail } from "@/ui/wish-detail-load";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
@@ -122,6 +123,7 @@ export default function ProfileScreen() {
   const friends = useTranslations("app.friends");
   const wishlist = useTranslations("app.wishlist");
   const myWishlist = useTranslations("app.myWishlist");
+  const closedCopy = useTranslations("app.gift.closed");
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
@@ -162,6 +164,8 @@ export default function ProfileScreen() {
   const [blockConfirmBusy, setBlockConfirmBusy] = useState(false);
   const blockInFlight = useRef<string | null>(null);
   const [leaveAfterBlock, setLeaveAfterBlock] = useState(false);
+  // Story 5.3: «Уже подарено» is closed until the visitor opens it.
+  const [closedExpanded, setClosedExpanded] = useState(false);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
 
@@ -271,6 +275,16 @@ export default function ProfileScreen() {
   const view: ScreenState =
     state.status === "ready" && state.nick !== nick ? { status: "loading" } : state;
   const viewer = auth.state.user;
+  // Story 5.3: the profile reads the same one list; closed wishes are shown in
+  // «Уже подарено» without actions. `/u/:nick` cards never carry `undoUntil`, so
+  // the owner's window and its actions stay on «Мой вишлист».
+  const allGifts = view.status === "ready" ? view.gifts : [];
+  const activeGifts = allGifts.filter(function notClosed(gift) {
+    return gift.status !== "CLOSED";
+  });
+  const closedGifts = allGifts.filter(function onlyClosed(gift) {
+    return gift.status === "CLOSED" && gift.archivedAt === null;
+  });
 
   function retry() {
     setToast(null);
@@ -781,27 +795,64 @@ export default function ProfileScreen() {
                         />
                       ) : null}
                     </XStack>
-                    {view.gifts.length === 0 ? (
+                    {allGifts.length === 0 ? (
                       <EmptyState title={wishlist("emptyTitle")} />
                     ) : (
-                      <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
-                        {view.gifts.map(function renderGift(gift) {
-                          return (
-                            <PublicGiftCard
-                              key={gift.id}
-                              gift={gift}
-                              width={cardWidth}
-                              loadDetail={
-                                auth.state.status === "ready"
-                                  ? function loadThisGift() {
-                                      return loadViewerDetail(gift.id, undefined, gift);
-                                    }
-                                  : undefined
-                              }
-                            />
-                          );
-                        })}
-                      </XStack>
+                      <>
+                        {activeGifts.length > 0 ? (
+                          <XStack
+                            role="list"
+                            flexWrap="wrap"
+                            gap="$grid-gap"
+                            alignItems="flex-start"
+                          >
+                            {activeGifts.map(function renderGift(gift) {
+                              return (
+                                <PublicGiftCard
+                                  key={gift.id}
+                                  gift={gift}
+                                  width={cardWidth}
+                                  loadDetail={
+                                    auth.state.status === "ready"
+                                      ? function loadThisGift() {
+                                          return loadViewerDetail(gift.id, undefined, gift);
+                                        }
+                                      : undefined
+                                  }
+                                />
+                              );
+                            })}
+                          </XStack>
+                        ) : null}
+                        {closedGifts.length > 0 ? (
+                          <ClosedSection
+                            label={closedCopy("sectionViewer")}
+                            expanded={closedExpanded}
+                            onToggle={function toggleClosed() {
+                              setClosedExpanded((open) => !open);
+                            }}
+                            testID="profile-closed"
+                            toggleTestID="profile-closed-toggle"
+                          >
+                            {closedGifts.map(function renderClosed(gift) {
+                              return (
+                                <PublicGiftCard
+                                  key={gift.id}
+                                  gift={gift}
+                                  width={cardWidth}
+                                  loadDetail={
+                                    auth.state.status === "ready"
+                                      ? function loadThisGift() {
+                                          return loadViewerDetail(gift.id, undefined, gift);
+                                        }
+                                      : undefined
+                                  }
+                                />
+                              );
+                            })}
+                          </ClosedSection>
+                        ) : null}
+                      </>
                     )}
                   </>
                 )}
@@ -865,7 +916,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       <Text tone="muted" textAlign="center">
         {text}
       </Text>
-      <PrimaryButton label={label} onPress={onPress} />
+      <Button label={label} onPress={onPress} />
     </YStack>
   );
 }

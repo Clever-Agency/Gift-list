@@ -14,6 +14,7 @@ import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { IntlProvider } from "use-intl";
 import { getMessages, negotiateLocale } from "@gift-list/contracts";
+import { AppVersionGate } from "@/app-version/app-version-gate";
 import { contactsAvailable } from "@/platform/contacts";
 import { secureStoreAvailable } from "@/platform/secure-store";
 import { AuthProvider } from "@/session/auth-context";
@@ -75,10 +76,15 @@ export default function RootLayout() {
     <GiftListProvider config={config}>
       <SafeAreaProvider>
         <IntlProvider locale={locale} messages={getMessages(locale)}>
-          <AuthProvider>
-            <StatusBar style="dark" />
-            <RootStack />
-          </AuthProvider>
+          {/* The update gate needs the theme, the safe area and the copy
+              (`IntlProvider`), but not the session: a blocked or outdated build is
+              decided before any route runs, and the check never asks the user. */}
+          <AppVersionGate>
+            <AuthProvider>
+              <StatusBar style="dark" />
+              <RootStack />
+            </AuthProvider>
+          </AppVersionGate>
         </IntlProvider>
       </SafeAreaProvider>
     </GiftListProvider>

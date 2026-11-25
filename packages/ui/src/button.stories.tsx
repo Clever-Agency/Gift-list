@@ -1,11 +1,24 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { YStack } from "@tamagui/stacks";
+import { XStack, YStack } from "@tamagui/stacks";
 import { formatUnionType, propDoc } from "../../../.storybook/argTypes";
-import { BUTTON_TYPES, BUTTON_VARIANTS, Button, type ButtonVariant } from "./button";
+import {
+  BUTTON_TYPES,
+  BUTTON_VARIANTS,
+  Button,
+  type ButtonIconShape,
+  type ButtonIconSize,
+  type ButtonProps,
+  type ButtonVariant,
+} from "./button";
+import { Check, Close, Info, Star } from "./icons";
+import { InfoButton } from "./info-button";
 import { Text } from "./text";
 
 /** The catalog copy is a fixture, not a product string (`packages/ui` has no translations). */
 function noop() {}
+
+const ICON_SIZES = ["md", "sm"] as const satisfies readonly ButtonIconSize[];
+const ICON_SHAPES = ["square", "round"] as const satisfies readonly ButtonIconShape[];
 
 /**
  * Hover, press and focus are CSS states Tamagui paints from media queries: hover the
@@ -35,15 +48,17 @@ const meta = {
         component: `
 The shared button of the app and the Next pages. On the web it is a real \`<button>\`; with \`href\` it is a real \`<a href>\` with the same look, and on a phone the same component renders through React Native.
 
+With \`icon\` the same button is the icon-only control of v8 (this is what \`IconButton\` wraps): the label is not drawn but stays the accessible name, the 44 × 44 target is transparent, and the box inside carries the look — \`outline\` keeps the 1 px \`$border\` frame, \`ghost\` drops it (the old \`plain\`), \`primary\` is the filled accept action. The explanatory «i» trigger (\`InfoButton\`) keeps its tooltip or dialog: it is shown below as a ready control, not as a Button prop.
+
 The rules of each prop are in the table below. What is not a prop:
 
-- No \`size\` prop: the height follows the \`variant\`.
+- No \`size\` prop for text: the height follows the \`variant\`. \`iconSize\` and \`shape\` only shape the box of an icon-only button.
 - Hover, press and focus are CSS states (media queries), not props.
 - Focus paints a 2 px \`$ring\`: \`:focus-visible\` on the web, \`focus\` on a phone (external keyboard, TalkBack/VoiceOver).
 - The busy spinner is decorative (\`aria-hidden\`); \`aria-busy\` announces the wait.
-- The touch target is at least 44 px.
+- The touch target is at least 44 px, for a text and for an icon-only button.
 - Reduced motion: the spinner stops as a static ring, and its fade shortens to 100 ms (\`reduceFade\`).
-- React Native has no \`currentColor\`, so the spinner takes the label token as a value and matches the label in both themes.
+- React Native has no \`currentColor\`, so the spinner takes the label token as a value and matches the label in both themes. The icon box passes \`currentColor\` down to the glyph, so the icon inks with the box colour.
         `.trim(),
       },
     },
@@ -51,10 +66,30 @@ The rules of each prop are in the table below. What is not a prop:
   argTypes: {
     label: propDoc({
       description:
-        "The visible text and the accessible name (unless `ariaLabel` says more). Required; the copy comes from the caller. While `busy` the label stays in the layout at opacity 0 under the spinner, so the width does not change.",
+        "The visible text and the accessible name (unless `ariaLabel` says more). Required; the copy comes from the caller. While `busy` the label stays in the layout at opacity 0 under the spinner, so the width does not change. With `icon` it is not drawn: it is the accessible name only.",
       type: "string",
       required: true,
       control: "text",
+    }),
+    icon: propDoc({
+      description:
+        "An icon instead of the visible label: the button becomes the icon-only control — a 44 × 44 transparent target with the icon box inside. `label` stays the accessible name; the glyph is the picture. The catalog shows it with the «только иконка» handle and a ready `Star`.",
+      type: "ReactNode",
+      control: false,
+    }),
+    iconSize: propDoc({
+      description:
+        "The drawn box of an icon-only button: `md` is 44 × 44 (the default), `sm` is a 32 × 32 box inside the same 44 px target. Ignored by a text button.",
+      type: formatUnionType(ICON_SIZES),
+      options: ICON_SIZES,
+      defaultValue: "md",
+    }),
+    shape: propDoc({
+      description:
+        "`square` (radius 8, the default) or `round` (a circle). Icon-only mode only: a text button keeps its radius.",
+      type: formatUnionType(ICON_SHAPES),
+      options: ICON_SHAPES,
+      defaultValue: "square",
     }),
     ariaLabel: propDoc({
       description:
@@ -81,7 +116,9 @@ The rules of each prop are in the table below. What is not a prop:
 - \`secondary\` — translucent \`$accent-soft\` fill with \`$accent-border\` frame → hover \`$accent-soft-hover\` → press 90% opacity
 - \`outline\` — transparent with \`$border-strong\` frame → hover \`$muted\` fill and \`$foreground\` frame → press \`$muted\`
 - \`ghost\` — transparent → hover \`$muted\` fill → press \`$muted\` fill
-- \`destructive\` — \`$destructive\` fill → hover \`$destructive-hover\` → press 90% opacity`,
+- \`destructive\` — \`$destructive\` fill → hover \`$destructive-hover\` → press 90% opacity
+
+An icon-only button paints the same values on its box; \`outline\` there takes the 1 px \`$border\` token (the frame of an icon button), and \`ghost\` is the old borderless \`plain\`.`,
       type: formatUnionType(BUTTON_VARIANTS),
       options: BUTTON_VARIANTS,
       defaultValue: "primary",
@@ -128,6 +165,17 @@ The rules of each prop are in the table below. What is not a prop:
       options: BUTTON_TYPES,
       defaultValue: "button",
     }),
+    iconOnly: {
+      name: "только иконка",
+      description:
+        "Ручка каталога: подставить готовый глиф `Star` в `icon` — кнопка становится иконкой без подписи, а `label` остаётся именем для диктора.",
+      control: "boolean",
+      table: {
+        category: "Ручки каталога",
+        type: { summary: "boolean" },
+        defaultValue: { summary: "false" },
+      },
+    },
   },
   args: {
     label: "Добавить желание",
@@ -138,19 +186,38 @@ The rules of each prop are in the table below. What is not a prop:
     busy: false,
     fullWidth: false,
     type: "button",
+    iconSize: "md",
+    shape: "square",
+    iconOnly: false,
   },
-} satisfies Meta<typeof Button>;
+} satisfies Meta<ButtonProps & { iconOnly: boolean }>;
 
 export default meta;
 
 type Story = StoryObj<typeof meta>;
 
+/** The meta props plus the catalog handle «только иконка» (`iconOnly`). */
+type ButtonCatalogArgs = ButtonProps & { iconOnly: boolean };
+
 /**
  * The canvas of the Docs page and the place to turn the props: every public prop
- * has a control (`argTypes`), and the code is the one the apps run. Start here,
- * then look at the matrix below for every variant and state at once.
+ * has a control (`argTypes`), and the code is the one the apps run. The «только
+ * иконка» handle swaps the visible label for a ready `Star`, so the icon-only mode
+ * of v8 can be tried with the real variants, sizes and shapes. Start here, then
+ * look at the matrix below for every variant and state at once.
  */
-export const Playground: Story = {};
+export const Playground: Story = {
+  render: function PlaygroundStory(args) {
+    const { iconOnly, ...buttonArgs } = args as ButtonCatalogArgs;
+    return (
+      <Button
+        {...buttonArgs}
+        icon={iconOnly ? <Star size={20} /> : undefined}
+        testID="button-playground"
+      />
+    );
+  },
+};
 
 /** The catalogue label of each variant, the same fixtures the app screens show. */
 const VARIANT_LABELS: Record<ButtonVariant, string> = {
@@ -181,6 +248,8 @@ const MATRIX_STATES = [
  */
 export const AllVariants: Story = {
   name: "All variants",
+  // The matrix is a Docs illustration; the sidebar keeps Playground and Busy.
+  tags: ["!dev"],
   render: function AllVariantsStory() {
     return (
       <YStack width={360} gap="$4" alignItems="flex-start">
@@ -204,6 +273,7 @@ export const AllVariants: Story = {
       </YStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
 };
 
@@ -214,6 +284,7 @@ export const AllVariants: Story = {
  */
 export const FocusableWhenDisabled: Story = {
   name: "Focusable when disabled",
+  tags: ["!dev"],
   render: function FocusableWhenDisabledStory() {
     return (
       <YStack gap="$2" alignItems="flex-start">
@@ -239,6 +310,7 @@ export const FocusableWhenDisabled: Story = {
  */
 export const PrimaryFullWidth: Story = {
   name: "Full width",
+  tags: ["!dev"],
   args: { variant: "primary", fullWidth: true },
 };
 
@@ -252,6 +324,7 @@ export const PrimaryFullWidth: Story = {
  */
 export const AsLink: Story = {
   name: "As a link",
+  tags: ["!dev"],
   render: function AsLinkStory() {
     return (
       <YStack gap="$3" alignItems="flex-start">
@@ -264,6 +337,114 @@ export const AsLink: Story = {
       </YStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
+  globals: { viewport: { value: "w360" } },
+};
+
+/**
+ * The icon-only mode: `label` is not drawn but stays the accessible name, the
+ * target is 44 × 44, and the box inside carries the look. `outline` keeps the 1 px
+ * `$border` frame, `ghost` drops it (the old `plain`), `primary` is the filled
+ * accept action; `disabled` dims to 40% and blocked hover/press stay quiet.
+ * `iconSize="sm"` draws a 32 px box — a square or a circle with `shape="round"` —
+ * inside the same 44 px target: the answer/decline pair of the friends requests.
+ * This is the whole of `IconButton`, which is now a thin wrapper over `Button`.
+ */
+export const IconOnly: Story = {
+  name: "Icon only",
+  tags: ["!dev"],
+  render: function IconOnlyStory() {
+    return (
+      <YStack width={360} gap="$4" alignItems="flex-start">
+        <YStack gap="$2" alignItems="flex-start">
+          <Text kind="caption" tone="muted">
+            Outline (the default), plain, filled and disabled
+          </Text>
+          <XStack gap="$2" alignItems="center">
+            <Button label="Поделиться" icon={<Star size={20} />} variant="outline" onPress={noop} />
+            <Button label="Подробнее" icon={<Info size={20} />} variant="ghost" onPress={noop} />
+            <Button label="Принять" icon={<Check size={20} />} variant="primary" onPress={noop} />
+            <Button label="Поделиться" icon={<Star size={20} />} variant="outline" disabled />
+          </XStack>
+        </YStack>
+        <YStack gap="$2" alignItems="flex-start">
+          <Text kind="caption" tone="muted">
+            32 px circles in the same 44 px target
+          </Text>
+          <XStack gap="$2" alignItems="center">
+            <Button
+              label="Отклонить: Екатерина Шереметьева"
+              icon={<Close size={16} />}
+              iconSize="sm"
+              shape="round"
+              variant="outline"
+              onPress={noop}
+            />
+            <Button
+              label="Принять: Екатерина Шереметьева"
+              icon={<Check size={16} />}
+              iconSize="sm"
+              shape="round"
+              variant="primary"
+              onPress={noop}
+            />
+          </XStack>
+        </YStack>
+      </YStack>
+    );
+  },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
+  globals: { viewport: { value: "w360" } },
+};
+
+/**
+ * The explanatory «i» next to the phrase it explains is `InfoButton`, a ready
+ * control, not a `Button` prop: on the web it opens a `Tooltip` on hover, on
+ * keyboard focus and on a tap, and a second tap closes it again; a phone shows the
+ * same text in a `Dialog`. Hover the icon or press Tab to read it.
+ */
+export const InfoButtonNearLabel: Story = {
+  name: "Info button",
+  tags: ["!dev"],
+  render: function InfoButtonNearLabelStory() {
+    return (
+      <XStack gap="$2" alignItems="center" width={320}>
+        <Text kind="label">Ссылка открыта всем</Text>
+        <InfoButton
+          label="Что видно по ссылке"
+          explanation="Ссылку увидят все, у кого она есть: и друзья, и те, кому вы её отправили."
+          closeLabel="Закрыть"
+        />
+      </XStack>
+    );
+  },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
+  globals: { viewport: { value: "w360" } },
+};
+
+/** The same control with its tooltip opened by a real press: the second tap closes it. */
+function pressInfoButton({ canvasElement }: { canvasElement: HTMLElement }) {
+  const trigger = canvasElement.querySelector<HTMLElement>("[aria-label='Что видно по ссылке']");
+  trigger?.click();
+}
+
+export const InfoButtonOpened: Story = {
+  name: "Info button opened by a press",
+  tags: ["!dev"],
+  render: function InfoButtonOpenedStory() {
+    return (
+      <XStack gap="$2" alignItems="center" width={320}>
+        <Text kind="label">Ссылка открыта всем</Text>
+        <InfoButton
+          label="Что видно по ссылке"
+          explanation="Ссылку увидят все, у кого она есть: и друзья, и те, кому вы её отправили."
+          closeLabel="Закрыть"
+        />
+      </XStack>
+    );
+  },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
+  play: pressInfoButton,
   globals: { viewport: { value: "w360" } },
 };
 
@@ -298,5 +479,6 @@ export const BusyKeepsWidth: Story = {
       </YStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
 };

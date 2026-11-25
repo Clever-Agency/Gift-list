@@ -4,8 +4,9 @@ import { act, cloneElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { subscriptionViewKey } from "@/friends/subscription-view.types";
+import { InviteBadgeProvider } from "@/navigation/invite-badge";
 import { AuthProvider } from "@/session/auth-context";
-import FriendsScreen from "../../app/(app)/friends";
+import FriendsScreen from "../../app/(app)/(tabs)/friends";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const circle = vi.hoisted(() => ({
@@ -331,6 +332,24 @@ describe("друзья: шапка", () => {
     expect(text()).toContain(PRODUCT_NAME);
     expect(text()).not.toContain("brandName");
   });
+
+  /**
+   * Story 6.2: «Друзья» is a tab root now. The root of a tab has no history of its
+   * own, so the manual «Назад» is gone; the system back of Android opens «Вишлист».
+   */
+  it("у корня вкладки нет ручной ссылки «Назад»", async () => {
+    signedIn();
+    await mount();
+
+    expect(container.querySelector('[aria-label="Назад"]')).toBeNull();
+    const back = Array.from(
+      container.querySelectorAll<HTMLElement>('button, [role="button"], [role="link"]'),
+    ).filter((node) => (node.textContent ?? "").trim() === "Назад");
+    expect(back).toHaveLength(0);
+    // The screen itself and the way into «Поиск» stay.
+    expect(text()).toContain("Друзья");
+    expect(controlByText("Найти знакомых")).not.toBeNull();
+  });
 });
 
 describe("друзья: вкладки и входящие", () => {
@@ -550,7 +569,7 @@ describe("друзья: запросы", () => {
 
     // v8: the answer is an icon button — a 32 px filled circle inside the 44 px target.
     const accept = control("Принять: Глеб");
-    const visual = accept.querySelector<HTMLElement>("[data-testid='icon-button-visual']");
+    const visual = accept.querySelector<HTMLElement>("[data-testid='button-icon']");
     expect(visual).not.toBeNull();
     expect(getComputedStyle(visual as HTMLElement).width).toBe("32px");
     expect(getComputedStyle(visual as HTMLElement).backgroundColor).toBe("#2B3A7A");
@@ -601,6 +620,34 @@ describe("друзья: запросы", () => {
 
     expect(text()).toContain("Запросов нет");
     expect(text()).toContain("Здесь появятся приглашения в друзья.");
+  });
+
+  /**
+   * Story 6.2 (BADGE_REFRESH): the shell's «Друзья» badge reads the same
+   * `incomingCount`. «Принять» on this screen asks the provider for a fresh count,
+   * so the badge stops showing a request that is already answered.
+   */
+  it("после «Принять» счётчик badge перечитывается (провайдер оболочки)", async () => {
+    circle.fetchInvites.mockResolvedValue(invitesAnswer([gleb], [], 1));
+    signedIn();
+    await act(async () => {
+      root.render(
+        <AuthProvider>
+          <InviteBadgeProvider>
+            <FriendsScreen />
+          </InviteBadgeProvider>
+        </AuthProvider>,
+      );
+    });
+    await settle(0);
+
+    // The mount read of the screen and the one of the badge provider.
+    const before = circle.fetchInvites.mock.calls.length;
+    await openTab("Запросы, 1");
+    await press(control("Принять: Глеб"));
+    await settle(0);
+
+    expect(circle.fetchInvites.mock.calls.length).toBeGreaterThan(before);
   });
 });
 

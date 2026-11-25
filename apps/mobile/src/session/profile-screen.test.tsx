@@ -1834,7 +1834,7 @@ describe("W12.20: экран профиля на медиа-пропсах", () 
     expect(source).not.toMatch(/\bpageGutter\b/);
   });
 
-  it("экран отрисован: имя владельца, сетка из четырёх желаний, тег и подвал", async () => {
+  it("экран отрисован: имя владельца, сетка из трёх желаний, «Уже подарено» и подвал", async () => {
     await mountAt(1024);
 
     expect(container.querySelector('[data-testid="profile-page"]')).not.toBeNull();
@@ -1844,7 +1844,9 @@ describe("W12.20: экран профиля на медиа-пропсах", () 
     expect(container.querySelector('[role="heading"][aria-level="1"]')?.textContent).toBe(
       "Борис",
     );
-    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(4);
+    // Story 5.3: the closed wish is in «Уже подарено», not in the active grid.
+    expect(container.querySelectorAll('[role="list"] [role="listitem"]')).toHaveLength(3);
+    expect(text()).toContain("Уже подарено");
     expect(text()).toContain("мечта");
     expect(text()).toContain("на день рождения");
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
@@ -1907,5 +1909,36 @@ describe("W12.20: экран профиля на медиа-пропсах", () 
         expect(row).toBeLessThanOrEqual(Math.min(width, spacing["max-wide"]) + 1e-6);
       },
     );
+  });
+});
+
+/**
+ * Story 5.3 (SECTION_VIEWER): у зрителя закрытые желания профиля лежат в свёрнутой
+ * секции «Уже подарено» без действий. `/u/:nick` отдаёт карточки зрителя, ключа
+ * `undoUntil` в них нет, поэтому окно отмены и его кнопки живут только на «Мой
+ * вишлист».
+ */
+describe("профиль: закрытые желания", () => {
+  const closed = gift({
+    id: "g-closed",
+    title: "Свитер",
+    status: "CLOSED",
+  });
+
+  it("«Уже подарено» свёрнута, карточка закрытого появляется только после нажатия", async () => {
+    respond(giftsAnswer([closed]));
+    await mount();
+
+    expect(text()).toContain("Уже подарено");
+    expect(container.querySelector('[data-testid="profile-closed-toggle"]')?.getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    expect(text()).not.toContain("Свитер");
+
+    await press("Уже подарено");
+    const section = container.querySelector('[data-testid="profile-closed"]');
+    expect(section?.textContent).toContain("Свитер");
+    expect(text()).not.toContain("Вернуть в открытые");
+    expect(text()).not.toContain("Хочу ещё такой");
   });
 });

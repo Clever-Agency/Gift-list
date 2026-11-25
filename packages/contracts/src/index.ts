@@ -66,6 +66,12 @@ export const ERROR_REASONS = [
    */
   "RESERVATION_TAKEN",
   /**
+   * An undo request arrived after `UNDO_WINDOW` (10 min, D-43, ARCH-A5) had
+   * already closed. Always rides with `code: "CONFLICT"`; the client shows
+   * «Время на отмену вышло» and keeps the card closed.
+   */
+  "UNDO_WINDOW_EXPIRED",
+  /**
    * A registration or reset password is shorter than `PASSWORD_MIN` (UTF-16).
    * Always rides with `code: "VALIDATION"` and `field: "password"`.
    */
@@ -222,6 +228,13 @@ export const giftCardSchema = z.strictObject({
       holderVisibleToOthers: z.boolean(),
     })
     .optional(),
+  /**
+   * Story 5.3 (ARCH-A5): the owner's closed card carries the moment its undo
+   * window ends (`closedAt + UNDO_WINDOW`, ISO), even when it is already past; it
+   * is `null` for every other status. The key is absent on a viewer card, so a
+   * shared schema stays closed and nothing owner-only reaches a stranger.
+   */
+  undoUntil: z.string().nullable().optional(),
 });
 
 export type GiftCard = z.infer<typeof giftCardSchema>;
@@ -331,6 +344,23 @@ export {
 
 export { AUTHOR_EMAIL, AUTHOR_MAILTO, PRODUCT_NAME, authorMailto } from "./brand";
 
+export {
+  APP_PLATFORMS,
+  APP_VERSION_PATTERN,
+  APP_VERSION_POLICY,
+  APP_VERSION_STATUSES,
+  DEFAULT_APP_VERSION,
+  appVersionDataSchema,
+  appVersionPolicySchema,
+  appVersionStatus,
+  compareAppVersions,
+  parseAppVersionPolicy,
+  type AppPlatform,
+  type AppVersionData,
+  type AppVersionPolicy,
+  type AppVersionStatus,
+} from "./app-version";
+
 export { textLength } from "./text";
 
 export {
@@ -438,20 +468,30 @@ export {
   GIFT_TITLE_MAX,
   giftInputSchema,
   isCalendarDay,
+  giftReservationWarningSchema,
   giftReserveBodySchema,
   giftRestoreSchema,
   giftTagInputSchema,
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
   giftVisibilityPreviewSchema,
+  keepReservationBodySchema,
+  reservationActionBodySchema,
+  reservationCardSchema,
+  reservationListSchema,
   type GiftInput,
   type GiftInputDraft,
+  type GiftReservationWarning,
   type GiftReserveBody,
   type GiftRestore,
   type GiftTagInput,
   type GiftUpdate,
   type GiftVisibilityPreview,
   type GiftVisibilityPreviewQuery,
+  type KeepReservationBody,
+  type ReservationActionBody,
+  type ReservationCard,
+  type ReservationList,
 } from "./gift";
 
 export {
@@ -484,7 +524,11 @@ export {
   getMessages,
   negotiateLocale,
   normalizeForSearch,
+  notificationChangedFields,
+  notificationText,
   preferredFromAcceptLanguage,
   type Messages,
   type SupportedLocale,
 } from "./i18n/index";
+
+export * from "./notifications";

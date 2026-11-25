@@ -40,6 +40,7 @@ FormFrame.displayName = "FormFrame";
 const meta = {
   title: "App/GiftForm",
   component: GiftForm,
+  tags: ["autodocs"],
   parameters: { layout: "fullscreen" },
   args: {
     submitting: false,
@@ -83,6 +84,7 @@ export const EditPrefilled: Story = {
 
 /** Field errors come from the form's own submit: the story presses «Добавить желание». */
 export const ValidationErrors: Story = {
+  tags: ["!dev"],
   play: pressSubmit,
   globals: { viewport: { value: "w360" } },
 };
@@ -94,6 +96,7 @@ function pressSubmit({ canvasElement }: { canvasElement: HTMLElement }) {
 
 /** A server rejection names one field: the error lands under it and focus moves there. */
 export const ServerFieldError: Story = {
+  tags: ["!dev"],
   args: {
     initialValues: {
       title: "Плед из шерсти мериноса",
@@ -106,6 +109,7 @@ export const ServerFieldError: Story = {
 
 /** A rejection without a field is shown above the submit button. */
 export const FormLevelError: Story = {
+  tags: ["!dev"],
   args: {
     initialValues: { title: "Плед из шерсти мериноса" },
     serverError: { message: "Не получилось сохранить. Попробуйте ещё раз." },
@@ -115,6 +119,7 @@ export const FormLevelError: Story = {
 
 /** The request is running: the submit is busy, «Отмена» is disabled but stays focusable. */
 export const Saving: Story = {
+  tags: ["!dev"],
   args: {
     submitting: true,
     submitLabel: "Сохраняем…",
@@ -125,18 +130,51 @@ export const Saving: Story = {
 };
 
 /**
- * A reserved wish of the edit screen (CLE-82/S23.3): the visibility is editable, the
- * quantity keeps its stored value and stays frozen — «Один раз / Можно дарить снова»
- * changes only on an open wish.
+ * A reserved wish of the edit screen (CLE-82/S23.3, Story 5.4): the visibility is
+ * editable, the quantity keeps its stored value and stays frozen — «Один раз /
+ * Можно дарить снова» changes only on an open wish — and the caption above the
+ * fields says the holder gets a notification. At 360 px the caption wraps, not clips.
  */
 export const ReservedWish: Story = {
+  tags: ["!dev"],
   args: {
     submitLabel: "Сохранить",
     quantityLocked: true,
+    notice: "Желание забронировано — бронировавший получит уведомление",
     initialValues: {
       title: "Плед из шерсти мериноса",
       visibility: "FRIENDS",
       quantity: "UNLIMITED",
+    },
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
+/**
+ * The same reserved wish with every value long: the caption, the labels and the
+ * filled fields wrap at 360 px and the action row never squeezes the buttons.
+ */
+export const ReservedWishLongValues: Story = {
+  tags: ["!dev"],
+  args: {
+    submitLabel: "Сохранить",
+    quantityLocked: true,
+    onCancel: noop,
+    notice: "Желание забронировано — бронировавший получит уведомление",
+    secondaryAction: <Button label="Удалить желание" variant="destructive" onPress={noop} />,
+    initialValues: {
+      title: "Плед из шерсти мериноса с длинной бахромой и подогревом",
+      description:
+        "Тёплый, 200 × 140, цвет — овсяный. Хочется именно такой, с бахромой по краю, чтобы укрываться на диване холодными вечерами.",
+      link: "https://market.example.com/пледы/меринос/овсяный-с-бахромой",
+      priceAmount: 1250050,
+      priceCurrency: "RUB",
+      visibility: "FRIENDS",
+      quantity: "UNLIMITED",
+      tags: [
+        { catalogId: "tag-home", label: "Дом" },
+        { text: "Для уютных вечеров вдвоём" },
+      ],
     },
   },
   globals: { viewport: { value: "w360" } },
@@ -148,6 +186,7 @@ export const ReservedWish: Story = {
  * one caption covers both states.
  */
 export const ReadOnlyArchived: Story = {
+  tags: ["!dev"],
   args: {
     submitLabel: "Сохранить",
     readOnly: true,
@@ -172,6 +211,7 @@ export const ReadOnlyArchived: Story = {
 
 /** The edit screen's action row: «Удалить желание», «Отмена» and «Сохранить». */
 export const WithDeleteAndCancel: Story = {
+  tags: ["!dev"],
   args: {
     submitLabel: "Сохранить",
     initialValues: { title: "Плед из шерсти мериноса" },
@@ -183,12 +223,14 @@ export const WithDeleteAndCancel: Story = {
 
 /** The fixed-tag catalogue is loading: the form stays usable, the strip says so. */
 export const TagCatalogLoading: Story = {
+  tags: ["!dev"],
   args: { tagCatalog: { status: "loading" } },
   globals: { viewport: { value: "w360" } },
 };
 
 /** The catalogue failed: selected tags stay, a retry is offered. */
 export const TagCatalogError: Story = {
+  tags: ["!dev"],
   args: {
     tagCatalog: { status: "error" },
     onRetryTagCatalog: noop,
@@ -202,6 +244,7 @@ export const TagCatalogError: Story = {
 
 /** The server has no fixed tags yet: only «Свой тег» is offered. */
 export const TagCatalogEmpty: Story = {
+  tags: ["!dev"],
   args: {
     tagCatalog: { status: "ready", tags: [] },
     onRetryTagCatalog: noop,
@@ -211,6 +254,7 @@ export const TagCatalogEmpty: Story = {
 
 /** «Свой тег» opens its field: the story presses the real chip. */
 export const CustomTagEditor: Story = {
+  tags: ["!dev"],
   play: openCustomTag,
   globals: { viewport: { value: "w360" } },
 };
@@ -222,6 +266,7 @@ function openCustomTag({ canvasElement }: { canvasElement: HTMLElement }) {
 
 /** Long Cyrillic values everywhere at 360 px: labels, hints and chips wrap, not clip. */
 export const LongValuesNarrow: Story = {
+  tags: ["!dev"],
   args: {
     submitLabel: "Сохранить",
     initialValues: {

@@ -59,6 +59,9 @@ const giftSelect = {
   reservationBought: true,
   holderVisibleToOwner: true,
   holderVisibleToOthers: true,
+  // Story 5.3: one select for the owner and the viewer; only the owner mapper
+  // turns it into `undoUntil`.
+  closedAt: true,
   reservedBy: { select: { id: true, nick: true, name: true } },
   // Story 2.5/AD-22: only what the card shows. `slug` orders fixed tags like the
   // catalog (2.5.7) and never reaches the client.

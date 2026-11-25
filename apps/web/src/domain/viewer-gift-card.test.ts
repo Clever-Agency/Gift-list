@@ -19,6 +19,7 @@ function row(overrides: Partial<ViewerGiftRow> = {}): ViewerGiftRow {
     quantity: "SINGLE",
     expiresOn: new Date("2026-12-31T00:00:00.000Z"),
     archivedAt: null,
+    closedAt: null,
     status: "RESERVED",
     reservationPhase: "ACTIVE",
     holderVisibleToOwner: false,
@@ -128,6 +129,7 @@ describe("toViewerGiftCard", () => {
     const shown = toViewerGiftCard(
       row({
         status: "CLOSED",
+        closedAt: new Date("2026-11-19T12:00:00.000Z"),
         reservationPhase: "GIVEN",
         reservationBought: true,
         holderVisibleToOthers: true,
@@ -142,6 +144,19 @@ describe("toViewerGiftCard", () => {
     expect(shown.reservedBy).toEqual(HOLDER_ON_WIRE);
     expect(shown.reservationLabel).toBeNull();
     expect(hidden.reservedBy).toBeNull();
+  });
+
+  /** CARD_VIEWER_CLOSED: the undo moment is the owner's field and never travels. */
+  it("never carries undoUntil on a viewer card, closed or not", () => {
+    const closed = toViewerGiftCard(
+      row({ status: "CLOSED", closedAt: new Date("2026-11-19T12:00:00.000Z") }),
+      OTHER_ID,
+    );
+    const open = toViewerGiftCard(row({ status: "OPEN" }), OTHER_ID);
+
+    expect(closed).not.toHaveProperty("undoUntil");
+    expect(open).not.toHaveProperty("undoUntil");
+    expect(giftCardSchema.safeParse(closed).success).toBe(true);
   });
 
   it("never exposes an owner action, even mid-reservation", () => {

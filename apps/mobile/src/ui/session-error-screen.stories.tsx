@@ -10,6 +10,7 @@ import { SessionErrorScreen } from "./session-error-screen";
 const meta = {
   title: "App/SessionErrorScreen",
   component: SessionErrorScreen,
+  tags: ["autodocs"],
   parameters: { layout: "fullscreen", screenFrame: true },
   args: { onRetry: noop },
 } satisfies Meta<typeof SessionErrorScreen>;
@@ -21,7 +22,9 @@ type Story = StoryObj<typeof meta>;
 function noop() {}
 
 /** The wide page column a list route uses. */
-export const Wide: Story = {};
+export const Wide: Story = {
+  tags: ["!dev"],
+};
 
 /** The form column: a form reads best narrow. */
 export const Form: Story = {
@@ -30,11 +33,13 @@ export const Form: Story = {
 
 /** The form column at 360 px: the message and the button keep the gutter. */
 export const FormNarrow: Story = {
+  tags: ["!dev"],
   args: { size: "form" },
   globals: { viewport: { value: "w360" } },
 };
 
 /** A route-specific test id, as the guarded routes pass it. */
 export const CustomTestId: Story = {
+  tags: ["!dev"],
   args: { testID: "profile-session-error" },
 };

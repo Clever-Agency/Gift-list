@@ -1,6 +1,5 @@
-import { XStack } from "@tamagui/stacks";
 import { forwardRef, type ComponentRef, type ReactNode } from "react";
-import { Pressable } from "./pressable";
+import { Button, type ButtonVariant } from "./button";
 
 export type IconButtonVariant = "outline" | "plain" | "primary";
 
@@ -27,52 +26,39 @@ export type IconButtonProps = {
   testID?: string;
 };
 
-const VISUAL_SIZE = { sm: 32, md: 44 } as const;
-
 /**
- * The icon-only button of v8 (`DESIGN.md` → Button → icon button): a 44 × 44 target,
- * radius 8 (or a circle with `shape="round"`), 1 px `border`, transparent fill. Hover
- * fills `muted`, press dims to 90%, focus takes the ring (`$ring`, 2 px, offset 2 px)
- * like every interactive surface. `size="sm"` keeps the 44 px target and draws the
- * 32 px circle the request rows use. `label` is the accessible name; the icon is only
- * the picture. Use `Button` when the control has visible text.
+ * The icon-only control of v8 (`DESIGN.md` → Button → icon button) is the icon-only
+ * mode of `Button`: a 44 × 44 target, radius 8 (or a circle with `shape="round"`),
+ * 1 px `border` frame with `outline`, none with `plain`, `primary` fill with
+ * `primary`. Hover fills `muted`, press dims the target to 90%, focus takes the ring
+ * (`$ring`, 2 px, offset 2 px) like every interactive surface. `size="sm"` keeps the
+ * 44 px target and draws the 32 px box the request rows use. `label` is the
+ * accessible name; the icon is only the picture. A disabled icon button keeps its
+ * place in the focus order (`aria-disabled`) and dims to 40%, as before.
  */
-export const IconButton = forwardRef<ComponentRef<typeof Pressable>, IconButtonProps>(
+export const IconButton = forwardRef<ComponentRef<typeof Button>, IconButtonProps>(
   function IconButton(
     { label, icon, onPress, disabled = false, variant = "outline", size = "md", shape = "square", testID },
     ref,
   ) {
-    const visual = VISUAL_SIZE[size];
-    const primary = variant === "primary";
+    // `plain` has no frame: in `Button` that is the `ghost` value; the drawn box
+    // keeps the same tokens either way (`IconBox` of `button.tsx`).
+    const painted: ButtonVariant = variant === "plain" ? "ghost" : variant;
     return (
-      <Pressable
+      <Button
         ref={ref}
-        role="button"
-        aria-label={label}
-        disabled={disabled}
+        label={label}
+        icon={icon}
+        iconSize={size}
+        shape={shape}
+        variant={painted}
         onPress={onPress}
+        disabled={disabled}
+        // The old `Pressable` kept a disabled control in the focus order: announced
+        // with `aria-disabled`, no press. `Button` does the same with this flag.
+        focusableWhenDisabled={disabled}
         testID={testID}
-        minWidth="$touch-target"
-        minHeight="$touch-target"
-        alignItems="center"
-        justifyContent="center"
-      >
-        <XStack
-          testID="icon-button-visual"
-          width={visual}
-          height={visual}
-          alignItems="center"
-          justifyContent="center"
-          borderRadius={shape === "round" ? "$full" : "$md"}
-          borderWidth={variant === "plain" ? 0 : 1}
-          borderColor={variant === "outline" ? "$border hover:$foreground" : "transparent"}
-          backgroundColor={primary ? "$primary hover:$primary-hover press:$primary-hover" : "transparent hover:$muted press:$muted"}
-          // The icon draws with `currentColor`, so the colour of the control is its ink.
-          color={primary ? "$primary-foreground" : "$foreground"}
-        >
-          {icon}
-        </XStack>
-      </Pressable>
+      />
     );
   },
 );

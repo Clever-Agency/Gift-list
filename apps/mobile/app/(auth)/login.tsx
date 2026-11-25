@@ -1,4 +1,4 @@
-import { focusField, Text } from "@gift-list/ui";
+import { Button, focusField, Text } from "@gift-list/ui";
 import { loginBodySchema, safeNextPath } from "@gift-list/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -20,7 +20,6 @@ import { useCarriedAuthEmail } from "@/session/use-carried-auth-email";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { NavLink } from "@/ui/nav-link";
 import { PasswordField, TextField } from "@/ui/text-field";
-import { PrimaryButton } from "@/ui/primary-button";
 import { ToastHost } from "@/ui/toast";
 import type { Me } from "@gift-list/contracts";
 
@@ -179,7 +178,7 @@ export default function LoginScreen() {
             onSubmitEditing: handleSubmit,
           }}
         />
-        <PrimaryButton label={t("form.submitLogin")} onPress={handleSubmit} disabled={pending} />
+        <Button label={t("form.submitLogin")} onPress={handleSubmit} busy={pending} />
         <NavLink href={forgotHref} onPress={rememberEmailForForgot}>
           {t("login.forgot")}
         </NavLink>

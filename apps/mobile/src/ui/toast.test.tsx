@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AppShell, spacing } from "@gift-list/ui";
 import {
   TOAST_FADE_MS,
   TOAST_MIN_MS,
@@ -10,11 +11,68 @@ import {
   toastDurationMs,
 } from "@/ui/toast";
 
+/**
+ * Story 6.2: `ToastHost` stands above the bottom tabs, and the bar height comes
+ * from the `AppShell` context. `@tamagui/web` captures `window.matchMedia` when it
+ * is first imported, so the controllable mock is installed before the imports
+ * above (hence `vi.hoisted`): 360 px means the bar is on screen (56 px inset).
+ */
+const windowMedia = vi.hoisted(() => {
+  let width = 360;
+  const listeners = new Set<() => void>();
+
+  function matches(query: string): boolean {
+    const found = /min-width:\s*(\d+)px/.exec(query);
+    if (!found) return false;
+    return width >= Number(found[1]);
+  }
+
+  function matchMedia(query: string) {
+    return {
+      media: query,
+      get matches() {
+        return matches(query);
+      },
+      addListener(listener: () => void) {
+        listeners.add(listener);
+      },
+      removeListener(listener: () => void) {
+        listeners.delete(listener);
+      },
+      addEventListener(_: string, listener: () => void) {
+        listeners.add(listener);
+      },
+      removeEventListener(_: string, listener: () => void) {
+        listeners.delete(listener);
+      },
+      dispatchEvent() {
+        return false;
+      },
+      onchange: null,
+    };
+  }
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: matchMedia,
+  });
+
+  return {
+    setWidth(value: number) {
+      width = value;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+});
+
 const ACTION = "Отменить";
 
 /** Состояние диктора: `AccessibilityInfo` отвечает им на подписку и на запрос. */
-const narration = vi.hoisted(() => ({ enabled: false }));
+const narration = vi.hoisted(() => ({ enabled: false, asked: vi.fn() }));
 const listeners = vi.hoisted(() => new Set<(enabled: boolean) => void>());
+/** Платформа: в браузере `react-native-web` всегда отвечает «диктор включён». */
+const platform = vi.hoisted(() => ({ os: "web" as "web" | "ios" }));
 
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
@@ -33,8 +91,17 @@ vi.mock("use-intl", async () => {
 
 vi.mock("react-native", () => {
   return {
+    Platform: {
+      // Геттер: тесты переключают платформу так же, как её видит приложение.
+      get OS() {
+        return platform.os;
+      },
+    },
     AccessibilityInfo: {
-      isScreenReaderEnabled: () => Promise.resolve(narration.enabled),
+      isScreenReaderEnabled: () => {
+        narration.asked();
+        return Promise.resolve(narration.enabled);
+      },
       addEventListener: (event: string, listener: (enabled: boolean) => void) => {
         if (event !== "screenReaderChanged") return { remove: () => {} };
         listeners.add(listener);
@@ -55,6 +122,8 @@ type HostProps = {
   tone?: "info" | "error";
   persistent?: boolean;
   action?: { label: string; onPress: () => void };
+  actionRef?: { current: object | null };
+  durationMs?: number;
 };
 
 const onDismiss = vi.fn();
@@ -108,13 +177,13 @@ function opacityClass(node: HTMLElement): string {
 /** React слушает фокус через focusin/focusout — они всплывают. */
 function focus(node: HTMLElement) {
   act(() => {
-    node.dispatchEvent(new Event("focusin", { bubbles: true }));
+    node.focus();
   });
 }
 
 function blur(node: HTMLElement) {
   act(() => {
-    node.dispatchEvent(new Event("focusout", { bubbles: true }));
+    node.blur();
   });
 }
 
@@ -127,6 +196,9 @@ beforeEach(() => {
   });
   narration.enabled = false;
   listeners.clear();
+  // Веб-сборка — то, что видит человек в браузере: там `react-native-web` отвечает
+  // «диктор включён» на любой запрос.
+  platform.os = "web";
   mounted = false;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -278,10 +350,17 @@ describe("ToastHost: сам скрывается по таймеру", () => {
 });
 
 describe("ToastHost: действие и диктор", () => {
+  // Диктор спрашивают только на телефоне: в браузере `react-native-web` отвечает
+  // `true` всегда (см. `screenReaderApi`), и тост не скрывался бы никогда.
+  beforeEach(() => {
+    platform.os = "ios";
+  });
+
   it("при включённом дикторе тост с действием не скрывается сам", async () => {
     narration.enabled = true;
     await render({ message: "Добавлено в вишлист", tone: "info", action: { label: ACTION, onPress: vi.fn() } });
 
+    expect(narration.asked).toHaveBeenCalledTimes(1);
     const text = container.textContent ?? "";
     expect(text.indexOf(ACTION)).toBeGreaterThanOrEqual(0);
     // v8: the action sits in the text column, the close cross is the last control.
@@ -356,6 +435,224 @@ describe("ToastHost: действие и диктор", () => {
 
     advance(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ToastHost: undo-тост закрытия желания", () => {
+  const CLOSED_TOAST = {
+    message: "Отмечено полученным",
+    tone: "info" as const,
+    action: { label: ACTION, onPress: () => {} },
+    durationMs: 10_000,
+  };
+
+  it("живёт 10 секунд, а не по формуле текста", async () => {
+    // Формула дала бы 3 с: короткое сообщение упирается в нижний порог.
+    expect(toastDurationMs(CLOSED_TOAST.message)).toBe(TOAST_MIN_MS);
+
+    await render(CLOSED_TOAST);
+    advance(9_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("пауза на hover и фокус отсчитывается от полных 10 с", async () => {
+    await render(CLOSED_TOAST);
+    advance(5_000);
+
+    const toast = element('[role="status"]');
+    act(() => {
+      toast.dispatchEvent(new Event("pointerover", { bubbles: true }));
+    });
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    act(() => {
+      toast.dispatchEvent(new Event("pointerout", { bubbles: true }));
+    });
+    // Осталось 5 с: сначала дедлайн не наступает, потом наступает.
+    advance(4_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("фокус на «Отменить» держит тост, blur продолжает отсчёт", async () => {
+    await render(CLOSED_TOAST);
+    advance(2_000);
+
+    const action = buttonByName(ACTION);
+    expect(action).not.toBeNull();
+    focus(action as HTMLElement);
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    blur(action as HTMLElement);
+    advance(7_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("actionRef — это кнопка «Отменить», на неё можно перевести фокус", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ ...CLOSED_TOAST, actionRef });
+
+    const action = buttonByName(ACTION);
+    expect(action).not.toBeNull();
+    expect(actionRef.current).toBe(action);
+    // Экран переводит фокус сам: ссылка — на фокусируемую кнопку.
+    act(() => {
+      (actionRef.current as HTMLElement).focus();
+    });
+    expect(document.activeElement).toBe(action);
+  });
+
+  it("без действия ссылка остаётся пустой", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ message: "Сохранено", tone: "info", actionRef });
+
+    expect(actionRef.current).toBeNull();
+  });
+
+  it("новая durationMs перезапускает отсчёт", async () => {
+    await render({ message: "Отмечено полученным", tone: "info", durationMs: 3_000 });
+    advance(1_000);
+
+    await render({ message: "Отмечено полученным", tone: "info", durationMs: 10_000 });
+    advance(9_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ToastHost: фокус, который поставил экран", () => {
+  const CLOSED_TOAST = {
+    message: "Отмечено полученным",
+    tone: "info" as const,
+    action: { label: ACTION, onPress: () => {} },
+    durationMs: 10_000,
+  };
+
+  it("программный фокус на «Отменить» не держит тост: через 10 с он скрыт", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ ...CLOSED_TOAST, actionRef });
+
+    // Экран переводит фокус сам — `focusInLayer(toastAction.current)` из
+    // `DESIGN.md` → «Куда уходит фокус», пункт «а».
+    focus(actionRef.current as HTMLElement);
+    expect(document.activeElement).toBe(actionRef.current);
+
+    advance(9_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("фокус человека держит тост и после программного: blur продолжает с остатка", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ ...CLOSED_TOAST, actionRef });
+    advance(2_000);
+
+    focus(actionRef.current as HTMLElement);
+    // Программный фокус отсчёт не остановил: 3 с прошло, осталось 7 с.
+    advance(1_000);
+
+    focus(closeButton());
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    blur(closeButton());
+    advance(6_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("возврат фокуса на «Отменить» уже человеком — пауза", async () => {
+    const actionRef = { current: null as object | null };
+    await render({ ...CLOSED_TOAST, actionRef });
+    advance(1_000);
+
+    const action = actionRef.current as HTMLElement;
+    focus(action);
+    // Ушли с действия и вернулись: этот фокус ставит уже человек.
+    blur(action);
+    advance(1_000);
+    focus(action);
+
+    advance(60_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    blur(action);
+    advance(7_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("в браузере диктор не спрашивается: «включён» от react-native-web не держит тост", async () => {
+    // `react-native-web` отвечает `true` на любой запрос — именно из-за этого тост
+    // с действием в веб-сборке не скрывался никогда.
+    narration.enabled = true;
+
+    await render(CLOSED_TOAST);
+    expect(narration.asked).not.toHaveBeenCalled();
+
+    advance(9_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ToastHost: высота панели вкладок", () => {
+  it("внутри AppShell тост поднят над вкладками: 56 px сверх обычного отступа", async () => {
+    windowMedia.setWidth(360);
+    await act(async () => {
+      host.render(
+        <AppShell skipLabel="Перейти к содержимому">
+          <ToastHost message="Сохранено" tone="info" onDismiss={onDismiss} />
+        </AppShell>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const toast = element('[data-testid="toast-host"]');
+    expect(getComputedStyle(toast).bottom).toBe(
+      `${spacing["page-gutter"] + spacing["tab-bar"]}px`,
+    );
+    // The skip link and the one `main` landmark come with the shell, not the toast.
+    expect(container.querySelector("main#main-content")).not.toBeNull();
+  });
+
+  it("от 1024 px панели нет: смещение прежнее", async () => {
+    windowMedia.setWidth(1280);
+    await act(async () => {
+      host.render(
+        <AppShell skipLabel="Перейти к содержимому">
+          <ToastHost message="Сохранено" tone="info" onDismiss={onDismiss} />
+        </AppShell>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const toast = element('[data-testid="toast-host"]');
+    expect(getComputedStyle(toast).bottom).toBe(`${spacing["page-gutter"]}px`);
   });
 });
 

@@ -4,6 +4,7 @@
 
 import { DEFAULT_LOCALE, type GiftCard, type SupportedLocale } from "@gift-list/contracts";
 import { calendarDay } from "./calendar-day";
+import { undoUntil } from "./gift-status";
 import { toGiftTags, type GiftTagRow } from "./tag";
 import type { GiftVisibility } from "./visibility";
 
@@ -19,6 +20,8 @@ export type OwnerGiftRow = {
   quantity: GiftCard["quantity"];
   expiresOn: Date | null;
   archivedAt: Date | null;
+  /** Story 5.3: the moment of closing, read only to compute `undoUntil`. */
+  closedAt: Date | null;
   tags: readonly GiftTagRow[];
   status: GiftCard["status"];
   reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
@@ -33,6 +36,9 @@ export type OwnerGiftRow = {
  * labelled in the request language, custom ones show their own text (AD-27).
  * Closing keeps `reserved*` for audit (AD-8), so a CLOSED gift keeps the holder
  * when the toggle is on and still hides it when off (FR-31).
+ *
+ * Story 5.3 (ARCH-A5): the owner card carries `undoUntil`, the server-computed
+ * end of the undo window — `null` for a wish that is not closed.
  */
 export function toOwnerGiftCard(
   row: OwnerGiftRow,
@@ -57,6 +63,7 @@ export function toOwnerGiftCard(
       : null,
     reservationLabel: null,
     ownerAction: ownerAction(row),
+    undoUntil: undoUntil(row)?.toISOString() ?? null,
   };
 }
 

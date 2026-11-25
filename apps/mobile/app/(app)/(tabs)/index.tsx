@@ -49,7 +49,6 @@ import { EmptyState } from "@/ui/empty-state";
 import { focusInLayer, restoreFocus, type ChipNode, type FocusTarget } from "@/ui/focus";
 import { GiftCardMenu, type GiftCardMenuAction } from "@/ui/gift-card-menu";
 import { WishCard } from "@/ui/gift-card";
-import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
@@ -1401,7 +1400,7 @@ export default function MyWishlistScreen() {
                   <YStack testID="wishlist-actions" gap="$1" alignItems="flex-start">
                     <XStack flexWrap="wrap" alignItems="center" gap="$2">
                       {state.gifts.length > 0 ? (
-                        <PrimaryButton label={wishlist("addWish")} onPress={openComposer} />
+                        <Button label={wishlist("addWish")} onPress={openComposer} />
                       ) : null}
                       {/* The icon explains the copy button: the two wrap as one pair, so
                           the icon is never left alone on a line of its own. */}
@@ -1476,7 +1475,7 @@ export default function MyWishlistScreen() {
                       <EmptyState
                         title={wishlist("emptyTitle")}
                         body={wishlist("emptyText")}
-                        action={<PrimaryButton label={wishlist("addWish")} onPress={openComposer} />}
+                        action={<Button label={wishlist("addWish")} onPress={openComposer} />}
                       />
                     ) : null}
                     {activeGifts.length > 0 ? (
@@ -1691,7 +1690,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       <Text tone="muted" textAlign="center">
         {text}
       </Text>
-      <PrimaryButton label={label} onPress={onPress} />
+      <Button label={label} onPress={onPress} />
     </YStack>
   );
 }

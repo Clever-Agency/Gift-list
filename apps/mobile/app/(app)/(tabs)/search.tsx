@@ -5,6 +5,7 @@ import {
   type UserSearchCard,
 } from "@gift-list/contracts";
 import {
+  Button,
   Column,
   EmptyState,
   Heading,
@@ -42,7 +43,6 @@ import { SubscriptionActions } from "@/profile/subscription-actions";
 import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
-import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
@@ -670,7 +670,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       <Text tone="muted" textAlign="center">
         {text}
       </Text>
-      <PrimaryButton label={label} onPress={onPress} />
+      <Button label={label} onPress={onPress} />
     </YStack>
   );
 }

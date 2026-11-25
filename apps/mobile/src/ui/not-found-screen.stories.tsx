@@ -10,6 +10,7 @@ import { NotFoundScreen } from "./not-found-screen";
 const meta = {
   title: "App/NotFoundScreen",
   component: NotFoundScreen,
+  tags: ["autodocs"],
   parameters: { layout: "fullscreen", screenFrame: true },
 } satisfies Meta<typeof NotFoundScreen>;
 
@@ -22,10 +23,12 @@ export const Default: Story = {};
 
 /** The same page at 360 px: the copy wraps and the footer stays at the bottom. */
 export const Narrow: Story = {
+  tags: ["!dev"],
   globals: { viewport: { value: "w360" } },
 };
 
 /** A route-specific test id, as the guarded routes pass it. */
 export const CustomTestId: Story = {
+  tags: ["!dev"],
   args: { testID: "wish-route-not-found" },
 };

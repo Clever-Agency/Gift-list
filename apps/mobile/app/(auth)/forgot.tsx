@@ -1,4 +1,4 @@
-import { focusField, Text } from "@gift-list/ui";
+import { Button, focusField, Text } from "@gift-list/ui";
 import { passwordForgotBodySchema } from "@gift-list/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -13,7 +13,6 @@ import { returnPath } from "@/session/return-path";
 import { useCarriedAuthEmail } from "@/session/use-carried-auth-email";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { NavLink } from "@/ui/nav-link";
-import { PrimaryButton } from "@/ui/primary-button";
 import { TextField } from "@/ui/text-field";
 
 // NOTE FOR UX: forgot.submit и forgot.sent нет в EXPERIENCE — строки из спеки 1.7.
@@ -123,7 +122,7 @@ export default function ForgotScreen() {
             onSubmitEditing: handleSubmit,
           }}
         />
-        <PrimaryButton label={t("forgot.submit")} onPress={handleSubmit} disabled={pending} />
+        <Button label={t("forgot.submit")} onPress={handleSubmit} busy={pending} />
         <NavLink href={loginHref} onPress={rememberEmail}>
           {t("forgot.toLogin")}
         </NavLink>

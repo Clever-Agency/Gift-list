@@ -6,6 +6,7 @@ function noop() {}
 const meta = {
   title: "App/NotificationsList",
   component: NotificationsList,
+  tags: ["autodocs"],
   globals: { viewport: { value: "w360" } },
   args: {
     onOpen: noop,
@@ -28,5 +29,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const PendingRequest: Story = {};
-export const Busy: Story = { args: { busyId: "1" } };
+/** The request of the first row is in flight: its action is busy, the rest wait. */
+export const Busy: Story = { tags: ["!dev"], args: { busyId: "1" } };
 export const Empty: Story = { args: { items: [] } };

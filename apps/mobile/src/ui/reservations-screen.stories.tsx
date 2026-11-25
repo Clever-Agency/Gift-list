@@ -14,6 +14,7 @@ import {
 const meta = {
   title: "App/ReservationsScreen",
   component: ReservationsScreen,
+  tags: ["autodocs"],
   // Кадр каталога — сам экран: `Screen`/`SafeArea`/`PageScroll` занимают вьюпорт.
   parameters: { layout: "fullscreen", screenFrame: true },
   globals: { viewport: { value: "w360" } },
@@ -85,6 +86,7 @@ export const List: Story = {
 
 /** Корень вкладки «Брони»: ссылки «К моему вишлисту» нет, панель держит safe area. */
 export const WithoutBack: Story = {
+  tags: ["!dev"],
   args: { ...base, onBack: undefined },
 };
 
@@ -95,16 +97,19 @@ export const Empty: Story = {
 
 /** Обрыв сети: «Не получилось загрузить» и «Повторить». */
 export const NetworkError: Story = {
+  tags: ["!dev"],
   args: { ...base, state: { status: "error", kind: "network" } },
 };
 
 /** Загрузка: скелет карточек той же формы, что и список. */
 export const Loading: Story = {
+  tags: ["!dev"],
   args: { ...base, state: { status: "loading" } },
 };
 
 /** Широкая колонка: карточки тянутся по колонке страницы. */
 export const Medium: Story = {
+  tags: ["!dev"],
   args: base,
   globals: { viewport: { value: "w768" } },
 };

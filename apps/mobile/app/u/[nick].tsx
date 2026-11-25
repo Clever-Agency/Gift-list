@@ -4,6 +4,7 @@ import type {
   ProfileRelationship,
 } from "@gift-list/contracts";
 import {
+  Button,
   Column,
   Heading,
   LoadingCards,
@@ -42,7 +43,6 @@ import { ClosedSection } from "@/ui/closed-section";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
-import { PrimaryButton } from "@/ui/primary-button";
 import { PublicGiftCard } from "@/ui/public-gift-card";
 import { loadViewerDetail } from "@/ui/wish-detail-load";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
@@ -916,7 +916,7 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
       <Text tone="muted" textAlign="center">
         {text}
       </Text>
-      <PrimaryButton label={label} onPress={onPress} />
+      <Button label={label} onPress={onPress} />
     </YStack>
   );
 }

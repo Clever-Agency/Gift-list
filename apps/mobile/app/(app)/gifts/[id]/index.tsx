@@ -30,7 +30,6 @@ import { mutationErrorMessage } from "@/session/form-issue";
 import { EmptyState } from "@/ui/empty-state";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
-import { PrimaryButton } from "@/ui/primary-button";
 import { ReservationExtendDialog } from "@/ui/reservation-extend-dialog";
 import { ReservationReleaseConfirm } from "@/ui/reservation-release-confirm";
 import {
@@ -392,7 +391,7 @@ export default function GiftDetailScreen() {
                   <Text kind="body">
                     {state.kind === "network" ? tGift("loadError") : tGift("loadErrorGeneric")}
                   </Text>
-                  <PrimaryButton label={tGift("retry")} onPress={function retry() {
+                  <Button label={tGift("retry")} onPress={function retry() {
                     setState({ status: "loading" });
                     setAttempt((value) => value + 1);
                   }} />

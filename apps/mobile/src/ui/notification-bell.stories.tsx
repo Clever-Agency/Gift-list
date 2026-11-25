@@ -6,6 +6,7 @@ function noop() {}
 const meta = {
   title: "App/NotificationBell",
   component: NotificationBellControl,
+  tags: ["autodocs"],
   args: { count: 0, onPress: noop },
   globals: { viewport: { value: "w360" } },
 } satisfies Meta<typeof NotificationBellControl>;
@@ -15,4 +16,5 @@ type Story = StoryObj<typeof meta>;
 
 export const NoUnread: Story = {};
 export const WithUnread: Story = { args: { count: 12 } };
-export const Overflow: Story = { args: { count: 127 } };
+/** More than 99 reads «99+»: the widest shape of the bell badge. */
+export const Overflow: Story = { tags: ["!dev"], args: { count: 127 } };

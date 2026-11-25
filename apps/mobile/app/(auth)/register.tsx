@@ -1,4 +1,4 @@
-import { focusField, Text } from "@gift-list/ui";
+import { Button, focusField, Text } from "@gift-list/ui";
 import {
   NICK_MAX,
   PASSWORD_MIN,
@@ -31,7 +31,6 @@ import { returnPath } from "@/session/return-path";
 import { useCarriedAuthEmail } from "@/session/use-carried-auth-email";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { NavLink } from "@/ui/nav-link";
-import { PrimaryButton } from "@/ui/primary-button";
 import { PasswordField, TextField } from "@/ui/text-field";
 
 export default function RegisterScreen() {
@@ -331,10 +330,10 @@ export default function RegisterScreen() {
             onSubmitEditing: handleSubmit,
           }}
         />
-        <PrimaryButton
+        <Button
           label={t("form.submitRegister")}
           onPress={handleSubmit}
-          disabled={pending}
+          busy={pending}
         />
         <NavLink href={loginHref} onPress={rememberEmail}>
           {t("register.toLogin")}

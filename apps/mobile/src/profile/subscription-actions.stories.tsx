@@ -17,6 +17,7 @@ import { SubscriptionActions } from "./subscription-actions";
 const meta = {
   title: "App/SubscriptionActions",
   component: SubscriptionActions,
+  tags: ["autodocs"],
   args: {
     subscribed: false,
     busy: false,
@@ -40,16 +41,19 @@ export const Unsubscribe: Story = {
 
 /** The subscribe press is in flight: the label keeps its width, the button is announced busy. */
 export const BusySubscribe: Story = {
+  tags: ["!dev"],
   args: { busy: true },
 };
 
 /** The unsubscribe press is in flight. */
 export const BusyUnsubscribe: Story = {
+  tags: ["!dev"],
   args: { subscribed: true, busy: true },
 };
 
 /** The profile row at 360 px: the subscription sits next to the friend action, not instead of it. */
 export const InProfileActionsRow: Story = {
+  tags: ["!dev"],
   render: function InProfileActionsRowStory(args) {
     return (
       <YStack width={328}>

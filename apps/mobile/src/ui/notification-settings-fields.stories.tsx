@@ -6,6 +6,8 @@ function noop() {}
 const meta = {
   title: "App/NotificationSettings",
   component: NotificationSettingsFields,
+  tags: ["autodocs"],
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
   args: {
     onChange: noop,

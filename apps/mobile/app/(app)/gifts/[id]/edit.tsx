@@ -6,7 +6,7 @@ import {
   type GiftCard,
   type GiftUpdate,
 } from "@gift-list/contracts";
-import { Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
+import { Button, Column, Heading, LoadingCards, PageContainer, PageScroll, Pressable, SafeArea, Screen, Text, YStack } from "@gift-list/ui";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { useTranslations } from "use-intl";
@@ -30,7 +30,6 @@ import {
   giftTagInputs,
   giftTagsEqual,
 } from "@/ui/gift-form-tags";
-import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
@@ -651,14 +650,14 @@ export default function EditGiftScreen() {
                         ? giftForm("loadError")
                         : giftForm("loadErrorGeneric")}
                     </Text>
-                    <PrimaryButton label={giftForm("retry")} onPress={retry} />
+                    <Button label={giftForm("retry")} onPress={retry} />
                   </YStack>
                 ) : state.status === "missing" ? (
                   <YStack width="100%" paddingVertical="$4" gap="$grid-gap">
                     <Text tone="muted" textAlign="center">
                       {giftForm("giftNotFound")}
                     </Text>
-                    <PrimaryButton label={giftForm("backToList")} onPress={backToList} />
+                    <Button label={giftForm("backToList")} onPress={backToList} />
                   </YStack>
                 ) : (
                   <>

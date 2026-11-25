@@ -11,6 +11,13 @@ import type { DetailLoadResult } from "./wish-detail-load";
 const meta = {
   title: "App/WishDetailDialog",
   component: WishDetailDialog,
+  tags: ["autodocs"],
+  parameters: {
+    // The detail layer is almost the full screen and paints a scrim over the
+    // document; on the Docs page every showcase runs in its own iframe, so an
+    // open dialog cannot cover the description.
+    docs: { story: { inline: false, iframeHeight: "640px" } },
+  },
   args: {
     open: true,
     viewer: "guest",
@@ -82,6 +89,7 @@ export const Owner: Story = {
 
 /** Ответ keep уже ушёл: оба ответа полосы заняты, «Снять бронь» по-прежнему доступна. */
 export const OwnerExpiredBusy: Story = {
+  tags: ["!dev"],
   args: {
     viewer: "owner",
     snapshot: sample({
@@ -101,6 +109,7 @@ export const OwnerExpiredBusy: Story = {
 
 /** Владелец, чужая бронь: коралловая «Снять бронь» рядом с «Изменить желание». */
 export const OwnerReserved: Story = {
+  tags: ["!dev"],
   args: {
     viewer: "owner",
     snapshot: sample({
@@ -141,21 +150,25 @@ function releaseArgs(step: WishDetailStep) {
 }
 
 export const ReleaseStep: Story = {
+  tags: ["!dev"],
   args: releaseArgs(RELEASE_STEP),
 };
 
 /** Шаг снятия, даритель отметил «Купил»: предупреждение в описании шага. */
 export const ReleaseStepBought: Story = {
+  tags: ["!dev"],
   args: releaseArgs({ ...RELEASE_STEP, body: BOUGHT_WARNING }),
 };
 
 /** Шаг снятия после Story 5.7: даритель отметил «Подарил». */
 export const ReleaseStepGiven: Story = {
+  tags: ["!dev"],
   args: releaseArgs({ ...RELEASE_STEP, body: "Даритель отметил, что уже вручил" }),
 };
 
 /** Подтверждение уже ушло: обе кнопки недоступны. */
 export const ReleaseStepBusy: Story = {
+  tags: ["!dev"],
   args: releaseArgs({ ...RELEASE_STEP, body: BOUGHT_WARNING, busy: true }),
 };
 
@@ -173,6 +186,7 @@ const CLOSE_STEP = {
 
 /** Владелец закрытого желания: «Изменить желание» нет, в окне отмены — возврат. */
 export const OwnerClosedUndo: Story = {
+  tags: ["!dev"],
   args: {
     viewer: "owner",
     snapshot: sample({
@@ -186,6 +200,7 @@ export const OwnerClosedUndo: Story = {
 
 /** Окно отмены вышло: у закрытого желания действий нет, только просмотр. */
 export const OwnerClosedExpired: Story = {
+  tags: ["!dev"],
   args: {
     viewer: "owner",
     snapshot: sample({
@@ -199,6 +214,7 @@ export const OwnerClosedExpired: Story = {
 
 /** Владелец открытого желания: рядом с «Изменить желание» — «Отметить полученным». */
 export const OwnerOpenReceived: Story = {
+  tags: ["!dev"],
   args: {
     viewer: "owner",
     snapshot: sample({ visibility: "FRIENDS" }),
@@ -209,6 +225,7 @@ export const OwnerOpenReceived: Story = {
 
 /** Шаг закрытия поверх подробностей: вопрос, тело про бронь и две кнопки. */
 export const ReceivedStep: Story = {
+  tags: ["!dev"],
   args: {
     viewer: "owner",
     snapshot: sample({
@@ -224,17 +241,21 @@ export const ReceivedStep: Story = {
 };
 
 export const Loading: Story = {
+  tags: ["!dev"],
   args: { load: hang },
 };
 
 export const NetworkError: Story = {
+  tags: ["!dev"],
   args: { load: offline },
 };
 
 export const Unavailable: Story = {
+  tags: ["!dev"],
   args: { load: missing },
 };
 
 export const Desktop: Story = {
+  tags: ["!dev"],
   globals: { viewport: { value: "w1280" } },
 };

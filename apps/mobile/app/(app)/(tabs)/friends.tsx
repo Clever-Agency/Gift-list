@@ -58,7 +58,6 @@ import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
-import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
@@ -1322,7 +1321,7 @@ function RetryView({ text, onPress }: { text: string; onPress: () => void }) {
       <Text tone="muted" textAlign="center">
         {text}
       </Text>
-      <PrimaryButton label={friends("retry")} onPress={onPress} />
+      <Button label={friends("retry")} onPress={onPress} />
     </YStack>
   );
 }
@@ -1383,7 +1382,7 @@ function FriendsPanel({
           <EmptyState
             title={friends("empty.friendsTitle")}
             body={friends("empty.friendsBody")}
-            action={<PrimaryButton label={friends("findContacts")} onPress={onOpenFindContacts} />}
+            action={<Button label={friends("findContacts")} onPress={onOpenFindContacts} />}
           />
         ) : (
           <YStack

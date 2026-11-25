@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Button } from "./button";
 import { BottomSheet } from "./bottom-sheet";
 import { sheetMotion } from "./motion";
-import { settle, createMount } from "./test-utils";
+import { settle, createMount, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -107,5 +107,27 @@ describe("BottomSheet", () => {
     // happy-dom не доводит позицию шторки до `end`, поэтому сам колбэк здесь не
     // проверить; важно, что закрытие не возвращает фокус в первом кадре.
     expect(onClosed).not.toHaveBeenCalled();
+  });
+
+  it("длинный заголовок на 360: заголовок сжимается, крестик не выдавливается", async () => {
+    const { render } = mounted();
+    await render(
+      <BottomSheet
+        open
+        title="Забронировать желание «Плед из шерсти мериноса с длинной бахромой»?"
+        closeAction={{ label: "Закрыть", icon: <span>×</span> }}
+        onClose={noop}
+      />,
+    );
+    await settle(300);
+
+    // `minWidth: 0` снимает минимальную ширину текста: без него длинное слово
+    // держит ряд на своей ширине и уводит крестик за поле шторки.
+    const heading = document.querySelector("[role='heading']") as HTMLElement;
+    expect(heading.textContent).toContain("Плед из шерсти мериноса");
+    expect(stateValues(heading, "base", "min-width")).toContain("0px");
+
+    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
+    expect(close).not.toBeNull();
   });
 });

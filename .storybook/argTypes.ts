@@ -16,7 +16,7 @@ export type PropDocOptions = {
   /** The real values of a union prop; also makes the control a select. */
   options?: readonly string[];
   /** Overrides the inferred control; `false` hides the prop from Controls. */
-  control?: "text" | "boolean" | "select" | false;
+  control?: "text" | "boolean" | "select" | "number" | false;
 };
 
 type PropArgType = ArgTypes[string];
@@ -53,12 +53,13 @@ export function formatUnionType(values: readonly string[]): string {
   return values.map((value) => `"${value}"`).join(" | ");
 }
 
-/** Text for free-form props, a select for unions, a switch for booleans. */
+/** Text for free-form props, a select for unions, a switch for booleans, a number field for numbers. */
 function inferControl(
   type: string,
   options: readonly string[] | undefined,
-): "text" | "boolean" | "select" {
+): "text" | "boolean" | "select" | "number" {
   if (options) return "select";
   if (type === "boolean") return "boolean";
+  if (type === "number") return "number";
   return "text";
 }

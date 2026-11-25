@@ -1,4 +1,4 @@
-import { focusField, Text } from "@gift-list/ui";
+import { Button, focusField, Text } from "@gift-list/ui";
 import { PASSWORD_MIN, passwordResetBodySchema } from "@gift-list/contracts";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
@@ -18,7 +18,6 @@ import {
 import { paramValue } from "@/session/return-path";
 import { AnonymousScreen } from "@/ui/anonymous-screen";
 import { NavLink } from "@/ui/nav-link";
-import { PrimaryButton } from "@/ui/primary-button";
 import { PasswordField } from "@/ui/text-field";
 
 // NOTE FOR UX: reset.* и email.passwordReset нет в EXPERIENCE — строки из спеки 1.7.
@@ -180,7 +179,7 @@ export default function ResetScreen() {
                 onSubmitEditing: handleSubmit,
               }}
             />
-            <PrimaryButton label={t("reset.submit")} onPress={handleSubmit} disabled={pending} />
+            <Button label={t("reset.submit")} onPress={handleSubmit} busy={pending} />
           </>
         ) : null}
       </AnonymousScreen>

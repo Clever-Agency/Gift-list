@@ -10,7 +10,6 @@ import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { formIssue, mutationErrorMessage, nickErrorText, nickFieldText } from "@/session/form-issue";
 import { NotificationSettings } from "@/ui/notification-settings";
-import { PrimaryButton } from "@/ui/primary-button";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
@@ -320,7 +319,7 @@ function SettingsForm({
                       onSubmitEditing: save,
                     }}
                   />
-                  <PrimaryButton label={t("settings.save")} onPress={save} disabled={pending} />
+                  <Button label={t("settings.save")} onPress={save} busy={pending} />
                 </YStack>
                 {/* Story 3.5: the search visibility switch lives under the nick block
                     and saves at once; the hint stays in the catalog. */}

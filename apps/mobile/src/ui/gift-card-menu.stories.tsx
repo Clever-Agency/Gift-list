@@ -10,6 +10,12 @@ import { GiftCardMenu } from "./gift-card-menu";
 const meta = {
   title: "App/GiftCardMenu",
   component: GiftCardMenu,
+  tags: ["autodocs"],
+  parameters: {
+    // A layer paints its scrim over the whole document: on the Docs page every
+    // showcase runs in its own iframe, so an open menu stays inside its frame.
+    docs: { story: { inline: false, iframeHeight: "420px" } },
+  },
   args: {
     open: true,
     title: "Плед из шерсти мериноса",
@@ -36,6 +42,7 @@ export const ActiveWish: Story = {
 
 /** Закрытое желание в окне отмены: возврат с остатком минут, копия и удаление. */
 export const ClosedWishInWindow: Story = {
+  tags: ["!dev"],
   args: {
     actions: [
       { key: "undo", label: "Вернуть в открытые · ещё 7 мин", onPress: noop },
@@ -47,6 +54,7 @@ export const ClosedWishInWindow: Story = {
 
 /** Окно вышло: пункта возврата нет, копия и удаление остаются. */
 export const ClosedWishExpired: Story = {
+  tags: ["!dev"],
   args: {
     actions: [
       { key: "copy", label: "Хочу ещё такой", onPress: noop },
@@ -57,6 +65,7 @@ export const ClosedWishExpired: Story = {
 
 /** Длинное название желания на 360 px: заголовок слоя переносится. */
 export const NarrowLongTitle: Story = {
+  tags: ["!dev"],
   args: {
     title: "Плед из шерсти мериноса с длинной бахромой и подогревом для холодных вечеров",
     actions: [

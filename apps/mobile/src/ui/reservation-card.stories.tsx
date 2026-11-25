@@ -12,6 +12,7 @@ import { ReservationCard, type ReservationCardProps } from "./reservation-card";
 const meta = {
   title: "App/ReservationCard",
   component: ReservationCard,
+  tags: ["autodocs"],
   // Карточка стоит в колонке страницы: кадр каталога не должен сужать её сам.
   parameters: { layout: "fullscreen" },
   globals: { viewport: { value: "w360" } },
@@ -58,6 +59,7 @@ export const Active: Story = {
 
 /** `AWAITING_GIVER`: «Срок истёк», действия остаются. */
 export const AwaitingGiver: Story = {
+  tags: ["!dev"],
   args: { ...base, card: sample({ phase: "AWAITING_GIVER" }) },
 };
 
@@ -68,31 +70,37 @@ export const AwaitingOwner: Story = {
 
 /** `GIVEN`: «Ждёт подтверждения», «Продлить до…» не предлагается (Story 5.7). */
 export const Given: Story = {
+  tags: ["!dev"],
   args: { ...base, card: sample({ phase: "GIVEN" }) },
 };
 
 /** Флаг «Купил»: чип «Куплено» и включённый переключатель. */
 export const Bought: Story = {
+  tags: ["!dev"],
   args: { ...base, card: sample({ bought: true }) },
 };
 
 /** Раскрытые переключатели видимости с подсказкой включённого «владельцу». */
 export const VisibilityOpen: Story = {
+  tags: ["!dev"],
   args: { ...base, card: sample({ holderVisibleToOwner: true }), visibilityExpanded: true },
 };
 
 /** `canOpenGift = false`: карточка без ссылки на деталь, действия на месте (A-14). */
 export const WithoutLink: Story = {
+  tags: ["!dev"],
   args: { ...base, card: sample({ canOpenGift: false }) },
 };
 
 /** Запрос карточки в полёте: все действия заняты. */
 export const Busy: Story = {
+  tags: ["!dev"],
   args: { ...base, busy: true, visibilityExpanded: true },
 };
 
 /** Длинная кириллица на 360 px: название в две строки, кнопки не переполняются. */
 export const LongCyrillicNarrow: Story = {
+  tags: ["!dev"],
   args: {
     ...base,
     card: sample({ titleSnapshot: "Сертификат на мастер-класс по керамике для двоих" }),
@@ -101,6 +109,7 @@ export const LongCyrillicNarrow: Story = {
 
 /** Широкая колонка (medium): карточка тянется по колонке страницы. */
 export const Medium: Story = {
+  tags: ["!dev"],
   args: base,
   globals: { viewport: { value: "w768" } },
   render: function MediumStory() {

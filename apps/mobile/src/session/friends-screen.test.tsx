@@ -569,7 +569,7 @@ describe("друзья: запросы", () => {
 
     // v8: the answer is an icon button — a 32 px filled circle inside the 44 px target.
     const accept = control("Принять: Глеб");
-    const visual = accept.querySelector<HTMLElement>("[data-testid='icon-button-visual']");
+    const visual = accept.querySelector<HTMLElement>("[data-testid='button-icon']");
     expect(visual).not.toBeNull();
     expect(getComputedStyle(visual as HTMLElement).width).toBe("32px");
     expect(getComputedStyle(visual as HTMLElement).backgroundColor).toBe("#2B3A7A");

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { XStack, YStack } from "@tamagui/stacks";
-import type { ComponentType } from "react";
+import { useId, type ComponentType } from "react";
 import { formatUnionType, propDoc } from "../../../.storybook/argTypes";
 import { TagChip, TagChipList, type TagChipProps, type TagChipRole, type TagChipVariant } from "./tag-chip";
 import { Text } from "./text";
@@ -183,7 +183,8 @@ function noop() {}
 
 /**
  * The chip with the three catalog handles applied. The error message is drawn
- * once under the chip, as a screen does it — the chip itself only takes the id.
+ * once under the chip, as a screen does it — the chip itself only takes the id,
+ * and the id is unique per render so two samples on the Docs page do not clash.
  */
 function ChipPreview({
   removable,
@@ -193,7 +194,8 @@ function ChipPreview({
   label,
   ...rest
 }: TagChipCatalogProps) {
-  const error = hasError ? TAG_ERROR : undefined;
+  const errorId = useId();
+  const error = hasError ? { ...TAG_ERROR, id: errorId } : undefined;
   return (
     <YStack gap="$2" width={360} alignItems="flex-start">
       <TagChip

@@ -10,10 +10,15 @@ import { Text } from "./text";
  * `DESIGN.md` → `components.sidebar`: the 264 px menu of expanded and wide
  * screens — the brand on top, the five sections, the user card at the bottom.
  * On compact and medium the bottom tabs replace it.
+ *
+ * The menu is as tall as the page, so the stories take the viewport-height frame of
+ * the screens (`screenFrame`): a `100vh` menu inside the padded catalog surface was
+ * 48 px taller than the canvas and its footer was cut at the bottom.
  */
 const meta = {
   title: "UI/Sidebar",
   component: Sidebar,
+  parameters: { layout: "fullscreen", screenFrame: true },
   args: { brand: "Подарки", label: "Разделы" },
 } satisfies Meta<typeof Sidebar>;
 
@@ -43,7 +48,7 @@ UserCard.displayName = "UserCard";
 export const Desktop: Story = {
   render: function DesktopStory(args) {
     return (
-      <YStack height="100vh" backgroundColor="$background">
+      <YStack flex={1} backgroundColor="$background">
         <Sidebar
           {...args}
           testID="sidebar"
@@ -80,7 +85,7 @@ export const LongCyrillic: Story = {
   args: { brand: "Подарки и желания" },
   render: function LongCyrillicStory(args) {
     return (
-      <YStack height="100vh" backgroundColor="$background">
+      <YStack flex={1} backgroundColor="$background">
         <Sidebar
           {...args}
           testID="sidebar-long"

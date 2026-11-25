@@ -13,10 +13,16 @@ import { Text } from "./text";
  * tabs below 1024 px, the 264 px side menu from 1024 px, one `main` landmark and
  * the skip link first in the Tab order. The story swaps the width with the
  * viewport toolbar; the shell itself reads the same `media.expanded` as the app.
+ *
+ * The shell is the page frame, so the story takes the viewport-height frame of the
+ * screens (`screenFrame`): the shell draws `100vh`, and inside the padded catalog
+ * surface that box was 48 px taller than the canvas, so the bottom bar fell below
+ * the fold.
  */
 const meta = {
   title: "UI/AppShell",
   component: AppShell,
+  parameters: { layout: "fullscreen", screenFrame: true },
   args: { skipLabel: "Перейти к содержимому" },
 } satisfies Meta<typeof AppShell>;
 
@@ -59,7 +65,7 @@ function Shell({ long = false }: { long?: boolean }) {
   const friendsLabel = long ? "Друзья и запросы" : "Друзья";
   const reservationsLabel = long ? "Мои бронирования" : "Брони";
   return (
-    <YStack height="100vh" backgroundColor="$background">
+    <YStack flex={1} backgroundColor="$background">
       <AppShell
         skipLabel="Перейти к содержимому"
         sidebar={

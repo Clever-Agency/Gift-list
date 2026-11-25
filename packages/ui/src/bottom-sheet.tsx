@@ -113,6 +113,9 @@ export function BottomSheet({
         />
         <YStack padding="$card-padding" gap="$grid-gap">
           <XStack alignItems="flex-start" gap="$2">
+            {/* `minWidth={0}`: the row hands the free space to the heading, and
+                without it a long unbreakable title (a gift name, a URL) holds the
+                row at its min-content width and pushes the cross off the sheet. */}
             <Text
               ref={titleRef as never}
               id={titleId}
@@ -121,6 +124,7 @@ export function BottomSheet({
               aria-level={2}
               tabIndex={-1}
               flex={1}
+              minWidth={0}
               outlineWidth={0}
             >
               {title}

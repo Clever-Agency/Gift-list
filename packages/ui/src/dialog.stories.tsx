@@ -484,10 +484,10 @@ export const AsBottomSheet: Story = {
         closeAction={CLOSE_ACTION}
         onClose={noop}
         actions={
-          <XStack gap="$2" flexWrap="wrap" justifyContent="flex-end">
+          <>
             <Button label="Отмена" variant="ghost" onPress={noop} />
             <Button label="Сохранить" variant="primary" onPress={noop} />
-          </XStack>
+          </>
         }
       >
         <Text kind="body">Выберите валюту, в которой указана цена желания.</Text>
@@ -509,10 +509,10 @@ export const AsBottomSheetNarrow: Story = {
         closeAction={CLOSE_ACTION}
         onClose={noop}
         actions={
-          <XStack gap="$2" flexWrap="wrap" justifyContent="flex-end">
+          <>
             <Button label="Отмена" variant="ghost" onPress={noop} />
             <Button label="Забронировать" variant="reserve" onPress={noop} />
-          </XStack>
+          </>
         }
       >
         <Text kind="body">

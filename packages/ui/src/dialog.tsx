@@ -1,15 +1,6 @@
-import { useMedia } from "@tamagui/core";
-import { XStack, YStack } from "@tamagui/stacks";
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
-import { Dialog as TamaguiDialog } from "tamagui/dialog";
-import { fontFor } from "./font-style";
-import { focusInLayer, type FocusTarget } from "./focus";
-import { useBackClose, useNativeFocusOnOpen, useNativeLayerClosed } from "./layer";
-import { layerExitMs, layerFade } from "./motion";
-import { Pressable } from "./pressable";
-import { ScrollView } from "./scroll";
-import { SCRIM_OPACITY } from "./tokens";
-import { useReduceMotion } from "./use-reduce";
+import type { ReactNode, RefObject } from "react";
+import type { FocusTarget } from "./focus";
+import { LayerFrame } from "./layer-frame";
 
 export type DialogProps = {
   open: boolean;
@@ -59,6 +50,9 @@ export type DialogProps = {
  * `DESIGN.md` → Движение: the scrim and the panel fade with `quick` (160 ms) on
  * appearing and leaving, with no shift or scale. With «уменьшить движение» the fade
  * is 100 ms.
+ *
+ * The paint lives in `layer-frame.tsx` next to the bottom sheet: one layer contract,
+ * two presentations that DESIGN keeps apart.
  */
 export function Dialog({
   open,
@@ -74,149 +68,23 @@ export function Dialog({
   layout = "default",
   testID,
 }: DialogProps) {
-  const media = useMedia();
-  const detail = layout === "detail";
-  const compact = detail && !media.medium;
-  const titleRef = useRef<FocusTarget>(null);
-  const openRef = useRef(open);
-  const closedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const reduce = useReduceMotion();
-  const motion = layerFade(reduce);
-  openRef.current = open;
-  useEffect(function clearClosedTimer() {
-    return function stop() {
-      clearTimeout(closedTimer.current);
-    };
-  }, []);
-
-  useBackClose(open, onClose);
-  useNativeLayerClosed(open, onClosed);
-  useNativeFocusOnOpen(open, function readInitialFocus() {
-    return (initialFocus ?? titleRef).current;
-  });
-
-  function handleOpenChange(next: boolean) {
-    if (!next) onClose();
-  }
-
-  function handleOpenAutoFocus(details: { cancel: () => void }) {
-    // Focus goes inside as soon as the layer opens, onto the safe control.
-    details.cancel();
-    focusInLayer((initialFocus ?? titleRef).current);
-  }
-
-  function handleCloseAutoFocus(details: { cancel: () => void }) {
-    // The screen puts focus back itself, once the layer has left the tree: the
-    // callback runs inside the unmount, so the move waits for the exit fade
-    // (`quick` 160 ms, 100 ms with reduce) to finish and only then reports.
-    if (!onClosed) return;
-    details.cancel();
-    clearTimeout(closedTimer.current);
-    closedTimer.current = setTimeout(function reportClosed() {
-      // Opened again within the same task: focus belongs to the new layer.
-      if (openRef.current) return;
-      onClosed();
-    }, layerExitMs(reduce));
-  }
-
   return (
-    <TamaguiDialog modal open={open} onOpenChange={handleOpenChange}>
-      <TamaguiDialog.Portal
-        paddingHorizontal={compact ? "$2" : "$page-gutter"}
-        paddingVertical={compact ? "$2" : undefined}
-      >
-        <TamaguiDialog.Overlay
-          key="overlay"
-          testID={testID ? `${testID}-scrim` : undefined}
-          backgroundColor="$scrim"
-          opacity={{ default: SCRIM_OPACITY, enter: 0, exit: 0 }}
-          transition={motion}
-        />
-        <TamaguiDialog.Content
-          key="content"
-          role={role}
-          testID={testID}
-          width="100%"
-          maxWidth={detail ? (compact ? "100%" : "$detail-width") : "$dialog-width"}
-          maxHeight={detail ? (compact ? "100%" : "85%") : undefined}
-          height={compact ? "100%" : undefined}
-          overflow={detail ? "hidden" : undefined}
-          backgroundColor="$surface"
-          borderRadius={compact ? "$md" : "$lg"}
-          borderWidth={0}
-          padding="$card-padding"
-          gap="$grid-gap"
-          shadowColor="$scrim"
-          shadowOpacity={0.18}
-          shadowRadius={24}
-          shadowOffset={{ width: 0, height: 12 }}
-          opacity={{ default: 1, enter: 0, exit: 0 }}
-          transition={motion}
-          onOpenAutoFocus={handleOpenAutoFocus}
-          onCloseAutoFocus={handleCloseAutoFocus}
-        >
-          <XStack alignItems="flex-start" gap="$2">
-            <YStack flex={1} gap="$1">
-              <TamaguiDialog.Title
-                ref={titleRef as never}
-                tabIndex={-1}
-                {...fontFor("heading")}
-                fontSize="$heading"
-                lineHeight="$heading"
-                color="$foreground"
-                outlineWidth={0}
-              >
-                {title}
-              </TamaguiDialog.Title>
-              {description ? (
-                <TamaguiDialog.Description
-                  {...fontFor("body")}
-                  fontSize="$body"
-                  lineHeight="$body"
-                  color="$muted-foreground"
-                >
-                  {description}
-                </TamaguiDialog.Description>
-              ) : null}
-            </YStack>
-            {closeAction ? (
-              <Pressable
-                aria-label={closeAction.label}
-                onPress={onClose}
-                width="$touch-target"
-                height="$touch-target"
-                alignItems="center"
-                justifyContent="center"
-                borderRadius="$md"
-              >
-                {closeAction.icon}
-              </Pressable>
-            ) : null}
-          </XStack>
-          {detail ? (
-            <ScrollView
-              testID={testID ? `${testID}-scroll` : "dialog-scroll"}
-              maxHeight={compact ? "85vh" : "70vh"}
-              flexShrink={1}
-            >
-              {children}
-            </ScrollView>
-          ) : (
-            children
-          )}
-          {actions ? (
-            <XStack
-              alignItems="center"
-              justifyContent="flex-end"
-              flexWrap="wrap"
-              gap="$2"
-            >
-              {actions}
-            </XStack>
-          ) : null}
-        </TamaguiDialog.Content>
-      </TamaguiDialog.Portal>
-    </TamaguiDialog>
+    <LayerFrame
+      presentation="dialog"
+      open={open}
+      title={title}
+      description={description}
+      onClose={onClose}
+      onClosed={onClosed}
+      initialFocus={initialFocus}
+      role={role}
+      closeAction={closeAction}
+      actions={actions}
+      layout={layout}
+      testID={testID}
+    >
+      {children}
+    </LayerFrame>
   );
 }
 

@@ -1,14 +1,6 @@
-import { isWeb } from "@tamagui/core";
-import { XStack, YStack } from "@tamagui/stacks";
-import { useId, useRef, type ReactNode, type RefObject } from "react";
-import { Sheet } from "tamagui/sheet";
-import { focusInLayer, type FocusTarget } from "./focus";
-import { useBackClose, useNativeFocusOnOpen, useNativeLayerClosed } from "./layer";
-import { layerFade, sheetMotion } from "./motion";
-import { Pressable } from "./pressable";
-import { Text } from "./text";
-import { SCRIM_OPACITY } from "./tokens";
-import { useReduceMotion } from "./use-reduce";
+import type { ReactNode, RefObject } from "react";
+import type { FocusTarget } from "./focus";
+import { LayerFrame } from "./layer-frame";
 
 export type BottomSheetProps = {
   open: boolean;
@@ -40,6 +32,9 @@ export type BottomSheetProps = {
  * `DESIGN.md` → Движение: the sheet rises and the scrim fades with `quick` (160 ms)
  * on both runtimes. With «уменьшить движение» the position jumps (`instant`) and the
  * scrim only fades, for 100 ms.
+ *
+ * The public API stays as it was; the paint lives in `layer-frame.tsx` next to the
+ * centred window, as the sheet presentation of the shared layer contract.
  */
 export function BottomSheet({
   open,
@@ -52,106 +47,20 @@ export function BottomSheet({
   actions,
   testID,
 }: BottomSheetProps) {
-  const titleId = useId();
-  const titleRef = useRef<FocusTarget>(null);
-  const reduce = useReduceMotion();
-  const scrimMotion = layerFade(reduce);
-
-  useBackClose(open, onClose);
-  useNativeLayerClosed(open, onClosed);
-  useNativeFocusOnOpen(open, function readInitialFocus() {
-    return (initialFocus ?? titleRef).current;
-  });
-
-  function handleOpenChange(next: boolean) {
-    if (!next) onClose();
-  }
-
-  function handleTransition(event: { phase: string; cause: string; finished?: boolean }) {
-    // The phone reports the close through `open` (`useNativeLayerClosed`).
-    if (!isWeb || event.phase !== "end") return;
-    if (event.cause === "close" && event.finished !== false) {
-      // Tamagui's focus scope has put focus back to where the sheet was opened from;
-      // the screen may still want to move it onto its own control.
-      onClosed?.();
-    }
-    if (event.cause === "open") {
-      focusInLayer((initialFocus ?? titleRef).current);
-    }
-  }
-
   return (
-    <Sheet
-      modal
+    <LayerFrame
+      presentation="sheet"
       open={open}
-      onOpenChange={handleOpenChange}
-      onTransition={handleTransition}
-      snapPointsMode="fit"
-      dismissOnSnapToBottom
-      dismissOnOverlayPress
-      aria-labelledby={titleId}
-      transition={sheetMotion(reduce)}
+      title={title}
+      onClose={onClose}
+      onClosed={onClosed}
+      initialFocus={initialFocus}
+      closeAction={closeAction}
+      actions={actions}
+      testID={testID}
     >
-      <Sheet.Overlay
-        testID={testID ? `${testID}-scrim` : undefined}
-        backgroundColor="$scrim"
-        opacity={{ default: SCRIM_OPACITY, enter: 0, exit: 0 }}
-        transition={scrimMotion}
-      />
-      <Sheet.Handle backgroundColor="$border-strong" />
-      <Sheet.Container testID={testID}>
-        <Sheet.Background
-          // v8: a sheet is the raised layer; in the dark theme its tone and the
-          // highlight do the work, the shadow only softens the edge.
-          backgroundColor="$surface-raised"
-          borderTopLeftRadius="$xl"
-          borderTopRightRadius="$xl"
-          shadowColor="$scrim"
-          shadowOpacity={0.18}
-          shadowRadius={24}
-          shadowOffset={{ width: 0, height: -12 }}
-        />
-        <YStack padding="$card-padding" gap="$grid-gap">
-          <XStack alignItems="flex-start" gap="$2">
-            {/* `minWidth={0}`: the row hands the free space to the heading, and
-                without it a long unbreakable title (a gift name, a URL) holds the
-                row at its min-content width and pushes the cross off the sheet. */}
-            <Text
-              ref={titleRef as never}
-              id={titleId}
-              kind="heading"
-              role="heading"
-              aria-level={2}
-              tabIndex={-1}
-              flex={1}
-              minWidth={0}
-              outlineWidth={0}
-            >
-              {title}
-            </Text>
-            {closeAction ? (
-              <Pressable
-                aria-label={closeAction.label}
-                onPress={onClose}
-                width="$touch-target"
-                height="$touch-target"
-                alignItems="center"
-                justifyContent="center"
-                borderRadius="$md"
-              >
-                {closeAction.icon}
-              </Pressable>
-            ) : null}
-          </XStack>
-          {children}
-          {actions ? (
-            <XStack alignItems="center" justifyContent="flex-end" flexWrap="wrap" gap="$2">
-              {actions}
-            </XStack>
-          ) : null}
-        </YStack>
-      </Sheet.Container>
-    </Sheet>
+      {children}
+    </LayerFrame>
   );
 }
 

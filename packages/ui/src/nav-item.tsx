@@ -106,6 +106,10 @@ export const NavItem = forwardRef<ComponentRef<typeof View>, NavItemProps>(funct
       backgroundColor={tab ? undefined : active ? "$muted" : "transparent hover:$background"}
       cursor="pointer"
       textDecorationLine="none"
+      // The root is a real `<a>`: without it the browser paints the link
+      // `:link/:visited/:active` colours (red on press) and any glyph that
+      // falls back to `currentColor` turns red. `inherit` keeps the look.
+      color="inherit"
       opacity="press:0.9"
       {...focusRing}
     >

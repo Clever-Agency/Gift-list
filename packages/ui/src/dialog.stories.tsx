@@ -22,7 +22,7 @@ const DIALOG_LAYOUTS = ["default", "detail"] as const;
  *
  * `layout="detail"` is the wish-detail layer: almost the full screen below the
  * `medium` breakpoint and up to `detail-width` above it, with a scrolling body.
- * The same slot content is used for the guest, loading, error and banner examples
+ * The same slot content is used for the guest, loading and error examples
  * below, so `DetailDialog` and `BottomSheet` keep no separate catalog pages.
  *
  * Every showcase on the docs page runs in its own iframe
@@ -154,7 +154,7 @@ What is not a prop:
   args: {
     open: true,
     title: "Удалить желание?",
-    description: "Желание исчезнет из вишлиста вместе с тегами и бронью.",
+    description: "Желание исчезнет из вишлиста. Это нельзя отменить.",
     role: "dialog",
     layout: "default",
     testID: "dialog",
@@ -270,7 +270,7 @@ export const ClosedWithTrigger: Story = {
       <DialogStory
         open={false}
         title="Удалить желание?"
-        description="Желание исчезнет из вишлиста вместе с тегами и бронью."
+        description="Желание исчезнет из вишлиста. Это нельзя отменить."
         actions={<ConfirmActions />}
       />
     );
@@ -285,7 +285,7 @@ export const Open: Story = {
       <DialogStory
         open
         title="Удалить желание?"
-        description="Желание исчезнет из вишлиста вместе с тегами и бронью."
+        description="Желание исчезнет из вишлиста. Это нельзя отменить."
         actions={<ConfirmActions />}
       />
     );
@@ -374,31 +374,14 @@ function DetailFacts({ facts = DETAIL_FACTS }: { facts?: DetailFact[] }) {
 
 DetailFacts.displayName = "DetailFacts";
 
-const DETAIL_BANNER = (
-  <YStack
-    testID="detail-banner"
-    backgroundColor="$muted"
-    borderLeftWidth={3}
-    borderLeftColor="$accent-foreground"
-    borderRadius="$md"
-    paddingVertical="$2"
-    paddingHorizontal="$3"
-    gap="$2"
-  >
-    <Text kind="label">Срок брони истёк</Text>
-    <Button label="Получил" variant="secondary" onPress={noop} />
-  </YStack>
-);
-
 type DetailStoryProps = {
   notice?: string;
   retry?: { label: string; onPress: () => void };
-  banner?: React.ReactNode;
   facts?: DetailFact[];
 };
 
 /** `layout="detail"` with the guest facts: the same slots `DetailDialog` fills. */
-function DetailDialogStory({ notice, retry, banner, facts }: DetailStoryProps) {
+function DetailDialogStory({ notice, retry, facts }: DetailStoryProps) {
   return (
     <Dialog
       open
@@ -416,7 +399,6 @@ function DetailDialogStory({ notice, retry, banner, facts }: DetailStoryProps) {
         </YStack>
       ) : (
         <YStack gap="$3">
-          {banner}
           <DetailFacts facts={facts} />
         </YStack>
       )}
@@ -458,16 +440,6 @@ export const DetailNetworkError: Story = {
         retry={{ label: "Повторить", onPress: noop }}
       />
     );
-  },
-};
-
-/** The caller's strip above the facts: the expired-reservation banner. */
-export const DetailWithBanner: Story = {
-  name: "Detail: banner",
-  tags: ["!dev"],
-  parameters: { docs: { story: { iframeHeight: "640px" } } },
-  render: function DetailWithBannerStory() {
-    return <DetailDialogStory banner={DETAIL_BANNER} />;
   },
 };
 
@@ -516,8 +488,7 @@ export const AsBottomSheetNarrow: Story = {
         }
       >
         <Text kind="body">
-          Бронь видна только вам: владелец не узнает, кто дарит, если вы не включите
-          это в настройках.
+          Бронь видна только вам: владелец не узнает, кто дарит.
         </Text>
       </BottomSheet>
     );

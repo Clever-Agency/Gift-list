@@ -96,7 +96,7 @@ export const LongLabelNarrow: Story = {
   tags: ["!dev"],
   args: {
     status: "reserved",
-    label: "Забронирован до 4 ноября, ждёт подтверждения владельца",
+    label: "Забронирован до 4 ноября, подарок ещё не вручён",
   },
   globals: { viewport: { value: "w360" } },
 };

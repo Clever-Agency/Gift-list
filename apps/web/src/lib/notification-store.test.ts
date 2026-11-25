@@ -302,7 +302,8 @@ describe("CLE-124: owner reservation rows are hidden", function hiddenOwnerRows(
     expect(send.mock.calls[0]![0].html).not.toContain(gift.reservedBy.name);
   });
 
-  it("keeps the holder's release and auto-release rows visible", async function holderRowsStay() {    for (const kind of ["RESERVATION_RELEASED", "RESERVATION_AUTO_RELEASE"] as const) {
+  it("keeps the holder's release and auto-release rows visible", async function holderRowsStay() {
+    for (const kind of ["RESERVATION_RELEASED", "RESERVATION_AUTO_RELEASE"] as const) {
       const row = record({
         kind,
         recipientId: "holder",

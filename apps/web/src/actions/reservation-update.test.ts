@@ -412,6 +412,24 @@ describe("updateMyReservation", () => {
     }
   });
 
+  it("accepts a visibility request without the owner flag", async () => {
+    findFirst
+      .mockResolvedValueOnce(preflight)
+      .mockResolvedValueOnce(cardRow({ holderVisibleToOthers: true }));
+    setReservationVisibility.mockResolvedValue("success");
+
+    const result = await updateMyReservation(headers, "g1", {
+      action: "visibility",
+      holderVisibleToOthers: true,
+    });
+
+    expect(setReservationVisibility).toHaveBeenCalledWith("g1", "holder", {
+      holderVisibleToOthers: true,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.holderVisibleToOwner).toBe(false);
+  });
+
   it("keeps the actions available after a block and only closes the detail link", async () => {
     relationsBetween.mockResolvedValue({
       blocked: true,

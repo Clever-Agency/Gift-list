@@ -10,6 +10,7 @@ import {
   type FocusTarget,
 } from "@gift-list/ui";
 import { useLocale, useTranslations } from "use-intl";
+import { canExtendReservation } from "@/ui/reservation-extend-dialog";
 import {
   ReservationVisibility,
   type ReservationVisibilityValues,
@@ -19,6 +20,8 @@ export type ReservationCardProps = {
   card: ReservationCardData;
   /** A request of this card is in flight: every control of the card is blocked. */
   busy?: boolean;
+  /** The holder's zone: the deadline day (`dueAt`) and «срок прошёл» are counted there. */
+  timeZone?: string;
   /** «Кто видит, что это я» is open (the screen owns the state of each card). */
   visibilityExpanded: boolean;
   onToggleVisibility: () => void;
@@ -26,8 +29,13 @@ export type ReservationCardProps = {
   onOpenGift?: () => void;
   /** Opens the ⋮ menu of the screen; without it the card has no menu button. */
   onMenu?: () => void;
-  /** «Продлить до…»; absent in `GIVEN`, where the server would answer `CONFLICT`. */
+  /**
+   * «Продлить до…»; absent in `GIVEN` and once the deadline day has passed, where
+   * the server answers `RESERVATION_DUE_PASSED` (D-12, CLE-124/S9b-3).
+   */
   onExtend?: () => void;
+  /** «Подарил» (Story 5.7): absent in `GIVEN`, where the stage already says «Подарено». */
+  onGiven?: () => void;
   onBoughtChange: (value: boolean) => void;
   onVisibilityChange: (next: ReservationVisibilityValues) => void;
   /** The ⋮, so the screen's menu can return focus to it. */
@@ -38,9 +46,10 @@ export type ReservationCardProps = {
 /**
  * Карточка одной брони держателя (Story 5.5, `DESIGN.md` → ReservationCard,
  * `EXPERIENCE.md` → «Подписи брони»): снимок названия, `@ник` владельца, срок,
- * фаза, чип «Куплено», свёрнутые переключатели «Кто видит, что это я» и действия
- * «Купил», «Продлить до…», «Снять бронь» (⋮). Без цены, тегов и остальных
- * желаний: набор полей задан контрактом `reservationCardSchema` (A-14, AD-7).
+ * фаза, чип «Куплено», свёрнутый переключатель «Кто видит, что это я» и действия
+ * «Купил», «Подарил» (Story 5.7), «Продлить до…», «Снять бронь» (⋮). Без цены,
+ * тегов и остальных желаний: набор полей задан контрактом `reservationCardSchema`
+ * (A-14, AD-7).
  *
  * Основная зона — ссылка на деталь только при `canOpenGift`: после unfriend,
  * Block или сужения видимости сервер отвечает `false`, и тогда карточка не
@@ -53,11 +62,13 @@ export type ReservationCardProps = {
 export function ReservationCard({
   card,
   busy,
+  timeZone = "UTC",
   visibilityExpanded,
   onToggleVisibility,
   onOpenGift,
   onMenu,
   onExtend,
+  onGiven,
   onBoughtChange,
   onVisibilityChange,
   menuRef,
@@ -73,10 +84,11 @@ export function ReservationCard({
   // `ACTIVE` already reads «Вы берёте · до DD.MM», so its due line is not repeated.
   const active = card.phase === "ACTIVE";
   const open = card.canOpenGift ? onOpenGift : undefined;
-  // `GIVEN` waits for the owner's confirmation (Story 5.7): an extension would
-  // silently restart its timers, so the server answers `CONFLICT` and the button
-  // is not offered (`EXPERIENCE.md` → «Подписи брони»).
-  const extend = card.phase === "GIVEN" ? undefined : onExtend;
+  // `GIVEN` and a passed deadline offer no extension (D-12, CLE-124/S9b-3): the
+  // server refuses it with `RESERVATION_DUE_PASSED`, so the button is not drawn.
+  const extend = canExtendReservation(card, timeZone) ? onExtend : undefined;
+  // The stage already reads «Подарено», so «Подарил» is not repeated there.
+  const given = card.phase === "GIVEN" ? undefined : onGiven;
 
   const content = (
     <>
@@ -169,11 +181,19 @@ export function ReservationCard({
           testID={testID ? `${testID}-extend` : undefined}
         />
       ) : null}
+      {given ? (
+        <Button
+          variant="secondary"
+          label={t("given")}
+          onPress={given}
+          disabled={busy}
+          testID={testID ? `${testID}-given` : undefined}
+        />
+      ) : null}
       <ReservationVisibility
         expanded={visibilityExpanded}
         onToggle={onToggleVisibility}
         values={{
-          holderVisibleToOwner: card.holderVisibleToOwner,
           holderVisibleToOthers: card.holderVisibleToOthers,
         }}
         busy={busy}

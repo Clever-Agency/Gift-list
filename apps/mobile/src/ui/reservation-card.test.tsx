@@ -4,6 +4,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { click, settle } from "@/test/dom";
+import { addCalendarDays, todayInZone } from "@/ui/reservation-extend-dialog";
 import { ReservationCard } from "@/ui/reservation-card";
 
 vi.mock("use-intl", async () => {
@@ -80,6 +81,11 @@ function card(overrides: Partial<ReservationCardData> = {}): ReservationCardData
 
 const noop = function noop() {};
 
+/** A deadline day that is still ahead in `timeZone`: the card keeps «Продлить до…». */
+function dueSoon(days = 5): string {
+  return addCalendarDays(todayInZone("UTC"), days);
+}
+
 async function render(node: ReactNode) {
   await act(async () => {
     host.render(node);
@@ -141,7 +147,9 @@ describe("ReservationCard", () => {
         />,
       );
     });
-    expect(text()).toContain("Срок истёк · ждём ответа владельца");
+    // CLE-124/S9b-3 (§10.6): the owner is no longer asked anything.
+    expect(text()).toContain("Срок истёк");
+    expect(text()).not.toContain("ждём ответа владельца");
   });
 
   it("чип «Куплено» и переключатель «Купил» отражают флаг, без подмены фазы", async () => {
@@ -165,24 +173,27 @@ describe("ReservationCard", () => {
     expect(onBoughtChange).toHaveBeenCalledWith(false);
   });
 
-  it("в GIVEN нет «Продлить до…», остальные действия на месте", async () => {
+  it("в GIVEN нет «Продлить до…» и «Подарил», остальные действия на месте", async () => {
     const onExtend = vi.fn();
+    const onGiven = vi.fn();
     await render(
       <ReservationCard
         card={card({ phase: "GIVEN" })}
         visibilityExpanded
         onToggleVisibility={noop}
         onExtend={onExtend}
+        onGiven={onGiven}
         onMenu={noop}
         onBoughtChange={noop}
         onVisibilityChange={noop}
       />,
     );
 
-    expect(text()).toContain("Ждёт подтверждения");
+    expect(text()).toContain("Подарено");
     expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeUndefined();
     expect(byLabel("Купил")).not.toBeNull();
-    expect(byLabel("Показать владельцу, что это я")).not.toBeNull();
+    expect(byLabel("Показать другим, кто берёт")).not.toBeNull();
     expect(byLabel("Меню")).not.toBeNull();
   });
 
@@ -190,7 +201,7 @@ describe("ReservationCard", () => {
     const onExtend = vi.fn();
     await render(
       <ReservationCard
-        card={card()}
+        card={card({ dueAt: dueSoon() })}
         visibilityExpanded={false}
         onToggleVisibility={noop}
         onExtend={onExtend}
@@ -201,6 +212,64 @@ describe("ReservationCard", () => {
 
     await click(control("Продлить до…"));
     expect(onExtend).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * CLE-124/S9b-3 (D-12, §10.2): «Продлить до…» живёт только до Срока — после
+   * него сервер отвечает `RESERVATION_DUE_PASSED`, поэтому кнопки нет.
+   */
+  it("после срока «Продлить до…» нет, а «Подарил» и остальные действия на месте", async () => {
+    const onExtend = vi.fn();
+    const onGiven = vi.fn();
+    await render(
+      <ReservationCard
+        card={card({ dueAt: "2020-01-01" })}
+        visibilityExpanded={false}
+        onToggleVisibility={noop}
+        onExtend={onExtend}
+        onGiven={onGiven}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    expect(control("Продлить до…")).toBeUndefined();
+    await click(control("Подарил"));
+    expect(onGiven).toHaveBeenCalledTimes(1);
+    expect(byLabel("Купил")).not.toBeNull();
+  });
+
+  /** Story 5.7: «Подарил» — колбэк экрана, который заменит карточку ответом. */
+  it("«Подарил» вызывает колбэк, а после ответа карточка читает «Подарено»", async () => {
+    const onGiven = vi.fn();
+    await render(
+      <ReservationCard
+        card={card({ dueAt: dueSoon() })}
+        visibilityExpanded={false}
+        onToggleVisibility={noop}
+        onGiven={onGiven}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    await click(control("Подарил"));
+    expect(onGiven).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      host.render(
+        <ReservationCard
+          card={card({ phase: "GIVEN" })}
+          visibilityExpanded={false}
+          onToggleVisibility={noop}
+          onGiven={onGiven}
+          onBoughtChange={noop}
+          onVisibilityChange={noop}
+        />,
+      );
+    });
+    expect(text()).toContain("Подарено");
+    expect(control("Подарил")).toBeUndefined();
   });
 
   it("при canOpenGift основная зона — ссылка с названием желания", async () => {

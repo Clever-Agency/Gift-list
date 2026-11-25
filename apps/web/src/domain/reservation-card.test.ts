@@ -139,7 +139,7 @@ describe("toReservationCard", () => {
     expect(utc.dueAt).toBe("2026-12-08");
   });
 
-  it("passes the phase, the mark and both toggles through unchanged", () => {
+  it("passes the phase, the mark and the guests' toggle through, and always hides the owner flag", () => {
     const card = toReservationCard(
       row({
         reservationPhase: "AWAITING_OWNER",
@@ -153,7 +153,7 @@ describe("toReservationCard", () => {
     expect(card).toMatchObject({
       phase: "AWAITING_OWNER",
       bought: true,
-      holderVisibleToOwner: true,
+      holderVisibleToOwner: false,
       holderVisibleToOthers: false,
     });
   });

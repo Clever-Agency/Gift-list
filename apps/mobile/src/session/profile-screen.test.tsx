@@ -1226,8 +1226,9 @@ describe("профиль: блокировка (Story 4.5)", () => {
 
     const dialog = dialogElement();
     expect(dialog?.textContent).toContain(
-      "Вы перестанете видеть друг друга, дружба и подписки удалятся. Его бронь ваших желаний останется.",
+      "Вы перестанете видеть друг друга, дружба и подписки удалятся.",
     );
+    expect(dialog?.textContent).not.toContain("бронь");
     expect(dialog?.querySelectorAll("button")).toHaveLength(2);
 
     await pressInDialog("Отмена");

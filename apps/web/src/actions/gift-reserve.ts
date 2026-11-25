@@ -187,7 +187,8 @@ export async function reserveGift(
       reservationDueAt,
       reservationTimeZone: timeZone,
       reservationPhaseAt: now,
-      holderVisibleToOwner: parsed.data.holderVisibleToOwner,
+      // CLE-124/D-49: the client cannot set the owner switch; the store always
+      // writes `holderVisibleToOwner: false`.
       holderVisibleToOthers: parsed.data.holderVisibleToOthers,
     });
   });

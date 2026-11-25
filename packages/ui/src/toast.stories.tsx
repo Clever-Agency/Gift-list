@@ -243,7 +243,7 @@ export const Info: Story = {
 /** `success`: the green check, polite — the action went through. */
 export const Success: Story = {
   tags: ["!dev"],
-  args: { tone: "success", message: "Куплено — владелец увидит отметку", withAction: false },
+  args: { tone: "success", message: "Куплено — отметка сохранена", withAction: false },
   render: function SuccessStory(args) {
     return <ToastPreview {...args} />;
   },

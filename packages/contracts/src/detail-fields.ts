@@ -1,8 +1,8 @@
 // Which gift fields a detail dialog may show. The server already dropped anything
 // the viewer must not see (`toOwnerGiftCard` / `toViewerGiftCard`). This function
-// is the second gate: the owner branch never reads `reservation` or
-// `reservationLabel`, and the guest branch never reads visibility, owner actions
-// or the archive instant.
+// is the second gate: the owner branch never reads the reservation fields
+// (D-49: a gift is always a surprise for the owner), and the guest branch never
+// reads visibility or the archive instant.
 
 import type { GiftCard } from "./index";
 import { formatDate, formatPrice } from "./i18n/format";
@@ -31,12 +31,10 @@ export type DetailCopy = {
   visibilityValue: Record<GiftCard["visibility"], string>;
   reservation: string;
   reservedBy: string;
-  ownerAction: Record<NonNullable<GiftCard["ownerAction"]>, string>;
   reservationLabel: Record<NonNullable<GiftCard["reservationLabel"]>, string>;
   due: string;
   phase: Record<NonNullable<GiftCard["reservation"]>["phase"], string>;
   bought: string;
-  showOwner: string;
   showOthers: string;
   yes: string;
   no: string;
@@ -61,12 +59,10 @@ export function detailCopy(messages: Messages = getMessages()): DetailCopy {
     visibilityValue: gift.visibility,
     reservation: gift.detail.reservation,
     reservedBy: messages.app.myWishlist.reservedBy,
-    ownerAction: gift.ownerAction,
     reservationLabel: gift.detail.reservationLabel,
     due: gift.reserveConfirm.dueLabel,
     phase: gift.detail.phase,
     bought: gift.detail.bought,
-    showOwner: gift.reserveConfirm.showOwner,
     showOthers: gift.reserveConfirm.showOthers,
     yes: gift.detail.yes,
     no: gift.detail.no,
@@ -122,7 +118,10 @@ export function toDetailFacts(
         .join(", "),
     );
   }
-  add("status", copy.status, copy.statusValue[gift.status]);
+  // D-49: the owner's card never shows a reservation. Even a stale payload with
+  // `status: "RESERVED"` reads as an open wish, so no status label leaks it.
+  const status = viewer === "owner" && gift.status === "RESERVED" ? "OPEN" : gift.status;
+  add("status", copy.status, copy.statusValue[status]);
 
   if (viewer === "owner") {
     add("visibility", copy.visibility, copy.visibilityValue[gift.visibility]);
@@ -132,12 +131,6 @@ export function toDetailFacts(
         copy.archivedLabel,
         fill(copy.archived, { date: formatDate(gift.archivedAt, locale) }),
       );
-    }
-    if (gift.reservedBy) {
-      add("reservedBy", copy.reservation, fill(copy.reservedBy, { name: gift.reservedBy.displayName }));
-    }
-    if (gift.ownerAction) {
-      add("ownerAction", copy.reservation, copy.ownerAction[gift.ownerAction]);
     }
     return facts;
   }
@@ -154,7 +147,6 @@ export function toDetailFacts(
     add("due", copy.reservation, fill(copy.due, { date }));
     add("phase", copy.reservation, fill(copy.phase[reservation.phase], { date }));
     if (reservation.bought) add("bought", copy.reservation, copy.bought);
-    add("showOwner", copy.showOwner, reservation.holderVisibleToOwner ? copy.yes : copy.no);
     add("showOthers", copy.showOthers, reservation.holderVisibleToOthers ? copy.yes : copy.no);
   }
   return facts;

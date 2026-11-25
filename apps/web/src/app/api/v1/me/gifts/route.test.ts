@@ -49,7 +49,7 @@ function isArchivedQuery(where: GiftWhere): boolean {
 }
 
 /** Owner reads query twice: active rows, then archived. Honour both filters. */
-function giftsFor(rows: (typeof row)[]) {
+function giftsFor<T extends { archivedAt: Date | null }>(rows: T[]) {
   return function filterRows({ where }: { where: GiftWhere }) {
     return Promise.resolve(
       rows.filter(function matchArchive(item) {
@@ -130,6 +130,33 @@ describe("GET /api/v1/me/gifts", () => {
     expect(viaHttp).toMatchObject({ ok: false, code: "UNAUTHENTICATED" });
     expect(findUnique).not.toHaveBeenCalled();
     expect(findMany).not.toHaveBeenCalled();
+  });
+
+  /** D-49: the HTTP answer carries no reservation of the owner's own wish. */
+  it("returns a reserved wish as an open owner card", async () => {
+    findMany.mockImplementation(
+      giftsFor([
+        {
+          ...row,
+          id: "g-reserved",
+          status: "RESERVED" as const,
+          reservationPhase: "ACTIVE" as const,
+          holderVisibleToOwner: true,
+          reservedBy: { id: "u2", nick: "anna", name: "Анна" },
+        },
+      ]),
+    );
+
+    const { res, viaHttp } = await both();
+
+    expect(res.status).toBe(200);
+    expect(viaHttp.data.gifts[0]).toMatchObject({
+      id: "g-reserved",
+      status: "OPEN",
+      reservedBy: null,
+      ownerAction: null,
+    });
+    expect(JSON.stringify(viaHttp)).not.toContain("Анна");
   });
 
   it("answers a normal empty wishlist as `access: gifts` with the token, never as a gate", async () => {

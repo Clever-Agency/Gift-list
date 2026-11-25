@@ -5,9 +5,12 @@ import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
 import {
   EXTENDABLE_RESERVATION_PHASES,
+  GIVABLE_RESERVATION_PHASES,
+  RELEASABLE_RESERVATION_PHASES,
   RESERVATION_GIVER_WINDOW_MS,
   RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
+  RESERVATION_REMINDER_WINDOW_MS,
   UNDO_WINDOW_MS,
   closeGiftData,
   type GiftStatusEvent,
@@ -19,6 +22,7 @@ import {
 
 import {
   cancelCloseNotification,
+  enqueueGiftGivenNotice,
   enqueueGiftNotification,
   lockClosureGift,
   notificationGiftSnapshot,
@@ -30,27 +34,25 @@ type GiftDb = Pick<PrismaClient, "gift">;
 type ReservationTimerDb = Pick<PrismaClient, "gift" | "$transaction">;
 
 /**
- * Story 5.4: the log name of every event kind. The four transitions of 5.2/5.3
+ * Story 5.4: the log name of every event kind. The three transitions of 5.2/5.3
  * keep `gift.status` and the exact line they had, so their tests and any log
  * consumer stay unchanged; the two events of 5.4 get a name of their own.
  *
  * Story 5.6 follows that rule instead of adding a `kind` key to the line: the
- * timer transitions get four names under `gift.reservation.`, so a log query can
- * tell them apart (needed because three of them keep `RESERVED → RESERVED`), and
+ * timer transitions get three names under `gift.reservation.`, so a log query can
+ * tell them apart (needed because two of them keep `RESERVED → RESERVED`), and
  * one seam keeps one line shape. The spec's `kind` field belongs to the event
  * payload and reaches the future `Notification` record from there.
  */
 const EVENT_NAMES = {
   RESERVATION_RELEASED_BY_HOLDER: "gift.status",
-  RESERVATION_RELEASED_BY_OWNER: "gift.status",
   WISH_CLOSED: "gift.status",
   WISH_REOPENED: "gift.status",
   GIFT_EDITED: "gift.edited",
   GIFT_DELETED: "gift.deleted",
   RESERVATION_GIVER_DEADLINE_PASSED: "gift.reservation.giver-deadline-passed",
-  RESERVATION_OWNER_ASKED: "gift.reservation.owner-asked",
+  RESERVATION_OWNER_WINDOW_STARTED: "gift.reservation.owner-window-started",
   RESERVATION_RELEASED_BY_EXPIRY: "gift.reservation.released-by-expiry",
-  RESERVATION_KEPT_BY_OWNER: "gift.reservation.kept-by-owner",
 } as const satisfies Record<GiftStatusEventKind, string>;
 
 /**
@@ -91,16 +93,17 @@ export function recordGiftEvent(event: GiftStatusEvent): void {
  * The CAS on `status: "RESERVED"` means a row that changed status in the
  * meantime is left untouched; `false` says the reservation was already gone.
  *
- * Story 5.2 adds the holder's and the owner's releases; Story 5.3 adds the
- * owner's close and its undo. All are CAS writes, so of two simultaneous
- * transitions exactly one succeeds; the one that succeeded reports the
- * transition through `emit`, a lost CAS reports nothing (NFR-6). `emit` only
- * collects the event: the audit line is written after the commit by
- * `runGiftStatusTransaction`, so a rolled back transaction leaves no line.
+ * Story 5.2 adds the holder's release; Story 5.3 adds the owner's close and its
+ * undo. All are CAS writes, so of two simultaneous transitions exactly one
+ * succeeds; the one that succeeded reports the transition through `emit`, a lost
+ * CAS reports nothing (NFR-6). `emit` only collects the event: the audit line is
+ * written after the commit by `runGiftStatusTransaction`, so a rolled back
+ * transaction leaves no line.
  * `giftStatusTransaction` defaults to writing the line immediately, but no
  * use-case calls the event methods that way.
  *
- * Story 5.5 adds the holder's extension, «Купил» and the two visibility toggles.
+ * Story 5.5 adds the holder's extension, «Купил» and the guests' visibility
+ * switch (CLE-124/D-49 keeps `holderVisibleToOwner` always `false`).
  * They change attributes of a live `RESERVED` row and never its status, so they
  * emit nothing: NFR-6 audits a status transition only, and 5.5 has none.
  *
@@ -137,7 +140,8 @@ export function giftStatusTransaction(
           reservationPhase: "ACTIVE",
           reservationPhaseAt: data.reservationPhaseAt,
           reservationBought: false,
-          holderVisibleToOwner: data.holderVisibleToOwner,
+          // CLE-124/D-49: the owner never learns about a reservation.
+          holderVisibleToOwner: false,
           holderVisibleToOthers: data.holderVisibleToOthers,
         },
       });
@@ -152,9 +156,12 @@ export function giftStatusTransaction(
           id: giftId,
           status: "RESERVED",
           reservedById: actorId,
-          // The same phase list as `canExtendReservation`, so `GIVEN` is refused
-          // here even when a stale pre-check let the request through.
+          // CLE-124/S9b-2: the same predicate as `canExtendReservation` — only
+          // `ACTIVE`, and only while the deadline is still in the future. The
+          // internal `AWAITING_*` phases exist only after the deadline, and
+          // `GIVEN` never extends.
           reservationPhase: { in: [...EXTENDABLE_RESERVATION_PHASES] },
+          reservationDueAt: { gt: write.at },
         },
         data: {
           reservationDueAt: write.dueAt,
@@ -164,6 +171,53 @@ export function giftStatusTransaction(
         },
       });
       return count === 1 ? "success" : "lost";
+    },
+    async markReservationGiven(giftId, actorId, at) {
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      if (gift === null || gift.status !== "RESERVED" || gift.reservedById !== actorId) {
+        return "lost";
+      }
+      // Idempotent: a repeated press in `GIVEN` is a success and sends no
+      // second letter to the owner.
+      if (gift.reservationPhase === "GIVEN") return "success";
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "RESERVED",
+          reservedById: actorId,
+          reservedAt: gift.reservedAt,
+          reservationPhase: { in: [...GIVABLE_RESERVATION_PHASES] },
+        },
+        data: { reservationPhase: "GIVEN", reservationPhaseAt: at },
+      });
+      if (count !== 1) {
+        // Two presses raced: the winner wrote `GIVEN`, the loser still answers
+        // success and does not write a second line or letter.
+        const after = await notificationGiftSnapshot(tx, giftId);
+        return after !== null && after.status === "RESERVED" &&
+          after.reservedById === actorId && after.reservationPhase === "GIVEN"
+          ? "success"
+          : "lost";
+      }
+      // CLE-124/S9b-2 (Story 5.7): one general letter to the owner, without the
+      // wish, the holder or any action.
+      await enqueueGiftGivenNotice(tx, gift.list.ownerId, at);
+      return "success";
+    },
+    async remindReservationDue(giftId, at) {
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      if (gift === null || gift.status !== "RESERVED" || gift.archivedAt !== null) return "lost";
+      if (gift.reservationPhase !== "ACTIVE" || gift.reservationDueAt === null) return "lost";
+      const dueAt = gift.reservationDueAt;
+      const inWindow = dueAt.getTime() > at.getTime() &&
+        dueAt.getTime() <= at.getTime() + RESERVATION_REMINDER_WINDOW_MS;
+      if (!inWindow) return "lost";
+      // The key is anchored on the deadline, so a repeated run and a holder's
+      // extension (a new deadline) each produce exactly one reminder per term.
+      await enqueueGiftNotification(tx, gift, {
+        kind: "RESERVATION_DUE", role: "holder", email: true, at, eventAt: dueAt, reminder: true,
+      });
+      return "success";
     },
     async setReservationBought(giftId, actorId, write) {
       const { count } = await tx.gift.updateMany({
@@ -176,7 +230,8 @@ export function giftStatusTransaction(
       const { count } = await tx.gift.updateMany({
         where: { id: giftId, status: "RESERVED", reservedById: actorId },
         data: {
-          holderVisibleToOwner: write.holderVisibleToOwner,
+          // CLE-124/D-49: the client can only change the guests' switch.
+          holderVisibleToOwner: false,
           holderVisibleToOthers: write.holderVisibleToOthers,
         },
       });
@@ -198,25 +253,6 @@ export function giftStatusTransaction(
         to: "OPEN",
         at,
         kind: "RESERVATION_RELEASED_BY_HOLDER",
-      });
-      return "success";
-    },
-    async releaseReservationByOwner(giftId, actorId, at) {
-      const gift = await notificationGiftSnapshot(tx, giftId);
-      if (gift === null) return "lost";
-      const { count } = await tx.gift.updateMany({
-        where: { id: giftId, status: "RESERVED", reservedAt: gift.reservedAt, list: { ownerId: actorId } },
-        data: RESERVATION_RELEASE_DATA,
-      });
-      if (count !== 1) return "lost";
-      await enqueueGiftNotification(tx, gift, { kind: "RESERVATION_RELEASED", role: "holder", email: true, at });
-      emit({
-        giftId,
-        actorId,
-        from: "RESERVED",
-        to: "OPEN",
-        at,
-        kind: "RESERVATION_RELEASED_BY_OWNER",
       });
       return "success";
     },
@@ -319,14 +355,15 @@ export function giftStatusTransaction(
       });
       if (count !== 1) return "lost";
       // CLE-124: `AWAITING_OWNER` still happens on the timer, but the owner is
-      // never asked about it; no `RESERVATION_OWNER_ASK` row is written.
+      // never asked about it; no `RESERVATION_OWNER_ASK` row is written and the
+      // phase stays internal.
       emit({
         giftId,
         actorId: null,
         from: "RESERVED",
         to: "RESERVED",
         at,
-        kind: "RESERVATION_OWNER_ASKED",
+        kind: "RESERVATION_OWNER_WINDOW_STARTED",
       });
       return "success";
     },
@@ -338,14 +375,20 @@ export function giftStatusTransaction(
           id: giftId,
           status: "RESERVED", reservedAt: gift.reservedAt,
           archivedAt: null,
-          reservationPhase: "AWAITING_OWNER",
-          // `bought` is part of the CAS: a mark set between the read and the
-          // write keeps the gift from being opened by the timer.
-          reservationBought: false,
-          reservationPhaseAt: {
-            equals: gift.reservationPhaseAt,
+          // CLE-124/S9b-1: both phases are released, `GIVEN` included.
+          reservationPhase: { in: [...RELEASABLE_RESERVATION_PHASES] },
+          // CLE-124/D-49: the 168 hours count from the deadline, and the CAS
+          // compares the deadline it read, so a holder's extension (a new
+          // `dueAt`, phase `ACTIVE`) wins the race and answers `lost`.
+          // CLE-124/S9b-1: `bought` is deliberately absent — a mark set before
+          // or after the read neither protects the row nor makes the CAS lose.
+          reservationDueAt: {
+            equals: gift.reservationDueAt,
             lte: new Date(at.getTime() - RESERVATION_OWNER_WINDOW_MS),
           },
+          // One run moves a row one step: a row moved to the phase by step 2 of
+          // this run carries `phaseAt = at` and is not released here.
+          reservationPhaseAt: { lt: at },
         },
         data: RESERVATION_RELEASE_DATA,
       });
@@ -362,35 +405,6 @@ export function giftStatusTransaction(
         // A `RESERVED` row always carries a holder; an anomalous row without one
         // still reports the transition, only without a recipient.
         ...(gift.reservedById === null ? {} : { recipientId: gift.reservedById }),
-      });
-      return "success";
-    },
-    async keepReservationByOwner(giftId, actorId, write) {
-      const { count } = await tx.gift.updateMany({
-        where: {
-          id: giftId,
-          status: "RESERVED",
-          archivedAt: null,
-          reservationPhase: "AWAITING_OWNER",
-          list: { ownerId: actorId },
-        },
-        data: {
-          reservationPhase: "ACTIVE",
-          reservationPhaseAt: write.at,
-          reservationDueAt: write.dueAt,
-        },
-      });
-      if (count !== 1) return "lost";
-      await enqueueGiftNotification(tx, await notificationGiftSnapshot(tx, giftId), {
-        kind: "RESERVATION_KEPT_BY_OWNER", role: "holder", email: false, at: write.at,
-      });
-      emit({
-        giftId,
-        actorId,
-        from: "RESERVED",
-        to: "RESERVED",
-        at: write.at,
-        kind: "RESERVATION_KEPT_BY_OWNER",
       });
       return "success";
     },
@@ -493,27 +507,42 @@ export async function processWishExpiry(
   return { archived, failed };
 }
 
-/** Story 5.6: the counters the cron route reports (only these three reach it). */
+/** Story 5.6: the counters the cron route reports (only these reach it). */
 export type ReservationTimersResult = {
   readonly expiredToGiver: number;
-  readonly askedOwner: number;
+  readonly toAwaitingOwner: number;
   readonly released: number;
+  /** CLE-124/S9b-2: reminders queued for a deadline within the next 48 hours. */
+  readonly reminded: number;
   readonly failed: number;
 };
 
 /**
- * Story 5.6 (AD-9, ARCH-A15): the hourly reservation cycle. Three steps run in
- * the order AD-9 fixes, with one `now` for the whole run:
+ * Story 5.6 (AD-9, ARCH-A15), CLE-124/D-49: the hourly reservation cycle. Three
+ * transitions run in the order AD-9 fixes, followed by the reminder of
+ * CLE-124/S9b-2; one `now` is used for the whole run:
  *
  * 1. `ACTIVE → AWAITING_GIVER` when `reservationDueAt ≤ now`;
  * 2. `AWAITING_GIVER → AWAITING_OWNER` when `phaseAt ≤ now − 72 ч`;
- * 3. `AWAITING_OWNER → OPEN` when `phaseAt ≤ now − 168 ч` and `bought = false`.
+ * 3. `AWAITING_OWNER` or `GIVEN → OPEN` when `reservationDueAt ≤ now − 168 ч`
+ *    and `phaseAt < now`. CLE-124/S9b-1: `bought` does not protect the row and
+ *    `GIVEN` is released like `AWAITING_OWNER` — a holder cannot keep a wish
+ *    blocked forever with «Купил» or «Подарил». Steps 1–2 never touch `GIVEN`:
+ *    a holder who already promised the gift gets no deadline reminder.
  *
- * A row moved by step 1 or 2 carries `phaseAt = now`, so it is not a candidate
- * of the next step in the same run: a run moves a row at most one step. Steps
- * are read in batches by `id`, and every row is its own CAS transaction, so one
- * failing row is counted in `failed`, logged by id and error name only (no
- * titles), and does not stop the rest. A lost CAS writes and reports nothing.
+ * CLE-124/S9b-2 adds a fourth, non-transition step: a reminder to the holder of
+ * every `ACTIVE` reservation whose deadline falls within the next 48 hours. It
+ * writes no reservation column, is deduplicated by `kind + gift + dueAt`, and
+ * never addresses the owner. The remaining steps keep their order and one `now`.
+ *
+ * Step 2 is internal: nobody is notified, and the owner never learns that their
+ * wish is reserved. Step 3 counts the 168 hours from the deadline, not from the
+ * phase, so the owner's phase is only a marker. A row moved by step 1 or 2
+ * carries `phaseAt = now`, so it is not a candidate of the next step in the same
+ * run: a run moves a row at most one step. Steps are read in batches by `id`, and
+ * every row is its own CAS transaction, so one failing row is counted in
+ * `failed`, logged by id and error name only (no titles), and does not stop the
+ * rest. A lost CAS writes and reports nothing.
  */
 export async function processReservationTimers(
   now: Date = new Date(),
@@ -536,9 +565,9 @@ export async function processReservationTimers(
     },
   );
 
-  const asked = await runReservationTimerStep(
+  const toAwaitingOwner = await runReservationTimerStep(
     db,
-    "askedOwner",
+    "toAwaitingOwner",
     {
       status: "RESERVED",
       archivedAt: null,
@@ -556,20 +585,45 @@ export async function processReservationTimers(
     {
       status: "RESERVED",
       archivedAt: null,
-      reservationPhase: "AWAITING_OWNER",
-      reservationBought: false,
-      reservationPhaseAt: { lte: ownerDeadline },
+      // CLE-124/S9b-1: `GIVEN` is released too, and `bought` is not a filter: the
+      // release depends on the deadline alone.
+      reservationPhase: { in: [...RELEASABLE_RESERVATION_PHASES] },
+      reservationDueAt: { lte: ownerDeadline },
+      // Step 2 of this same run sets `phaseAt = now`; such a row waits for the
+      // next run instead of being released immediately.
+      reservationPhaseAt: { lt: now },
     },
     function releaseByExpiry(service, giftId) {
       return service.releaseReservationByExpiry(giftId, now);
     },
   );
 
+  const reminded = await runReservationTimerStep(
+    db,
+    "reminded",
+    {
+      status: "RESERVED",
+      archivedAt: null,
+      // CLE-124/S9b-2: only a deadline that is still ahead and at most 48 hours
+      // away. `GIVEN` and the phases after the deadline are not reminded, and the
+      // owner is never addressed.
+      reservationPhase: "ACTIVE",
+      reservationDueAt: {
+        gt: now,
+        lte: new Date(now.getTime() + RESERVATION_REMINDER_WINDOW_MS),
+      },
+    },
+    function remindBeforeDeadline(service, giftId) {
+      return service.remindReservationDue(giftId, now);
+    },
+  );
+
   return {
     expiredToGiver: expired.done,
-    askedOwner: asked.done,
+    toAwaitingOwner: toAwaitingOwner.done,
     released: released.done,
-    failed: expired.failed + asked.failed + released.failed,
+    reminded: reminded.done,
+    failed: expired.failed + toAwaitingOwner.failed + released.failed + reminded.failed,
   };
 }
 
@@ -580,7 +634,7 @@ export async function processReservationTimers(
  */
 async function runReservationTimerStep(
   db: ReservationTimerDb,
-  step: "expiredToGiver" | "askedOwner" | "released",
+  step: "expiredToGiver" | "toAwaitingOwner" | "released" | "reminded",
   where: Prisma.GiftWhereInput,
   write: (
     service: GiftStatusTransaction,

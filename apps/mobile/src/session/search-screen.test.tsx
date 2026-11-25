@@ -986,8 +986,9 @@ describe("поиск: блокировка (Story 4.5)", () => {
     const dialog = document.querySelector('[role="alertdialog"]');
     expect(dialog?.textContent).toContain("Заблокировать Алёна?");
     expect(dialog?.textContent).toContain(
-      "Вы перестанете видеть друг друга, дружба и подписки удалятся. Его бронь ваших желаний останется.",
+      "Вы перестанете видеть друг друга, дружба и подписки удалятся.",
     );
+    expect(dialog?.textContent).not.toContain("бронь");
     expect(block.blockUser).not.toHaveBeenCalled();
 
     await act(async () => {

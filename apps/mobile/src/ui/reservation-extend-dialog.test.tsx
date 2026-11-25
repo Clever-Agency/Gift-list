@@ -9,6 +9,7 @@ import { click, dialogElement, settle, typeInto } from "@/test/dom";
 import {
   ReservationExtendDialog,
   addCalendarDays,
+  canExtendReservation,
   defaultExtendDueOn,
   extendBounds,
   todayInZone,
@@ -91,6 +92,8 @@ describe("ReservationExtendDialog", () => {
     expect(body()).toContain("Продлить до…");
     expect(body()).toContain("Новая дата");
     expect(body()).toContain("Не позже");
+    // CLE-124/S9b-3 (§10.3): the line under the date names the release run-off.
+    expect(body()).toContain("Если не продлить, бронь снимется через 7 дней после этой даты");
     expect(control("Подтвердить")).toBeDefined();
     expect(control("Отмена")).toBeDefined();
     // День не раньше сегодняшнего в поясе держателя.
@@ -193,6 +196,37 @@ describe("ReservationExtendDialog", () => {
     );
 
     expect(dateInput()?.value).toBe(addCalendarDays(bounds.minDue, 7));
+  });
+});
+
+describe("canExtendReservation", () => {
+  // Полдень UTC: день в UTC и в Europe/Minsk совпадает, тест не зависит от часа.
+  const now = new Date("2026-06-15T10:00:00.000Z");
+  const active = { dueAt: "2026-06-20", phase: "ACTIVE" as const };
+
+  it("ACTIVE до срока — продление можно", () => {
+    expect(canExtendReservation(active, "UTC", now)).toBe(true);
+    // Срок — это конец выбранного дня, поэтому сам день ещё не прошёл.
+    expect(canExtendReservation({ ...active, dueAt: "2026-06-15" }, "UTC", now)).toBe(true);
+  });
+
+  it("ACTIVE после срока — продления нет", () => {
+    expect(canExtendReservation({ ...active, dueAt: "2026-06-14" }, "UTC", now)).toBe(false);
+  });
+
+  it("AWAITING_* и GIVEN — продления нет даже с будущим сроком", () => {
+    for (const phase of ["AWAITING_GIVER", "AWAITING_OWNER", "GIVEN"] as const) {
+      expect(canExtendReservation({ dueAt: "2026-06-20", phase }, "UTC", now)).toBe(false);
+    }
+  });
+
+  it("день считается в поясе держателя", () => {
+    // 21:30 UTC — в Москве уже 16 июня.
+    const late = new Date("2026-06-15T21:30:00.000Z");
+    expect(canExtendReservation({ ...active, dueAt: "2026-06-15" }, "UTC", late)).toBe(true);
+    expect(canExtendReservation({ ...active, dueAt: "2026-06-15" }, "Europe/Moscow", late)).toBe(
+      false,
+    );
   });
 });
 

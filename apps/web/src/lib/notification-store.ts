@@ -32,8 +32,6 @@ const giftSelect = {
   reservationDueAt: true,
   reservationTimeZone: true,
   titleSnapshotOnReserve: true,
-  holderVisibleToOwner: true,
-  reservedBy: { select: { name: true } },
   list: { select: { ownerId: true, owner: { select: { nick: true } } } },
 } satisfies Prisma.GiftSelect;
 
@@ -79,16 +77,31 @@ type GiftNotification = {
   email: boolean;
   at: Date;
   fields?: readonly GiftEditEventField[];
+  /**
+   * CLE-124/S9b-2: the stable moment of the event for `eventKey`. The reminder
+   * has no write of its own, so it anchors its key on the deadline: a repeated
+   * cron run and a new run over the same deadline are one row.
+   */
+  eventAt?: Date;
+  /** CLE-124/S9b-2: `true` for the reminder before the deadline. */
+  reminder?: boolean;
 };
 
-function giftEventKey(kind: GiftEventKind, giftId: string, at: Date) {
-  return `${kind}:${giftId}:${at.toISOString()}`;
+/**
+ * CLE-124/S9b-2 fix: the reminder before the deadline and «Срок истёк» are both
+ * `RESERVATION_DUE` for the same gift and both anchor on the deadline, so a run
+ * exactly at the deadline would give them one key and `skipDuplicates` would
+ * silently drop the deadline notice. The reminder therefore names itself in the
+ * key; every other kind keeps the plain `kind:giftId:at` shape.
+ */
+function giftEventKey(kind: GiftEventKind, giftId: string, at: Date, reminder = false) {
+  return reminder ? `${kind}:reminder:${giftId}:${at.toISOString()}` : `${kind}:${giftId}:${at.toISOString()}`;
 }
 
 export async function enqueueGiftNotification(
   tx: Tx,
   gift: GiftSnapshot | null,
-  { kind, role, email, at, fields }: GiftNotification,
+  { kind, role, email, at, fields, eventAt, reminder }: GiftNotification,
 ) {
   if (!gift?.reservedAt || !gift.reservedById) return;
   const recipientId = role === "owner" ? gift.list.ownerId : gift.reservedById;
@@ -98,10 +111,16 @@ export async function enqueueGiftNotification(
     ...(kind === "RESERVATION_KEPT_BY_OWNER" && gift.reservationDueAt
       ? { dueAt: gift.reservationDueAt.toISOString(), timeZone: canonicalTimeZone(gift.reservationTimeZone) }
       : {}),
+    // CLE-124/S9b-2: the deadline notice and the reminder name their dates on
+    // the client (AD-27), so both carry the stored deadline and its zone.
+    ...(kind === "RESERVATION_DUE" && gift.reservationDueAt
+      ? { dueAt: gift.reservationDueAt.toISOString(), timeZone: canonicalTimeZone(gift.reservationTimeZone) }
+      : {}),
+    ...(kind === "RESERVATION_DUE" && reminder === true ? { reminder: true } : {}),
     ...(fields ? { fields: [...fields] } : {}),
   };
   await enqueueNotification(tx, {
-    eventKey: giftEventKey(kind, gift.id, at),
+    eventKey: giftEventKey(kind, gift.id, eventAt ?? at, reminder === true),
     kind,
     giftId: gift.id,
     actorId: role === "owner" ? gift.reservedById : gift.list.ownerId,
@@ -112,6 +131,26 @@ export async function enqueueGiftNotification(
     deliverAfter: kind === "GIFT_CLOSED" ? new Date(at.getTime() + UNDO_WINDOW_MS) : at,
     emailRequired: email,
     payload,
+  });
+}
+
+/**
+ * CLE-124/S9b-2 (Story 5.7): the owner's one general e-mail after «Подарил».
+ * It names no wish, no holder and no gift id, is not actionable and never
+ * appears in the in-app feed; only the e-mail channel delivers it. The key is
+ * the UTC day, so several gifts marked on one day do not spam the owner with
+ * identical letters — the task allows this deduplication.
+ */
+export async function enqueueGiftGivenNotice(tx: Tx, ownerId: string, at: Date) {
+  const day = at.toISOString().slice(0, 10);
+  await enqueueNotification(tx, {
+    eventKey: `GIFT_GIVEN:${day}`,
+    kind: "GIFT_GIVEN",
+    recipientId: ownerId,
+    createdAt: at,
+    deliverAfter: at,
+    emailRequired: true,
+    payload: {},
   });
 }
 
@@ -140,12 +179,12 @@ function inChannel(kind: NotificationKind, prefs: NotificationPreferences, chann
 }
 
 export function notificationIsActionable(row: Notification, gift: GiftSnapshot | null) {
-  const phase = row.kind === "RESERVATION_DUE" ? "AWAITING_GIVER" :
-    row.kind === "RESERVATION_OWNER_ASK" ? "AWAITING_OWNER" :
-      row.kind === "GIFT_GIVEN" ? "GIVEN" : null;
-  const ownsAction = row.kind === "RESERVATION_DUE"
-    ? gift?.reservedById === row.recipientId
-    : gift?.list.ownerId === row.recipientId && gift?.reservedById === row.actorId;
+  const payload = row.payload;
+  const reminder = row.kind === "RESERVATION_DUE" && payload !== null &&
+    typeof payload === "object" && !Array.isArray(payload) &&
+    (payload as { reminder?: unknown }).reminder === true;
+  const phase = row.kind === "RESERVATION_DUE" ? (reminder ? "ACTIVE" : "AWAITING_GIVER") : null;
+  const ownsAction = row.kind === "RESERVATION_DUE" && gift?.reservedById === row.recipientId;
   return Boolean(
     phase && gift?.status === "RESERVED" && !gift.archivedAt && ownsAction &&
     gift.reservationPhase === phase && row.reservationAt && row.phaseAt &&
@@ -161,8 +200,9 @@ export function notificationIsActionable(row: Notification, gift: GiftSnapshot |
  *
  * The rule covers rows already written before the change, which is why it lives
  * here and the rows stay in the database: `RESERVATION_CREATED` and
- * `RESERVATION_OWNER_ASK` are owner-only kinds, while the two release kinds also
- * go to the holder and are hidden for the owner by their payload.
+ * `RESERVATION_OWNER_ASK` are owner-only kinds (the enum value of the latter
+ * stays in the schema for those rows), while the two release kinds also go to
+ * the holder and are hidden for the owner by their payload.
  */
 export function isHiddenOwnerReservationNotification(
   row: Pick<Notification, "kind" | "payload">,
@@ -181,6 +221,9 @@ export async function projectNotification(
   now = new Date(),
 ): Promise<NotificationItem | null> {
   if (isHiddenOwnerReservationNotification(row)) return null;
+  // CLE-124/S9b-2: «Подарил» sends the owner one general e-mail and writes no
+  // in-app notification. The row stays addressable through its e-mail link.
+  if (row.kind === "GIFT_GIVEN" && channel === "inApp") return null;
   if (row.deliverAfter > now || !inChannel(row.kind, prefs, channel)) return null;
   const raw = row.payload;
   const payload = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
@@ -208,19 +251,18 @@ export async function projectNotification(
 
     const sameReservation = Boolean(gift?.reservedAt && row.reservationAt &&
       gift.reservedAt.getTime() === row.reservationAt.getTime());
-    const allowedName = payload.role === "owner" && sameReservation && gift?.holderVisibleToOwner &&
-      row.actorId && gift.reservedById === row.actorId &&
-      !(await relationshipReader.relationsBetween(row.recipientId, row.actorId)).blocked;
     const actionable = notificationIsActionable(row, gift);
-    const { holderName: _expiredName, ...rest } = payload;
-    void _expiredName;
+    // CLE-124/D-49: the holder's name never reaches the owner. A legacy payload
+    // may still carry `holderName` from before the change, so it is dropped here
+    // for every recipient rather than trusted.
+    const { holderName: _legacyHolderName, ...rest } = payload;
+    void _legacyHolderName;
     data = {
       ...rest,
       giftId: row.giftId,
       actionable,
       // The payload is historical. The purchase mark is live and holder-only.
       bought: row.kind === "RESERVATION_DUE" && actionable ? gift?.reservationBought : undefined,
-      ...(allowedName && gift?.reservedBy ? { holderName: gift.reservedBy.name } : {}),
     };
     if (visible && gift) {
       href = gift.list.ownerId === row.recipientId ? `/gifts/${row.giftId}` :

@@ -259,8 +259,8 @@ describe("fieldErrorCopy", () => {
       key: "errors.code.VALIDATION",
     });
     expect(fieldErrorCopy("quantity")).toEqual({
-      catalog: "giftForm",
-      key: "error.quantityLocked",
+      catalog: "common",
+      key: "errors.code.VALIDATION",
     });
   });
 

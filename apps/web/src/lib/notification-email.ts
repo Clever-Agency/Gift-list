@@ -145,13 +145,10 @@ export async function processNotificationEmails(
         const locale = negotiateLocale([current.recipient.locale]);
         const copy = getMessages(locale).notifications;
         const href = notificationEmailLink(baseUrl, item.id);
-        const firstLine = item.event.kind === "RESERVATION_OWNER_ASK" && !item.event.actionable
-          ? copy.stale
-          : notificationText(item.event, locale);
-        const holder = "holderName" in item.event && item.event.holderName
-          ? copy.holder.replace("{name}", item.event.holderName)
-          : null;
-        const lines = [firstLine, holder, notificationChangedFields(item.event, locale)]
+        const firstLine = notificationText(item.event, locale);
+        // CLE-124/D-49: no line names the holder to the owner; the projection
+        // already drops a legacy `holderName` from the payload.
+        const lines = [firstLine, notificationChangedFields(item.event, locale)]
           .filter(line => line !== null);
         // Projection may take time. Keep the last outbound request inside the
         // provider's key lifetime even on a delayed or resumed worker.

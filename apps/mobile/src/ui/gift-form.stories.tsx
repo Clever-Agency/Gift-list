@@ -130,57 +130,6 @@ export const Saving: Story = {
 };
 
 /**
- * A reserved wish of the edit screen (CLE-82/S23.3, Story 5.4): the visibility is
- * editable, the quantity keeps its stored value and stays frozen — «Один раз /
- * Можно дарить снова» changes only on an open wish — and the caption above the
- * fields says the holder gets a notification. At 360 px the caption wraps, not clips.
- */
-export const ReservedWish: Story = {
-  tags: ["!dev"],
-  args: {
-    submitLabel: "Сохранить",
-    quantityLocked: true,
-    notice: "Желание забронировано — бронировавший получит уведомление",
-    initialValues: {
-      title: "Плед из шерсти мериноса",
-      visibility: "FRIENDS",
-      quantity: "UNLIMITED",
-    },
-  },
-  globals: { viewport: { value: "w360" } },
-};
-
-/**
- * The same reserved wish with every value long: the caption, the labels and the
- * filled fields wrap at 360 px and the action row never squeezes the buttons.
- */
-export const ReservedWishLongValues: Story = {
-  tags: ["!dev"],
-  args: {
-    submitLabel: "Сохранить",
-    quantityLocked: true,
-    onCancel: noop,
-    notice: "Желание забронировано — бронировавший получит уведомление",
-    secondaryAction: <Button label="Удалить желание" variant="destructive" onPress={noop} />,
-    initialValues: {
-      title: "Плед из шерсти мериноса с длинной бахромой и подогревом",
-      description:
-        "Тёплый, 200 × 140, цвет — овсяный. Хочется именно такой, с бахромой по краю, чтобы укрываться на диване холодными вечерами.",
-      link: "https://market.example.com/пледы/меринос/овсяный-с-бахромой",
-      priceAmount: 1250050,
-      priceCurrency: "RUB",
-      visibility: "FRIENDS",
-      quantity: "UNLIMITED",
-      tags: [
-        { catalogId: "tag-home", label: "Дом" },
-        { text: "Для уютных вечеров вдвоём" },
-      ],
-    },
-  },
-  globals: { viewport: { value: "w360" } },
-};
-
-/**
  * A closed or archived wish is read-only (CLE-82/S23.3, product clarification t351u):
  * the stored values are visible, nothing can be changed, there is no save button, and
  * one caption covers both states.
@@ -190,7 +139,6 @@ export const ReadOnlyArchived: Story = {
   args: {
     submitLabel: "Сохранить",
     readOnly: true,
-    quantityLocked: true,
     onCancel: noop,
     initialValues: {
       title: "Плед из шерсти мериноса",

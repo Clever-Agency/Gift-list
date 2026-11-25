@@ -1,8 +1,7 @@
 import "server-only";
 
-import type { ActionResult, GiftReservationWarning } from "@gift-list/contracts";
+import type { ActionResult } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
-import { reservationWarning } from "@/domain/gift-status";
 import { auth } from "@/lib/auth";
 import { runGiftStatusTransaction } from "@/lib/gift-status-store";
 
@@ -16,8 +15,7 @@ const unauthenticated = {
  * Story 5.2 / AD-7: one body for every refusal a non-holder can get. An unknown
  * id, a wish held by somebody else, a reservation already released and a closed
  * wish are indistinguishable, so the route never hints that a reservation
- * existed or who held it. The owner's preflight and release share it for a
- * foreign or unknown id.
+ * existed or who held it.
  */
 const notFound = {
   ok: false as const,
@@ -67,67 +65,4 @@ export async function releaseMyReservation(
   if (outcome === "lost") return conflict;
 
   return { ok: true, data: { id: giftId } };
-}
-
-/**
- * Story 5.2 (FR-31, AD-12): the owner's preflight before releasing a foreign
- * reservation. It answers the warning and nothing else — no holder, no due
- * date, no phase and no `bought`.
- *
- * Story 5.4: the same answer serves the owner's confirmation of a **delete** of a
- * reserved wish — AD-7 lets the owner read the same warning for «снятие брони /
- * удаление подарка», so the delete has no route of its own. The delete only reads
- * this answer and decides on its own, so a stale `null` is harmless there too.
- *
- * Until Story 5.7 the only answer is `BOUGHT` or `null`; a wish that is no
- * longer `RESERVED` warns about nothing. The preflight only reads: a stale
- * `null` is harmless, because the release decides on its own, so the owner's
- * confirm does not break when the holder released the wish in the meantime.
- */
-export async function previewReservationRelease(
-  headers: Headers,
-  giftId: string,
-): Promise<ActionResult<GiftReservationWarning>> {
-  const session = await auth.api.getSession({ headers });
-  if (!session) return unauthenticated;
-
-  const stored = await prisma.gift.findFirst({
-    where: { id: giftId, list: { ownerId: session.user.id } },
-    select: { status: true, reservationBought: true },
-  });
-  if (!stored) return notFound;
-
-  return { ok: true, data: { warning: reservationWarning(stored) } };
-}
-
-/**
- * Story 5.2 (FR-17, AD-8, AD-9): the owner releases somebody else's reservation
- * in any phase through the same CAS and the same cleared columns as the holder.
- *
- * Ownership is part of the `where`, so a foreign id writes nothing. A lost CAS
- * is re-read inside the owner's own list: no row means the wish is foreign or
- * gone (NOT_FOUND), a row means somebody was faster — the holder released it or
- * the wish was closed (CONFLICT, the list is read again).
- */
-export async function releaseReservationAsOwner(
-  headers: Headers,
-  giftId: string,
-): Promise<ActionResult<{ id: string }>> {
-  const session = await auth.api.getSession({ headers });
-  if (!session) return unauthenticated;
-
-  const actorId = session.user.id;
-  const now = new Date();
-  const outcome = await runGiftStatusTransaction(function releaseOwnerReservation(service) {
-    return service.releaseReservationByOwner(giftId, actorId, now);
-  });
-  if (outcome === "success") return { ok: true, data: { id: giftId } };
-
-  const existing = await prisma.gift.findFirst({
-    where: { id: giftId, list: { ownerId: actorId } },
-    select: { status: true },
-  });
-  if (!existing) return notFound;
-
-  return conflict;
 }

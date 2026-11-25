@@ -5,12 +5,15 @@
 // release when a narrowed visibility takes the holder's access away.
 // Story 2.6: archiving an expired open wish and restoring it are writes in that
 // same adapter. Whether a day is already past is `isBeforeLocalToday`.
-// Story 5.6: the reservation timers of AD-9 (72 and 168 hours) and the owner's
-// keep answer. The rules are pure; the CAS writes live in the same adapter.
+// Story 5.6: the reservation timers of AD-9 (72 and 168 hours). The rules are
+// pure; the CAS writes live in the same adapter. CLE-124/D-49: the owner has no
+// answer to give — `AWAITING_OWNER` is an internal phase, and the release is
+// counted from `reservationDueAt`, not from the phase moment. CLE-124/S9b-1:
+// neither `bought` nor `GIVEN` protects a reservation from the timer — a holder
+// cannot keep a wish blocked forever by marking it or promising it.
 
 import { RESERVATION_PHASES } from "@gift-list/contracts";
 import type { GiftEditEventField } from "./gift-edit";
-import { defaultReserveDueOn, reservationDueAtFromDueOn } from "./reservation-due";
 import {
   VisibilityPolicy,
   type GiftVisibility,
@@ -54,7 +57,6 @@ export type ReserveGiftWrite = {
   readonly reservationDueAt: Date;
   readonly reservationTimeZone: string;
   readonly reservationPhaseAt: Date;
-  readonly holderVisibleToOwner: boolean;
   readonly holderVisibleToOthers: boolean;
 };
 
@@ -79,22 +81,44 @@ export type SetReservationBoughtWrite = {
   readonly value: boolean;
 };
 
-/** Story 5.5: both toggles of the holder's visibility arrive in one body. */
+/** Story 5.5: the holder's guest-visibility switch. CLE-124/D-49: the owner toggle is always `false`. */
 export type SetReservationVisibilityWrite = {
-  readonly holderVisibleToOwner: boolean;
   readonly holderVisibleToOthers: boolean;
 };
 
 /**
- * Story 5.5: the phases an extension may leave. `GIVEN` is not one of them — it
- * waits for the owner's confirmation (Story 5.7) and its expiry timers are
- * stopped, so an extension would silently restart them. The store's CAS uses this
- * exact list, so the pre-check and the write cannot drift apart.
+ * Story 5.5, CLE-124/S9b-2: the only phase an extension may leave. The deadline
+ * itself must also be in the future (`canExtendReservation` reads it), because a
+ * passed deadline forbids any extension. `GIVEN` and the internal `AWAITING_*`
+ * phases are refused on purpose: the first is the holder's promise, the others
+ * only exist after the deadline, and an extension would silently restart the
+ * cycle. The store's CAS uses this exact list plus `reservationDueAt > at`, so
+ * the pre-check and the write cannot drift apart.
  */
-export const EXTENDABLE_RESERVATION_PHASES = [
+export const EXTENDABLE_RESERVATION_PHASES = ["ACTIVE"] as const satisfies readonly ReservationPhase[];
+
+/**
+ * CLE-124/S9b-2 (Story 5.7): the phases «Подарил» may be pressed from. A live
+ * reservation of the actor in any of these moves to `GIVEN`; `GIVEN` itself is
+ * not listed, because a repeated press is answered as an idempotent success
+ * without a second write or e-mail.
+ */
+export const GIVABLE_RESERVATION_PHASES = [
   "ACTIVE",
   "AWAITING_GIVER",
   "AWAITING_OWNER",
+] as const satisfies readonly ReservationPhase[];
+
+
+/**
+ * CLE-124/S9b-1: the phases the timer releases from. `AWAITING_OWNER` is the
+ * ordinary end of the cycle, `GIVEN` is the holder's «Подарил» promise — and the
+ * promise does not protect the reservation either: after 168 hours past
+ * `reservationDueAt` both are released, so a wish cannot stay blocked forever.
+ */
+export const RELEASABLE_RESERVATION_PHASES = [
+  "AWAITING_OWNER",
+  "GIVEN",
 ] as const satisfies readonly ReservationPhase[];
 
 /** Only a live reservation is released; an OPEN or CLOSED row has nothing to clear. */
@@ -216,21 +240,20 @@ export function undoUntil(row: {
  * release performed by the delete really made (`RESERVED → OPEN`), because the
  * model has no "deleted" status.
  *
- * Story 5.6 reports the reservation cycle, where three of the four transitions
- * keep `RESERVED → RESERVED` and only the expiry release changes the status; the
- * `kind` is what tells those phase moves apart.
+ * Story 5.6 reports the reservation cycle: all its transitions keep
+ * `RESERVED → RESERVED` except the expiry release, so the `kind` is what tells
+ * the phase moves apart. CLE-124/D-49 removes the owner's release and keep:
+ * the owner never takes part in a reservation of their own wish.
  */
 export type GiftStatusEventKind =
   | "RESERVATION_RELEASED_BY_HOLDER"
-  | "RESERVATION_RELEASED_BY_OWNER"
   | "WISH_CLOSED"
   | "WISH_REOPENED"
   | "GIFT_EDITED"
   | "GIFT_DELETED"
   | "RESERVATION_GIVER_DEADLINE_PASSED"
-  | "RESERVATION_OWNER_ASKED"
-  | "RESERVATION_RELEASED_BY_EXPIRY"
-  | "RESERVATION_KEPT_BY_OWNER";
+  | "RESERVATION_OWNER_WINDOW_STARTED"
+  | "RESERVATION_RELEASED_BY_EXPIRY";
 
 /**
  * The payload of {@link RecordGiftEvent}: identifiers and the transition only —
@@ -244,8 +267,8 @@ export type GiftStatusEventKind =
  * holder released by `RESERVATION_RELEASED_BY_EXPIRY` (Story 5.6).
  *
  * Story 5.6: `actorId` is `null` for the timer transitions — cron is not a person
- * and a made-up `"system"` actor would blur the difference; keep carries the
- * owner, so the field is widened to `string | null` rather than sentinel-filled.
+ * and a made-up `"system"` actor would blur the difference; the field is widened
+ * to `string | null` rather than sentinel-filled.
  */
 export type GiftStatusEvent = {
   readonly giftId: string;
@@ -302,6 +325,26 @@ export interface GiftStatusTransaction {
     write: ExtendReservationWrite,
   ): Promise<"success" | "lost">;
   /**
+   * CLE-124/S9b-2 (Story 5.7): CAS `RESERVED` in one of
+   * {@link GIVABLE_RESERVATION_PHASES} of the actor → `GIVEN`, with the moment
+   * of the press. The wish status, the deadline and `bought` stay untouched. A
+   * repeated press in `GIVEN` answers `success` without a second write or the
+   * owner's general e-mail — the promise is not told twice.
+   */
+  markReservationGiven(
+    giftId: string,
+    actorId: string,
+    at: Date,
+  ): Promise<"success" | "lost">;
+  /**
+   * CLE-124/S9b-2 (Story 5.6): the holder's reminder 1–2 days before the
+   * deadline. Not a transition: nothing is written, only one in-app + e-mail
+   * row is queued, deduplicated by `kind + gift + dueAt`, so a repeated cron
+   * run and a holder's extension (a new deadline) behave as the story requires.
+   * The owner never receives it.
+   */
+  remindReservationDue(giftId: string, at: Date): Promise<"success" | "lost">;
+  /**
    * Story 5.5 (AD-9): CAS on any live reservation of the holder. Only
    * `reservationBought` changes, so clearing the mark in `AWAITING_OWNER` keeps
    * `reservationPhaseAt` and the request to the owner stays as it was.
@@ -328,16 +371,6 @@ export interface GiftStatusTransaction {
    * block the holder keeps control of the reservation (A-14, FR-25).
    */
   releaseReservationByHolder(
-    giftId: string,
-    actorId: string,
-    at: Date,
-  ): Promise<"success" | "lost">;
-  /**
-   * Story 5.2: CAS `RESERVED → OPEN` for the owner of the list the wish belongs
-   * to. The predicate carries ownership, so a foreign wish, a closed wish or a
-   * reservation already gone is left untouched and answers `lost`.
-   */
-  releaseReservationByOwner(
     giftId: string,
     actorId: string,
     at: Date,
@@ -379,21 +412,16 @@ export interface GiftStatusTransaction {
    */
   moveReservationToAwaitingOwner(giftId: string, at: Date): Promise<"success" | "lost">;
   /**
-   * Story 5.6 (AD-9): CAS `AWAITING_OWNER → OPEN` after the 168-hour window when
-   * the holder did not mark the gift as bought. The write is the same
-   * `RESERVATION_RELEASE_DATA` the 5.2 releases use.
+   * Story 5.6 (AD-9), CLE-124/D-49/S9b-1: CAS `RESERVED` in one of
+   * {@link RELEASABLE_RESERVATION_PHASES} → `OPEN` once the deadline itself is
+   * at least 168 hours old. Neither `bought` nor the `GIVEN` phase protects the
+   * reservation: a holder who marked the gift as bought or promised it still
+   * loses it after the window, so no wish stays blocked forever. A row moved to
+   * the phase by step 2 of the same run carries `phaseAt = at` and is not
+   * released in that run. The write is the same `RESERVATION_RELEASE_DATA` the
+   * 5.2 release uses.
    */
   releaseReservationByExpiry(giftId: string, at: Date): Promise<"success" | "lost">;
-  /**
-   * Story 5.6 (AD-9): CAS `AWAITING_OWNER → ACTIVE` for the owner of the list.
-   * Only the phase, its moment and the deadline change; the zone snapshot, the
-   * `bought` mark and the status stay.
-   */
-  keepReservationByOwner(
-    giftId: string,
-    actorId: string,
-    write: KeepReservationWrite,
-  ): Promise<"success" | "lost">;
 }
 
 /** Only a single open wish can be reserved; unlimited gifts are rejected upstream. */
@@ -411,21 +439,41 @@ export type ReservationAttributeRow = {
   readonly reservationPhase: ReservationPhase | null;
 };
 
+/** CLE-124/S9b-2: an extension also reads the deadline it must not pass. */
+export type ReservationExtendRow = ReservationAttributeRow & {
+  readonly reservationDueAt: Date | null;
+};
+
 /**
- * Story 5.5: may this reservation be extended? Only a live `RESERVED` row in one
- * of {@link EXTENDABLE_RESERVATION_PHASES}; `GIVEN` refuses on purpose, and an
- * incomplete row (no phase) is refused too. The server re-checks the same rule in
- * the CAS, so a stale answer can only lose the race, never write.
+ * Story 5.5, CLE-124/S9b-2: may this reservation be extended? Only a live
+ * `RESERVED` row in `ACTIVE` whose `reservationDueAt` is still in the future —
+ * once the deadline has passed, extending is forbidden and the reservation
+ * waits for its release 168 hours later. `now == dueAt` is already too late: the
+ * timer's step 1 moves the row at exactly that moment. The server re-checks the
+ * same rule in the CAS, so a stale answer can only lose the race, never write.
  */
-export function canExtendReservation(row: ReservationAttributeRow): boolean {
+export function canExtendReservation(row: ReservationExtendRow, now: Date): boolean {
   if (row.status !== "RESERVED" || row.reservationPhase === null) return false;
-  return (EXTENDABLE_RESERVATION_PHASES as readonly ReservationPhase[]).includes(
+  if (!(EXTENDABLE_RESERVATION_PHASES as readonly ReservationPhase[]).includes(row.reservationPhase)) {
+    return false;
+  }
+  return row.reservationDueAt !== null && row.reservationDueAt.getTime() > now.getTime();
+}
+
+/**
+ * CLE-124/S9b-2 (Story 5.7): may the holder mark the reservation as given? Any
+ * live `RESERVED` row of the actor, whatever its phase. `GIVEN` is omitted here
+ * on purpose: the store answers a repeated press as an idempotent success.
+ */
+export function canMarkReservationGiven(row: ReservationAttributeRow): boolean {
+  if (row.status !== "RESERVED" || row.reservationPhase === null) return false;
+  return (GIVABLE_RESERVATION_PHASES as readonly ReservationPhase[]).includes(
     row.reservationPhase,
   );
 }
 
 /**
- * Story 5.5 (AD-9): `bought` and the two visibility toggles are attributes of any
+ * Story 5.5 (AD-9): `bought` and the guests' visibility switch are attributes of any
  * live reservation — every phase, `GIVEN` included, may change them. Only the
  * status limits them; an `OPEN` or `CLOSED` row is not a reservation anymore.
  */
@@ -434,15 +482,24 @@ export function canSetReservationAttributes(row: GiftStatusRow): boolean {
 }
 
 /**
- * Story 5.6 (AD-9): the two windows of the reservation cycle. After
- * `reservationDueAt` has passed the giver has 72 hours before the owner gets the
- * question; once asked, the owner has 168 hours to answer before the reservation
- * is released. Both are counted from `reservationPhaseAt` (ARCH-A15), never from
- * `reservationDueAt`, so a skipped run postpones a transition instead of letting
- * it jump over the owner's window.
+ * Story 5.6 (AD-9), CLE-124/D-49: the two windows of the reservation cycle.
+ * After `reservationDueAt` has passed, the giver has 72 hours (from the run that
+ * noticed the deadline) before the wish enters the internal `AWAITING_OWNER`
+ * phase; 168 hours after `reservationDueAt` itself the reservation is released,
+ * whatever phase it is in and whether or not the holder marked «Купил». The
+ * release window is counted from the deadline (FR-29), never from
+ * `reservationPhaseAt`, so the internal phase is only a marker and a skipped run
+ * cannot restart the release window.
  */
 export const RESERVATION_GIVER_WINDOW_MS = 72 * 60 * 60 * 1000;
 export const RESERVATION_OWNER_WINDOW_MS = 168 * 60 * 60 * 1000;
+
+/**
+ * CLE-124/S9b-2 (Story 5.6): the holder's reminder window before the deadline.
+ * A run reminds about every `ACTIVE` reservation whose `reservationDueAt` falls
+ * within the next 48 hours; the deadline itself is excluded (step 1 takes it).
+ */
+export const RESERVATION_REMINDER_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 /**
  * The columns every timer predicate reads: a phase of a live, non-archived
@@ -460,14 +517,18 @@ export type ReservationDueRow = ReservationPhaseRow & {
   readonly reservationDueAt: Date | null;
 };
 
-/** Steps 2 and 3 read the moment the current phase started. */
+/** Step 2 reads the moment the current phase started. */
 export type ReservationPhaseMomentRow = ReservationPhaseRow & {
   readonly reservationPhaseAt: Date | null;
 };
 
-/** Step 3 also refuses a gift the holder already marked as bought. */
-export type ReservationReleaseRow = ReservationPhaseMomentRow & {
-  readonly reservationBought: boolean;
+/**
+ * Step 3 reads the deadline and the phase moment: the deadline opens the
+ * window, the moment keeps a row moved by step 2 of the same run out of it.
+ * CLE-124/S9b-1: `bought` is not read anymore — it no longer protects the row.
+ */
+export type ReservationReleaseRow = ReservationDueRow & {
+  readonly reservationPhaseAt: Date | null;
 };
 
 function hasLivePhase(row: ReservationPhaseRow, phase: ReservationPhase): boolean {
@@ -475,6 +536,18 @@ function hasLivePhase(row: ReservationPhaseRow, phase: ReservationPhase): boolea
     row.status === "RESERVED" &&
     row.archivedAt === null &&
     row.reservationPhase === phase
+  );
+}
+
+/** CLE-124/S9b-1: either of the two phases the timer may release from. */
+function hasReleasablePhase(row: ReservationPhaseRow): boolean {
+  return (
+    row.status === "RESERVED" &&
+    row.archivedAt === null &&
+    row.reservationPhase !== null &&
+    (RELEASABLE_RESERVATION_PHASES as readonly ReservationPhase[]).includes(
+      row.reservationPhase,
+    )
   );
 }
 
@@ -505,63 +578,23 @@ export function canAskOwner(row: ReservationPhaseMomentRow, now: Date): boolean 
 }
 
 /**
- * Story 5.6 (AD-9), step 3: may the timer release the reservation by expiry?
- * Only `RESERVED/AWAITING_OWNER` whose question is at least 168 hours old and
- * that the holder did not mark as bought — «Купил» always wins over the timer.
+ * Story 5.6 (AD-9), step 3, CLE-124/D-49/S9b-1: may the timer release the
+ * reservation by expiry? Only a live `RESERVED` row in one of
+ * {@link RELEASABLE_RESERVATION_PHASES} whose `reservationDueAt` is at least 168
+ * hours old. `bought` and `GIVEN` do not protect the row: «Купил» is the
+ * holder's own note and «Подарил» a promise, and neither may keep a wish blocked
+ * forever. A row whose phase started at `now` (step 2 of the same run) is
+ * refused: one run moves a row one step, and the release waits for the next run.
  */
 export function canReleaseByExpiry(row: ReservationReleaseRow, now: Date): boolean {
   return (
-    hasLivePhase(row, "AWAITING_OWNER") &&
-    !row.reservationBought &&
+    hasReleasablePhase(row) &&
+    row.reservationDueAt !== null &&
+    row.reservationDueAt.getTime() <= now.getTime() - RESERVATION_OWNER_WINDOW_MS &&
     row.reservationPhaseAt !== null &&
-    row.reservationPhaseAt.getTime() <= now.getTime() - RESERVATION_OWNER_WINDOW_MS
+    row.reservationPhaseAt.getTime() < now.getTime()
   );
 }
-
-/**
- * Story 5.6 (AD-9): may the owner answer «Не получал, оставить бронь»? Only a
- * live `RESERVED/AWAITING_OWNER` row of the owner's own list; `GIVEN` waits for
- * Story 5.7 and every other phase has nothing to keep.
- */
-export function canKeepReservation(row: ReservationPhaseRow): boolean {
-  return hasLivePhase(row, "AWAITING_OWNER");
-}
-
-/**
- * Story 5.6 (AD-9, ARCH-A14): the deadline a keep writes — the exclusive end of
- * the calendar day «today + 7» in the zone saved with the reservation. The zone
- * is the holder's snapshot and is not re-read from the owner; a blank or unknown
- * snapshot falls back to UTC instead of throwing on an anomalous row.
- */
-export function keptReservationDueAt(now: Date, timeZone: string | null): Date {
-  const zone = zonedOrUtc(timeZone);
-  return reservationDueAtFromDueOn(defaultReserveDueOn(zone, now), zone);
-}
-
-/**
- * The same fallback as `calendar-day.ts` and `lib/time-zone.ts`: a zone the
- * runtime cannot resolve means UTC. Kept local so the domain stays free of any
- * other layer; the store never writes the resolved value back.
- */
-function zonedOrUtc(timeZone: string | null): string {
-  if (timeZone === null || timeZone.trim() === "") return "UTC";
-  try {
-    Intl.DateTimeFormat("en-US", { timeZone }).format(0);
-    return timeZone;
-  } catch {
-    return "UTC";
-  }
-}
-
-/**
- * Story 5.6 (AD-9): the owner's keep writes the phase back to `ACTIVE`, its
- * moment and the new deadline only. `reservationTimeZone` (the holder's snapshot),
- * `reservationBought` (the holder's mark) and `status` are deliberately absent.
- */
-export type KeepReservationWrite = {
-  readonly dueAt: Date;
-  readonly at: Date;
-};
 
 export type HolderAccessInput = {
   /** Current status; only `RESERVED` can lose a reservation. */

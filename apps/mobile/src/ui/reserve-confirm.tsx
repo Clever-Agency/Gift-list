@@ -32,8 +32,12 @@ export function defaultDueOn(timeZone: string, now = new Date()): string {
 }
 
 /**
- * Reserve confirm (`EXPERIENCE.md` → Reserve confirm): date and two visibility
- * toggles in a bottom sheet on compact widths and a dialog otherwise.
+ * Reserve confirm (`EXPERIENCE.md` → Reserve confirm): the date and the
+ * «Показать другим, кто берёт» switch in a bottom sheet on compact widths and a
+ * dialog otherwise. CLE-124/D-49 removed the «Показать владельцу» switch: a
+ * reservation is always a surprise for the owner. CLE-124/S9b-1 removed the
+ * «Купил» hint: the timer releases the reservation after the window even with
+ * that mark, so the hint promised something that no longer holds.
  */
 export function ReserveConfirm({
   open,
@@ -46,10 +50,10 @@ export function ReserveConfirm({
   onConfirm,
 }: ReserveConfirmProps) {
   const t = useTranslations("app.gift.reserveConfirm");
+  const tReservations = useTranslations("app.reservations");
   const locale = useLocale();
   const compact = !useMedia().medium;
   const [dueOn, setDueOn] = useState(() => defaultDueOn(timeZone));
-  const [holderVisibleToOwner, setHolderVisibleToOwner] = useState(false);
   const [holderVisibleToOthers, setHolderVisibleToOthers] = useState(true);
 
   const minDue = useMemo(function computeMin() {
@@ -74,38 +78,34 @@ export function ReserveConfirm({
   function handleConfirm() {
     onConfirm({
       dueOn,
-      holderVisibleToOwner,
       holderVisibleToOthers,
     });
   }
 
   const body = (
     <YStack gap="$4">
-      <ReserveDateField
-        dueOn={dueOn}
-        minDue={minDue}
-        maxDue={maxDue}
-        label={t("dueLabel", { date: dueLabelDate })}
-        hint={t("dueHint")}
-        caption={t("dueCaption", { max: maxCaption })}
-        dateError={dateError}
-        onChange={setDueOn}
-      />
-      <Switch
-        label={t("showOwner")}
-        checked={holderVisibleToOwner}
-        disabled={busy}
-        onChange={setHolderVisibleToOwner}
-      />
+      <YStack gap="$1">
+        <ReserveDateField
+          dueOn={dueOn}
+          minDue={minDue}
+          maxDue={maxDue}
+          label={t("dueLabel", { date: dueLabelDate })}
+          hint={t("dueHint")}
+          caption={t("dueCaption", { max: maxCaption })}
+          dateError={dateError}
+          onChange={setDueOn}
+        />
+        {/* CLE-124/S9b-3 (§10.3): the line under the date names the release run-off. */}
+        <Text kind="caption" tone="muted">
+          {tReservations("dueNote")}
+        </Text>
+      </YStack>
       <Switch
         label={t("showOthers")}
         checked={holderVisibleToOthers}
         disabled={busy}
         onChange={setHolderVisibleToOthers}
       />
-      <Text kind="caption" tone="muted">
-        {t("boughtHint")}
-      </Text>
     </YStack>
   );
 

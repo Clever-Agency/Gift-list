@@ -25,6 +25,7 @@ const deleteMany = vi.fn();
 const queryRaw = vi.fn();
 const reservedAt = new Date("2026-11-10T12:00:00Z");
 const reservationPhaseAt = new Date("2026-11-11T12:00:00Z");
+const reservationDueAt = new Date("2026-11-09T12:00:00Z");
 
 function transactionClient(): Prisma.TransactionClient {
   return { $queryRaw: queryRaw, gift: { updateMany, findUnique }, notification: { createMany, deleteMany } } as unknown as Prisma.TransactionClient;
@@ -70,6 +71,7 @@ beforeEach(() => {
     reservedById: "u2",
     reservedAt,
     reservationPhaseAt,
+    reservationDueAt,
     reservationTimeZone: "UTC",
     title: "Плед",
     titleSnapshotOnReserve: "Плед",
@@ -114,7 +116,6 @@ describe("giftStatusTransaction.releaseReservation", () => {
       reservationDueAt: new Date("2026-06-22T00:00:00.000Z"),
       reservationTimeZone: "UTC",
       reservationPhaseAt: at,
-      holderVisibleToOwner: false,
       holderVisibleToOthers: true,
     };
 
@@ -180,51 +181,22 @@ describe("the Story 5.2 releases", () => {
     info.mockRestore();
   });
 
-  it("lets the owner release with the ownership predicate and logs one audit line", async () => {
+  it("writes and logs nothing when the holder release loses the CAS", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const at = new Date("2026-11-19T11:30:00.000Z");
+    updateMany.mockResolvedValue({ count: 0 });
 
-    const outcome = await giftStatusTransaction(transactionClient()).releaseReservationByOwner(
+    const outcome = await giftStatusTransaction(transactionClient()).releaseReservationByHolder(
       "g1",
-      "u1",
-      at,
+      "u2",
+      new Date("2026-11-19T10:00:00.000Z"),
     );
 
-    expect(outcome).toBe("success");
-    expect(updateMany).toHaveBeenCalledWith({
-      where: { id: "g1", status: "RESERVED", reservedAt, list: { ownerId: "u1" } },
-      data: RESERVATION_RELEASE_DATA,
-    });
-    expectOneAuditLine(info.mock.calls, {
-      event: "gift.status",
-      giftId: "g1",
-      actorId: "u1",
-      from: "RESERVED",
-      to: "OPEN",
-      at: "2026-11-19T11:30:00.000Z",
-    });
+    expect(outcome).toBe("lost");
+    expect(updateMany).toHaveBeenCalledTimes(1);
+    expect(info).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
     info.mockRestore();
   });
-
-  it.each(["releaseReservationByHolder", "releaseReservationByOwner"] as const)(
-    "writes and logs nothing when %s loses the CAS",
-    async (method) => {
-      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-      updateMany.mockResolvedValue({ count: 0 });
-
-      const outcome = await giftStatusTransaction(transactionClient())[method](
-        "g1",
-        "u2",
-        new Date("2026-11-19T10:00:00.000Z"),
-      );
-
-      expect(outcome).toBe("lost");
-      expect(updateMany).toHaveBeenCalledTimes(1);
-      expect(info).not.toHaveBeenCalled();
-      expect(createMany).not.toHaveBeenCalled();
-      info.mockRestore();
-    },
-  );
 
   it("counts a CAS that touched two rows as lost and keeps the log silent", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -407,7 +379,7 @@ describe("the Story 5.5 reservation attributes", () => {
   const at = new Date("2026-11-20T09:00:00.000Z");
   const dueAt = new Date("2026-12-08T21:00:00.000Z");
 
-  it("extends with the holder predicate and the extendable phases in one CAS", async () => {
+  it("extends with the holder predicate, the ACTIVE phase and a future deadline in one CAS", async () => {
     const outcome = await giftStatusTransaction(transactionClient()).extendReservation(
       "g1",
       actorId,
@@ -420,7 +392,9 @@ describe("the Story 5.5 reservation attributes", () => {
         id: "g1",
         status: "RESERVED",
         reservedById: actorId,
-        reservationPhase: { in: ["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER"] },
+        // CLE-124/S9b-2: only ACTIVE, and only before the deadline.
+        reservationPhase: { in: ["ACTIVE"] },
+        reservationDueAt: { gt: at },
       },
       data: {
         reservationDueAt: dueAt,
@@ -463,17 +437,17 @@ describe("the Story 5.5 reservation attributes", () => {
     expect(Object.keys(data)).toEqual(["reservationBought"]);
   });
 
-  it("writes only the two toggles, so the phase, its moment and bought stay", async () => {
+  it("writes the guests' toggle and always false for the owner, so the phase, its moment and bought stay", async () => {
     const outcome = await giftStatusTransaction(transactionClient()).setReservationVisibility(
       "g1",
       actorId,
-      { holderVisibleToOwner: true, holderVisibleToOthers: false },
+      { holderVisibleToOthers: false },
     );
 
     expect(outcome).toBe("success");
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "g1", status: "RESERVED", reservedById: actorId },
-      data: { holderVisibleToOwner: true, holderVisibleToOthers: false },
+      data: { holderVisibleToOwner: false, holderVisibleToOthers: false },
     });
     const { data } = updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> };
     expect(Object.keys(data).sort()).toEqual(["holderVisibleToOthers", "holderVisibleToOwner"]);
@@ -491,7 +465,6 @@ describe("the Story 5.5 reservation attributes", () => {
     await expect(tx.setReservationBought("g1", actorId, { value: false })).resolves.toBe("lost");
     await expect(
       tx.setReservationVisibility("g1", actorId, {
-        holderVisibleToOwner: false,
         holderVisibleToOthers: true,
       }),
     ).resolves.toBe("lost");
@@ -505,11 +478,188 @@ describe("the Story 5.5 reservation attributes", () => {
     await tx.extendReservation("g1", actorId, { dueAt, timeZone: "UTC", at });
     await tx.setReservationBought("g1", actorId, { value: true });
     await tx.setReservationVisibility("g1", actorId, {
-      holderVisibleToOwner: true,
       holderVisibleToOthers: true,
     });
 
     expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+});
+
+/**
+ * CLE-124/S9b-2 (Story 5.7): «Подарил» and the reminder before the deadline.
+ */
+describe("CLE-124/S9b-2: «Подарил» and the deadline reminder", () => {
+  const at = new Date("2026-11-20T09:00:00.000Z");
+  const snapshot = {
+    id: "g1",
+    status: "RESERVED",
+    archivedAt: null,
+    reservedById: "u2",
+    reservedAt,
+    reservationPhase: "ACTIVE",
+    reservationPhaseAt,
+    reservationDueAt: new Date("2026-12-01T00:00:00.000Z"),
+    reservationTimeZone: "UTC",
+    title: "Плед",
+    titleSnapshotOnReserve: "Плед",
+    list: { ownerId: "u1" },
+  };
+
+  it("moves a live reservation to GIVEN with one CAS and queues the owner's general letter", async () => {
+    findUnique.mockResolvedValue(snapshot);
+    const outcome = await giftStatusTransaction(transactionClient()).markReservationGiven(
+      "g1",
+      "u2",
+      at,
+    );
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "g1",
+        status: "RESERVED",
+        reservedById: "u2",
+        reservedAt,
+        reservationPhase: { in: ["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER"] },
+      },
+      data: { reservationPhase: "GIVEN", reservationPhaseAt: at },
+    });
+    // The wish status, the deadline and `bought` are not touched by the write.
+    const { data } = updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(Object.keys(data).sort()).toEqual(["reservationPhase", "reservationPhaseAt"]);
+
+    // No title, no gift id and no holder reach the owner's letter.
+    expect(createMany).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        kind: "GIFT_GIVEN",
+        recipientId: "u1",
+        emailRequired: true,
+        payload: {},
+      }),
+      skipDuplicates: true,
+    });
+    const stored = (createMany.mock.calls[0]?.[0] as { data: Record<string, unknown> }).data;
+    expect(stored).not.toHaveProperty("giftId");
+    expect(stored).not.toHaveProperty("actorId");
+    const payload = (createMany.mock.calls[0]?.[0] as { data: { payload: unknown } }).data.payload;
+    expect(JSON.stringify(payload)).not.toContain("Плед");
+    expect(JSON.stringify(payload)).not.toContain("u2");
+  });
+
+  it("answers a repeated given in GIVEN with success and sends nothing again", async () => {
+    findUnique.mockResolvedValue({ ...snapshot, reservationPhase: "GIVEN" });
+
+    await expect(
+      giftStatusTransaction(transactionClient()).markReservationGiven("g1", "u2", at),
+    ).resolves.toBe("success");
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("answers success when two presses race and the other one already wrote GIVEN", async () => {
+    findUnique
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce({ ...snapshot, reservationPhase: "GIVEN" });
+    updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      giftStatusTransaction(transactionClient()).markReservationGiven("g1", "u2", at),
+    ).resolves.toBe("success");
+
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses somebody else's reservation, a released one and a closed wish", async () => {
+    const tx = giftStatusTransaction(transactionClient());
+    findUnique.mockResolvedValue({ ...snapshot, reservedById: "other" });
+    await expect(tx.markReservationGiven("g1", "u2", at)).resolves.toBe("lost");
+    findUnique.mockResolvedValue({ ...snapshot, status: "OPEN", reservedById: null });
+    await expect(tx.markReservationGiven("g1", "u2", at)).resolves.toBe("lost");
+    findUnique.mockResolvedValue(null);
+    await expect(tx.markReservationGiven("g1", "u2", at)).resolves.toBe("lost");
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("queues the holder's reminder 1–2 days before the deadline, never the owner's", async () => {
+    const dueAt = new Date(at.getTime() + 24 * 60 * 60 * 1000);
+    findUnique.mockResolvedValue({ ...snapshot, reservationDueAt: dueAt });
+
+    await expect(
+      giftStatusTransaction(transactionClient()).remindReservationDue("g1", at),
+    ).resolves.toBe("success");
+
+    expect(updateMany).not.toHaveBeenCalled();
+    const { data } = createMany.mock.calls[0]?.[0] as {
+      data: { kind: string; recipientId: string; eventKey: string; payload: Record<string, unknown> };
+    };
+    expect(data.kind).toBe("RESERVATION_DUE");
+    expect(data.recipientId).toBe("u2");
+    expect(data.eventKey).toBe(`RESERVATION_DUE:reminder:g1:${dueAt.toISOString()}`);
+    expect(data.payload).toMatchObject({
+      role: "holder",
+      dueAt: dueAt.toISOString(),
+      timeZone: "UTC",
+      reminder: true,
+    });
+  });
+
+  it("does not remind at the deadline, outside the 48-hour window, in GIVEN or in an archive", async () => {
+    const tx = giftStatusTransaction(transactionClient());
+    const outside = new Date(at.getTime() + 49 * 60 * 60 * 1000);
+    findUnique.mockResolvedValue({ ...snapshot, reservationDueAt: at });
+    await expect(tx.remindReservationDue("g1", at)).resolves.toBe("lost");
+    findUnique.mockResolvedValue({ ...snapshot, reservationDueAt: outside });
+    await expect(tx.remindReservationDue("g1", at)).resolves.toBe("lost");
+    findUnique.mockResolvedValue({ ...snapshot, reservationPhase: "GIVEN" });
+    await expect(tx.remindReservationDue("g1", at)).resolves.toBe("lost");
+    findUnique.mockResolvedValue({ ...snapshot, archivedAt: at });
+    await expect(tx.remindReservationDue("g1", at)).resolves.toBe("lost");
+
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps one event key per deadline and starts a new one after an extension", async () => {
+    const tx = giftStatusTransaction(transactionClient());
+    const firstDue = new Date(at.getTime() + 24 * 60 * 60 * 1000);
+    findUnique.mockResolvedValue({ ...snapshot, reservationDueAt: firstDue });
+    await tx.remindReservationDue("g1", at);
+    await tx.remindReservationDue("g1", new Date(at.getTime() + 60 * 60 * 1000));
+
+    const secondDue = new Date(at.getTime() + 48 * 60 * 60 * 1000);
+    findUnique.mockResolvedValue({ ...snapshot, reservationDueAt: secondDue });
+    await tx.remindReservationDue("g1", at);
+
+    expect(createMany.mock.calls.map(([args]) => (args as { data: { eventKey: string } }).data.eventKey)).toEqual([
+      `RESERVATION_DUE:reminder:g1:${firstDue.toISOString()}`,
+      `RESERVATION_DUE:reminder:g1:${firstDue.toISOString()}`,
+      `RESERVATION_DUE:reminder:g1:${secondDue.toISOString()}`,
+    ]);
+  });
+
+  it("gives the reminder and the deadline notice at the same moment two different keys", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const dueAt = new Date(at.getTime() + 24 * 60 * 60 * 1000);
+    findUnique.mockResolvedValue({ ...snapshot, reservationDueAt: dueAt });
+    const tx = giftStatusTransaction(transactionClient());
+
+    // The reminder lands earlier, anchored on the deadline; the timer then sees
+    // `at == dueAt` and writes «Срок истёк» for the same gift and the same date.
+    await tx.remindReservationDue("g1", at);
+    await tx.moveReservationToAwaitingGiver("g1", dueAt);
+
+    const keys = createMany.mock.calls.map(
+      ([args]) => (args as { data: { eventKey: string; kind: string } }).data,
+    );
+    expect(keys.map((data) => data.kind)).toEqual(["RESERVATION_DUE", "RESERVATION_DUE"]);
+    expect(keys.map((data) => data.eventKey)).toEqual([
+      `RESERVATION_DUE:reminder:g1:${dueAt.toISOString()}`,
+      `RESERVATION_DUE:g1:${dueAt.toISOString()}`,
+    ]);
+    expect(new Set(keys.map((data) => data.eventKey)).size).toBe(2);
     info.mockRestore();
   });
 });
@@ -562,12 +712,11 @@ describe("recordGiftEvent of Story 5.4", () => {
     info.mockRestore();
   });
 
-  it("keeps the four lines of 5.2/5.3 on `gift.status` and without the new keys", () => {
+  it("keeps the three lines of 5.2/5.3 on `gift.status` and without the new keys", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     const transitions = [
       ["RESERVATION_RELEASED_BY_HOLDER", "RESERVED", "OPEN"],
-      ["RESERVATION_RELEASED_BY_OWNER", "RESERVED", "OPEN"],
       ["WISH_CLOSED", "OPEN", "CLOSED"],
       ["WISH_REOPENED", "CLOSED", "RESERVED"],
     ] as const;
@@ -931,7 +1080,7 @@ describe("the Story 5.6 timer CAS writes", () => {
     // CLE-124: the owner is never asked, so the timer writes no row here.
     expect(createMany).not.toHaveBeenCalled();
     expectOneAuditLine(info.mock.calls, {
-      event: "gift.reservation.owner-asked",
+      event: "gift.reservation.owner-window-started",
       giftId: "g1",
       actorId: null,
       from: "RESERVED",
@@ -941,7 +1090,7 @@ describe("the Story 5.6 timer CAS writes", () => {
     info.mockRestore();
   });
 
-  it("releases AWAITING_OWNER after 168 hours with the 5.2 clear and `bought = false` in the CAS", async () => {
+  it("releases AWAITING_OWNER or GIVEN when the deadline is 168 hours old, with the 5.2 clear and no `bought` in the CAS", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     const outcome = await giftStatusTransaction(transactionClient()).releaseReservationByExpiry(
@@ -967,10 +1116,14 @@ describe("the Story 5.6 timer CAS writes", () => {
         id: "g1",
         status: "RESERVED",
         archivedAt: null,
-        reservationPhase: "AWAITING_OWNER",
-        reservationBought: false,
+        // CLE-124/S9b-1: both phases of the release, and no `bought` condition.
+        reservationPhase: { in: ["AWAITING_OWNER", "GIVEN"] },
         reservedAt,
-        reservationPhaseAt: { equals: reservationPhaseAt, lte: new Date(at.getTime() - OWNER_WINDOW_MS) },
+        reservationDueAt: {
+          equals: reservationDueAt,
+          lte: new Date(at.getTime() - OWNER_WINDOW_MS),
+        },
+        reservationPhaseAt: { lt: at },
       },
       data: RESERVATION_RELEASE_DATA,
     });
@@ -1022,78 +1175,18 @@ describe("the Story 5.6 timer CAS writes", () => {
     info.mockRestore();
   });
 
-  it("keeps the reservation for its owner and writes only the phase, its moment and the deadline", async () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const dueAt = new Date("2026-11-28T00:00:00.000Z");
-
-    findUnique.mockImplementationOnce(async function readCommittedFields() {
-      const { data } = updateMany.mock.calls[0]![0];
-      return {
-        id: "g1", reservedById: "u2", reservedAt, list: { ownerId: "u1" },
-        reservationDueAt: data.reservationDueAt, reservationPhaseAt: data.reservationPhaseAt,
-        titleSnapshotOnReserve: "Плед", reservationTimeZone: "Europe/Minsk",
-      };
-    });
-    const outcome = await giftStatusTransaction(transactionClient()).keepReservationByOwner(
-      "g1",
-      "u1",
-      { dueAt, at },
-    );
-
-    expect(outcome).toBe("success");
-    expect(updateMany).toHaveBeenCalledWith({
-      where: {
-        id: "g1",
-        status: "RESERVED",
-        archivedAt: null,
-        reservationPhase: "AWAITING_OWNER",
-        list: { ownerId: "u1" },
-      },
-      data: { reservationPhase: "ACTIVE", reservationPhaseAt: at, reservationDueAt: dueAt },
-    });
-    const { data } = updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> };
-    expect(Object.keys(data).sort()).toEqual([
-      "reservationDueAt",
-      "reservationPhase",
-      "reservationPhaseAt",
-    ]);
-    expect(data).not.toHaveProperty("reservationTimeZone");
-    expect(data).not.toHaveProperty("reservationBought");
-    expect(data).not.toHaveProperty("status");
-    expect(createMany).toHaveBeenCalledExactlyOnceWith({
-      skipDuplicates: true,
-      data: expect.objectContaining({
-        kind: "RESERVATION_KEPT_BY_OWNER", recipientId: "u2", emailRequired: false,
-        payload: { role: "holder", titleSnapshot: "Плед", dueAt: dueAt.toISOString(), timeZone: "Europe/Minsk" },
-      }),
-    });
-    expectOneAuditLine(info.mock.calls, {
-      event: "gift.reservation.kept-by-owner",
-      giftId: "g1",
-      actorId: "u1",
-      from: "RESERVED",
-      to: "RESERVED",
-      at: at.toISOString(),
-    });
-    info.mockRestore();
-  });
-
   it.each([0, 2])(
-    "writes and logs nothing when any of the four CAS writes touches %i rows",
+    "writes and logs nothing when any of the three CAS writes touches %i rows",
     async (count) => {
       const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
       updateMany.mockResolvedValue({ count });
       const service = giftStatusTransaction(transactionClient());
-      const dueAt = new Date("2026-11-28T00:00:00.000Z");
 
       await expect(service.moveReservationToAwaitingGiver("g1", at)).resolves.toBe("lost");
       await expect(service.moveReservationToAwaitingOwner("g1", at)).resolves.toBe("lost");
       await expect(service.releaseReservationByExpiry("g1", at)).resolves.toBe("lost");
-      await expect(
-        service.keepReservationByOwner("g1", "u1", { dueAt, at }),
-      ).resolves.toBe("lost");
 
-      expect(updateMany).toHaveBeenCalledTimes(4);
+      expect(updateMany).toHaveBeenCalledTimes(3);
       expect(createMany).not.toHaveBeenCalled();
       expect(info).not.toHaveBeenCalled();
       info.mockRestore();
@@ -1120,7 +1213,6 @@ describe("CLE-124: the owner is never notified about a reservation", () => {
       reservationDueAt: at,
       reservationTimeZone: "UTC",
       reservationPhaseAt: at,
-      holderVisibleToOwner: false,
       holderVisibleToOthers: true,
     })).resolves.toBe("success");
     await expect(service.releaseReservationByHolder("g1", "u2", at)).resolves.toBe("success");
@@ -1145,6 +1237,26 @@ describe("CLE-124: the owner is never notified about a reservation", () => {
       const row = args.data as { kind: string; recipientId: string };
       return `${row.kind}:${row.recipientId}`;
     })).toEqual(["RESERVATION_AUTO_RELEASE:u2"]);
+    info.mockRestore();
+  });
+
+  /**
+   * The whole cycle in one place: the holder gets the deadline reminder and the
+   * automatic release, and the owner gets nothing at any step (D-49).
+   */
+  it("writes exactly the holder's two rows over the whole cycle and nothing for the owner", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const service = giftStatusTransaction(transactionClient());
+
+    await expect(service.moveReservationToAwaitingGiver("g1", at)).resolves.toBe("success");
+    await expect(service.moveReservationToAwaitingOwner("g1", at)).resolves.toBe("success");
+    await expect(service.releaseReservationByExpiry("g1", at)).resolves.toBe("success");
+
+    // u1 owns g1 and u2 holds it: an owner row would carry `recipientId: "u1"`.
+    expect(createMany.mock.calls.map(([args]) => {
+      const row = args.data as { kind: string; recipientId: string };
+      return `${row.kind}:${row.recipientId}`;
+    })).toEqual(["RESERVATION_DUE:u2", "RESERVATION_AUTO_RELEASE:u2"]);
     info.mockRestore();
   });
 });
@@ -1173,7 +1285,7 @@ describe("recordGiftEvent of Story 5.6", () => {
       from: "RESERVED",
       to: "RESERVED",
       at,
-      kind: "RESERVATION_OWNER_ASKED",
+      kind: "RESERVATION_OWNER_WINDOW_STARTED",
     });
     recordGiftEvent({
       giftId: "g1",
@@ -1187,27 +1299,9 @@ describe("recordGiftEvent of Story 5.6", () => {
 
     expect(info.mock.calls.map((call) => String(call[0]))).toEqual([
       '{"event":"gift.reservation.giver-deadline-passed","giftId":"g1","actorId":null,"from":"RESERVED","to":"RESERVED","at":"2026-11-20T12:00:00.000Z"}',
-      '{"event":"gift.reservation.owner-asked","giftId":"g1","actorId":null,"from":"RESERVED","to":"RESERVED","at":"2026-11-20T12:00:00.000Z"}',
+      '{"event":"gift.reservation.owner-window-started","giftId":"g1","actorId":null,"from":"RESERVED","to":"RESERVED","at":"2026-11-20T12:00:00.000Z"}',
       '{"event":"gift.reservation.released-by-expiry","giftId":"g1","actorId":null,"from":"RESERVED","to":"OPEN","recipientId":"u2","at":"2026-11-20T12:00:00.000Z"}',
     ]);
-    info.mockRestore();
-  });
-
-  it("writes the keep line with the owner as the actor", () => {
-    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-
-    recordGiftEvent({
-      giftId: "g1",
-      actorId: "u1",
-      from: "RESERVED",
-      to: "RESERVED",
-      at,
-      kind: "RESERVATION_KEPT_BY_OWNER",
-    });
-
-    expect(info.mock.calls[0]?.[0]).toBe(
-      '{"event":"gift.reservation.kept-by-owner","giftId":"g1","actorId":"u1","from":"RESERVED","to":"RESERVED","at":"2026-11-20T12:00:00.000Z"}',
-    );
     info.mockRestore();
   });
 });
@@ -1227,37 +1321,58 @@ describe("processReservationTimers", () => {
 
   type FindArgs = {
     where: {
-      reservationPhase?: string;
+      reservationPhase?: string | { in: string[] };
+      reservationDueAt?: { lte?: Date; gt?: Date };
       id?: { gt: string };
     };
     take: number;
   };
 
-  function candidatesByPhase(byPhase: Record<string, { id: string }[]>): void {
+  /** Steps 1, 2, the release and the reminder: the phase list of each read. */
+  function candidateKey(phase: string | { in: string[] } | undefined): string {
+    if (typeof phase === "string") return phase;
+    if (phase === undefined) return "";
+    return phase.in.join("|");
+  }
+
+  function isReminderRead(where: FindArgs["where"]): boolean {
+    return where.reservationDueAt?.gt !== undefined;
+  }
+
+  function candidatesByPhase(
+    byPhase: Record<string, { id: string }[]>,
+    reminders: { id: string }[] = [],
+  ): void {
     findMany.mockImplementation(({ where }: FindArgs) =>
-      Promise.resolve(byPhase[String(where.reservationPhase)] ?? []),
+      Promise.resolve(
+        isReminderRead(where)
+          ? reminders
+          : (byPhase[candidateKey(where.reservationPhase)] ?? []),
+      ),
     );
   }
 
-  it("runs the three steps in AD-9 order with one now and one event per row", async () => {
+  it("runs the three transitions and the reminder in AD-9 order with one now and one event per row", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     candidatesByPhase({
       ACTIVE: [{ id: "a" }],
       AWAITING_GIVER: [{ id: "b" }],
-      AWAITING_OWNER: [{ id: "c" }],
+      "AWAITING_OWNER|GIVEN": [{ id: "c" }],
     });
 
     await expect(processReservationTimers(now, timerClient())).resolves.toEqual({
       expiredToGiver: 1,
-      askedOwner: 1,
+      toAwaitingOwner: 1,
       released: 1,
+      reminded: 0,
       failed: 0,
     });
 
     expect(findMany.mock.calls.map(([args]) => (args as FindArgs).where.reservationPhase)).toEqual([
       "ACTIVE",
       "AWAITING_GIVER",
-      "AWAITING_OWNER",
+      { in: ["AWAITING_OWNER", "GIVEN"] },
+      "ACTIVE",
     ]);
     for (const [args] of findMany.mock.calls) {
       expect(args).toMatchObject({
@@ -1267,6 +1382,11 @@ describe("processReservationTimers", () => {
         take: 500,
       });
     }
+    // The reminder read is the only one that bounds the deadline from both sides.
+    expect((findMany.mock.calls[3]?.[0] as FindArgs).where.reservationDueAt).toEqual({
+      gt: now,
+      lte: new Date(now.getTime() + 48 * 60 * 60 * 1000),
+    });
 
     expect(updateMany.mock.calls.map(([args]) => (args as { where: unknown }).where)).toEqual([
       {
@@ -1287,10 +1407,13 @@ describe("processReservationTimers", () => {
         id: "c",
         status: "RESERVED",
         archivedAt: null,
-        reservationPhase: "AWAITING_OWNER",
-        reservationBought: false,
+        reservationPhase: { in: ["AWAITING_OWNER", "GIVEN"] },
         reservedAt,
-        reservationPhaseAt: { equals: reservationPhaseAt, lte: new Date(now.getTime() - OWNER_WINDOW_MS) },
+        reservationDueAt: {
+          equals: reservationDueAt,
+          lte: new Date(now.getTime() - OWNER_WINDOW_MS),
+        },
+        reservationPhaseAt: { lt: now },
       },
     ]);
     expect((updateMany.mock.calls[2]?.[0] as { data: unknown }).data).toBe(
@@ -1307,7 +1430,7 @@ describe("processReservationTimers", () => {
         at: now.toISOString(),
       },
       {
-        event: "gift.reservation.owner-asked",
+        event: "gift.reservation.owner-window-started",
         giftId: "b",
         actorId: null,
         from: "RESERVED",
@@ -1327,24 +1450,71 @@ describe("processReservationTimers", () => {
     info.mockRestore();
   });
 
-  it("reads only live RESERVED candidates of the three timer phases, never GIVEN or a closed wish", async () => {
+  it("reads live RESERVED candidates: steps 1–2 by phase, step 3 from AWAITING_OWNER or GIVEN, then the reminder", async () => {
     findMany.mockResolvedValue([]);
 
     await expect(processReservationTimers(now, timerClient())).resolves.toEqual({
       expiredToGiver: 0,
-      askedOwner: 0,
+      toAwaitingOwner: 0,
       released: 0,
+      reminded: 0,
       failed: 0,
     });
 
-    expect(findMany).toHaveBeenCalledTimes(3);
+    expect(findMany).toHaveBeenCalledTimes(4);
     const phases = findMany.mock.calls.map(([args]) => (args as FindArgs).where.reservationPhase);
-    expect(phases).toEqual(["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER"]);
-    expect(phases).not.toContain("GIVEN");
+    expect(phases).toEqual(["ACTIVE", "AWAITING_GIVER", { in: ["AWAITING_OWNER", "GIVEN"] }, "ACTIVE"]);
     for (const [args] of findMany.mock.calls) {
       expect(args).toMatchObject({ where: { status: "RESERVED", archivedAt: null } });
     }
     expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  /** CLE-124/D-49: the release window is counted from the deadline, not the phase. */
+  it("selects step 3 by the deadline and keeps a phase started in this run out", async () => {
+    findMany.mockResolvedValue([]);
+
+    await processReservationTimers(now, timerClient());
+
+    expect(findMany.mock.calls[2]?.[0]).toMatchObject({
+      where: {
+        status: "RESERVED",
+        archivedAt: null,
+        reservationPhase: { in: ["AWAITING_OWNER", "GIVEN"] },
+        reservationDueAt: { lte: new Date(now.getTime() - OWNER_WINDOW_MS) },
+        reservationPhaseAt: { lt: now },
+      },
+    });
+  });
+
+  it("releases a GIVEN candidate too and writes only the holder's row", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    candidatesByPhase({ "AWAITING_OWNER|GIVEN": [{ id: "given" }] });
+
+    await expect(processReservationTimers(now, timerClient())).resolves.toEqual({
+      expiredToGiver: 0,
+      toAwaitingOwner: 0,
+      released: 1,
+      reminded: 0,
+      failed: 0,
+    });
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "given",
+          status: "RESERVED",
+          reservationPhase: { in: ["AWAITING_OWNER", "GIVEN"] },
+        }),
+        data: RESERVATION_RELEASE_DATA,
+      }),
+    );
+    // CLE-124/S9b-1: only the holder is told, the owner never is (D-49).
+    expect(createMany.mock.calls.map(([args]) => {
+      const row = args.data as { kind: string; recipientId: string };
+      return `${row.kind}:${row.recipientId}`;
+    })).toEqual(["RESERVATION_AUTO_RELEASE:u2"]);
+    info.mockRestore();
   });
 
   it("finds nothing and reports zeros when the run repeats with the same now", async () => {
@@ -1359,8 +1529,9 @@ describe("processReservationTimers", () => {
     candidatesByPhase({});
     await expect(processReservationTimers(now, timerClient())).resolves.toEqual({
       expiredToGiver: 0,
-      askedOwner: 0,
+      toAwaitingOwner: 0,
       released: 0,
+      reminded: 0,
       failed: 0,
     });
     expect(info).toHaveBeenCalledTimes(1);
@@ -1377,8 +1548,9 @@ describe("processReservationTimers", () => {
 
     await expect(processReservationTimers(now, timerClient())).resolves.toEqual({
       expiredToGiver: 1,
-      askedOwner: 0,
+      toAwaitingOwner: 0,
       released: 0,
+      reminded: 0,
       failed: 1,
     });
 
@@ -1399,6 +1571,8 @@ describe("processReservationTimers", () => {
     }));
     findMany.mockImplementation(({ where, take }: FindArgs) => {
       if (where.reservationPhase !== "ACTIVE") return Promise.resolve([]);
+      // CLE-124/S9b-2: the reminder read has the same phase but a bounded deadline.
+      if (where.reservationDueAt?.gt !== undefined) return Promise.resolve([]);
       const after = where.id?.gt;
       return Promise.resolve(
         rows.filter((row) => after === undefined || row.id > after).slice(0, take),
@@ -1407,11 +1581,15 @@ describe("processReservationTimers", () => {
 
     await expect(processReservationTimers(now, timerClient())).resolves.toMatchObject({
       expiredToGiver: 501,
+      reminded: 0,
       failed: 0,
     });
 
     const activeCalls = findMany.mock.calls.filter(
-      ([args]) => (args as FindArgs).where.reservationPhase === "ACTIVE",
+      ([args]) => {
+        const where = (args as FindArgs).where;
+        return where.reservationPhase === "ACTIVE" && where.reservationDueAt?.gt === undefined;
+      },
     );
     expect(activeCalls).toHaveLength(2);
     expect(activeCalls[1]?.[0]).toMatchObject({ where: { id: { gt: "g0499" } }, take: 500 });

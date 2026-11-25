@@ -38,6 +38,13 @@ export const ERROR_REASONS = [
    */
   "INVITE_COOLDOWN",
   /**
+   * The deadline of a live reservation has already passed, so extending it is
+   * refused (CLE-124/S9b-2, D-12 дополнение 2026-11-25). Always rides with
+   * `code: "CONFLICT"`; the client shows «Срок брони прошёл — продлить уже
+   * нельзя». The wish itself and its reservation stay unchanged.
+   */
+  "RESERVATION_DUE_PASSED",
+  /**
    * The owner's own wish is archived (`archivedAt != null`), so it is read-only
    * (AD-8, FR-10 ред. 2026-11-11; CLE-82/S23.2). Always rides with
    * `code: "VALIDATION"`; the client shows the archived hint
@@ -468,27 +475,23 @@ export {
   GIFT_TITLE_MAX,
   giftInputSchema,
   isCalendarDay,
-  giftReservationWarningSchema,
   giftReserveBodySchema,
   giftRestoreSchema,
   giftTagInputSchema,
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
   giftVisibilityPreviewSchema,
-  keepReservationBodySchema,
   reservationActionBodySchema,
   reservationCardSchema,
   reservationListSchema,
   type GiftInput,
   type GiftInputDraft,
-  type GiftReservationWarning,
   type GiftReserveBody,
   type GiftRestore,
   type GiftTagInput,
   type GiftUpdate,
   type GiftVisibilityPreview,
   type GiftVisibilityPreviewQuery,
-  type KeepReservationBody,
   type ReservationActionBody,
   type ReservationCard,
   type ReservationList,
@@ -520,6 +523,7 @@ export {
   SUPPORTED_LOCALES,
   compareForSort,
   formatDate,
+  formatDay,
   formatPrice,
   getMessages,
   negotiateLocale,

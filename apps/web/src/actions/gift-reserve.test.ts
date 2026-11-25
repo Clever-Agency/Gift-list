@@ -153,6 +153,44 @@ describe("reserveGift", () => {
     expect(reserveGiftWrite).toHaveBeenCalledOnce();
   });
 
+  it("ignores a client holderVisibleToOwner and always writes false", async () => {
+    findFirst.mockResolvedValue(baseRow);
+    transaction.mockImplementation(async function run(fn) {
+      return fn({});
+    });
+    reserveGiftWrite.mockResolvedValue("success");
+
+    const result = await reserveGiftAction(headers, "g1", {
+      ...body,
+      holderVisibleToOwner: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(reserveGiftWrite).toHaveBeenCalledWith(
+      "g1",
+      expect.not.objectContaining({ holderVisibleToOwner: expect.anything() }),
+    );
+  });
+
+  it("accepts a body without holderVisibleToOwner from a newer client", async () => {
+    findFirst.mockResolvedValue(baseRow);
+    transaction.mockImplementation(async function run(fn) {
+      return fn({});
+    });
+    reserveGiftWrite.mockResolvedValue("success");
+
+    const result = await reserveGiftAction(headers, "g1", {
+      dueOn: body.dueOn,
+      holderVisibleToOthers: body.holderVisibleToOthers,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(reserveGiftWrite).toHaveBeenCalledWith(
+      "g1",
+      expect.not.objectContaining({ holderVisibleToOwner: expect.anything() }),
+    );
+  });
+
   it("answers UNAUTHENTICATED before reading the wish", async () => {
     getSession.mockResolvedValue(null);
 

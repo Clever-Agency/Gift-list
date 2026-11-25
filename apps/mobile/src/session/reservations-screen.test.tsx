@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import type { ReservationCard } from "@gift-list/contracts";
+import { formatDate, type ReservationCard } from "@gift-list/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { click, controlByText, dialogElement, settle } from "@/test/dom";
+import { addCalendarDays, todayInZone } from "@/ui/reservation-extend-dialog";
 import ReservationsScreen from "../../app/(app)/(tabs)/reservations";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -161,6 +162,11 @@ function listAnswer(cards: ReservationCard[]) {
   return { ok: true, data: { reservations: cards } };
 }
 
+/** A deadline day still ahead in the holder's zone: «Продлить до…» is offered. */
+function dueSoon(days = 5): string {
+  return addCalendarDays(todayInZone("Europe/Minsk"), days);
+}
+
 /** The session, the list and the one action answer the screen can ask for. */
 function respond(
   reservations: unknown,
@@ -299,6 +305,42 @@ describe("экран «Мои брони»", () => {
     });
   });
 
+  it("«Подарил» шлёт одно действие и заменяет карточку ответом (Story 5.7)", async () => {
+    respond(listAnswer([card({ dueAt: dueSoon() })]), {
+      ok: true,
+      data: card({ phase: "GIVEN" }),
+    });
+    await mount();
+
+    await click(control("Подарил"));
+    await settle(20);
+
+    const calls = updateCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]).toEqual({
+      method: "PATCH",
+      body: { action: "given" },
+    });
+    expect(text()).toContain("Подарено");
+    expect(control("Подарил")).toBeUndefined();
+  });
+
+  it("после срока «Продлить до…» нет, «Подарил» и «Снять бронь» на месте", async () => {
+    respond(listAnswer([card({ dueAt: "2020-01-01" })]));
+    await mount();
+
+    expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeDefined();
+    expect(byLabel("Меню")).toBeDefined();
+  });
+
+  it("до срока «Продлить до…» остаётся", async () => {
+    respond(listAnswer([card({ dueAt: dueSoon() })]));
+    await mount();
+
+    expect(control("Продлить до…")).toBeDefined();
+  });
+
   it("«Купил» шлёт одно действие и заменяет карточку ответом", async () => {
     respond(listAnswer([card()]), { ok: true, data: card({ bought: true }) });
     await mount();
@@ -360,16 +402,18 @@ describe("экран «Мои брони»", () => {
     expect(readCalls().length).toBe(before + 1);
   });
 
-  it("переключатели видимости уходят одной парой", async () => {
+  it("переключатель видимости для гостей уходит без флага владельца", async () => {
     respond(listAnswer([card()]), {
       ok: true,
-      data: card({ holderVisibleToOwner: true, holderVisibleToOthers: true }),
+      data: card({ holderVisibleToOthers: false }),
     });
     await mount();
 
+    expect(text()).not.toContain("Показать владельцу, что это я");
+
     await click(control("Кто видит, что это я"));
     await settle(10);
-    await click(byLabel("Показать владельцу, что это я"));
+    await click(byLabel("Показать другим, кто берёт"));
     await settle(20);
 
     const calls = updateCalls();
@@ -378,14 +422,14 @@ describe("экран «Мои брони»", () => {
       method: "PATCH",
       body: {
         action: "visibility",
-        holderVisibleToOwner: true,
-        holderVisibleToOthers: true,
+        holderVisibleToOthers: false,
       },
     });
   });
 
   it("продление: дата вне диапазона остаётся в диалоге с текстом сервера", async () => {
-    respond(listAnswer([card()]), {
+    const due = dueSoon();
+    respond(listAnswer([card({ dueAt: due })]), {
       ok: false,
       code: "VALIDATION",
       message: "Due date out of range",
@@ -401,16 +445,45 @@ describe("экран «Мои брони»", () => {
 
     expect(text()).toContain("Выберите дату не позже 20.12.2026.");
     expect(dialogElement()).not.toBeNull();
-    expect(text()).toContain("до 01.12");
+    expect(text()).toContain(`до ${formatDate(due, "ru", { year: false })}`);
   });
 
-  it("продление: успешный ответ заменяет карточку и порядок по сроку", async () => {
+  /**
+   * CLE-124/S9b-3 (D-12): if the deadline passed between the read and the press,
+   * the server answers `RESERVATION_DUE_PASSED`; the form sentence names it and the
+   * list is reread, so the extension is gone.
+   */
+  it("RESERVATION_DUE_PASSED: «Срок брони прошёл…» и продления больше нет", async () => {
+    respond(listAnswer([card({ dueAt: dueSoon() })]), {
+      ok: false,
+      code: "CONFLICT",
+      message: "The reservation deadline has passed",
+      reason: "RESERVATION_DUE_PASSED",
+    });
+    await mount();
+
+    await click(control("Продлить до…"));
+    await settle(20);
+    await click(dialogControl("Подтвердить"));
+    await settle(20);
+
+    expect(text()).toContain("Срок брони прошёл — продлить уже нельзя.");
+    expect(dialogElement()).toBeNull();
+
+    respond(listAnswer([card({ dueAt: "2020-01-01" })]));
+    await act(async () => focusStore.set(false));
+    await act(async () => focusStore.set(true));
+    await settle(20);
+    expect(control("Продлить до…")).toBeUndefined();
+  });
+
+  it("продление: успешный ответ заменяет карточку и порядок по сроку", async () => {    const due = dueSoon(10);
     respond(
       listAnswer([
-        card(),
-        card({ giftId: "g2", titleSnapshot: "Свитер", dueAt: "2026-12-05" }),
+        card({ dueAt: dueSoon(20) }),
+        card({ giftId: "g2", titleSnapshot: "Свитер", dueAt: due }),
       ]),
-      { ok: true, data: card({ giftId: "g2", titleSnapshot: "Свитер", dueAt: "2026-11-25" }) },
+      { ok: true, data: card({ giftId: "g2", titleSnapshot: "Свитер", dueAt: dueSoon(2) }) },
     );
     await mount();
 
@@ -471,12 +544,13 @@ describe("экран «Мои брони»", () => {
     });
   });
 
-  it("в GIVEN нет продления, но «Купил» и ⋮ на месте", async () => {
+  it("в GIVEN нет продления и «Подарил», но «Купил» и ⋮ на месте", async () => {
     respond(listAnswer([card({ phase: "GIVEN" })]));
     await mount();
 
-    expect(text()).toContain("Ждёт подтверждения");
+    expect(text()).toContain("Подарено");
     expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeUndefined();
     expect(byLabel("Купил")).toBeDefined();
     expect(byLabel("Меню")).toBeDefined();
   });
@@ -504,7 +578,9 @@ describe("экран «Мои брони»", () => {
       let answer: (value: unknown) => void = function noop() {};
       api.apiRequest.mockImplementation(function answerWith(path: string) {
         if (path === "/api/v1/me") return Promise.resolve(sessionReady);
-        if (path === "/api/v1/me/reservations") return Promise.resolve(listAnswer([card()]));
+        if (path === "/api/v1/me/reservations") {
+          return Promise.resolve(listAnswer([card({ dueAt: dueSoon() })]));
+        }
         return new Promise((resolve) => {
           answer = resolve;
         });

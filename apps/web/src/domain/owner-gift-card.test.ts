@@ -2,11 +2,17 @@ import { giftCardSchema, type SupportedLocale } from "@gift-list/contracts";
 import { describe, expect, it } from "vitest";
 import { toOwnerGiftCard, type OwnerGiftRow } from "./owner-gift-card";
 
-const HOLDER_ID = "holder1";
-const HOLDER = { id: HOLDER_ID, nick: "holder", name: "Holder Name" };
-const HOLDER_ON_WIRE = { id: HOLDER_ID, nick: "holder", displayName: "Holder Name" };
+const HOLDER = { id: "holder1", nick: "holder", name: "Holder Name" };
 
-function row(overrides: Partial<OwnerGiftRow> = {}): OwnerGiftRow {
+/** Reservation columns the owner mapper must ignore even when the row carries them. */
+type ReservationNoise = {
+  reservationPhase?: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
+  reservationBought?: boolean;
+  holderVisibleToOwner?: boolean;
+  reservedBy?: { id: string; nick: string; name: string } | null;
+};
+
+function row(overrides: Partial<OwnerGiftRow> & ReservationNoise = {}): OwnerGiftRow {
   return {
     id: "g1",
     title: "Наушники",
@@ -20,9 +26,6 @@ function row(overrides: Partial<OwnerGiftRow> = {}): OwnerGiftRow {
     archivedAt: null,
     closedAt: null,
     status: "OPEN",
-    reservationPhase: null,
-    holderVisibleToOwner: false,
-    reservedBy: null,
     tags: [],
     ...overrides,
   };
@@ -52,26 +55,64 @@ describe("toOwnerGiftCard", () => {
     expect(card.undoUntil).toBeNull();
   });
 
-  /** CLOSED keeps reserved* for audit: the holder follows the owner's toggle. */
-  it("shows the holder of a closed wish by the owner toggle", () => {
-    const shown = toOwnerGiftCard(
-      row({ status: "CLOSED", reservationPhase: "GIVEN", holderVisibleToOwner: true, reservedBy: HOLDER }),
-    );
-    const hidden = toOwnerGiftCard(
-      row({ status: "CLOSED", holderVisibleToOwner: false, reservedBy: HOLDER }),
-    );
+  /**
+   * D-49: a gift is a surprise, so every reservation looks exactly like an open
+   * wish to its owner — whatever the phase, the bought mark or the toggle says.
+   */
+  it.each([
+    ["ACTIVE", false],
+    ["AWAITING_GIVER", false],
+    ["AWAITING_OWNER", false],
+    ["GIVEN", false],
+    ["ACTIVE", true],
+    ["AWAITING_GIVER", true],
+    ["AWAITING_OWNER", true],
+    ["GIVEN", true],
+  ] as const)(
+    "maps a RESERVED %s wish with bought=%s exactly as the same open wish",
+    (reservationPhase, reservationBought) => {
+      for (const holderVisibleToOwner of [false, true]) {
+        const reserved = toOwnerGiftCard(
+          row({
+            status: "RESERVED",
+            reservationPhase,
+            reservationBought,
+            holderVisibleToOwner,
+            reservedBy: HOLDER,
+          }),
+        );
+        const open = toOwnerGiftCard(row({ status: "OPEN" }));
 
-    expect(shown.reservedBy).toEqual(HOLDER_ON_WIRE);
-    expect(hidden.reservedBy).toBeNull();
-  });
+        expect(reserved).toEqual(open);
+        expect(reserved.status).toBe("OPEN");
+        expect(reserved.reservedBy).toBeNull();
+        expect(reserved.ownerAction).toBeNull();
+        expect(reserved.reservationLabel).toBeNull();
+      }
+    },
+  );
 
-  it("keeps reservationLabel and ownerAction empty on a closed wish", () => {
+  /**
+   * D-49: closing keeps `reserved*` for audit (AD-8), but the owner still never
+   * learns who held the wish — not even when the toggle was on.
+   */
+  it("keeps the past holder of a closed wish hidden with the toggle on", () => {
     const card = toOwnerGiftCard(
-      row({ status: "CLOSED", reservationPhase: "AWAITING_OWNER", reservedBy: HOLDER }),
+      row({
+        status: "CLOSED",
+        closedAt: new Date("2026-11-19T12:00:00.000Z"),
+        reservationPhase: "GIVEN",
+        reservationBought: true,
+        holderVisibleToOwner: true,
+        reservedBy: HOLDER,
+      }),
     );
 
-    expect(card.reservationLabel).toBeNull();
+    expect(card.status).toBe("CLOSED");
+    expect(card.reservedBy).toBeNull();
     expect(card.ownerAction).toBeNull();
+    expect(card.reservationLabel).toBeNull();
+    expect(JSON.stringify(card)).not.toContain(HOLDER.name);
   });
 
   it("uses the requested locale for a fixed tag label", () => {

@@ -56,8 +56,8 @@ function switchNamed(label: string): HTMLElement | undefined {
 
 /**
  * Story 5.5 (`DESIGN.md` → ReservationCard): «Кто видит, что это я» — свёрнутый
- * блок с двумя переключателями. Оба значения уходят одним действием `visibility`,
- * поэтому компонент сообщает пару целиком.
+ * блок с переключателем «Показать другим, кто берёт». CLE-124/D-49: переключателя
+ * «владельцу» больше нет, значение уходит одним действием `visibility`.
  */
 describe("ReservationVisibility", () => {
   it("свёрнут: переключателей в дереве нет, заголовок — кнопка с aria-expanded", async () => {
@@ -65,7 +65,7 @@ describe("ReservationVisibility", () => {
       <ReservationVisibility
         expanded={false}
         onToggle={function noop() {}}
-        values={{ holderVisibleToOwner: false, holderVisibleToOthers: true }}
+        values={{ holderVisibleToOthers: true }}
         onChange={function noop() {}}
       />,
     );
@@ -76,81 +76,54 @@ describe("ReservationVisibility", () => {
     expect(toggle?.textContent).toContain("Кто видит, что это я");
   });
 
-  it("раскрыт: две подписи дословно, состояния из значений", async () => {
+  it("раскрыт: один переключатель «другим», без «владельцу» и подсказки", async () => {
     await render(
       <ReservationVisibility
         expanded
         onToggle={function noop() {}}
-        values={{ holderVisibleToOwner: true, holderVisibleToOthers: false }}
+        values={{ holderVisibleToOthers: false }}
         onChange={function noop() {}}
       />,
     );
 
-    expect(switches()).toHaveLength(2);
-    expect(switchNamed("Показать владельцу, что это я")?.getAttribute("aria-checked")).toBe(
-      "true",
-    );
+    expect(switches()).toHaveLength(1);
+    expect(switchNamed("Показать владельцу, что это я")).toBeUndefined();
     expect(switchNamed("Показать другим, кто берёт")?.getAttribute("aria-checked")).toBe(
       "false",
     );
-    // Включённое «владельцу» показывает подсказку FR-31.
-    expect(container.textContent).toContain(
-      "Владелец сразу увидит ваше имя; если потом выключить, он может уже знать",
-    );
-  });
-
-  it("подсказка есть только при включённом «владельцу»", async () => {
-    await render(
-      <ReservationVisibility
-        expanded
-        onToggle={function noop() {}}
-        values={{ holderVisibleToOwner: false, holderVisibleToOthers: true }}
-        onChange={function noop() {}}
-      />,
-    );
-
     expect(container.textContent).not.toContain("он может уже знать");
   });
 
-  it("переключатель отдаёт пару с изменённой половиной", async () => {
+  it("переключатель отдаёт значение «другим»", async () => {
     const onChange = vi.fn();
     await render(
       <ReservationVisibility
         expanded
         onToggle={function noop() {}}
-        values={{ holderVisibleToOwner: false, holderVisibleToOthers: true }}
+        values={{ holderVisibleToOthers: true }}
         onChange={onChange}
       />,
     );
 
-    await click(switchNamed("Показать владельцу, что это я"));
-    expect(onChange).toHaveBeenLastCalledWith({
-      holderVisibleToOwner: true,
-      holderVisibleToOthers: true,
-    });
-
     await click(switchNamed("Показать другим, кто берёт"));
-    expect(onChange).toHaveBeenLastCalledWith({
-      holderVisibleToOwner: false,
-      holderVisibleToOthers: false,
-    });
+    expect(onChange).toHaveBeenLastCalledWith({ holderVisibleToOthers: false });
   });
 
-  it("пока запрос в полёте, переключатели показывают значение и не меняют", async () => {
+  it("пока запрос в полёте, переключатель показывает значение и не меняет", async () => {
     const onChange = vi.fn();
     await render(
       <ReservationVisibility
         expanded
         busy
         onToggle={function noop() {}}
-        values={{ holderVisibleToOwner: false, holderVisibleToOthers: true }}
+        values={{ holderVisibleToOthers: true }}
         onChange={onChange}
       />,
     );
 
-    const owner = switchNamed("Показать владельцу, что это я");
-    expect(owner?.getAttribute("aria-disabled")).toBe("true");
-    await click(owner);
+    const others = switchNamed("Показать другим, кто берёт");
+    expect(others?.getAttribute("aria-disabled")).toBe("true");
+    await click(others);
     expect(onChange).not.toHaveBeenCalled();
   });
 
@@ -160,7 +133,7 @@ describe("ReservationVisibility", () => {
       <ReservationVisibility
         expanded={false}
         onToggle={onToggle}
-        values={{ holderVisibleToOwner: false, holderVisibleToOthers: true }}
+        values={{ holderVisibleToOthers: true }}
         onChange={function noop() {}}
       />,
     );

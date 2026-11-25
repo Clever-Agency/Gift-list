@@ -4,6 +4,7 @@ import { ERROR_CODES, ERROR_REASONS, PASSWORD_MAX, PASSWORD_MIN } from "../index
 import {
   compareForSort,
   formatDate,
+  formatDay,
   formatPrice,
   getMessages,
   negotiateLocale,
@@ -65,6 +66,27 @@ describe("formatDate", () => {
     expect(formatDate("2026-11-20", "ru", { year: false })).toBe("20.11");
     expect(formatDate("2026-11-20", "ru")).toBe("20.11.2026");
     expect(formatDate("2026-11-20", "ru", { year: true })).toBe("20.11.2026");
+  });
+});
+
+/**
+ * CLE-124/S9c: one day in words for the user's language. `Intl` decides the
+ * order, so `ru` reads «3 декабря» and `en` reads «December 3» with no month
+ * table in the code.
+ */
+describe("formatDay", () => {
+  it("writes the day and the month in words for the locale", () => {
+    expect(formatDay("2026-12-03", "ru")).toBe("3 декабря");
+    expect(formatDay("2026-12-03", "en")).toBe("December 3");
+  });
+
+  it("keeps a calendar day from shifting in any zone", () => {
+    expect(formatDay("2026-12-03", "ru", "Pacific/Kiritimati")).toBe("3 декабря");
+  });
+
+  it("formats an instant in the recipient's zone across midnight", () => {
+    expect(formatDay("2026-11-25T21:00:00.000Z", "ru", "Europe/Minsk")).toBe("26 ноября");
+    expect(formatDay("2026-11-25T21:00:00.000Z", "ru", "UTC")).toBe("25 ноября");
   });
 });
 
@@ -224,8 +246,9 @@ describe("invite confirmation copy", () => {
 
 describe("reservation release copy", () => {
   /**
-   * Story 5.2: the holder's confirm and the owner's step are worded by the AC of
-   * the story and by `EXPERIENCE.md`, so the catalog keeps the sentences verbatim.
+   * Story 5.2: the holder's confirm is worded by the AC of the story and by
+   * `EXPERIENCE.md`. D-49 (CLE-124) removed the owner's release, so the warning
+   * sentences are gone with it.
    */
   it("keeps the release texts verbatim and not empty", () => {
     const release = getMessages("ru").app.gift.release;
@@ -233,13 +256,31 @@ describe("reservation release copy", () => {
     expect(release.title).toBe("Снять бронь? Желание снова станет открытым.");
     expect(release.confirm).toBe("Снять бронь");
     expect(release.cancel).toBe("Отмена");
-    expect(release.warningBought).toBe(
-      "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё",
-    );
-    expect(release.warningGiven).toBe("Даритель отметил, что уже вручил");
     for (const text of Object.values(release)) {
       expect(text.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * CLE-124/S9b-1: the confirm window no longer promises that «Купил» protects the
+ * reservation — the timer releases any live reservation after 168 hours, so the
+ * hint and its key are gone instead of reworded.
+ */
+describe("reserve confirm copy", () => {
+  it("keeps only the date, the guests' switch and the buttons", () => {
+    const { reserveConfirm } = getMessages("ru").app.gift;
+
+    expect(Object.keys(reserveConfirm).sort()).toEqual([
+      "cancel",
+      "confirm",
+      "dueCaption",
+      "dueHint",
+      "dueLabel",
+      "showOthers",
+      "title",
+    ]);
+    expect("boughtHint" in reserveConfirm).toBe(false);
   });
 });
 
@@ -255,7 +296,6 @@ describe("closing copy", () => {
 
     expect(close.menuAction).toBe("Отметить полученным");
     expect(close.title).toBe("Подарок «{title}» получен?");
-    expect(close.reservedBody).toBe("Бронь будет закрыта, бронировавший получит уведомление");
     expect(close.confirm).toBe("Подтвердить");
     expect(close.cancel).toBe("Отмена");
 
@@ -320,15 +360,18 @@ describe("reservation copy", () => {
     expect(reservations.boughtChip).toBe("Куплено");
 
     expect(reservations.visibility.title).toBe("Кто видит, что это я");
-    expect(reservations.visibility.owner).toBe("Показать владельцу, что это я");
     expect(reservations.visibility.others).toBe("Показать другим, кто берёт");
-    expect(reservations.visibility.hint).toBe(
-      "Владелец сразу увидит ваше имя; если потом выключить, он может уже знать",
-    );
+    // CLE-124/D-49: the owner switch and its hint are gone.
+    expect(Object.keys(reservations.visibility).sort()).toEqual(["others", "title"]);
 
     expect(reservations.extend).toBe("Продлить до…");
     expect(reservations.extendCaption).toBe("Не позже {max}");
     expect(reservations.release).toBe("Снять бронь");
+    // CLE-124/S9b-3 (§10.3, §10.6): «Подарил» and the release run-off under the date.
+    expect(reservations.given).toBe("Подарил");
+    expect(reservations.dueNote).toBe(
+      "Если не продлить, бронь снимется через 7 дней после этой даты",
+    );
 
     for (const value of Object.values(reservations)) {
       if (typeof value === "string") expect(value.length).toBeGreaterThan(0);
@@ -359,40 +402,62 @@ describe("reservation copy", () => {
     expect(reservations.loading).toBe("Загружаем брони");
     expect(reservations.openGift).toContain("«{title}»");
   });
+
+  /**
+   * CLE-124/S9b-3 (§10.6, §10.7): the old «Срок истёк · ждём ответа владельца»
+   * and «Ждёт подтверждения» are gone, and the guests' stages are neuter.
+   */
+  it("keeps the holder and guest stage labels of «Подписи брони»", () => {
+    const gift = getMessages("ru").app.gift;
+
+    expect(gift.detail.phase).toEqual({
+      ACTIVE: "Вы берёте · до {date}",
+      AWAITING_GIVER: "Срок истёк",
+      AWAITING_OWNER: "Срок истёк",
+      GIVEN: "Подарено",
+    });
+    expect(gift.detail.reservationLabel).toEqual({
+      BOUGHT: "Куплено",
+      GIVEN: "Подарено",
+    });
+  });
 });
 
 /**
- * Story 5.4: правка и удаление забронированного желания. Подсказка правки —
- * дословно из EXPERIENCE (Interaction Primitives); тела confirm про бронь —
- * новые, без утверждения в UX (Open Questions спеки 5.4, п. 1). Прежние строки
- * удаления («Удалить «{title}»?», «Удалить», «Отмена», «Удаляем…»,
- * «Желание удалено.») не меняются.
+ * Story 5.4: удаление забронированного желания. D-49 (CLE-124) убрал подсказку
+ * правки, тела confirm про бронь и тост о брони: владелец не знает о брони.
+ * Прежние строки удаления («Удалить «{title}»?», «Удалить», «Отмена»,
+ * «Удаляем…», «Желание удалено.») не меняются.
  */
 describe("reserved wish editing and deletion copy", () => {
-  it("keeps the edit notice of a reserved wish verbatim", () => {
-    const notice = getMessages("ru").app.giftForm.notice;
+  it("block confirm does not mention a reservation", () => {
+    const body = getMessages("ru").app.friends.block.body;
 
-    expect(notice.reserved).toBe(
-      "Желание забронировано — бронировавший получит уведомление",
-    );
-    expect(notice.reserved.length).toBeGreaterThan(0);
+    expect(body).toBe("Вы перестанете видеть друг друга, дружба и подписки удалятся.");
+    expect(body).not.toContain("бронь");
   });
 
-  it("keeps the delete texts of a reserved wish verbatim and not empty", () => {
+  it("no longer carries the edit notice of a reserved wish", () => {
+    const { giftForm } = getMessages("ru").app;
+
+    expect("notice" in giftForm).toBe(false);
+    expect("quantityLocked" in giftForm.field).toBe(false);
+    expect("quantityLocked" in giftForm.error).toBe(false);
+  });
+
+  it("keeps the plain delete texts and drops the two reservation bodies", () => {
     const { delete: remove } = getMessages("ru").app.giftForm;
 
     expect(remove.action).toBe("Удалить желание");
     expect(remove.confirmTitle).toBe("Удалить «{title}»?");
+    expect(remove.confirmBody).toBe("Желание исчезнет из вишлиста. Это нельзя отменить.");
     expect(remove.confirm).toBe("Удалить");
     expect(remove.cancel).toBe("Отмена");
     expect(remove.deleting).toBe("Удаляем…");
-    expect(remove.reservedBody).toBe(
-      "Бронь снимется, бронировавший получит уведомление. Это нельзя отменить.",
-    );
-    expect(remove.reservedBoughtBody).toBe(
-      "Даритель отметил, что подарок уже куплен. Бронь снимется, бронировавший получит уведомление. Это нельзя отменить.",
-    );
+    expect("reservedBody" in remove).toBe(false);
+    expect("reservedBoughtBody" in remove).toBe(false);
     expect(getMessages("ru").app.giftForm.toast.deleted).toBe("Желание удалено.");
+    expect("reserved" in getMessages("ru").app.gift.toast).toBe(false);
 
     for (const text of Object.values(remove)) {
       expect(text.length).toBeGreaterThan(0);
@@ -406,20 +471,59 @@ describe("reserved wish editing and deletion copy", () => {
       "Удалить «Наушники»?",
     );
   });
+});
 
-  /**
-   * Story 5.6: ответ владельца на истёкшую бронь. Обе строки — дословно из epics
-   * (Story 5.6) и `DESIGN.md` → OwnerActionLabel; новых текстов нет, подстановок
-   * тоже.
-   */
-  it("keeps the two answers of the expired reservation verbatim and not empty", () => {
-    const ownerRequest = getMessages("ru").app.gift.ownerRequest;
+/**
+ * D-49 (CLE-124), S8: one neutral owner warning before «Изменить», «Удалить» and
+ * a visibility narrowing. The texts are `EXPERIENCE.md` → Interaction Primitives,
+ * word for word; none of them depends on a reservation.
+ */
+describe("owner change warning copy", () => {
+  it("has the edit question verbatim", () => {
+    const edit = getMessages("ru").app.giftForm.surpriseWarning.edit;
 
-    expect(ownerRequest.received).toBe("Получил");
-    expect(ownerRequest.keep).toBe("Не получал, оставить бронь");
-    expect(ownerRequest.received.trim().length).toBeGreaterThan(0);
-    expect(ownerRequest.keep.trim().length).toBeGreaterThan(0);
-    expect(ownerRequest.keep).not.toContain("{");
+    expect(edit.title).toBe("Изменить желание?");
+    expect(edit.body).toBe(
+      "Кто-то мог уже забронировать или купить этот подарок. Если вы измените желание, даритель получит уведомление.",
+    );
+    expect(edit.confirm).toBe("Изменить");
+    expect(edit.cancel).toBe("Отмена");
+  });
+
+  it("has the delete question verbatim, with the wish name", () => {
+    const remove = getMessages("ru").app.giftForm.surpriseWarning.delete;
+
+    expect(remove.title).toBe("Удалить «{title}»?");
+    expect(remove.title.replace("{title}", "Наушники")).toBe("Удалить «Наушники»?");
+    expect(remove.body).toBe(
+      "Кто-то мог уже забронировать или купить этот подарок. Даритель получит уведомление. Это нельзя отменить.",
+    );
+    expect(remove.confirm).toBe("Удалить");
+    expect(remove.cancel).toBe("Отмена");
+  });
+
+  it("has the visibility question verbatim, with the wish name", () => {
+    const visibility = getMessages("ru").app.giftForm.surpriseWarning.visibility;
+
+    expect(visibility.title).toBe("Изменить, кто видит «{title}»?");
+    expect(visibility.title.replace("{title}", "Наушники")).toBe(
+      "Изменить, кто видит «Наушники»?",
+    );
+    expect(visibility.body).toBe(
+      "Кто-то мог уже забронировать или купить этот подарок. Если он перестанет видеть желание, бронь снимется.",
+    );
+    expect(visibility.confirm).toBe("Изменить");
+    expect(visibility.cancel).toBe("Отмена");
+  });
+
+  it("opens with the same sentence in all three questions", () => {
+    const warning = getMessages("ru").app.giftForm.surpriseWarning;
+
+    for (const kind of ["edit", "delete", "visibility"] as const) {
+      expect(warning[kind].body.startsWith("Кто-то мог уже забронировать или купить этот подарок.")).toBe(
+        true,
+      );
+    }
   });
 });
 

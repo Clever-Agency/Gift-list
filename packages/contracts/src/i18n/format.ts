@@ -52,6 +52,27 @@ export function formatDate(
   return new Intl.DateTimeFormat(locale, format).format(date);
 }
 
+/**
+ * CLE-124/S9c: the one day-of-the-month in words («3 декабря», «December 3»).
+ * `Intl` picks the order for the locale, so no screen or letter builds a date
+ * from month names or `getDate()`/`getMonth()`.
+ *
+ * A date-only `YYYY-MM-DD` is a calendar day and formats in UTC, so the day does
+ * not shift. An instant (a `Date` or an ISO string with time) formats in
+ * `timeZone` — the recipient's zone — or in UTC when it is omitted.
+ */
+export function formatDay(value: string | Date, locale: string, timeZone?: string): string {
+  const dateOnly = typeof value === "string" && DATE_ONLY.test(value);
+  const date = typeof value === "string"
+    ? new Date(dateOnly ? `${value}T00:00:00.000Z` : value)
+    : value;
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    timeZone: dateOnly ? "UTC" : (timeZone ?? "UTC"),
+  }).format(date);
+}
+
 /** `Intl.Collator` for ordering only. Search must use {@link normalizeForSearch}. */
 export function compareForSort(locale: string, left: string, right: string): number {
   return new Intl.Collator(locale).compare(left, right);

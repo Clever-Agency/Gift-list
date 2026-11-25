@@ -1,11 +1,15 @@
 // @vitest-environment happy-dom
-import type { GiftCard, ReservationCard as ReservationCardData } from "@gift-list/contracts";
+import {
+  formatDate,
+  type GiftCard,
+  type ReservationCard as ReservationCardData,
+} from "@gift-list/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { click, dialogElement, settle, typeInto } from "@/test/dom";
-import { todayInZone } from "@/ui/reservation-extend-dialog";
+import { addCalendarDays, todayInZone } from "@/ui/reservation-extend-dialog";
 import GiftDetailScreen from "../../app/(app)/gifts/[id]/index";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -92,6 +96,14 @@ const user = {
   timeZone: "Europe/Minsk",
 };
 
+/**
+ * The deadline day of the fixtures: still ahead in the holder's zone, so «Продлить
+ * до…» is offered. A fixed day would turn the card into a passed deadline on that
+ * calendar day and hide the very button these tests press.
+ */
+const DUE_ON = addCalendarDays(todayInZone("Europe/Minsk"), 5);
+const DUE_TEXT = formatDate(DUE_ON, "ru");
+
 function gift(overrides: Partial<GiftCard> = {}): GiftCard {
   return {
     id: "g1",
@@ -110,7 +122,7 @@ function gift(overrides: Partial<GiftCard> = {}): GiftCard {
     reservationLabel: null,
     ownerAction: null,
     reservation: {
-      dueAt: "2026-12-01",
+      dueAt: DUE_ON,
       phase: "ACTIVE",
       bought: false,
       holderVisibleToOwner: false,
@@ -189,7 +201,7 @@ function reservationCard(overrides: Partial<ReservationCardData> = {}): Reservat
     titleSnapshot: "Наушники",
     status: "RESERVED",
     ownerNick: "anya",
-    dueAt: "2026-12-01",
+    dueAt: DUE_ON,
     phase: "ACTIVE",
     bought: false,
     holderVisibleToOwner: false,
@@ -348,8 +360,9 @@ describe("деталь желания: действия держателя", () 
     await mount();
 
     // ACTIVE уже содержит полную дату детали, отдельной строки нет.
-    expect(text()).toContain("Вы берёте · до 01.12.2026");
+    expect(text()).toContain(`Вы берёте · до ${DUE_TEXT}`);
     expect(control("Продлить до…")).toBeDefined();
+    expect(control("Подарил")).toBeDefined();
     expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("false");
     expect(control("Кто видит, что это я")).toBeDefined();
     // Снятие из 5.2 не продублировано рядом с новыми действиями.
@@ -370,8 +383,29 @@ describe("деталь желания: действия держателя", () 
 
     expect(text()).toContain("Уже забронирован");
     expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeUndefined();
     expect(control("Кто видит, что это я")).toBeUndefined();
     expect(switchNamed("Купил")).toBeUndefined();
+  });
+
+  /** Story 5.7: «Подарил» переводит бронь в `GIVEN`; этап читается «Подарено». */
+  it("«Подарил» шлёт одно действие и показывает этап «Подарено»", async () => {
+    respond(gift(), undefined, { ok: true, data: reservationCard({ phase: "GIVEN" }) });
+    await mount();
+
+    await click(control("Подарил"));
+    await settle();
+
+    const calls = actionCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]).toEqual({
+      method: "PATCH",
+      body: { action: "given" },
+    });
+    expect(text()).toContain("Подарено");
+    expect(control("Подарил")).toBeUndefined();
+    expect(control("Продлить до…")).toBeUndefined();
+    expect(switchNamed("Купил")).toBeDefined();
   });
 
   it("«Купил» шлёт одно действие и берёт карточку из ответа", async () => {
@@ -487,19 +521,21 @@ describe("деталь желания: действия держателя", () 
 
     expect(text()).toContain("Выберите дату не позже 20.12.2026.");
     expect(dialogElement()).not.toBeNull();
-    expect(text()).toContain("Вы берёте · до 01.12.2026");
+    expect(text()).toContain(`Вы берёте · до ${DUE_TEXT}`);
   });
 
-  it("переключатели видимости уходят одной парой", async () => {
+  it("переключатель видимости для гостей уходит без флага владельца", async () => {
     respond(gift(), undefined, {
       ok: true,
-      data: reservationCard({ holderVisibleToOwner: true, holderVisibleToOthers: true }),
+      data: reservationCard({ holderVisibleToOthers: false }),
     });
     await mount();
 
+    expect(text()).not.toContain("Показать владельцу, что это я");
+
     await click(control("Кто видит, что это я"));
     await settle();
-    await click(switchNamed("Показать владельцу, что это я"));
+    await click(switchNamed("Показать другим, кто берёт"));
     await settle();
 
     const calls = actionCalls();
@@ -508,21 +544,19 @@ describe("деталь желания: действия держателя", () 
       method: "PATCH",
       body: {
         action: "visibility",
-        holderVisibleToOwner: true,
-        holderVisibleToOthers: true,
+        holderVisibleToOthers: false,
       },
     });
-    expect(switchNamed("Показать владельцу, что это я")?.getAttribute("aria-checked")).toBe(
-      "true",
+    expect(switchNamed("Показать другим, кто берёт")?.getAttribute("aria-checked")).toBe(
+      "false",
     );
-    expect(text()).toContain("он может уже знать");
   });
 
-  it("в GIVEN подпись «Ждёт подтверждения», продления нет, остальное на месте", async () => {
+  it("в GIVEN подпись «Подарено», продления и «Подарил» нет, остальное на месте", async () => {
     respond(
       gift({
         reservation: {
-          dueAt: "2026-12-01",
+          dueAt: DUE_ON,
           phase: "GIVEN",
           bought: false,
           holderVisibleToOwner: false,
@@ -532,19 +566,24 @@ describe("деталь желания: действия держателя", () 
     );
     await mount();
 
-    expect(text()).toContain("до 01.12.2026");
-    expect(text()).toContain("Ждёт подтверждения");
+    expect(text()).toContain(`до ${DUE_TEXT}`);
+    expect(text()).toContain("Подарено");
     expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeUndefined();
     expect(switchNamed("Купил")).toBeDefined();
     expect(control("Кто видит, что это я")).toBeDefined();
     expect(control("Снять бронь")).toBeDefined();
   });
 
-  it("фазы AWAITING_* подписаны и продление остаётся", async () => {
+  /**
+   * CLE-124/S9b-3 (§10.6, D-12): `AWAITING_*` — это «Срок истёк», владельца больше
+   * ни о чём не спрашивают, а продление после Срока не предлагается.
+   */
+  it("фазы AWAITING_* подписаны «Срок истёк», продления нет, «Подарил» остаётся", async () => {
     respond(
       gift({
         reservation: {
-          dueAt: "2026-12-01",
+          dueAt: DUE_ON,
           phase: "AWAITING_OWNER",
           bought: true,
           holderVisibleToOwner: false,
@@ -554,9 +593,53 @@ describe("деталь желания: действия держателя", () 
     );
     await mount();
 
-    expect(text()).toContain("Срок истёк · ждём ответа владельца");
-    expect(control("Продлить до…")).toBeDefined();
+    expect(text()).toContain("Срок истёк");
+    expect(text()).not.toContain("ждём ответа владельца");
+    expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeDefined();
     expect(text()).toContain("Куплено");
+  });
+
+  /** D-12: сервер отказал в продлении — фраза из каталога и перечитанное желание. */
+  it("RESERVATION_DUE_PASSED: текст «Срок брони прошёл» и продления больше нет", async () => {
+    let reads = 0;
+    api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
+        reads += 1;
+        if (reads === 1) return Promise.resolve({ ok: true, data: gift() });
+        // The server has already moved the reservation past its deadline.
+        return Promise.resolve({
+          ok: true,
+          data: gift({
+            reservation: {
+              dueAt: DUE_ON,
+              phase: "AWAITING_OWNER",
+              bought: false,
+              holderVisibleToOwner: false,
+              holderVisibleToOthers: true,
+            },
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        code: "CONFLICT",
+        message: "The reservation deadline has passed",
+        reason: "RESERVATION_DUE_PASSED",
+      });
+    });
+    await mount();
+
+    await click(control("Продлить до…"));
+    await settle();
+    await click(dialogControl("Подтвердить"));
+    await settle();
+
+    expect(text()).toContain("Срок брони прошёл — продлить уже нельзя.");
+    expect(dialogElement()).toBeNull();
+    expect(giftReads()).toBe(2);
+    expect(control("Продлить до…")).toBeUndefined();
   });
 });
 

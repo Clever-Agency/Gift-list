@@ -4,12 +4,12 @@ import { previewGiftVisibility } from "@/actions/gifts";
 import { firstIssueField, notFoundResponse, toResponse } from "@/lib/api-v1";
 
 /**
- * CLE-82/S23.2 (FR-10 ред. 2026-11-11): preflight of a visibility change on the
- * owner's wish. `GET .../visibility?visibility=FRIENDS` answers
- * `{ wouldCancelReservation }` in the AD-12 envelope and writes nothing. The
- * client shows the confirm «Бронирующий потеряет доступ, бронь снимется» only
- * when the flag is true; the PATCH repeats the same AD-7 rule on its own, so a
- * stale answer can never skip the release or release a kept reservation.
+ * CLE-82/S23.2 (FR-10 ред. 2026-11-11, D-49): preflight of a visibility change on
+ * the owner's wish. `GET .../visibility?visibility=FRIENDS` answers
+ * `{ wouldCancelReservation }` in the AD-12 envelope and writes nothing. D-49:
+ * the owner never learns that a reservation exists, so the flag is always
+ * `false`; the PATCH still applies the AD-7 release rule on its own. The query
+ * value stays in the contract so the client can keep sending it.
  */
 export async function GET(
   request: Request,

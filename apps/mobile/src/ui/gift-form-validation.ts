@@ -187,8 +187,7 @@ export function tagErrorKey(
 /**
  * Where the copy for a field error lives: a dedicated `app.giftForm.error.*`
  * key, or the shared validation sentence when the form has no wording of its
- * own (`visibility`). `quantity` gets its own sentence because the realistic
- * server rejection is a frozen type, not malformed input.
+ * own (`visibility`, `quantity`).
  */
 export type GiftFormErrorCopy =
   | { catalog: "giftForm"; key: string; values?: { max: number } }
@@ -236,9 +235,9 @@ export function fieldErrorCopy(
     case "visibility":
       return { catalog: "common", key: "errors.code.VALIDATION" };
     case "quantity":
-      // The realistic rejection is a wish that became non-OPEN during the edit:
-      // a generic "check your input" would ask for a change the server forbids.
-      return { catalog: "giftForm", key: "error.quantityLocked" };
+      // D-49 (CLE-124): a reserved wish edits its quantity like an open one, so a
+      // rejected value has no wording of its own any more.
+      return { catalog: "common", key: "errors.code.VALIDATION" };
     case "expiresOn":
       // NOTE FOR UX: EXPERIENCE.md has no sentence for a past «Убрать в архив после».
       return { catalog: "giftForm", key: "error.expiresOnPast" };

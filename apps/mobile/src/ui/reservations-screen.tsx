@@ -32,6 +32,8 @@ export type ReservationsState =
 
 export type ReservationsScreenProps = {
   state: ReservationsState;
+  /** The holder's zone: the card counts «срок прошёл» there and offers no extension. */
+  timeZone: string;
   /** The cards whose «Кто видит, что это я» block is open. */
   expanded: ReadonlySet<string>;
   /** The cards with a request in flight; every other card stays usable. */
@@ -46,6 +48,8 @@ export type ReservationsScreenProps = {
   onOpenGift: (card: ReservationCardData) => void;
   onMenu: (card: ReservationCardData) => void;
   onExtend: (card: ReservationCardData) => void;
+  /** «Подарил» (Story 5.7): the card is replaced by the `GIVEN` answer. */
+  onGiven: (card: ReservationCardData) => void;
   onToggleVisibility: (giftId: string) => void;
   onBoughtChange: (card: ReservationCardData, value: boolean) => void;
   onVisibilityChange: (card: ReservationCardData, next: ReservationVisibilityValues) => void;
@@ -64,6 +68,7 @@ export type ReservationsScreenProps = {
  */
 export function ReservationsScreen({
   state,
+  timeZone,
   expanded,
   busyIds,
   onRetry,
@@ -71,6 +76,7 @@ export function ReservationsScreen({
   onOpenGift,
   onMenu,
   onExtend,
+  onGiven,
   onToggleVisibility,
   onBoughtChange,
   onVisibilityChange,
@@ -106,6 +112,7 @@ export function ReservationsScreen({
               testID={`reservation-${card.giftId}`}
               card={card}
               busy={busy}
+              timeZone={timeZone}
               menuRef={menuRefFor ? menuRefFor(card.giftId) : undefined}
               visibilityExpanded={expanded.has(card.giftId)}
               onToggleVisibility={function toggleVisibility() {
@@ -119,6 +126,9 @@ export function ReservationsScreen({
               }}
               onExtend={function extend() {
                 onExtend(card);
+              }}
+              onGiven={function markGiven() {
+                onGiven(card);
               }}
               onBoughtChange={function changeBought(value) {
                 onBoughtChange(card, value);

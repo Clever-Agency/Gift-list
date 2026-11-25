@@ -211,6 +211,7 @@ describe("toViewerGiftCard", () => {
         reservationDueAt: dueAt,
         reservationTimeZone: "UTC",
         reservationPhase: "ACTIVE",
+        holderVisibleToOwner: true,
       }),
       HOLDER_ID,
     );

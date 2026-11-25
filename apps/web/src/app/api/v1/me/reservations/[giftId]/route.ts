@@ -3,11 +3,12 @@ import { notFoundResponse, parseJson, toResponse } from "@/lib/api-v1";
 
 /**
  * Story 5.5 (FR-25, FR-29…FR-31, AD-7, AD-9): one action per request on the
- * holder's own reservation — `extend { dueOn }`, `bought { value }` or
- * `visibility { holderVisibleToOwner, holderVisibleToOthers }`. The body is a
- * closed discriminated union, so two actions or an extra key are VALIDATION; the
- * answer is the updated reservation card. Removing a reservation stays with
- * `DELETE /api/v1/gifts/:id/reserve` (Story 5.2).
+ * holder's own reservation — `extend { dueOn }`, `bought { value }`,
+ * `visibility { holderVisibleToOthers }` or `given` (CLE-124/S9b-2). CLE-124/D-49:
+ * a `holderVisibleToOwner` sent by an older client is accepted and ignored; the
+ * server stores `false`. The body is a closed discriminated union, so two actions
+ * or an extra key are VALIDATION; the answer is the updated reservation card.
+ * Removing a reservation stays with `DELETE /api/v1/gifts/:id/reserve` (Story 5.2).
  */
 export async function PATCH(
   request: Request,

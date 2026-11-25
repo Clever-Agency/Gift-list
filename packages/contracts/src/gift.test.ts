@@ -6,7 +6,6 @@ import {
   GIFT_TAG_TEXT_MAX,
   GIFT_TITLE_MAX,
   giftInputSchema,
-  giftReservationWarningSchema,
   giftRestoreSchema,
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
@@ -583,25 +582,6 @@ describe("giftVisibilityPreview", () => {
   });
 });
 
-/** Story 5.2 / FR-31: the owner's preflight before releasing a reservation. */
-describe("giftReservationWarning", () => {
-  it.each(["BOUGHT", "GIVEN", null] as const)("accepts the %s warning", (warning) => {
-    expect(giftReservationWarningSchema.parse({ warning })).toEqual({ warning });
-  });
-
-  it("rejects an unknown warning value", () => {
-    expect(giftReservationWarningSchema.safeParse({ warning: "RETURNED" }).success).toBe(false);
-  });
-
-  it("rejects a missing warning and any key the preflight does not answer", () => {
-    expect(giftReservationWarningSchema.safeParse({}).success).toBe(false);
-    expect(giftReservationWarningSchema.safeParse({ warning: "BOUGHT", holderId: "u2" }).success).toBe(
-      false,
-    );
-    expect(giftReservationWarningSchema.safeParse({ warning: "BOUGHT", bought: true }).success).toBe(false);
-  });
-});
-
 /**
  * Story 5.5 (FR-25, AD-7/AD-12): the holder's reservation card, the list around
  * it and the one-action body of `PATCH /me/reservations/:giftId`.
@@ -665,7 +645,9 @@ describe("reservation cards and actions", () => {
   it.each([
     { action: "extend", dueOn: "2026-12-08" },
     { action: "bought", value: true },
+    { action: "given" },
     { action: "visibility", holderVisibleToOwner: true, holderVisibleToOthers: false },
+    { action: "visibility", holderVisibleToOthers: false },
   ])("accepts the %j action", (body) => {
     expect(reservationActionBodySchema.parse(body)).toEqual(body);
   });
@@ -687,6 +669,7 @@ describe("reservation cards and actions", () => {
         value: true,
       }).success,
     ).toBe(false);
+    expect(reservationActionBodySchema.safeParse({ action: "given", value: true }).success).toBe(false);
   });
 
   it("rejects an empty action, a missing field and an impossible day", () => {
@@ -716,7 +699,7 @@ describe("reservation cards and actions", () => {
     expect(dueOn.success).toBe(false);
     if (!dueOn.success) expect(dueOn.error.issues[0]?.path).toEqual(["dueOn"]);
     expect(holder.success).toBe(false);
-    if (!holder.success) expect(holder.error.issues[0]?.path).toEqual(["holderVisibleToOwner"]);
+    if (!holder.success) expect(holder.error.issues[0]?.path).toEqual(["holderVisibleToOthers"]);
   });
 
   it("tells a missing action apart from a field error", () => {

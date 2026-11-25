@@ -138,7 +138,7 @@ flowchart TB
 - **Rule:** **Этап разработки:** Web → Vercel (Hobby) — хостинг разработки, **не целевой**; DB → managed Postgres; email → Resend; секреты — env хостинга.
   **Переезд** обязателен до публикации в сторе (D-15). До этого сервер остаётся на Vercel. Юрлицо и место хостинга выбираются к публикации (Q-7), не сейчас. Hobby — только некоммерческая разработка. Публикация сборки в Google Play или App Store с API на Vercel запрещена.
   **Целевая схема:** Docker-образ (`output: 'standalone'`) → сборка в GitHub Actions → деплой на собственный сервер в РБ или РФ. Провайдер и место хостинга не выбраны (Deferred). После переезда репозиторий становится приватным (D-17).
-  Таймеры брони (D-12) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h`; AWAITING_OWNER→OPEN при `phaseAt ≤ now−168h AND bought=false`. Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Веб-сборка приложения деплоится вместе с `apps/web` (AD-26). Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
+  Таймеры брони (D-12, D-49) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: напоминание держателю за 1–2 дня до Срока (только держателю; нужен ли для него новый `Notification.kind` — вопрос реализации S9b-2, см. AD-14); ACTIVE→AWAITING_GIVER при `dueAt ≤ now`, `RESERVATION_DUE` называет дату снятия (`dueAt + 7 дней`) и не предлагает продление — после Срока продление запрещено; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h` (внутренняя фаза, владельцу ничего не отправляется); RESERVED→OPEN при `dueAt ≤ now−168h` в любой фазе и независимо от `bought` (7 дней после Срока). Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Веб-сборка приложения деплоится вместе с `apps/web` (AD-26). Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
 
 ### AD-6 — Один список, токен, профиль `[ADOPTED D-23]`
 
@@ -152,8 +152,8 @@ flowchart TB
 
 ### AD-7 — Видимость желания (единый gate) `[ADOPTED D-23, D-29, D-30]`
 
-- **Binds:** FR-7, FR-8, FR-11, FR-27, FR-31, D-13, D-23, D-29, D-30, D-31, A-11, A-12, A-14, NFR privacy
-- **Prevents:** утечка FRIENDS/SECRET; счётчик скрытых желаний; различимый ответ на скрытую причину (Block, скрытый список, неизвестный токен) — единый 404 обязателен; второй read-owner
+- **Binds:** FR-7, FR-8, FR-11, FR-12, FR-27, FR-31, D-13, D-23, D-29, D-30, D-31, D-49, A-11, A-12, A-14, NFR privacy
+- **Prevents:** утечка FRIENDS/SECRET; счётчик скрытых желаний; различимый ответ на скрытую причину (Block, скрытый список, неизвестный токен) — единый 404 обязателен; второй read-owner; утечка брони владельцу
 - **Rule:** Единственная `VisibilityPolicy.canSee(viewer, gift)` решает каждое желание. Ответ найденного списка — `{ access: "gifts", gifts: [...] }`; «не найдено» — HTTP 404 `NOT_FOUND` конвертом AD-12, без полей списка. Отдельных `friends_only_gate` и `anon_gate` нет.
 
   **Порядок на список и профиль:**
@@ -182,44 +182,44 @@ flowchart TB
   | «не найдено» (HTTP 404 `NOT_FOUND`) | Нет полей списка и gift-полей |
   | Owner | Все свои желания, включая `SECRET` |
 
-  **Поля брони по роли зрителя (D-13):**
+  **Поля брони по роли зрителя (D-13, D-49):**
   | Поле | Держатель | Владелец | Другие с `access=gifts` |
   |------|-----------|----------|--------------------------|
-  | status | да | да | да |
-  | reservedBy | да | только `holderVisibleToOwner` | только `holderVisibleToOthers` |
+  | status | да | **нет**: `RESERVED` отдаётся как `OPEN`; `CLOSED` остаётся `CLOSED` | да |
+  | reservedBy | да | **нет**: всегда `null` | только `holderVisibleToOthers` |
   | bought | да | **нет** | да |
-  | phase | да | только `AWAITING_OWNER` / `GIVEN` (как `ownerAction`) | только `GIVEN` (как label) |
-  | dueAt | да | нет | нет |
-  | visibility toggles | да | нет | нет |
+  | phase | да | **нет** | да, только этап (label): «Забронировано» / «Куплено» / «Подарено»; остальные поля фазы — нет |
+  | dueAt | да | **нет** | нет |
+  | visibility toggles | да (один: «видим другим») | нет | нет |
+  | ownerAction | нет | **нет**: всегда `null` | нет |
 
-  Исключение для Владельца: preflight снятия брони / удаления подарка возвращает `warning: "BOUGHT" | "GIVEN" | null` — только в ответ на это действие.
-  Reservation card держателя (A-14) дополняется полями `dueAt`, `phase`, `bought`, `holderVisibleToOwner`, `holderVisibleToOthers`.
+  **Правило владельца (D-49, `sprint-change-proposal-2026-11-25-surprise.md`).** Владелец **не получает ни одного признака Брони**: ни `status=RESERVED`, ни `reservedBy`, ни `bought`, ни `phase`, ни `dueAt`, ни `ownerAction`, ни меток, ни уведомлений и писем о брони. Забронированное желание в любом владельческом чтении (list, one, свой `/u/:nick`, ответы PATCH, close, undo-close, restore) выглядит как `OPEN` (`reservedBy: null`, `ownerAction: null`). Ответы и ошибки одинаковы с бронью и без неё — ни `VALIDATION`, ни `CONFLICT`, ни 404 сверх обычных не выдают бронь. Preflight-предупреждений владельцу о `BOUGHT` / `GIVEN` больше нет: перед «Изменить», «Удалить» и сужением видимости показывается нейтральное предупреждение, не зависящее от брони. `holderVisibleToOwner` в MVP всегда `false`; колонка сохраняется, миграции нет. Reservation card держателя (A-14) дополняется полями `dueAt`, `phase`, `bought`, `holderVisibleToOthers` и видна только держателю.
 
-  **Сужение видимости Владельцем (FR-10, ред. 2026-11-11).** Для снятия брони при смене `Gift.visibility` «есть ли доступ» считается как у обычного зрителя желания — фильтром этой AD-7 (`SECRET` / `FRIENDS` / `PUBLIC`), **без** исключения reservation card. Иначе `SECRET` никогда не снимал бы бронь. Исключение A-14 / FR-25 (`reservedById` видит reservation card после разрыва дружбы или блока) остаётся только для потери отношения и к смене видимости Владельцем не применяется. Сужает и расширяет видимость Владелец в любой момент, кроме `CLOSED` и архива; снятие — через `GiftStatusService` (AD-8), в одной транзакции с записью поля; повторное расширение бронь не восстанавливает. Перед снятием клиент показывает confirm «Бронирующий потеряет доступ, бронь снимется»; признак для confirm считает сервер тем же `VisibilityPolicy` (preflight, как `warning: BOUGHT | GIVEN` выше).
+  **Сужение видимости Владельцем (FR-10, ред. 2026-11-11; попап уточнён D-49, 2026-11-25).** Для снятия брони при смене `Gift.visibility` «есть ли доступ» считается как у обычного зрителя желания — фильтром этой AD-7 (`SECRET` / `FRIENDS` / `PUBLIC`), **без** исключения reservation card. Иначе `SECRET` никогда не снимал бы бронь. Исключение A-14 / FR-25 (`reservedById` видит reservation card после разрыва дружбы или блока) остаётся только для потери отношения и к смене видимости Владельцем не применяется. Сужает и расширяет видимость Владелец в любой момент, кроме `CLOSED` и архива; снятие — через `GiftStatusService` (AD-8), в одной транзакции с записью поля; повторное расширение бронь не восстанавливает. Перед **любым** сужением видимости открытого не-секретного желания клиент показывает нейтральное предупреждение «Кто-то мог уже забронировать или купить этот подарок» с действием «Изменить» и «Отмена», которое **никогда** не зависит от наличия брони (D-49); после MVP — только когда даритель реально выпадает из круга (CLE-128). Если держатель теряет доступ, он получает уведомление, а Владелец не видит ничего особого.
 
   Любой list/gift read API (включая профиль) вызывает тот же `resolve`; сырой `findMany` по `listId` без policy запрещён. FR-25 — исключение только через reservation-card матрицу выше.
 
 ### AD-8 — Статусы подарка; единственный writer
 
-- **Binds:** FR-10, FR-12, FR-17, FR-29..FR-32, D-12, D-13, UX-A11
-- **Prevents:** dual mutation paths; self-reserve; reopen без решения; авто-снятие купленной брони
+- **Binds:** FR-10, FR-12, FR-17, FR-29..FR-32, D-12, D-13, D-49, UX-A11
+- **Prevents:** dual mutation paths; self-reserve; reopen без решения; авто-снятие купленной брони; утечка брони владельцу
 - **Rule:** Enum DB: `OPEN | RESERVED | CLOSED`. **Только** `GiftStatusService` выполняет Prisma/SQL, меняющий `status`, колонки брони / закрытия и `archivedAt` (AD-9). Адаптеры — тонкие вызовы сервиса.
 
-  `Gift.quantity`: `SINGLE | UNLIMITED` (D-25). `UNLIMITED` не переходит в `RESERVED` (отказ `VALIDATION`). Счётчик «сколько подарили» в MVP не хранится как публичное поле.
+  `Gift.quantity`: `SINGLE | UNLIMITED` (D-25, уточнено D-49). `UNLIMITED` не переходит в `RESERVED` (отказ `VALIDATION`). `quantity` меняется и у `RESERVED`: смена «Один раз» → «Можно дарить снова» бронь не снимает, событие держателю не шлёт и отдельного попапа не требует. Счётчик «сколько подарили» в MVP не хранится как публичное поле.
 
-  `Gift.archivedAt`: срок жизни (D-26); ручного архива в MVP нет. Срок прошёл, когда локальная дата владельца позже `expiresOn`. Архив скрывает желание из активного списка. Восстановление → `OPEN` и сбрасывает бронь. Дублирование создаёт новое `OPEN`. Cron `wish-expiry` за 3 дня до `expiresOn` (локальная дата держателя, окно ~10:00) шлёт одно `WISH_EXPIRY_SOON`, если статус `RESERVED`; просроченное архивирует и снимает активную бронь, если держатель не отметил вручение. Раннее письмо задним числом не досылается.
+  `Gift.archivedAt`: срок жизни (D-26); ручного архива в MVP нет. Срок прошёл, когда локальная дата владельца позже `expiresOn`. Архив скрывает желание из активного списка. Восстановление → `OPEN` и сбрасывает бронь. Дублирование создаёт новое `OPEN`. Cron `wish-expiry` за 3 дня до `expiresOn` (локальная дата держателя, окно ~10:00) шлёт одно `WISH_EXPIRY_SOON`, если статус `RESERVED`; просроченное архивирует и снимает активную бронь, если `bought=false` (D-49: «Подарил» от авто-снятия не защищает; фаза `GIVEN` наступает по Story 5.7 и от снятия по сроку брони тоже не защищает). Раннее письмо задним числом не досылается.
 
   Переходы MVP:
   - `OPEN → RESERVED` — только `SINGLE`; даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны. Отдельного права «забронировать первым» нет (D-28)
-  - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, toggles); владелец (T6 «оставить», T10 «не получал»); cron (таймеры)
-  - `RESERVED → OPEN` — держатель | владелец (в том числе при сужении `visibility`, из-за которого держатель теряет доступ по AD-7) | cron (только `phase=AWAITING_OWNER AND bought=false`)
+  - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, видимость для других; `given` переводит фазу в `GIVEN`, Story 5.7); cron (таймеры). Продление допустимо только при `dueAt > now()`: после Срока оно запрещено и на сервере, и в приложении (D-12). Владельческих действий с бронью нет (D-49)
+  - `RESERVED → OPEN` — держатель | владелец только как следствие сужения `visibility`, из-за которого держатель теряет доступ по AD-7 | cron (через 168 ч после Срока в любой фазе, независимо от `bought`)
   - `OPEN | RESERVED → CLOSED` — владелец; reserved* **сохраняются** для аудита; пишутся `closedAt`, `closedFromStatus`; FR-25 активные = `status=RESERVED`
   - `CLOSED → closedFromStatus` — только владелец, только при `closedAt > now()-UNDO_WINDOW` (отмена; `UNDO_WINDOW` = 10 min, D-43) `[ARCH-A5]`
   - Остальные `CLOSED → *` запрещены
   - Владелец **не** может `OPEN → RESERVED` на своём подарке → `FORBIDDEN`
   - `COLLECTION` не используется в R1
 
-  Gift CRUD: поля `title`, `description?`, `priceAmount?` (целые минимальные единицы, два знака), `priceCurrency?` (`USD|EUR|CNY|BYN|RUB`, при непустой цене по умолчанию `USD`), `linkUrl?`, `visibility`, `quantity`, `expiresOn?`, теги (AD-22, AD-25). Переноса между списками нет. Правка полей при `RESERVED` разрешена — включая `visibility` при `RESERVED` (ред. 2026-11-11); если новое значение отнимает у держателя доступ по AD-7, бронь снимается (`RESERVED → OPEN`) через `GiftStatusService` в одной транзакции с записью поля, а повторное расширение её не восстанавливает. Уведомление держателю о снятии по этой причине — Epic 5–6 (`deferred-work.md`), до него снятие тихое. Правка прочих полей при `RESERVED` порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в том же списке. Нематериальное желание — то же желание без обязательного `linkUrl`. Денежный сбор не создаётся (AD-11). Цена может отсутствовать (D-36).
+  Gift CRUD: поля `title`, `description?`, `priceAmount?` (целые минимальные единицы, два знака), `priceCurrency?` (`USD|EUR|CNY|BYN|RUB`, при непустой цене по умолчанию `USD`), `linkUrl?`, `visibility`, `quantity`, `expiresOn?`, теги (AD-22, AD-25). Переноса между списками нет. Правка полей при `RESERVED` разрешена — включая `visibility` и `quantity` при `RESERVED` (ред. 2026-11-11; `quantity` — D-49); если новое значение `visibility` отнимает у держателя доступ по AD-7, бронь снимается (`RESERVED → OPEN`) через `GiftStatusService` в одной транзакции с записью поля, а повторное расширение её не восстанавливает; смена `quantity` бронь не трогает. Владелец не видит, есть ли бронь: перед «Изменить», «Удалить» и сужением видимости — одинаковое нейтральное предупреждение, ответы и ошибки одинаковы с бронью и без неё (D-49). Правка прочих полей при `RESERVED` порождает событие держателю; удаление `RESERVED` снимает бронь + событие держателю; «Хочу ещё такой» — обычное создание OPEN-копии в том же списке. Нематериальное желание — то же желание без обязательного `linkUrl`. Денежный сбор не создаётся (AD-11). Цена может отсутствовать (D-36).
 
   `Gift.archivedAt != null` — архивное желание для Владельца только для просмотра: правка полей или видимости → `VALIDATION` с подсказкой «Архивное желание можно только просматривать» (не `NOT_FOUND`); чужое архивное желание по-прежнему `NOT_FOUND`. «Вернуть в вишлист» (archive → `OPEN`) и «Скопировать» — отдельные операции Story 2.6, они не являются правкой архивного желания.
 
@@ -233,7 +233,7 @@ flowchart TB
   `priceAmount int null`, `priceCurrency enum(USD|EUR|CNY|BYN|RUB) null`,
   `reservedById`, `reservedAt`, `reservationDueAt timestamptz`, `reservationTimeZone text` (IANA),
   `reservationPhase enum(ACTIVE|AWAITING_GIVER|AWAITING_OWNER|GIVEN)`, `reservationPhaseAt timestamptz`,
-  `reservationBought bool default false`, `holderVisibleToOwner bool default false`, `holderVisibleToOthers bool default true`,
+  `reservationBought bool default false`, `holderVisibleToOwner bool default false` (в MVP всегда `false`, D-49; колонка сохраняется, миграции нет), `holderVisibleToOthers bool default true`,
   `titleSnapshotOnReserve`, `closedAt timestamptz`, `closedFromStatus enum(OPEN|RESERVED)`.
   Индексы для cron: `(status, reservationPhase, reservationDueAt)`, `(status, reservationPhase, reservationPhaseAt)`.
 
@@ -242,13 +242,12 @@ flowchart TB
   | Transition | Predicate |
   |------------|-----------|
   | OPEN→RESERVED | `status=OPEN AND quantity=SINGLE AND archivedAt IS NULL`; set reserved*, `phase=ACTIVE` |
-  | holder: extend / bought / given / toggles | `status=RESERVED AND reservedById=actor` (+ `phase<>GIVEN` для given). Любой возврат фазы в `ACTIVE` в том же UPDATE ставит `reservationDueAt` в будущее; иначе следующий тик cron снова увидит `dueAt<=now` |
-  | owner: keep (T6) / not received (T10) | `status=RESERVED AND phase=AWAITING_OWNER` / `phase=GIVEN` |
+  | holder: extend / bought / given / visibility | `status=RESERVED AND reservedById=actor`. `extend` — только при `dueAt > now()`; после Срока продление отклоняется. `given` переводит `phase` в `GIVEN` из любой фазы (Story 5.7). Любой возврат фазы в `ACTIVE` в том же UPDATE ставит `reservationDueAt` в будущее; иначе следующий тик cron снова увидит `dueAt<=now` |
   | cron: ACTIVE→AWAITING_GIVER | `status=RESERVED AND phase=ACTIVE AND dueAt<=now()` |
-  | cron: AWAITING_GIVER→AWAITING_OWNER | `phase=AWAITING_GIVER AND phaseAt<=now()-72h` |
-  | cron: AWAITING_OWNER→OPEN | `phase=AWAITING_OWNER AND phaseAt<=now()-168h AND bought=false`; clear reserved* |
+  | cron: AWAITING_GIVER→AWAITING_OWNER | `phase=AWAITING_GIVER AND phaseAt<=now()-72h`; владельцу ничего не отправляется, это внутренняя фаза (D-49) |
+  | cron: RESERVED→OPEN | `status=RESERVED AND dueAt<=now()-168h` в любой фазе (`ACTIVE`, `AWAITING_GIVER`, `AWAITING_OWNER`, `GIVEN`) и независимо от `bought`; clear reserved*; событие только держателю (D-49). Считается от Срока, внутренняя фаза `AWAITING_OWNER` срок не сдвигает |
   | RESERVED→OPEN (holder) | `status=RESERVED AND reservedById=actor`; clear reserved* |
-  | RESERVED→OPEN (owner) | `status=RESERVED`; clear reserved*; тот же переход выполняет снятие при сужении `visibility`, отнявшем доступ у держателя (AD-7, AD-8) — в одной транзакции с записью `visibility` |
+  | RESERVED→OPEN (owner, только сужение visibility) | `status=RESERVED`; clear reserved*; тот же переход выполняет снятие при сужении `visibility`, отнявшем доступ у держателя (AD-7, AD-8) — в одной транзакции с записью `visibility`. Отдельного владельческого действия «снять бронь» нет (D-49) |
   | OPEN/RESERVED→CLOSED | `status = expected`; set CLOSED, `closedAt`, `closedFromStatus`; keep reserved* |
   | CLOSED→undo | `status=CLOSED AND closedAt>now()-UNDO_WINDOW AND owner=actor`; restore `closedFromStatus` |
   | OPEN→archive | `status=OPEN AND archivedAt IS NULL`; set `archivedAt` |
@@ -278,8 +277,8 @@ flowchart TB
 
 ### AD-12 — Wire-контракт мутаций и карточек
 
-- **Binds:** all write/read DTOs, D-13, FR-31, UJ-2
-- **Prevents:** разнобой shapes; различимый ответ на скрытую причину («не найдено» — единый 404); утечка имени держателя владельцу
+- **Binds:** all write/read DTOs, D-13, D-49, FR-31, UJ-2
+- **Prevents:** разнобой shapes; различимый ответ на скрытую причину («не найдено» — единый 404); утечка имени держателя и любого признака брони владельцу
 - **Rule:** Action result: `{ ok: true, data } | { ok: false, code, message, reason?, field?, params? }`. `reason` — закрытый zod-enum в `packages/contracts` (например `EMAIL_TAKEN`, `NICK_TAKEN`, `DUE_OUT_OF_RANGE`, `DATES_LIMIT`); `field` — имя поля формы; `params` — только примитивы и ISO-строки. Текст пользователю — по AD-27. Коды **закрытый** набор: `UNAUTHENTICATED | FORBIDDEN | NOT_FOUND | CONFLICT | VALIDATION | RATE_LIMITED`. «Не найдено» — не успешный ответ: HTTP 404 и конверт `{ ok: false, code: "NOT_FOUND", message }`.
 
   Ответ найденного списка: `{ ok: true, data: { access: "gifts", gifts } }` — только найденный. Ветки `not_found` в успешной схеме нет. Иного конверта нет: «не найдено» приходит ошибкой `NOT_FOUND`, а не `ok: true` с `access`.
@@ -288,7 +287,7 @@ flowchart TB
 
   Gift card — закрытый набор, один и тот же для веба и Expo (`packages/contracts`):
   `{ id, title, description, priceAmount: number|null, priceCurrency: "USD"|"EUR"|"CNY"|"BYN"|"RUB"|null, linkUrl, visibility: "PUBLIC"|"FRIENDS"|"SECRET", quantity: "SINGLE"|"UNLIMITED", expiresOn: string|null, archivedAt: string|null, tags: { catalogId: string|null, label: string }[], status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservationLabel: null | "BOUGHT" | "GIVEN", ownerAction: null | "CONFIRM_GIVEN" | "EXPIRED_NO_REPLY" }`.
-  `reservedBy` — по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. `reservationLabel` — только не-владельцу; `ownerAction` — только владельцу. Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOwner, holderVisibleToOthers }`. Пустая цена — оба поля `null`. Непустая цена без выбранной валюты сохраняется как `USD`. `visibility` чужое желание не раскрывает: в выдаче только те карточки, которые фильтр уже пропустил.
+  `reservedBy` — по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. Для владельца `RESERVED` отдаётся как `OPEN` (`reservedBy: null`, `ownerAction: null`, `reservationLabel: null`), а `CLOSED` остаётся `CLOSED` (D-49). `reservationLabel` — только не-владельцу; `ownerAction` в MVP не используется и всегда `null` (поле остаётся в контракте до отдельной чистки). Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOthers }`. Пустая цена — оба поля `null`. Непустая цена без выбранной валюты сохраняется как `USD`. `visibility` чужое желание не раскрывает: в выдаче только те карточки, которые фильтр уже пропустил.
 
   **Размер тела запроса (2026-11-10).** Мутация с телом больше 32 КиБ (32768 байт) отклоняется до `JSON.parse`: HTTP 413 и конверт AD-12 `{ ok: false, code: "VALIDATION", message, reason: "PAYLOAD_TOO_LARGE" }`, без `field`. Закрытый `ErrorCode` не расширяется — размера в нём нет, номер ответа несёт `reason`, расширяемая часть конверта (`apps/web/src/lib/api-v1.ts`). `Content-Length` — только ранний отказ: без заголовка (chunked) тело читается с бюджетом, и поток отменяется при превышении. Клиент показывает `common.errors.reason.PAYLOAD_TOO_LARGE` (AD-27).
 
@@ -300,19 +299,20 @@ flowchart TB
 
 ### AD-14 — Уведомления `[ASSUMPTION A-22]`
 
-- **Binds:** FR-26, FR-31, SM-C1, NFR privacy
-- **Prevents:** push-scope; FO leak в нотификациях; утечка держателя владельцу; повторные «пинги»
+- **Binds:** FR-26, FR-31, FR-12, D-49, SM-C1, NFR privacy
+- **Prevents:** push-scope; FO leak в нотификациях; утечка брони владельцу; повторные «пинги»
 - **Rule:** MVP — in-app `Notification` + email (Resend). Каналы получателя: in-app и email, по категориям (FR-52). Нативный push в MVP нет (Q-9). Одно событие → одна запись `Notification` (+ одно письмо, если канал email включён и событие в email-перечне).
   `Notification.deliverAfter timestamptz` — для закрытия (= `closedAt + UNDO_WINDOW`, 10 min); отмена удаляет недоставленную запись. Доставка отложенных писем — механизм на выбор dev (after-response task или cron), допустимая задержка ≤ 1 ч.
   Закрытый `Notification.kind`: `FRIEND_INVITE`, `FRIEND_ACCEPT`, `FRIEND_REJECT`, `RESERVATION_CREATED`, `RESERVATION_RELEASED`, `RESERVATION_DUE`, `RESERVATION_OWNER_ASK`, `RESERVATION_KEPT_BY_OWNER`, `RESERVATION_AUTO_RELEASE`, `GIFT_EDITED`, `GIFT_DELETED`, `GIFT_CLOSED`, `GIFT_GIVEN`, `DATE_FRIEND`, `DATE_OWN`, `SUGGESTION`, `WISH_EXPIRY_SOON`, `WISH_EXPIRY`. Другие kind запрещены. Email — подмножество: события брони из FR-26, напоминания дат, `SUGGESTION`, `WISH_EXPIRY_SOON` и `WISH_EXPIRY`, если у получателя включён канал email. `WISH_EXPIRY_SOON` — ровно за 3 дня до `expiresOn` (D-26).
-  `RESERVATION_KEPT_BY_OWNER` — одно in-app уведомление держателю об успешном продлении брони владельцем (Story 5.6, FR-26). Payload содержит `titleSnapshot` и новый срок в ISO-формате. Дата отображается в часовом поясе брони.
-  Payload и письма: не содержат названий желаний, которые получатель не может видеть (AD-7); не содержат дат, которые он не может видеть (AD-23); держателю — `titleSnapshot`; владельцу — без идентичности держателя без `holderVisibleToOwner` и без `bought`. Принятие идеи создаёт обычное желание (`OPEN`, количество выбирает получатель, по умолчанию `SINGLE`); видимость выбирает получатель. Колонки `priorityReserverId` нет (D-28). Имя отправителя в payload есть только если он его раскрыл.
+  `RESERVATION_KEPT_BY_OWNER` — одно in-app уведомление держателю об успешном продлении брони владельцем (Story 5.6, FR-26). В MVP владелец бронь не видит и продлить её не может (D-49): действие и событие не создаются; kind остаётся в закрытом наборе для истории. Payload содержит `titleSnapshot` и новый срок в ISO-формате. Дата отображается в часовом поясе брони.
+  **Напоминание до Срока (D-12, дополнение 2026-11-25).** За 1–2 дня до `reservationDueAt` держателю уходит одно напоминание «Если не продлить, бронь снимется через 7 дней после этой даты»; только держателю. В закрытом наборе kind нет типа для напоминания до Срока. Нужен ли новый kind или можно обойтись без него — вопрос реализации S9b-2; здесь набор и схема не меняются. `RESERVATION_DUE` называет дату снятия (`dueAt + 7 дней`) и не предлагает продление: после Срока продление запрещено.
+  **Уведомления владельцу о брони (D-49, `sprint-change-proposal-2026-11-25-surprise.md`, CLE-124).** Владельцу не создаются `RESERVATION_CREATED`, `RESERVATION_RELEASED` (owner), `RESERVATION_OWNER_ASK`, `RESERVATION_AUTO_RELEASE` (owner) и `GIFT_GIVEN` с вопросом «Подарок у вас?». Старые строки этих видов не показываются владельцу при чтении (лента, счётчик непрочитанных, рассылка писем), но остаются в БД; миграции нет. После «Подарил» владельцу уходит одно общее письмо без названия желания и имени дарителя (FR-30); отдельного in-app уведомления и kind для него нет. Payload и письма: не содержат названий желаний, которые получатель не может видеть (AD-7); не содержат дат, которые он не может видеть (AD-23); держателю — `titleSnapshot`; владельцу — ни одного признака брони: ни `status`, ни `reservedBy`, ни `bought`, ни `phase`, ни `dueAt`, ни `ownerAction` (D-49). Принятие идеи создаёт обычное желание (`OPEN`, количество выбирает получатель, по умолчанию `SINGLE`); видимость выбирает получатель. Колонки `priorityReserverId` нет (D-28). Имя отправителя в payload есть только если он его раскрыл.
 
 ### AD-15 — Тестирование инвариантов `[ASSUMPTION]`
 
-- **Binds:** AD-7, AD-9, AD-14, SM-2, FR-31
-- **Prevents:** «забытые» гонки и privacy в epics
-- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → HTTP 404 `NOT_FOUND`, статус, тело и заголовки идентичны неизвестному токену; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец при `holderVisibleToOwner=false` не получает идентичность держателя ни в gift card, ни в Notification, ни в письме; `bought` владельцу не отдаётся; (6) cron не переводит в OPEN брони с `bought=true` и в фазе GIVEN; (7) гонка cron-таймера и действия держателя/владельца → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера. Остальной test pyramid — на epics.
+- **Binds:** AD-7, AD-9, AD-14, SM-2, FR-12, FR-31, D-49
+- **Prevents:** «забытые» гонки и privacy в epics; утечка брони владельцу
+- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → HTTP 404 `NOT_FOUND`, статус, тело и заголовки идентичны неизвестному токену; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец не получает ни одного признака брони: ни `status=RESERVED`, ни идентичности держателя, ни `bought`, ни `phase`, ни `dueAt`, ни `ownerAction` — ни в gift card, ни в Notification, ни в письме; ответы и ошибки одинаковы с бронью и без неё (D-49); (6) cron снимает бронь через 168 ч после Срока в любой фазе и независимо от `bought`; `bought=true` и `GIVEN` не защищают (D-49); (7) гонка cron-таймера и действия держателя → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера; (13) владелец не отличает забронированное желание от открытого: list, one, свой `/u/:nick`, PATCH, close, undo-close, restore, keep и удаление дают одинаковые данные и ошибки с бронью и без неё (D-49). Остальной test pyramid — на epics.
 
 ### AD-16 — Переносимость `[ADOPTED D-16]`
 
@@ -510,7 +510,7 @@ erDiagram
     enum reservationPhase
     datetime reservationPhaseAt
     bool reservationBought
-    bool holderVisibleToOwner
+    bool holderVisibleToOwner (MVP: always false, D-49)
     bool holderVisibleToOthers
     string titleSnapshotOnReserve
     datetime closedAt
@@ -524,16 +524,15 @@ stateDiagram-v2
   OPEN --> RESERVED: reserve CAS (dueAt, toggles)
   state RESERVED {
     [*] --> ACTIVE
+    ACTIVE --> ACTIVE: holder extend (dueAt > now)
     ACTIVE --> AWAITING_GIVER: cron dueAt
     AWAITING_GIVER --> AWAITING_OWNER: cron +72h
-    AWAITING_GIVER --> ACTIVE: holder extend / bought
-    AWAITING_OWNER --> ACTIVE: holder extend / owner keep
-    ACTIVE --> GIVEN: holder given
-    AWAITING_GIVER --> GIVEN: holder given
-    AWAITING_OWNER --> GIVEN: holder given
-    GIVEN --> ACTIVE: owner not received (bought=true)
+    AWAITING_GIVER --> ACTIVE: holder bought
+    ACTIVE --> GIVEN: holder given (Story 5.7)
+    AWAITING_GIVER --> GIVEN: holder given (Story 5.7)
+    AWAITING_OWNER --> GIVEN: holder given (Story 5.7)
   }
-  RESERVED --> OPEN: holder / owner release; cron +168h if !bought
+  RESERVED --> OPEN: holder release / owner visibility narrowing / cron +168h (any phase)
   OPEN --> CLOSED: owner received
   RESERVED --> CLOSED: owner received
   CLOSED --> OPEN: undo ≤UNDO_WINDOW (closedFromStatus)

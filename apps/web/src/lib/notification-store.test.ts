@@ -32,6 +32,7 @@ import {
   countUnreadNotifications,
   readNotifications,
   readNotification,
+  enqueueGiftGivenNotice,
   enqueueGiftNotification,
   isHiddenOwnerReservationNotification,
   markNotificationRead,
@@ -93,20 +94,81 @@ beforeEach(function reset() {
 });
 
 describe("notification privacy and availability", function privacyTests() {
-  it("rechecks FR-31 and omits holder identity, purchase mark and due date from an owner-facing row", async function hidesFields() {
+  it("sends the owner one general given letter with no title, holder or action, and no in-app row", async function generalGiven() {
     db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "GIVEN" });
+    // The row the store writes for «Подарил»: no gift id, no payload details.
     const row = record({
       kind: "GIFT_GIVEN",
-      payload: { role: "owner", titleSnapshot: gift.title, holderName: gift.reservedBy.name, bought: true, dueAt: gift.reservationDueAt.toISOString() },
+      giftId: null,
+      actorId: null,
+      reservationAt: null,
+      phaseAt: null,
+      payload: {},
     });
-    const item = await projectNotification(row, defaults, "inApp", now);
-    expect(item?.event).toEqual({
-      kind: "GIFT_GIVEN", giftId: gift.id, titleSnapshot: gift.title, actionable: true,
-    });
-    expect(JSON.stringify(item)).not.toContain(gift.reservedBy.name);
+
+    // Story 5.7: in-app GIFT_GIVEN does not exist; the letter is e-mail only.
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+    const item = await projectNotification(row, defaults, "email", now);
+    expect(item?.event).toEqual({ kind: "GIFT_GIVEN" });
+    expect(item?.href).toBeNull();
+    expect(notificationText(item!.event, "ru")).toBe(
+      "Проверьте свои желания — может, что-то пора обновить, добавить или убрать в архив",
+    );
+    expect(JSON.stringify(item)).not.toContain("Плед");
+    expect(JSON.stringify(item)).not.toContain("Скрытый даритель");
+    expect(JSON.stringify(item)).not.toContain("actionable");
+
+    // CLE-124/D-49: even a legacy row with the old `true` flag never names the holder.
     db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "GIVEN", holderVisibleToOwner: true });
-    expect((await projectNotification(row, defaults, "inApp", now))?.event)
-      .toHaveProperty("holderName", gift.reservedBy.name);
+    const legacy = record({
+      kind: "GIFT_GIVEN",
+      payload: { role: "owner", titleSnapshot: gift.title, holderName: gift.reservedBy.name },
+    });
+    await expect(projectNotification(legacy, defaults, "inApp", now)).resolves.toBeNull();
+    const legacyMail = await projectNotification(legacy, defaults, "email", now);
+    expect(legacyMail?.event).not.toHaveProperty("holderName");
+    expect(JSON.stringify(legacyMail)).not.toContain(gift.reservedBy.name);
+    expect(JSON.stringify(legacyMail)).not.toContain(gift.title);
+  });
+
+  it("names the release date in the expiry notice and the deadline in the reminder", async function dueDates() {
+    const dueAt = "2026-11-25T21:00:00.000Z";
+    const expiry = record({
+      kind: "RESERVATION_DUE",
+      recipientId: "holder",
+      actorId: "owner",
+      payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve, dueAt, timeZone: "Europe/Minsk" },
+    });
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "AWAITING_GIVER" });
+    const expired = await projectNotification(expiry, defaults, "inApp", now);
+    expect(expired?.event).toMatchObject({ actionable: true, dueAt, timeZone: "Europe/Minsk" });
+    expect(notificationText(expired!.event, "ru")).toBe(
+      "Срок брони «Снимок названия» истёк. Если ничего не сделать, бронь снимется 3 декабря",
+    );
+
+    const reminder = record({
+      kind: "RESERVATION_DUE",
+      recipientId: "holder",
+      actorId: "owner",
+      payload: {
+        role: "holder",
+        titleSnapshot: gift.titleSnapshotOnReserve,
+        dueAt,
+        timeZone: "Europe/Minsk",
+        reminder: true,
+      },
+    });
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "ACTIVE" });
+    const before = await projectNotification(reminder, defaults, "inApp", now);
+    expect(before?.event).toMatchObject({ actionable: true, reminder: true, dueAt });
+    expect(notificationText(before!.event, "ru")).toBe(
+      "Срок брони «Снимок названия» — 25 ноября. Продлите или отметьте «Купил»; если не продлить, бронь снимется через 7 дней после этой даты",
+    );
+
+    // The reminder stops being actionable once the phase leaves ACTIVE.
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "AWAITING_GIVER" });
+    expect((await projectNotification(reminder, defaults, "inApp", now))?.event)
+      .toMatchObject({ actionable: false });
   });
 
   it("keeps the holder's reservation snapshot after losing wishlist access", async function holderOnly() {
@@ -128,10 +190,12 @@ describe("notification privacy and availability", function privacyTests() {
 
   it("checks the phase timestamp and reservation instance independently", async function staleSnapshots() {
     const live = await notificationGiftSnapshot(db as never, gift.id);
-    expect(notificationIsActionable(record(), live)).toBe(true);
-    expect(notificationIsActionable(record({ phaseAt: reservedAt }), live)).toBe(false);
-    expect(notificationIsActionable(record({ reservationAt: now }), live)).toBe(false);
-    expect(notificationIsActionable(record(), live && { ...live, reservationPhase: "ACTIVE" })).toBe(false);
+    const active = live && { ...live, reservationPhase: "AWAITING_GIVER" as const };
+    const due = record({ kind: "RESERVATION_DUE", recipientId: "holder", actorId: "owner" });
+    expect(notificationIsActionable(due, active)).toBe(true);
+    expect(notificationIsActionable({ ...due, phaseAt: reservedAt }, active)).toBe(false);
+    expect(notificationIsActionable({ ...due, reservationAt: now }, active)).toBe(false);
+    expect(notificationIsActionable(due, live)).toBe(false);
   });
 
   it("rejects a stale control before the GiftStatusService CAS", async function rejectStaleMutation() {
@@ -238,6 +302,47 @@ describe("notification privacy and availability", function privacyTests() {
 });
 
 /**
+ * CLE-124/S9b-2 (Story 5.7): «Подарил» writes the owner a general letter and
+ * never an in-app row.
+ */
+describe("CLE-124/S9b-2: the owner's general given letter", function givenLetter() {
+  it("queues one e-mail-only row a day without a gift, an actor or any payload", async function queue() {
+    await enqueueGiftGivenNotice(db as never, "owner", now);
+
+    const { data, skipDuplicates } = db.notification.createMany.mock.calls[0]![0];
+    expect(skipDuplicates).toBe(true);
+    expect(data).toMatchObject({
+      kind: "GIFT_GIVEN",
+      recipientId: "owner",
+      eventKey: "GIFT_GIVEN:2026-11-24",
+      emailRequired: true,
+      payload: {},
+    });
+    expect(data.giftId).toBeUndefined();
+    expect(data.actorId).toBeUndefined();
+    expect(data.reservationAt).toBeUndefined();
+    expect(data.phaseAt).toBeUndefined();
+  });
+
+  it("shows the letter in the e-mail channel only and keeps the link addressable", async function channels() {
+    await enqueueGiftGivenNotice(db as never, "owner", now);
+    const { data } = db.notification.createMany.mock.calls[0]![0];
+    const row = record({ ...data, giftId: null });
+
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+    db.notification.findMany.mockResolvedValue([]);
+    await expect(countUnreadNotifications("owner")).resolves.toBe(0);
+
+    const mail = await projectNotification(row, defaults, "email", now);
+    expect(mail?.event).toEqual({ kind: "GIFT_GIVEN" });
+    db.notification.findFirst.mockResolvedValue(row);
+    await expect(readNotification("owner", row.id)).resolves.toMatchObject({
+      event: { kind: "GIFT_GIVEN" },
+    });
+  });
+});
+
+/**
  * CLE-124: a wish's reservation is a surprise for its owner. Rows written
  * before the rule stay in the database and are hidden by one rule at read time.
  */
@@ -278,6 +383,28 @@ describe("CLE-124: owner reservation rows are hidden", function hiddenOwnerRows(
     expect(db.notification.deleteMany).not.toHaveBeenCalled();
   });
 
+  it("drops a legacy holderName from the owner e-mail even with the old true flag", async function legacyName() {
+    const row = record({
+      kind: "GIFT_GIVEN",
+      payload: {
+        role: "owner",
+        titleSnapshot: gift.title,
+        holderName: gift.reservedBy.name,
+      },
+    });
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "GIVEN", holderVisibleToOwner: true });
+
+    // The in-app feed never carries a given row, legacy or not.
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+
+    mockEmailQueue([row]);
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+    await expect(processNotificationEmails(now, send, "https://example.test")).resolves.toMatchObject({ sent: 1 });
+    expect(send.mock.calls[0]![0].text).not.toContain(gift.reservedBy.name);
+    expect(send.mock.calls[0]![0].html).not.toContain(gift.reservedBy.name);
+    expect(send.mock.calls[0]![0].text).not.toContain(gift.title);
+  });
+
   it("keeps the holder's release and auto-release rows visible", async function holderRowsStay() {
     for (const kind of ["RESERVATION_RELEASED", "RESERVATION_AUTO_RELEASE"] as const) {
       const row = record({
@@ -296,12 +423,59 @@ describe("CLE-124: owner reservation rows are hidden", function hiddenOwnerRows(
     db.$transaction.mockImplementation(async function run(work) { return work(db); });
     db.notification.findFirst.mockResolvedValue(record());
 
-    await expect(actOnNotification("owner", "notification", { action: "keep" }))
+    await expect(actOnNotification("owner", "notification", { action: "release" }))
       .resolves.toMatchObject({ ok: false, code: "NOT_FOUND" });
 
     expect(db.$queryRaw).not.toHaveBeenCalled();
     expect(db.gift.updateMany).not.toHaveBeenCalled();
     expect(db.notification.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * CLE-124/S9b-2: «Подарил» from a reservation notice, and the refusal of an
+ * extension once the deadline has passed.
+ */
+describe("CLE-124/S9b-2: the holder's actions from a reservation notice", function dueActions() {
+  it("marks the reservation as given and answers a repeated press with success", async function given() {
+    db.$transaction.mockImplementation(async function run(work) { return work(db); });
+    db.notification.findFirst.mockResolvedValue(record({
+      kind: "RESERVATION_DUE", recipientId: "holder", actorId: "owner",
+    }));
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "AWAITING_GIVER" });
+    db.gift.updateMany.mockResolvedValue({ count: 1 });
+    db.notification.createMany.mockResolvedValue({ count: 1 });
+
+    await expect(actOnNotification("holder", "notification", { action: "given" }))
+      .resolves.toMatchObject({ ok: true });
+    expect(db.gift.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { reservationPhase: "GIVEN", reservationPhaseAt: expect.any(Date) },
+    }));
+
+    // The second press in GIVEN is a success and writes nothing again.
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "GIVEN" });
+    db.gift.updateMany.mockClear();
+    db.notification.createMany.mockClear();
+    await expect(actOnNotification("holder", "notification", { action: "given" }))
+      .resolves.toMatchObject({ ok: true });
+    expect(db.gift.updateMany).not.toHaveBeenCalled();
+    expect(db.notification.createMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses an extension from the notice once the deadline has passed", async function expiredExtend() {
+    db.$transaction.mockImplementation(async function run(work) { return work(db); });
+    db.notification.findFirst.mockResolvedValue(record({
+      kind: "RESERVATION_DUE", recipientId: "holder", actorId: "owner",
+    }));
+    db.gift.findUnique.mockResolvedValue({
+      ...gift,
+      reservationPhase: "AWAITING_GIVER",
+      reservationDueAt: new Date("2026-11-20T00:00:00.000Z"),
+    });
+
+    await expect(actOnNotification("holder", "notification", { action: "extend", dueOn: "2026-11-25" }))
+      .resolves.toMatchObject({ ok: false, code: "CONFLICT", reason: "RESERVATION_DUE_PASSED" });
+    expect(db.gift.updateMany).not.toHaveBeenCalled();
   });
 });
 

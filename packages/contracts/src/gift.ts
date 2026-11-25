@@ -291,11 +291,11 @@ export const giftVisibilityPreviewQuerySchema = z.strictObject({
 export type GiftVisibilityPreviewQuery = z.infer<typeof giftVisibilityPreviewQuerySchema>;
 
 /**
- * The preflight answer: `true` exactly when the wish is `RESERVED` and the new
- * value would take the holder's access away by AD-7, so the write would release
- * the reservation. The client shows the confirm «Бронирующий потеряет доступ,
- * бронь снимется» only on `true`; the preflight writes nothing and the write
- * repeats the same rule on its own, so a stale `true` or `false` is harmless.
+ * The preflight answer. D-49: the owner never learns that a reservation exists,
+ * so `wouldCancelReservation` is always `false` and the client's warning before
+ * a visibility change never depends on a reservation. The key stays for older
+ * clients; the write repeats the AD-7 release rule on its own, so the value is
+ * informational only.
  */
 export const giftVisibilityPreviewSchema = z.strictObject({
   wouldCancelReservation: z.boolean(),

@@ -16,7 +16,7 @@ function button(container: HTMLElement): HTMLElement {
 }
 
 function visual(container: HTMLElement): HTMLElement {
-  const node = container.querySelector<HTMLElement>("[data-testid='icon-button-visual']");
+  const node = container.querySelector<HTMLElement>("[data-testid='button-icon']");
   expect(node, "визуал кнопки").not.toBeNull();
   return node as HTMLElement;
 }

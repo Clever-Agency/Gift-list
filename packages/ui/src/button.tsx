@@ -1,6 +1,7 @@
 import { ButtonFrame as BehaviorFrame, ButtonText as BehaviorText } from "@tamagui/button";
 import { View, styled } from "@tamagui/core";
-import { forwardRef, type ComponentRef } from "react";
+import { XStack } from "@tamagui/stacks";
+import { forwardRef, type ComponentRef, type ReactNode } from "react";
 import { fontFor } from "./font-style";
 import { focusRing } from "./focus-ring";
 import { layerFade } from "./motion";
@@ -57,6 +58,15 @@ const LABEL_COLOR = {
   ghost: "foreground",
   destructive: "destructive-foreground",
 } as const satisfies Record<ButtonVariant, ColorToken>;
+
+/** `md` — a 44 px icon box; `sm` — a 32 px box inside the same 44 px target. */
+export type ButtonIconSize = "sm" | "md";
+
+/** Square icon boxes (toolbars) and round ones (row actions, e.g. accept / decline). */
+export type ButtonIconShape = "square" | "round";
+
+/** The drawn box of the icon-only mode; the 44 px target around it comes from the frame. */
+const ICON_BOX_SIZE = { sm: 32, md: 44 } as const;
 
 const Frame = styled(BehaviorFrame, {
   name: "GLButton",
@@ -135,6 +145,26 @@ const Frame = styled(BehaviorFrame, {
         minHeight: "$control-height",
         backgroundColor: "$destructive",
       },
+      /**
+       * Icon-only mode: the frame is only the 44 × 44 target, the look lives in the
+       * icon box inside (`IconBox`). No fill, no frame, no paddings — exactly the
+       * pressable surface an icon-only control had before it became a `Button`.
+       */
+      icon: {
+        minHeight: "$touch-target",
+        minWidth: "$touch-target",
+        paddingHorizontal: 0,
+        borderWidth: 0,
+        borderRadius: 0,
+        opacity: "press:0.9",
+      },
+      iconBlocked: {
+        minHeight: "$touch-target",
+        minWidth: "$touch-target",
+        paddingHorizontal: 0,
+        borderWidth: 0,
+        borderRadius: 0,
+      },
     },
     fullWidth: {
       true: { alignSelf: "stretch" },
@@ -172,6 +202,64 @@ const Label = styled(BehaviorText, {
     },
   } as const,
   defaultVariants: { variant: "primary" },
+});
+
+/**
+ * The drawn box of the icon-only mode (`DESIGN.md` → Button → icon button): 44 × 44
+ * with `iconSize="md"`, 32 × 32 with `sm` inside the same 44 px target, radius 8 or a
+ * circle with `shape="round"`. `outline` keeps the 1 px `border` frame, `ghost` drops
+ * it (the old `plain`), `primary` is the filled accept action. The icon draws with
+ * `currentColor`, so the box colour is the ink of the glyph; the frame under it is a
+ * transparent 44 px target (`icon` variant of `Frame`).
+ */
+const IconBox = styled(XStack, {
+  name: "GLButtonIcon",
+  alignItems: "center",
+  justifyContent: "center",
+  variants: {
+    variant: {
+      primary: {
+        backgroundColor: "$primary hover:$primary-hover press:$primary-hover",
+        color: `$${LABEL_COLOR.primary}`,
+      },
+      // v8: the reserve CTA is the primary one — same navy and same hover.
+      reserve: {
+        backgroundColor: "$primary hover:$primary-hover press:$primary-hover",
+        color: `$${LABEL_COLOR.reserve}`,
+      },
+      secondary: {
+        backgroundColor: "$accent-soft hover:$accent-soft-hover press:$accent-soft-hover",
+        borderWidth: 1,
+        borderColor: "$accent-border",
+        color: `$${LABEL_COLOR.secondary}`,
+      },
+      outline: {
+        borderWidth: 1,
+        borderColor: "$border hover:$foreground",
+        backgroundColor: "transparent hover:$muted press:$muted",
+        color: `$${LABEL_COLOR.outline}`,
+      },
+      ghost: {
+        borderWidth: 0,
+        borderColor: "transparent",
+        backgroundColor: "transparent hover:$muted press:$muted",
+        color: `$${LABEL_COLOR.ghost}`,
+      },
+      destructive: {
+        backgroundColor: "$destructive hover:$destructive-hover press:$destructive-hover",
+        color: `$${LABEL_COLOR.destructive}`,
+      },
+    },
+    iconSize: {
+      sm: { width: ICON_BOX_SIZE.sm, height: ICON_BOX_SIZE.sm },
+      md: { width: ICON_BOX_SIZE.md, height: ICON_BOX_SIZE.md },
+    },
+    shape: {
+      square: { borderRadius: "$md" },
+      round: { borderRadius: "$full" },
+    },
+  } as const,
+  defaultVariants: { variant: "outline", iconSize: "md", shape: "square" },
 });
 
 /**
@@ -215,9 +303,25 @@ export type ButtonProps = {
   /**
    * Required. The visible text and the accessible name (unless `ariaLabel` says
    * more). Copy comes from the caller. While `busy` it stays in the layout at
-   * opacity 0 under the spinner, so the width does not change.
+   * opacity 0 under the spinner, so the width does not change. In icon-only mode
+   * (`icon`) it is not drawn: it is the accessible name only.
    */
   label: string;
+  /**
+   * An icon instead of the visible label: the button becomes an icon-only control,
+   * 44 × 44 (`$touch-target`), with `label` as its accessible name and the glyph as
+   * the picture. The `variant` paints the icon box: `ghost` is the old borderless
+   * `plain`, `outline` keeps a 1 px `$border` frame, `primary` is the filled accept
+   * action. Hover, press, focus and the blocked states follow the variant.
+   */
+  icon?: ReactNode;
+  /**
+   * The drawn box of an icon-only button: `md` is 44 × 44 (the default), `sm` is a
+   * 32 × 32 box inside the same 44 px target. Ignored by a text button.
+   */
+  iconSize?: ButtonIconSize;
+  /** `square` (radius 8, the default) or `round`; icon-only mode only. */
+  shape?: ButtonIconShape;
   /**
    * The accessible name (`aria-label`) when it has to say more than the visible
    * label, e.g. a disabled button's reason. Defaults to `label`. The label hidden
@@ -242,6 +346,9 @@ export type ButtonProps = {
    * - `outline` — transparent with `$border-strong` frame → hover `$muted` fill and `$foreground` frame → press `$muted`
    * - `ghost` — transparent → hover `$muted` fill → press `$muted` fill
    * - `destructive` — `$destructive` fill → hover `$destructive-hover` → press 90% opacity
+   *
+   * In icon-only mode the same values paint the icon box; `outline` there takes the
+   * `$border` token, and the press is the 90% opacity of the target, like a pressable.
    */
   variant?: ButtonVariant;
   /**
@@ -288,12 +395,18 @@ export type ButtonProps = {
  * `button-ghost`). On the web it is a real `<button>` (with `href`, a real
  * `<a href>`); a phone renders the same component through React Native.
  *
+ * With `icon` it is the icon-only control of v8 (`IconButton` is a thin wrapper
+ * over it): a 44 × 44 target, the icon box inside, `label` as the accessible name.
+ *
  * The rules of every prop live in `ButtonProps` and are printed in the props table
  * of `UI/Button`; this comment stays the short summary.
  */
 export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(function Button(
   {
     label,
+    icon,
+    iconSize = "md",
+    shape = "square",
     ariaLabel,
     ariaDescribedBy,
     onPress,
@@ -309,6 +422,9 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
   ref,
 ) {
   const blocked = disabled || busy;
+  // `icon` turns the button into the icon-only control: the label stays the name,
+  // the icon box carries the look and the frame is only the 44 px target.
+  const iconOnly = icon !== undefined;
   // An anchor holds no disabled state: a blocked button keeps the `<button>` root
   // and only pretends to be one, so its `disabled` and `aria-disabled` stay honest.
   const link = href !== undefined && !blocked;
@@ -318,7 +434,13 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
   // A blocked button must not react to hover or press (`DESIGN.md` → Состояния): it
   // takes the variant value without those states. Focus, clicks and the Tab order stay
   // as they are.
-  const frameVariant = blocked ? BLOCKED_VARIANT[variant] : variant;
+  const frameVariant = iconOnly
+    ? blocked
+      ? "iconBlocked"
+      : "icon"
+    : blocked
+      ? BLOCKED_VARIANT[variant]
+      : variant;
   // `busy` keeps the button in the Tab order (focus must not drop to <body> when a
   // form is submitted); only a plain `disabled` is a native disabled button.
   const native = disabled && !focusableWhenDisabled;
@@ -359,10 +481,26 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
         The label stays in the row at opacity 0 while busy: it holds the width of
         the resting button. The name does not change — the frame's `aria-label`
         wins over the content — so the hidden text is not a second announcement.
+        An icon-only button draws the box instead of the label; the box also stays
+        at opacity 0 while busy, so the spinner takes its place without a shift.
       */}
-      <Label variant={variant} opacity={busy ? 0 : undefined}>
-        {label}
-      </Label>
+      {iconOnly ? (
+        <IconBox
+          variant={variant}
+          iconSize={iconSize}
+          shape={shape}
+          opacity={busy ? 0 : undefined}
+          testID="button-icon"
+          // A `<button>` may hold phrasing content only: the box is a `span` too.
+          render={<span />}
+        >
+          {icon}
+        </IconBox>
+      ) : (
+        <Label variant={variant} opacity={busy ? 0 : undefined}>
+          {label}
+        </Label>
+      )}
       <SpinnerSlot
         busy={busy}
         transition={layerFade(reduce)}

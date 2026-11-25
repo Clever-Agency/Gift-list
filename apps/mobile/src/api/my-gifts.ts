@@ -1,12 +1,10 @@
 import {
   giftCardSchema,
-  giftReservationWarningSchema,
   giftVisibilityPreviewSchema,
   isNotFound,
   listDataSchema,
   type GiftCard,
   type GiftInputDraft,
-  type GiftReservationWarning,
   type GiftUpdate,
   type GiftVisibilityPreview,
   type GiftVisibilityPreviewQuery,
@@ -50,23 +48,6 @@ export type DeleteGiftResult =
  */
 export type GiftVisibilityPreviewResult =
   | { ok: true; preview: GiftVisibilityPreview }
-  | { ok: false; invalid: true }
-  | Exclude<ClientResult<unknown>, { ok: true }>;
-
-/**
- * Story 5.2: the owner's preflight before releasing someone else's reservation
- * answers only the warning (`BOUGHT` | `GIVEN` | `null`), no holder, due date or
- * `bought` (AD-12, FR-31). A body that does not match the closed contract is
- * `invalid`, not a broken connection.
- */
-export type ReservationWarningResult =
-  | { ok: true; warning: GiftReservationWarning["warning"] }
-  | { ok: false; invalid: true }
-  | Exclude<ClientResult<unknown>, { ok: true }>;
-
-/** Story 5.2: the owner's release also answers `{ id }`; the screen rereads the list. */
-export type ReleaseReservationResult =
-  | { ok: true }
   | { ok: false; invalid: true }
   | Exclude<ClientResult<unknown>, { ok: true }>;
 
@@ -241,73 +222,6 @@ export async function previewGiftVisibility(
   if (!parsed.success) return { ok: false, invalid: true };
 
   return { ok: true, preview: parsed.data };
-}
-
-/**
- * Story 5.2 (FR-31, AD-12): the owner's preflight of a reservation release —
- * `GET /api/v1/me/gifts/{id}/reservation`. It only reads and answers
- * `{ warning }`: `BOUGHT` when the holder marked the gift as bought, `null`
- * otherwise. The body carries no holder, due date, phase or `bought`, and the
- * schema is strict, so anything extra is `invalid`.
- *
- * Story 5.4: deletion asks the same question (AD-7 gives one `warning` to both a
- * release and a delete), so the body of the delete confirm comes from here instead
- * of a second route; the request and its answer are unchanged.
- */
-export async function fetchReservationWarning(id: string): Promise<ReservationWarningResult> {
-  const result = await apiRequest<unknown>(
-    `/api/v1/me/gifts/${encodeURIComponent(id)}/reservation`,
-  );
-  if (!result.ok) return result;
-
-  const parsed = giftReservationWarningSchema.safeParse(result.data);
-  if (!parsed.success) return { ok: false, invalid: true };
-
-  return { ok: true, warning: parsed.data.warning };
-}
-
-/**
- * Story 5.2: `DELETE /api/v1/me/gifts/{id}/reservation` frees the holder's
- * reservation of an own wish in any phase. The answer is `{ id }`, not a card:
- * the owner rereads the list, so nothing else is needed. A body that does not
- * echo the same id is `invalid`, as the owner's delete.
- */
-export async function releaseReservation(id: string): Promise<ReleaseReservationResult> {
-  const result = await apiRequest<unknown>(
-    `/api/v1/me/gifts/${encodeURIComponent(id)}/reservation`,
-    { method: "DELETE" },
-  );
-  if (!result.ok) return result;
-
-  const data = result.data;
-  if (typeof data !== "object" || data === null) return { ok: false, invalid: true };
-  const record = data as Record<string, unknown>;
-  if (typeof record.id !== "string" || record.id !== id) return { ok: false, invalid: true };
-
-  return { ok: true };
-}
-
-/**
- * Story 5.6 (FR-29, AD-9): `POST /api/v1/me/gifts/{id}/reservation/keep` — the
- * owner answers «Не получал, оставить бронь» on an expired reservation. The body
- * is the contract's strict empty object (`{}`), so the transport sends
- * `content-type: application/json`; a key nobody understands would be `VALIDATION`
- * on the server, never a silent write. The answer is the owner's AD-12 card with
- * the reservation back in `ACTIVE`, re-checked here like the close and the undo
- * close. `CONFLICT` means cron or another request moved the row first: the screen
- * rereads the list instead of retrying blindly.
- */
-export async function keepReservation(id: string): Promise<GiftResult> {
-  const result = await apiRequest<unknown>(
-    `/api/v1/me/gifts/${encodeURIComponent(id)}/reservation/keep`,
-    { method: "POST", body: {} },
-  );
-  if (!result.ok) return result;
-
-  const parsed = giftCardSchema.safeParse(result.data);
-  if (!parsed.success) return { ok: false, invalid: true };
-
-  return { ok: true, gift: parsed.data };
 }
 
 /**

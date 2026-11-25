@@ -25,7 +25,6 @@ export function NotificationsList({ items, selectedId, busyId, onOpen, onAction 
         const request = "actionable" in event;
         const actions: NotificationAction["action"][] = [];
         if (request && event.actionable) {
-          if (event.kind === "RESERVATION_OWNER_ASK") actions.push("received", "keep", "release");
           if (event.kind === "RESERVATION_DUE") actions.push(event.bought ? "clearBought" : "bought", "extend", "release");
         }
         const time = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" })

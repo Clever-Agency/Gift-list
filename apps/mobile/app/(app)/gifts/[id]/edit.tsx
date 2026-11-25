@@ -11,7 +11,7 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { useTranslations } from "use-intl";
 import type { ClientResult } from "@/api/client";
-import { deleteGift, fetchGift, fetchReservationWarning, previewGiftVisibility, updateGift } from "@/api/my-gifts";
+import { deleteGift, fetchGift, previewGiftVisibility, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
@@ -127,9 +127,6 @@ export default function EditGiftScreen() {
   // Story 5.4: the confirm body of the open step — the reservation sentence for a
   // reserved wish, `null` for the open wish's own one.
   const [deleteBody, setDeleteBody] = useState<string | null>(null);
-  // Story 5.4: the preflight of a reserved wish runs before the confirm opens, so
-  // «Удалить желание» reports itself busy while it is in flight.
-  const [previewing, setPreviewing] = useState(false);
   // CLE-82/S23.3: a visibility change on a reserved wish may ask before it saves.
   // The pending values wait here while the confirm is open.
   const [visibilityDraft, setVisibilityDraft] = useState<GiftFormValues | null>(null);
@@ -138,8 +135,6 @@ export default function EditGiftScreen() {
   const inFlight = useRef(false);
   // Same guard for DELETE: two taps before the first answer must delete once.
   const deleteInFlight = useRef(false);
-  // Story 5.4: same guard for the delete preflight of a reserved wish.
-  const previewInFlight = useRef(false);
   // The button the confirm layer was opened from, and whether focus should go back to
   // it when the layer closes: a successful delete leaves the screen, so it must not.
   const deleteButtonRef = useRef<ComponentRef<typeof Pressable>>(null);
@@ -150,7 +145,7 @@ export default function EditGiftScreen() {
   // dirty draft is lost. The delete step owns the back while it is open, so the
   // guard sleeps then: its own modal closes like any other layer.
   const guard = useDiscardGuard(
-    dirty && !submitting && !previewing && !confirmingDelete && visibilityDraft === null,
+    dirty && !submitting && !confirmingDelete && visibilityDraft === null,
     openDiscard,
   );
   // Story 2.5: the catalogue only offers fixed tags; it never resets the stored
@@ -535,44 +530,23 @@ export default function EditGiftScreen() {
     setConfirmingDelete(false);
   }
 
-  /** «Удалить желание»: a reserved wish asks the preflight first, an open one at once. */
+  /** «Удалить желание»: the plain confirm; D-49 leaves nothing to preflight. */
   function startDelete() {
-    void beginDelete();
+    beginDelete();
   }
 
   /**
-   * Story 5.4: the delete of a reserved wish is previewed with the same
-   * `GET /me/gifts/:id/reservation` the release uses (AD-7): `BOUGHT` adds the
-   * «already bought» sentence, `null` the plain reservation one. The answer carries
-   * no holder, due date or phase (AD-12, FR-31). Nothing is written here, so a
-   * failure keeps the form exactly as it was and only reports itself.
+   * Story 5.4: a reserved wish used to be previewed with the owner's reservation
+   * route. D-49 (CLE-124) removed that route: the owner sees a reserved wish as
+   * open, so the plain delete confirm is always used and nothing is read first.
    */
-  async function beginDelete() {
+  function beginDelete() {
     if (state.status !== "ready") return;
     // Only one step of this form is open at a time.
     setToast(null);
     setDiscardOpen(false);
     setVisibilityDraft(null);
-    if (state.gift.status !== "RESERVED") {
-      openDeleteConfirm(null);
-      return;
-    }
-    // Two taps before the answer must ask the preflight once.
-    if (previewInFlight.current) return;
-    previewInFlight.current = true;
-    setPreviewing(true);
-    const preview = await fetchReservationWarning(id);
-    previewInFlight.current = false;
-    setPreviewing(false);
-    if (!preview.ok) {
-      await reportIssue(preview);
-      return;
-    }
-    openDeleteConfirm(
-      preview.warning === "BOUGHT"
-        ? giftForm("delete.reservedBoughtBody")
-        : giftForm("delete.reservedBody"),
-    );
+    openDeleteConfirm(null);
   }
 
   /**
@@ -693,10 +667,6 @@ export default function EditGiftScreen() {
                             ref={deleteButtonRef}
                             role="button"
                             aria-label={giftForm("delete.action")}
-                            // The preflight of a reserved wish reports itself busy and
-                            // swallows a second press; the label stays the action's.
-                            aria-busy={previewing || undefined}
-                            aria-disabled={previewing || undefined}
                             onPress={startDelete}
                             justifyContent="center"
                             minHeight="$touch-target"

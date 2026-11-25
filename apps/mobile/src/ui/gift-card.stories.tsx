@@ -6,11 +6,13 @@ import { WishCard } from "./gift-card";
 
 /**
  * The owner's gift card (AD-12, `DESIGN.md` → WishCard): title, price, status pill,
- * up to three tags with «+N», the reservation line and the interactive visibility
- * chip. Only an `onPress` makes the card a button; the chip is pressable on an
- * `OPEN` or `RESERVED` wish and read-only on a closed or archived one. The stories
- * use a fixture card: the server owns which fields a viewer may see
- * (`VisibilityPolicy`, AD-7), and the card just draws them.
+ * up to three tags with «+N» and the interactive visibility chip. Only an `onPress`
+ * makes the card a button; the chip is pressable on a wish that is not closed and
+ * read-only on a closed or archived one. The stories use a fixture card: the server
+ * owns which fields a viewer may see (`VisibilityPolicy`, AD-7).
+ *
+ * D-49 (CLE-124): the owner never sees a reservation, so the card has no
+ * «Забронирован» pill, holder line or phase strip to show.
  */
 const meta = {
   title: "App/WishCard",
@@ -70,82 +72,6 @@ export const OwnerOpen: Story = {
       </CardList>
     );
   },
-};
-
-/**
- * A reserved wish of the owner: the card is a button, the chip opens the picker
- * (CLE-82/S23.3), and the reservation line names the holder.
- */
-export const ReservedWithHolder: Story = {
-  tags: ["!dev"],
-  args: {
-    gift: giftCard({
-      status: "RESERVED",
-      visibility: "FRIENDS",
-      reservedBy: { id: "user-2", nick: "masha", displayName: "Маша" },
-    }),
-    onPress: noop,
-    onVisibilityPress: noop,
-  },
-  render: function ReservedWithHolderStory(args) {
-    return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
-    );
-  },
-};
-
-/** The holder marked it given: the phase label replaces the holder's name. */
-export const AwaitingConfirmation: Story = {
-  tags: ["!dev"],
-  args: { gift: giftCard({ status: "RESERVED", ownerAction: "CONFIRM_GIVEN" }) },
-  render: function AwaitingConfirmationStory(args) {
-    return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
-    );
-  },
-};
-
-/**
- * The reservation ran out (Story 5.6): the strip under the card replaces the
- * reservation line, and the answers are buttons of their own.
- */
-export const ExpiredReservation: Story = {
-  tags: ["!dev"],
-  args: {
-    gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }),
-    onOwnerReceived: noop,
-    onOwnerKeep: noop,
-  },
-  render: function ExpiredReservationStory(args) {
-    return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
-    );
-  },
-};
-
-/** The keep request is in flight: both answers of the strip are busy. */
-export const ExpiredReservationBusy: Story = {
-  tags: ["!dev"],
-  args: {
-    gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }),
-    onOwnerReceived: noop,
-    onOwnerKeep: noop,
-    ownerBusy: true,
-  },
-  render: function ExpiredReservationBusyStory(args) {
-    return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
-    );
-  },
-  globals: { viewport: { value: "w360" } },
 };
 
 /** A received wish: the card is muted, and the chip stays read-only even with a handler. */

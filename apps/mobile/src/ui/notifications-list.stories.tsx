@@ -17,10 +17,11 @@ const meta = {
       readAt: null,
       href: "/gifts/example",
       event: {
-        kind: "RESERVATION_OWNER_ASK",
+        kind: "RESERVATION_DUE",
         titleSnapshot: "Абонемент на экскурсии по историческим паркам и садам",
         giftId: "example",
         actionable: true,
+        bought: false,
       },
     }],
   },

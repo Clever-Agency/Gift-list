@@ -10,7 +10,6 @@ import { openURL } from "expo-linking";
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useLocale, useTranslations } from "use-intl";
-import { OwnerActionLabel } from "@/ui/owner-action-label";
 import { useUndoWindow } from "@/ui/use-undo-window";
 import type { DetailLoadResult } from "@/ui/wish-detail-load";
 
@@ -39,12 +38,6 @@ export type WishDetailStep = {
   /** Coral confirm: for removing someone else's data (`DESIGN.md` → Colors → Destructive). */
   destructive?: boolean;
   busy?: boolean;
-  /**
-   * Which action of the details opened the step. Leaving the step puts focus back
-   * on that very button: «Отмена» of the close step must not land on the coral
-   * «Снять бронь» (Story 5.2 review note). Defaults to `release`.
-   */
-  origin?: "release" | "received";
   onConfirm: () => void;
   /** «Отмена», Esc, the cross: back to the details of the same wish. */
   onCancel: () => void;
@@ -62,23 +55,10 @@ export type WishDetailDialogProps = {
   /** Owner only: the existing edit route. A closed wish has no edit (Story 5.3). */
   onEdit?: () => void;
   /**
-   * Owner only (Story 5.2): asks the screen to run the preflight of a release of
-   * someone else's reservation. The owner's «Снять бронь» is coral, because it
-   * removes another person's action.
-   */
-  onRelease?: () => void;
-  /**
    * Owner only (Story 5.3): «Отметить полученным» on an `OPEN` or `RESERVED` wish.
    * The screen owns the confirm: its step comes back through `step`.
    */
   onMarkReceived?: () => void;
-  /**
-   * Owner only (Story 5.6): «Не получал, оставить бронь» on an expired
-   * reservation. The screen owns the request; the dialog only draws the strip.
-   */
-  onKeep?: () => void;
-  /** Story 5.6: the keep request of this wish is in flight. */
-  ownerBusy?: boolean;
   /**
    * Owner only (Story 5.3): «Вернуть в открытые · ещё N мин» on a closed wish,
    * shown only while the server's undo window is open.
@@ -110,16 +90,12 @@ export function WishDetailDialog({
   onClose,
   onClosed,
   onEdit,
-  onRelease,
   onMarkReceived,
-  onKeep,
-  ownerBusy = false,
   onUndoClose,
   undoUntil,
   step,
 }: WishDetailDialogProps) {
   const tGift = useTranslations("app.gift");
-  const tRelease = useTranslations("app.gift.release");
   const tClosed = useTranslations("app.gift.closed");
   const tForm = useTranslations("app.form");
   const locale = useLocale();
@@ -135,11 +111,9 @@ export function WishDetailDialog({
   }
 
   // The step lands on the safe «Отмена»; leaving it puts focus back on the action
-  // that opened it, so the Tab order does not fall to <body> and a close step does
-  // not send focus to the coral release button.
+  // that opened it, so the Tab order does not fall to <body>.
   const stepKey = step?.key ?? null;
   const stepCancelRef = useRef<FocusTarget>(null);
-  const releaseRef = useRef<FocusTarget>(null);
   const receivedRef = useRef<FocusTarget>(null);
   const previousStep = useRef<WishDetailStep | null>(step ?? null);
 
@@ -152,9 +126,7 @@ export function WishDetailDialog({
         return;
       }
       if (!step && previous) {
-        focusInLayer(
-          (previous.origin === "received" ? receivedRef : releaseRef).current,
-        );
+        focusInLayer(receivedRef.current);
       }
     },
     // The step object is rebuilt on every render of the screen; only its key and
@@ -216,43 +188,20 @@ export function WishDetailDialog({
             ? tGift("loadErrorGeneric")
             : undefined;
   const gift = view.status === "ready" ? view.gift : null;
-  // Story 5.6: the expired reservation shows `OwnerActionLabel` above the facts.
-  // The phase fact is filtered out then (Open Questions of the 5.6 spec, п. 7), so
-  // the same sentence is never said twice, and «Отметить полученным» in the footer
-  // is not repeated: the strip's own «Получил» is that action.
-  const expired = gift?.ownerAction === "EXPIRED_NO_REPLY";
-  const ownerStrip =
-    expired && onKeep !== undefined && onMarkReceived !== undefined ? (
-      <OwnerActionLabel
-        action="EXPIRED_NO_REPLY"
-        busy={ownerBusy}
-        onReceived={onMarkReceived}
-        onKeep={onKeep}
-      />
-    ) : undefined;
-  const allFacts = gift
+  const facts = gift
     ? toDetailFacts(gift, viewer, locale, detailCopy(getMessages(locale)))
     : [];
-  const facts =
-    ownerStrip !== undefined
-      ? allFacts.filter(function withoutOwnerAction(fact) {
-          return fact.id !== "ownerAction";
-        })
-      : allFacts;
   // Story 5.3: the owner's closed card carries the server moment; the refreshed
   // card wins. Ten minutes are not repeated here — the hook counts what is left.
   const undoWindow = useUndoWindow(gift ? (gift.undoUntil ?? undoUntil) : undoUntil);
 
   const canEdit =
     viewer === "owner" && gift !== null && onEdit !== undefined && gift.status !== "CLOSED";
-  const canRelease =
-    viewer === "owner" && gift !== null && onRelease !== undefined && gift.status === "RESERVED";
   const canMarkReceived =
     viewer === "owner" &&
     gift !== null &&
     onMarkReceived !== undefined &&
-    gift.status !== "CLOSED" &&
-    gift.ownerAction !== "EXPIRED_NO_REPLY";
+    gift.status !== "CLOSED";
   const canUndoClose =
     viewer === "owner" &&
     gift !== null &&
@@ -305,7 +254,6 @@ export function WishDetailDialog({
       title={snapshot.title}
       facts={facts}
       notice={notice}
-      banner={ownerStrip}
       retry={
         view.status === "network" || view.status === "unavailable"
           ? { label: tGift("retry"), onPress: retry }
@@ -322,7 +270,7 @@ export function WishDetailDialog({
       onClose={onClose}
       onClosed={onClosed}
       actions={
-        canEdit || canRelease || canMarkReceived || canUndoClose ? (
+        canEdit || canMarkReceived || canUndoClose ? (
           <>
             {canEdit ? (
               <Button label={tGift("detail.edit")} variant="secondary" onPress={onEdit} />
@@ -333,14 +281,6 @@ export function WishDetailDialog({
                 label={tGift("close.menuAction")}
                 variant="secondary"
                 onPress={onMarkReceived}
-              />
-            ) : null}
-            {canRelease ? (
-              <Button
-                ref={releaseRef as never}
-                label={tRelease("confirm")}
-                variant="destructive"
-                onPress={onRelease}
               />
             ) : null}
             {canUndoClose ? (

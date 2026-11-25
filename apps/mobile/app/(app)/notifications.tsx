@@ -3,7 +3,6 @@ import { AppShell, Button, Column, Heading, PageContainer, PageScroll, SafeArea,
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
-import { fetchReservationWarning } from "@/api/my-gifts";
 import { fetchNotification, fetchNotifications, markNotificationRead, submitNotificationAction } from "@/api/notifications";
 import { useNotificationBadge } from "@/navigation/notification-badge";
 import { SidebarNav } from "@/navigation/sidebar-nav";
@@ -49,8 +48,7 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
   const [busyId, setBusyId] = useState<string>();
   const [confirm, setConfirm] = useState<{
     item: NotificationItem;
-    action: "release" | "received";
-    warning?: "BOUGHT" | "GIVEN" | null;
+    action: "release";
   } | null>(null);
   const [extendFor, setExtendFor] = useState<NotificationItem | null>(null);
   const [extendOpening, setExtendOpening] = useState(0);
@@ -170,22 +168,11 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
       showExtend(item);
       return;
     }
-    if (action === "received") {
-      setConfirm({ item, action });
-      return;
-    }
+    // D-49 (CLE-124): the owner has no actions of their own any more — the server
+    // neither sends those notices nor accepts their answers. Every action left here
+    // is the holder's.
     if (action === "release") {
-      if (item.event.kind !== "RESERVATION_OWNER_ASK") {
-        setConfirm({ item, action });
-        return;
-      }
-      actionPending.current = true;
-      setBusyId(item.id);
-      const result = await fetchReservationWarning(item.event.giftId);
-      actionPending.current = false;
-      setBusyId(undefined);
-      if (result.ok) setConfirm({ item, action, warning: result.warning });
-      else setActionError(common("errors.generic"));
+      setConfirm({ item, action });
       return;
     }
     await act(item, { action });
@@ -227,12 +214,6 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
     ? [selectedItem, ...(items ?? []).filter(item => item.id !== selectedItem.id)]
     : items;
 
-  const received = confirm?.action === "received";
-  const titleSnapshot = confirm && "titleSnapshot" in confirm.item.event ? confirm.item.event.titleSnapshot : "";
-  const confirmBody = received ? gift("close.reservedBody") :
-    confirm?.warning === "BOUGHT" ? gift("release.warningBought") :
-      confirm?.warning === "GIVEN" ? gift("release.warningGiven") : undefined;
-
   return (
     <AppShell sidebar={<SidebarNav />} skipLabel={web("skipToContent")}>
       <Stack.Screen options={{ title: t("title") }} />
@@ -271,10 +252,9 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
             </PageContainer>
           </PageScroll>
           <ConfirmDialog variant="confirm" visible={confirm !== null} busy={busyId !== undefined}
-            title={received ? gift("close.title", { title: titleSnapshot }) : gift("release.title")}
-            body={confirmBody}
-            confirmTone={confirm?.action === "release" && confirm.item.event.kind === "RESERVATION_OWNER_ASK" ? "destructive" : "primary"}
-            confirmLabel={received ? gift("close.confirm") : gift("release.confirm")}
+            title={gift("release.title")}
+            confirmTone="primary"
+            confirmLabel={gift("release.confirm")}
             cancelLabel={gift("release.cancel")} onConfirm={confirmAction} onCancel={cancelConfirm} onClosed={focusTrigger}
           />
           <ReservationExtendDialog key={extendOpening} open={extendFor !== null} timeZone={timeZone} busy={busyId !== undefined}

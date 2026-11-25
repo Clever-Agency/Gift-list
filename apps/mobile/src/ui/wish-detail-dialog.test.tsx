@@ -101,58 +101,34 @@ function control(label: string): HTMLElement | undefined {
   );
 }
 
-const releaseCopy = getMessages("ru").app.gift.release;
-
 /**
- * Story 5.2: the screen owns the step, the dialog only draws it. The harness is the
- * owner screen in miniature: «Снять бронь» opens the step after the preflight.
+ * D-49 (CLE-124): the owner has no reservation actions. Even a stale snapshot with
+ * `status: "RESERVED"`, the holder name and `ownerAction` gives no release button
+ * and no phase label — only the ordinary actions of the wish.
  */
-function OwnerReleaseHarness({
-  warning,
-  busy,
-  onConfirm,
-}: {
-  warning: "BOUGHT" | "GIVEN" | null;
-  busy?: boolean;
-  onConfirm?: () => void;
-}) {
-  const [step, setStep] = useState<WishDetailStep | null>(null);
+describe("WishDetailDialog: у владельца нет действий брони (D-49)", () => {
+  it("старый ответ с бронью: «Снять бронь» нет, «Отметить полученным» есть", async () => {
+    const onMarkReceived = vi.fn();
+    await render(
+      <WishDetailDialog
+        open
+        viewer="owner"
+        snapshot={gift()}
+        onClose={function noop() {}}
+        onEdit={function noop() {}}
+        onMarkReceived={onMarkReceived}
+      />,
+    );
 
-  function openRelease() {
-    setStep({
-      key: "release",
-      title: releaseCopy.title,
-      body:
-        warning === "BOUGHT"
-          ? releaseCopy.warningBought
-          : warning === "GIVEN"
-            ? releaseCopy.warningGiven
-            : undefined,
-      cancelLabel: releaseCopy.cancel,
-      confirmLabel: releaseCopy.confirm,
-      destructive: true,
-      busy,
-      onConfirm: onConfirm ?? function confirm() {},
-      onCancel: function cancel() {
-        setStep(null);
-      },
-    });
-  }
+    expect(control(getMessages("ru").app.gift.release.confirm)).toBeUndefined();
+    expect(body()).not.toContain("Ждёт вашего подтверждения");
+    expect(body()).not.toContain("Срок брони истёк");
+    expect(control("Отметить полученным")).toBeDefined();
 
-  return (
-    <WishDetailDialog
-      open
-      viewer="owner"
-      snapshot={gift()}
-      onClose={function noop() {}}
-      onEdit={function noop() {}}
-      onRelease={openRelease}
-      step={step}
-    />
-  );
-}
-
-OwnerReleaseHarness.displayName = "OwnerReleaseHarness";
+    await click(control("Отметить полученным"));
+    expect(onMarkReceived).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("WishDetailDialog", () => {
   it("гость видит разрешённые поля и не видит видимость", async () => {
@@ -190,8 +166,13 @@ describe("WishDetailDialog", () => {
 
     expect(body()).toContain("Кто видит");
     expect(body()).toContain("Секрет");
-    expect(body()).toContain("Ждёт вашего подтверждения");
     expect(body()).toContain("Изменить желание");
+    // D-49: a stale owner payload still reads as an open wish.
+    expect(body()).toContain("Открыт");
+    expect(body()).not.toContain("Забронирован");
+    expect(body()).not.toContain("Берёт Анна");
+    expect(body()).not.toContain("Ждёт вашего подтверждения");
+    expect(body()).not.toContain("Срок брони истёк");
     expect(body()).not.toContain("01.12.2026");
     expect(body()).not.toContain("Куплено");
     expect(body()).not.toContain("Куплен");
@@ -233,7 +214,7 @@ describe("WishDetailDialog", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("владелец у забронированного видит «Снять бронь», у открытого — нет", async () => {
+  it("владелец у забронированного не видит «Снять бронь» и полосы брони", async () => {
     const onRelease = vi.fn();
     await render(
       <WishDetailDialog
@@ -242,89 +223,15 @@ describe("WishDetailDialog", () => {
         snapshot={gift()}
         onClose={function noop() {}}
         onEdit={function noop() {}}
-        onRelease={onRelease}
+        onMarkReceived={vi.fn()}
       />,
     );
 
     expect(control("Изменить желание")).toBeDefined();
-    const releaseButton = control(releaseCopy.confirm);
-    expect(releaseButton).toBeDefined();
-    await click(releaseButton);
-    expect(onRelease).toHaveBeenCalledTimes(1);
-
-    await render(
-      <WishDetailDialog
-        open
-        viewer="owner"
-        snapshot={gift({
-          status: "OPEN",
-          reservedBy: null,
-          reservationLabel: null,
-          ownerAction: null,
-          reservation: undefined,
-        })}
-        onClose={function noop() {}}
-        onEdit={function noop() {}}
-        onRelease={onRelease}
-      />,
-    );
-
-    expect(control(releaseCopy.confirm)).toBeUndefined();
-  });
-
-  it.each(["BOUGHT", "GIVEN"] as const)(
-    "шаг снятия с предупреждением %s — тот же слой, фокус на безопасной «Отмене»",
-    async (warning) => {
-      await render(<OwnerReleaseHarness warning={warning} />);
-      await click(control(releaseCopy.confirm));
-      await settle();
-
-      expect(body()).toContain(releaseCopy.title);
-      expect(body()).toContain(
-        warning === "BOUGHT" ? releaseCopy.warningBought : releaseCopy.warningGiven,
-      );
-      expect(body()).not.toContain("Кто видит");
-      expect(document.activeElement?.textContent).toContain(releaseCopy.cancel);
-
-      await act(async () => {
-        escape();
-      });
-      await settle();
-      // Back to the details of the same layer: no second dialog, the facts are here.
-      expect(body()).toContain("Кто видит");
-      expect(body()).not.toContain(releaseCopy.title);
-      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
-    },
-  );
-
-  it("шаг без отметки дарителя показывает только вопрос", async () => {
-    await render(<OwnerReleaseHarness warning={null} />);
-    await click(control(releaseCopy.confirm));
-    await settle();
-
-    expect(body()).toContain(releaseCopy.title);
-    expect(body()).not.toContain(releaseCopy.warningBought);
-    expect(body()).not.toContain(releaseCopy.warningGiven);
-  });
-
-  it("подтверждение в шаге уходит один раз, busy не даёт второго", async () => {
-    const onConfirm = vi.fn();
-    await render(<OwnerReleaseHarness warning="BOUGHT" onConfirm={onConfirm} />);
-    await click(control(releaseCopy.confirm));
-    await settle();
-
-    await click(control(releaseCopy.confirm));
-    expect(onConfirm).toHaveBeenCalledTimes(1);
-
-    await act(async () => host.unmount());
-    host = createRoot(container);
-    await render(<OwnerReleaseHarness warning="BOUGHT" busy onConfirm={onConfirm} />);
-    await click(control(releaseCopy.confirm));
-    await settle();
-
-    expect(control(releaseCopy.confirm)?.getAttribute("aria-disabled")).toBe("true");
-    await click(control(releaseCopy.confirm));
-    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(control(getMessages("ru").app.gift.release.confirm)).toBeUndefined();
+    expect(body()).not.toContain("Ждёт вашего подтверждения");
+    expect(body()).not.toContain("Берёт Анна");
+    expect(onRelease).not.toHaveBeenCalled();
   });
 
   it("закрытие крестиком и Escape возвращает фокус на карточку", async () => {
@@ -476,19 +383,18 @@ describe("WishDetailDialog", () => {
           snapshot={gift()}
           onClose={function noop() {}}
           onEdit={function noop() {}}
-          onRelease={function noop() {}}
           onMarkReceived={onMarkReceived}
         />,
       );
       expect(control("Отметить полученным")).toBeDefined();
-      expect(control(releaseCopy.confirm)).toBeDefined();
+      // D-49: the same action for a legacy reserved snapshot, no release button.
+      expect(control(getMessages("ru").app.gift.release.confirm)).toBeUndefined();
     });
   });
 
   /**
-   * Story 5.3: шаг закрытия — тот же механизм шагов, что у снятия брони. После
-   * «Отмены» фокус возвращается на «Отметить полученным», а не на коралловую
-   * «Снять бронь» (замечание S5).
+   * Story 5.3: шаг закрытия — тот же механизм шагов. После «Отмены» фокус
+   * возвращается на «Отметить полученным».
    */
   describe("Story 5.3: шаг «Подарок получен?»", () => {
     function OwnerCloseHarness() {
@@ -497,9 +403,7 @@ describe("WishDetailDialog", () => {
       function openStep() {
         setStep({
           key: "close",
-          origin: "received",
           title: "Подарок «Плед» получен?",
-          body: "Бронь будет закрыта, бронировавший получит уведомление",
           cancelLabel: "Отмена",
           confirmLabel: "Подтвердить",
           onConfirm: function confirm() {},
@@ -516,7 +420,6 @@ describe("WishDetailDialog", () => {
           snapshot={gift()}
           onClose={function noop() {}}
           onEdit={function noop() {}}
-          onRelease={function noop() {}}
           onMarkReceived={openStep}
           step={step}
         />
@@ -524,14 +427,14 @@ describe("WishDetailDialog", () => {
     }
     OwnerCloseHarness.displayName = "OwnerCloseHarness";
 
-    it("вопрос, тело про бронь, некрасная кнопка и фокус на «Отмене»", async () => {
+    it("вопрос без брони, некрасная кнопка и фокус на «Отмене»", async () => {
       await render(<OwnerCloseHarness />);
 
       await click(control("Отметить полученным"));
       await settle();
 
       expect(body()).toContain("Подарок «Плед» получен?");
-      expect(body()).toContain("Бронь будет закрыта, бронировавший получит уведомление");
+      expect(body()).not.toContain("Бронь");
       expect(control("Подтвердить")).toBeDefined();
       expect(document.activeElement?.textContent).toContain("Отмена");
       expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
@@ -557,104 +460,28 @@ describe("WishDetailDialog", () => {
   });
 
   /**
-   * Story 5.6 (`DESIGN.md` → OwnerActionLabel, matrix DETAIL_LABEL / DETAIL_CONFIRM_GIVEN):
-   * the expired reservation puts the strip above the facts, does not repeat the
-   * `ownerAction` fact, does not repeat «Отметить полученным» and keeps the coral
-   * «Снять бронь». `CONFIRM_GIVEN` keeps the Story 5.5 behaviour.
+   * D-49 (CLE-124): the owner detail has no reservation labels at all, even when
+   * the snapshot still carries an expired or awaiting phase.
    */
-  describe("Story 5.6: истёкшая бронь у владельца", () => {
-    function expired(): GiftCard {
-      return gift({ ownerAction: "EXPIRED_NO_REPLY", reservedBy: null, reservationLabel: null });
-    }
-
-    function strip(): HTMLElement | null {
-      return dialogElement()?.querySelector<HTMLElement>("[data-testid='owner-action-label']") ?? null;
-    }
-
-    async function renderOwnerExpired(handlers: {
-      onKeep?: () => void;
-      onMarkReceived?: () => void;
-      busy?: boolean;
-    }) {
+  it("истёкшая и ожидающая бронь: ни полосы, ни «Снять бронь», ни «Получил»", async () => {
+    for (const ownerAction of ["EXPIRED_NO_REPLY", "CONFIRM_GIVEN"] as const) {
       await render(
         <WishDetailDialog
           open
           viewer="owner"
-          snapshot={expired()}
-          onClose={function noop() {}}
-          onEdit={function noop() {}}
-          onRelease={function noop() {}}
-          onMarkReceived={handlers.onMarkReceived ?? function noop() {}}
-          onKeep={handlers.onKeep ?? function noop() {}}
-          ownerBusy={handlers.busy}
-        />,
-      );
-    }
-
-    it("полоса над фактами, факт ownerAction не дублируется, «Отметить полученным» скрыт", async () => {
-      await renderOwnerExpired({});
-
-      expect(strip()).not.toBeNull();
-      expect(strip()?.textContent).toContain("Срок брони истёк");
-      // Once: the strip, not the fact list.
-      expect(body().split("Срок брони истёк").length - 1).toBe(1);
-      expect(body()).toContain("Кто видит");
-      expect(control("Отметить полученным")).toBeUndefined();
-      // The coral release stays in the detail actions.
-      expect(control(releaseCopy.confirm)).toBeDefined();
-
-      // The strip is the first block of the dialog body, above the facts.
-      const label = strip()?.querySelector("*");
-      expect(label).toBeDefined();
-    });
-
-    it("«Получил» запускает закрытие 5.3, «Не получал, оставить бронь» — keep", async () => {
-      const onReceived = vi.fn();
-      const onKeep = vi.fn();
-      await renderOwnerExpired({ onMarkReceived: onReceived, onKeep });
-
-      await click(control("Получил"));
-      expect(onReceived).toHaveBeenCalledTimes(1);
-      expect(onKeep).not.toHaveBeenCalled();
-
-      await click(control("Не получал, оставить бронь"));
-      expect(onKeep).toHaveBeenCalledTimes(1);
-      expect(onReceived).toHaveBeenCalledTimes(1);
-    });
-
-    it("busy: оба ответа полосы заняты и не нажимаются", async () => {
-      const onReceived = vi.fn();
-      const onKeep = vi.fn();
-      await renderOwnerExpired({ onMarkReceived: onReceived, onKeep, busy: true });
-
-      const buttons = Array.from(strip()?.querySelectorAll("button") ?? []);
-      expect(buttons).toHaveLength(2);
-      for (const node of buttons) {
-        expect(node.getAttribute("aria-disabled")).toBe("true");
-        expect(node.getAttribute("aria-busy")).toBe("true");
-      }
-      await click(buttons[0]);
-      await click(buttons[1]);
-      expect(onReceived).not.toHaveBeenCalled();
-      expect(onKeep).not.toHaveBeenCalled();
-    });
-
-    it("CONFIRM_GIVEN: полосы 5.6 нет, поведение 5.5 сохраняется", async () => {
-      await render(
-        <WishDetailDialog
-          open
-          viewer="owner"
-          snapshot={gift({ ownerAction: "CONFIRM_GIVEN" })}
+          snapshot={gift({ ownerAction, reservedBy: null, reservationLabel: null })}
           onClose={function noop() {}}
           onEdit={function noop() {}}
           onMarkReceived={vi.fn()}
-          onKeep={vi.fn()}
         />,
       );
 
-      expect(strip()).toBeNull();
-      expect(body()).toContain("Ждёт вашего подтверждения");
+      expect(dialogElement()?.querySelector("[data-testid='owner-action-label']")).toBeNull();
+      expect(control(getMessages("ru").app.gift.release.confirm)).toBeUndefined();
+      expect(body()).not.toContain("Срок брони истёк");
+      expect(body()).not.toContain("Ждёт вашего подтверждения");
+      expect(body()).not.toContain("Не получал, оставить бронь");
       expect(control("Отметить полученным")).toBeDefined();
-    });
+    }
   });
 });

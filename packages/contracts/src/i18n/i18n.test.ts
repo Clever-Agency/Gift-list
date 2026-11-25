@@ -345,6 +345,11 @@ describe("reservation copy", () => {
     expect(reservations.extend).toBe("Продлить до…");
     expect(reservations.extendCaption).toBe("Не позже {max}");
     expect(reservations.release).toBe("Снять бронь");
+    // CLE-124/S9b-3 (§10.3, §10.6): «Подарил» and the release run-off under the date.
+    expect(reservations.given).toBe("Подарил");
+    expect(reservations.dueNote).toBe(
+      "Если не продлить, бронь снимется через 7 дней после этой даты",
+    );
 
     for (const value of Object.values(reservations)) {
       if (typeof value === "string") expect(value.length).toBeGreaterThan(0);
@@ -374,6 +379,25 @@ describe("reservation copy", () => {
     expect(reservations.pageTitle.endsWith("{brand}")).toBe(true);
     expect(reservations.loading).toBe("Загружаем брони");
     expect(reservations.openGift).toContain("«{title}»");
+  });
+
+  /**
+   * CLE-124/S9b-3 (§10.6, §10.7): the old «Срок истёк · ждём ответа владельца»
+   * and «Ждёт подтверждения» are gone, and the guests' stages are neuter.
+   */
+  it("keeps the holder and guest stage labels of «Подписи брони»", () => {
+    const gift = getMessages("ru").app.gift;
+
+    expect(gift.detail.phase).toEqual({
+      ACTIVE: "Вы берёте · до {date}",
+      AWAITING_GIVER: "Срок истёк",
+      AWAITING_OWNER: "Срок истёк",
+      GIVEN: "Подарено",
+    });
+    expect(gift.detail.reservationLabel).toEqual({
+      BOUGHT: "Куплено",
+      GIVEN: "Подарено",
+    });
   });
 });
 

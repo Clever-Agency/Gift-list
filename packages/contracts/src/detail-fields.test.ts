@@ -81,7 +81,10 @@ describe("toDetailFacts", () => {
     }).join(" ")).not.toContain("Куплено");
     expect(facts.map(function valueOf(fact) {
       return fact.value;
-    }).join(" ")).not.toContain("Куплен");
+    }).join(" ")).not.toContain("Подарено");
+    expect(facts.map(function valueOf(fact) {
+      return fact.value;
+    }).join(" ")).not.toContain("Подарил");
     expect(facts.map(function valueOf(fact) {
       return fact.value;
     }).join(" ")).not.toContain("Анна");
@@ -119,12 +122,24 @@ describe("toDetailFacts", () => {
     expect(facts.find(function isShowOthers(fact) {
       return fact.id === "showOthers";
     })?.value).toBe("да");
+    // CLE-124/S9b-3 (§10.7): the guests' stages read «Куплено» / «Подарено».
+    expect(facts.find(function isLabel(fact) {
+      return fact.id === "reservationLabel";
+    })?.value).toBe("Куплено");
     expect(facts.map(function valueOf(fact) {
       return fact.value;
     }).join(" ")).not.toContain("Друзьям");
     expect(facts.map(function valueOf(fact) {
       return fact.value;
     }).join(" ")).not.toContain("Секрет");
+  });
+
+  /** D-49 + Story 5.7: «Подарено» wins over «Купил» in the guests' label. */
+  it("гость видит этап «Подарено» при фазе GIVEN", () => {
+    const facts = toDetailFacts(gift({ reservationLabel: "GIVEN" }), "guest", "ru");
+    expect(facts.find(function isLabel(fact) {
+      return fact.id === "reservationLabel";
+    })?.value).toBe("Подарено");
   });
 
   it("гость без ключа reservation не получает срок, фазу и переключатели", () => {

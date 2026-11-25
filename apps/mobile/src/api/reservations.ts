@@ -38,7 +38,7 @@ export async function fetchReservations(): Promise<ReservationsResult> {
 
 /**
  * Story 5.5: one action per request on `PATCH /api/v1/me/reservations/:giftId` —
- * `extend`, `bought` or `visibility`. The body is validated with the same closed
+ * `extend`, `bought`, `given` or `visibility`. The body is validated with the same closed
  * union the server parses, so two actions in one body or a stray key are
  * `invalid` before anything is sent. The answer is the updated reservation card
  * (not `{ id }`): after an extension the deadline, the phase and its moment change
@@ -64,4 +64,15 @@ export async function updateReservation(
   if (!parsed.success) return { ok: false, invalid: true };
 
   return { ok: true, reservation: parsed.data };
+}
+
+/**
+ * CLE-124/S9b-3 (Story 5.7): «Подарил» — the same `PATCH` as «Купил», with the
+ * one-action body `{ action: "given" }`. The server moves the reservation into
+ * `GIVEN` and answers the updated card, so the screen replaces the card and the
+ * phase reads «Подарено». A repeated press is a no-op success on the server
+ * side; the screens still send one request per card at a time.
+ */
+export function markReservationGiven(giftId: string): Promise<ReservationUpdateResult> {
+  return updateReservation(giftId, { action: "given" });
 }

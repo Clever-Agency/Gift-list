@@ -145,7 +145,7 @@ describe("WishDetailDialog", () => {
     expect(body()).toContain("31.12.2026");
     expect(body()).toContain("Дом");
     expect(body()).toContain("Берёт Анна");
-    expect(body()).toContain("Куплен");
+    // CLE-124/S9b-3 (§10.7): этап «Куплено» — и подпись брони, и флаг «Купил».
     expect(body()).toContain("Куплено");
     expect(body()).toContain("01.12.2026");
     expect(body()).not.toContain("Секрет");
@@ -175,7 +175,8 @@ describe("WishDetailDialog", () => {
     expect(body()).not.toContain("Срок брони истёк");
     expect(body()).not.toContain("01.12.2026");
     expect(body()).not.toContain("Куплено");
-    expect(body()).not.toContain("Куплен");
+    expect(body()).not.toContain("Подарено");
+    expect(body()).not.toContain("Подарил");
     expect(body()).not.toContain("Показать владельцу");
   });
 

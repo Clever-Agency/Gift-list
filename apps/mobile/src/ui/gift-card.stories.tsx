@@ -15,6 +15,7 @@ import { WishCard } from "./gift-card";
 const meta = {
   title: "App/WishCard",
   component: WishCard,
+  tags: ["autodocs"],
   args: { gift: giftCard(), width: 328 },
 } satisfies Meta<typeof WishCard>;
 
@@ -76,6 +77,7 @@ export const OwnerOpen: Story = {
  * (CLE-82/S23.3), and the reservation line names the holder.
  */
 export const ReservedWithHolder: Story = {
+  tags: ["!dev"],
   args: {
     gift: giftCard({
       status: "RESERVED",
@@ -96,6 +98,7 @@ export const ReservedWithHolder: Story = {
 
 /** The holder marked it given: the phase label replaces the holder's name. */
 export const AwaitingConfirmation: Story = {
+  tags: ["!dev"],
   args: { gift: giftCard({ status: "RESERVED", ownerAction: "CONFIRM_GIVEN" }) },
   render: function AwaitingConfirmationStory(args) {
     return (
@@ -111,6 +114,7 @@ export const AwaitingConfirmation: Story = {
  * reservation line, and the answers are buttons of their own.
  */
 export const ExpiredReservation: Story = {
+  tags: ["!dev"],
   args: {
     gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }),
     onOwnerReceived: noop,
@@ -127,6 +131,7 @@ export const ExpiredReservation: Story = {
 
 /** The keep request is in flight: both answers of the strip are busy. */
 export const ExpiredReservationBusy: Story = {
+  tags: ["!dev"],
   args: {
     gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }),
     onOwnerReceived: noop,
@@ -145,6 +150,7 @@ export const ExpiredReservationBusy: Story = {
 
 /** A received wish: the card is muted, and the chip stays read-only even with a handler. */
 export const Received: Story = {
+  tags: ["!dev"],
   args: {
     gift: giftCard({ status: "CLOSED", visibility: "PUBLIC" }),
     onVisibilityPress: noop,
@@ -163,6 +169,7 @@ export const Received: Story = {
  * only shows the stored visibility, exactly like a received one.
  */
 export const Archived: Story = {
+  tags: ["!dev"],
   args: {
     gift: giftCard({ archivedAt: "2026-10-01T00:00:00.000Z", visibility: "SECRET" }),
     onVisibilityPress: noop,
@@ -178,6 +185,7 @@ export const Archived: Story = {
 
 /** No price given: the line is absent, not an empty «0 ₽». */
 export const WithoutPrice: Story = {
+  tags: ["!dev"],
   args: { gift: giftCard({ priceAmount: null, priceCurrency: null }) },
   render: function WithoutPriceStory(args) {
     return (
@@ -190,6 +198,7 @@ export const WithoutPrice: Story = {
 
 /** More than three tags: the row shows three and the accessible name keeps all. */
 export const ManyTags: Story = {
+  tags: ["!dev"],
   args: {
     gift: giftCard({
       tags: [
@@ -212,6 +221,7 @@ export const ManyTags: Story = {
 
 /** A long title and long tags at 360 px: two lines, then the ellipsis. */
 export const LongCopyNarrow: Story = {
+  tags: ["!dev"],
   args: {
     gift: giftCard({
       title: "Плед из шерсти мериноса с длинной бахромой и подогревом для холодных вечеров",
@@ -265,6 +275,7 @@ export const OwnerOpenWithMenu: Story = {
 
 /** A received wish with the owner's ⋯: undo in the window, copy and delete. */
 export const ReceivedWithMenu: Story = {
+  tags: ["!dev"],
   args: {
     gift: giftCard({ status: "CLOSED" }),
     onPress: noop,

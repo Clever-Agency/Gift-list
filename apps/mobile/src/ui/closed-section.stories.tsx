@@ -12,6 +12,7 @@ import { WishCard } from "./gift-card";
 const meta = {
   title: "App/ClosedSection",
   component: ClosedSection,
+  tags: ["autodocs"],
   globals: { viewport: { value: "w360" } },
 } satisfies Meta<typeof ClosedSection>;
 
@@ -75,6 +76,7 @@ export const Expanded: Story = {
 
 /** У зрителя та же секция называется «Уже подарено» и действий не имеет. */
 export const Viewer: Story = {
+  tags: ["!dev"],
   args: {
     label: "Уже подарено",
     expanded: true,
@@ -85,6 +87,7 @@ export const Viewer: Story = {
 
 /** Длинная подпись счёта на 360 px: заголовок переносится, шеврон остаётся. */
 export const NarrowLongLabel: Story = {
+  tags: ["!dev"],
   args: {
     label: "Получено (128)",
     expanded: false,

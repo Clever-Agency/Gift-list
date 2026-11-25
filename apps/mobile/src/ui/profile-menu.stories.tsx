@@ -10,6 +10,7 @@ import { ProfileMenu } from "./profile-menu";
 const meta = {
   title: "App/ProfileMenu",
   component: ProfileMenu,
+  tags: ["autodocs"],
   globals: { viewport: { value: "w360" } },
 } satisfies Meta<typeof ProfileMenu>;
 
@@ -37,6 +38,7 @@ export const Compact: Story = {
 
 /** Широкая колонка: меню читается как список и не растягивается на весь экран. */
 export const Wide: Story = {
+  tags: ["!dev"],
   args: {
     onOpenProfile: noop,
     onOpenSettings: noop,
@@ -75,6 +77,7 @@ export const SigningOut: Story = {
  * высота строки — `min-height`, зона касания остаётся больше 44.
  */
 export const Narrow: Story = {
+  tags: ["!dev"],
   args: {
     onOpenProfile: noop,
     onOpenSettings: noop,

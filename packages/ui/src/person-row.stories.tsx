@@ -8,7 +8,7 @@ import { RelationshipChip } from "./relationship-chip";
 
 const PERSON_ROW_VARIANTS = ["card", "row"] as const satisfies readonly PersonRowVariant[];
 
-/** The ready-made photo of the sandbox; an empty value falls back to the initials. */
+/** The ready-made photo of `WithPhoto` on the Docs page; an empty value falls back to the initials. */
 const PHOTO_URL =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -95,7 +95,7 @@ What is not a prop:
     }),
     photoUrl: propDoc({
       description:
-        "The person's photo. An empty value falls back to the initials of the name; the avatar is decorative. The sandbox starts with a ready-made sample.",
+        "The person's photo. An empty value falls back to the initials of the name; the avatar is decorative. The sandbox starts empty (the initials), and `WithPhoto` on the Docs page keeps the ready-made sample.",
       type: "string | null",
       control: "text",
     }),
@@ -211,7 +211,7 @@ export const Playground: Story = {
     withChip: true,
     withMenu: true,
     pressLabel: "Открыть профиль: Алёна, @alena, Зовёт в друзья",
-    photoUrl: PHOTO_URL,
+    photoUrl: "",
   },
   render: function PlaygroundStory(args) {
     return <PersonRowPreview {...args} />;

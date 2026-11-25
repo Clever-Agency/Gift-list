@@ -10,6 +10,7 @@ import { ReservationVisibility, type ReservationVisibilityProps } from "./reserv
 const meta = {
   title: "App/ReservationVisibility",
   component: ReservationVisibility,
+  tags: ["autodocs"],
   parameters: { layout: "fullscreen" },
   globals: { viewport: { value: "w360" } },
 } satisfies Meta<typeof ReservationVisibility>;
@@ -58,6 +59,7 @@ export const Expanded: Story = {
 
 /** Раскрытый с включённым «владельцу»: подсказка «он может уже знать». */
 export const OwnerVisible: Story = {
+  tags: ["!dev"],
   args: {
     ...base,
     expanded: true,
@@ -68,6 +70,7 @@ export const OwnerVisible: Story = {
 
 /** Запрос в полёте: значения показаны, менять нельзя. */
 export const Busy: Story = {
+  tags: ["!dev"],
   args: { ...base, expanded: true, busy: true },
   render: column,
 };

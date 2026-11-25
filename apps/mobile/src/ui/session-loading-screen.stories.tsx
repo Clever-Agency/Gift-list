@@ -10,6 +10,7 @@ import { SessionLoadingScreen } from "./session-loading-screen";
 const meta = {
   title: "App/SessionLoadingScreen",
   component: SessionLoadingScreen,
+  tags: ["autodocs"],
   parameters: { layout: "fullscreen", screenFrame: true },
 } satisfies Meta<typeof SessionLoadingScreen>;
 
@@ -18,7 +19,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** The wide list route: three card skeletons in the page frame. */
-export const Wide: Story = {};
+export const Wide: Story = {
+  tags: ["!dev"],
+};
 
 /** The form route: one skeleton, as wide as the field column. */
 export const Form: Story = {
@@ -27,11 +30,13 @@ export const Form: Story = {
 
 /** The form route at 360 px, where the card width is the window minus the gutter. */
 export const FormNarrow: Story = {
+  tags: ["!dev"],
   args: { size: "form" },
   globals: { viewport: { value: "w360" } },
 };
 
 /** The list route at 360 px: the grid computes a single column. */
 export const WideNarrow: Story = {
+  tags: ["!dev"],
   globals: { viewport: { value: "w360" } },
 };

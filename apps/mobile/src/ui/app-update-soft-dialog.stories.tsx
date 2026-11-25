@@ -13,6 +13,12 @@ import { AppUpdateSoftDialog } from "./app-update-soft-dialog";
 const meta = {
   title: "App/AppUpdateSoftDialog",
   component: AppUpdateSoftDialog,
+  tags: ["autodocs"],
+  parameters: {
+    // A layer paints its scrim over the whole document: on the Docs page every
+    // showcase runs in its own iframe, so the open offer cannot cover the text.
+    docs: { story: { inline: false, iframeHeight: "420px" } },
+  },
   args: {
     visible: true,
     storeUrl: null,
@@ -28,7 +34,9 @@ type Story = StoryObj<typeof meta>;
 function noop() {}
 
 /** No store link yet: only «Закрыть», and no address is invented. */
-export const NoStore: Story = {};
+export const NoStore: Story = {
+  tags: ["!dev"],
+};
 
 /** A policy answer with a store link: «Обновить» opens it. */
 export const WithStore: Story = {
@@ -37,6 +45,7 @@ export const WithStore: Story = {
 
 /** The same layer at 360 px: the copy and both actions keep the gutters. */
 export const Narrow: Story = {
+  tags: ["!dev"],
   args: { storeUrl: "https://play.google.com/store/apps/details?id=example.giftlist" },
   globals: { viewport: { value: "w360" } },
 };

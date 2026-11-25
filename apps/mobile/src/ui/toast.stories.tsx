@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
-import { Text, View, YStack } from "@gift-list/ui";
+import { View, YStack } from "@gift-list/ui";
 import { ToastHost } from "./toast";
 
 /**
@@ -18,6 +18,7 @@ import { ToastHost } from "./toast";
 const meta = {
   title: "App/ToastHost",
   component: ToastHost,
+  tags: ["autodocs"],
   args: {
     message: "Не удалось сохранить желание. Попробуйте ещё раз.",
     tone: "error",
@@ -56,6 +57,7 @@ export const ErrorStays: Story = {
 
 /** A confirmation: polite announcement and a countdown, then it hides itself. */
 export const Info: Story = {
+  tags: ["!dev"],
   args: { tone: "info", message: "Желание сохранено" },
   render: function InfoStory(args) {
     return (
@@ -101,6 +103,7 @@ function focusUndo({ canvasElement }: { canvasElement: HTMLElement }) {
  * web cannot tell a reader from silence, so there the countdown runs.
  */
 export const ClosedUndo: Story = {
+  tags: ["!dev"],
   args: {
     tone: "success",
     message: "Отмечено полученным",
@@ -120,6 +123,7 @@ export const ClosedUndo: Story = {
 
 /** A sticky bottom control lifts the toast above itself. */
 export const AboveStickyButton: Story = {
+  tags: ["!dev"],
   args: { tone: "info", message: "Ссылка скопирована", offsetBottom: 64 },
   render: function AboveStickyButtonStory(args) {
     return (
@@ -134,6 +138,7 @@ export const AboveStickyButton: Story = {
 
 /** A long message with a retry at 360 px: the text wraps, the buttons stay 44 × 44. */
 export const LongMessageNarrow: Story = {
+  tags: ["!dev"],
   args: {
     tone: "error",
     message:
@@ -152,6 +157,7 @@ export const LongMessageNarrow: Story = {
 
 /** An info toast that stays until dismissed: the screen passes `persistent`. */
 export const PersistentInfo: Story = {
+  tags: ["!dev"],
   args: { tone: "info", message: "Подключение восстановлено", persistent: true },
   render: function PersistentInfoStory(args) {
     return (
@@ -161,18 +167,4 @@ export const PersistentInfo: Story = {
     );
   },
   globals: { viewport: { value: "w360" } },
-};
-
-/** The words the host renders, for the docs panel. */
-export const CopyReference: Story = {
-  render: function CopyReferenceStory() {
-    return (
-      <YStack gap="$1" width={328}>
-        <Text kind="body">Не удалось сохранить желание. Попробуйте ещё раз.</Text>
-        <Text kind="body">Желание сохранено</Text>
-        <Text kind="body">Желание удалено · Отменить</Text>
-        <Text kind="body">Нет сети. Попробуйте ещё раз.</Text>
-      </YStack>
-    );
-  },
 };

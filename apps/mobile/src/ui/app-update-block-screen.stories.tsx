@@ -13,6 +13,7 @@ import { AppUpdateBlockScreen } from "./app-update-block-screen";
 const meta = {
   title: "App/AppUpdateBlockScreen",
   component: AppUpdateBlockScreen,
+  tags: ["autodocs"],
   parameters: { layout: "fullscreen", screenFrame: true },
   args: {
     storeUrl: null,
@@ -27,7 +28,9 @@ type Story = StoryObj<typeof meta>;
 function noop() {}
 
 /** No store link: the dead end agreed for the time before the stores are published. */
-export const NoStore: Story = {};
+export const NoStore: Story = {
+  tags: ["!dev"],
+};
 
 /** A policy answer with a store link. */
 export const WithStore: Story = {
@@ -36,6 +39,7 @@ export const WithStore: Story = {
 
 /** The body at 360 px: it wraps under the level-1 title without clipping. */
 export const Narrow: Story = {
+  tags: ["!dev"],
   args: { storeUrl: "https://apps.apple.com/app/id000000000" },
   globals: { viewport: { value: "w360" } },
 };

@@ -15,6 +15,7 @@ import { OwnerActionLabel } from "./owner-action-label";
 const meta = {
   title: "App/OwnerActionLabel",
   component: OwnerActionLabel,
+  tags: ["autodocs"],
   args: {
     action: "EXPIRED_NO_REPLY",
     onReceived: function noop() {},
@@ -48,6 +49,7 @@ export const Normal: Story = {
 
 /** Запрос keep уже ушёл: оба ответа заняты и не нажимаются. */
 export const Busy: Story = {
+  tags: ["!dev"],
   args: { busy: true },
   render: function BusyStory(args) {
     return (
@@ -60,6 +62,7 @@ export const Busy: Story = {
 
 /** 360 px: длинная кириллица ответов переносится, полоса не переполняется. */
 export const Narrow360: Story = {
+  tags: ["!dev"],
   render: function Narrow360Story(args) {
     return (
       <Strip>
@@ -72,6 +75,7 @@ export const Narrow360: Story = {
 
 /** Ещё уже: оба ответа переносятся по одному, текст не обрезается. */
 export const VeryNarrow: Story = {
+  tags: ["!dev"],
   render: function VeryNarrowStory(args) {
     return (
       <YStack width={240} padding="$3" backgroundColor="$background" gap="$2">

@@ -1,128 +1,274 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { YStack } from "@tamagui/stacks";
-import { Text } from "./text";
-import { Toast, type ToastTone } from "./toast";
+import type { ComponentType, ReactNode } from "react";
+import { formatUnionType, propDoc } from "../../../.storybook/argTypes";
 import { View } from "./layout";
+import { Text } from "./text";
+import { Toast, type ToastProps, type ToastTone } from "./toast";
+
+const TOAST_TONES = ["info", "success", "warning", "error"] as const satisfies readonly ToastTone[];
+
+/** The catalog copy is a fixture, not a product string (`packages/ui` has no translations). */
+function noop() {}
+
+/** The ready-made action of the «есть действие» handle: the undo of a closed wish. */
+const UNDO_ACTION = { label: "Отменить", onPress: noop };
 
 /**
- * `Toast` is the look of a toast; the host decides when to show and hide it. The card
- * is `surface` with radius 16, a 1 px frame and the card elevation; the tone is a
- * small icon with its calm ink (`info` primary, `success` green, `warning` muted
- * terracotta — never yellow, `error` coral), the text stays neutral. `error` and
- * `warning` are announced assertively, `info` and `success` politely; the overlay lets
- * touches through. It fades in and out with `quick` (160 ms, `DESIGN.md` → Движение);
- * with «уменьшить движение» the fade is 100 ms and there is no shift.
- *
- * The stories put the absolutely positioned toast in a phone frame so it sits where
- * the app draws it; switch the toolbar theme to check both palettes.
+ * The toast props plus the «есть действие» handle. The action is an object slot, so
+ * the catalog keeps one ready-made «Отменить» behind a switch instead of knobs for
+ * a callback and a label. The cast on `component` below is what lets the Docs
+ * controls and the story args see the handle; the component stays unchanged.
+ */
+type ToastCatalogProps = ToastProps & { withAction: boolean };
+
+/**
+ * `Toast` is the look of a toast; the host decides when to show and hide it. It is
+ * absolutely positioned like the app draws it, so every frame in the catalog is a
+ * relative box of the phone size — no toast can cover the docs page around it.
  */
 const meta = {
   title: "UI/Toast",
-  component: Toast,
+  component: Toast as ComponentType<ToastCatalogProps>,
+  tags: ["autodocs"],
+  parameters: {
+    docs: {
+      description: {
+        component: `
+The look of a toast (\`DESIGN.md\` → components \`toast\`, \`toast-error\`): a \`surface\` card with radius 16, a 1 px frame and the card elevation. \`Toast\` only draws it — the host decides when to show and hide it and owns the countdown.
+
+What is not a prop:
+
+- The tone is carried by a small icon and its calm ink (\`info\` primary, \`success\` green, \`warning\` muted terracotta — never yellow, \`error\` coral), while the text stays neutral, so every pair keeps AA contrast.
+- \`error\` and \`warning\` are announced assertively (\`role="alert"\`), \`info\` and \`success\` politely (\`role="status"\`). The overlay lets touches through; only the toast takes them.
+- The action is an object slot \`{ label, onPress }\`: a text button under the message, so a long label wraps with the text. \`actionRef\` hands that button to the screen, which moves focus onto it right after closing a wish (\`DESIGN.md\` → «Куда уходит фокус», пункт «а»). The «есть действие» handle stands «Отменить» in.
+- \`onHoverChange\` and \`onFocusChange\` only feed the host's countdown pause: neither changes the look.
+- The card is always absolutely positioned at the bottom of the screen, above \`offsetBottom\` (a sticky control); the catalog puts it in a phone-sized relative frame. It fades in and out with \`quick\` (160 ms); with «уменьшить движение» the fade is 100 ms and there is no shift.
+        `.trim(),
+      },
+    },
+  },
+  argTypes: {
+    message: propDoc({
+      description:
+        "The line of the toast; with `title` it becomes the description under it. The text comes from the app's catalogue.",
+      type: "string",
+      required: true,
+      control: "text",
+    }),
+    title: propDoc({
+      description: "An optional title: the toast then becomes a two-line card.",
+      type: "string",
+      control: "text",
+    }),
+    tone: propDoc({
+      description:
+        "`info` (primary ink, polite), `success` (green check, polite), `warning` (muted terracotta triangle, assertive), `error` (coral, assertive).",
+      type: formatUnionType(TOAST_TONES),
+      options: TOAST_TONES,
+      defaultValue: "error",
+    }),
+    closeLabel: propDoc({
+      description: "The accessible name of the close cross, e.g. «Закрыть».",
+      type: "string",
+      required: true,
+      control: "text",
+    }),
+    onClose: propDoc({
+      description: "A press on the cross; the host takes the toast away.",
+      type: "() => void",
+      required: true,
+      control: false,
+    }),
+    action: propDoc({
+      description:
+        "The action of the toast (undo, retry): a text button under the message, so a long label wraps with the text. The «есть действие» handle stands «Отменить» in.",
+      type: "{ label: string; onPress: () => void }",
+      control: false,
+    }),
+    actionRef: propDoc({
+      description:
+        "The action button itself, so the screen can move focus onto it after the action that raised the toast. `null` when there is no `action`.",
+      type: "RefObject<FocusTarget | null>",
+      control: false,
+    }),
+    loading: propDoc({
+      description:
+        "The action is running: a spinner replaces the tone icon and the card is announced busy.",
+      type: "boolean",
+      defaultValue: "false",
+    }),
+    dismissible: propDoc({
+      description: "Show the close cross. Defaults to `true`; a blocking toast can hide it.",
+      type: "boolean",
+      defaultValue: "true",
+    }),
+    offsetBottom: propDoc({
+      description:
+        "Height of a sticky bottom control the toast must not cover: the host lifts the toast above it.",
+      type: "number",
+      defaultValue: "0",
+    }),
+    onHoverChange: propDoc({
+      description:
+        "The pointer entered or left the toast, so the host can pause the countdown. Changes no look.",
+      type: "(hovered: boolean) => void",
+      control: false,
+    }),
+    onFocusChange: propDoc({
+      description:
+        "Focus entered or left one of the controls, for pausing the countdown; the control says which one, so the host can tell the screen's own focus move from Tab or a click.",
+      type: "(focused: boolean, control: \"action\" | \"close\") => void",
+      control: false,
+    }),
+    visible: propDoc({
+      description:
+        "Whether the toast is shown. The host is taking it away: it fades out, stops taking touches and unmounts it when the fade is over.",
+      type: "boolean",
+      defaultValue: "true",
+    }),
+    testID: propDoc({
+      description: "A stable handle for tests; reaches the web DOM as `data-testid`.",
+      type: "string",
+      control: "text",
+    }),
+    withAction: {
+      name: "есть действие",
+      description:
+        "Ручка каталога: показать слот `action` с готовым «Отменить» — текстовая кнопка под сообщением.",
+      control: "boolean",
+      table: {
+        category: "Ручки каталога",
+        type: { summary: "boolean" },
+        defaultValue: { summary: "true" },
+      },
+    },
+  },
   args: {
-    message: "Не удалось сохранить желание. Попробуйте ещё раз.",
-    tone: "error",
+    message: "Желание удалено",
+    tone: "info",
     closeLabel: "Закрыть",
     onClose: noop,
+    loading: false,
+    dismissible: true,
+    offsetBottom: 0,
+    visible: true,
+    testID: "toast",
+    withAction: true,
   },
-} satisfies Meta<typeof Toast>;
+} satisfies Meta<ToastCatalogProps>;
 
 export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-function noop() {}
-
-/** The phone frame the host mounts the toast in. */
-function PhoneFrame({ children, height = 200 }: { children: React.ReactNode; height?: number }) {
+/** A phone-sized box the absolutely positioned toast sits in. */
+function ToastFrame({ children, height = 200 }: { children: ReactNode; height?: number }) {
   return (
-    <View position="relative" width={360} height={height} backgroundColor="$background" overflow="hidden">
+    <View
+      position="relative"
+      width={360}
+      maxWidth="100%"
+      height={height}
+      backgroundColor="$background"
+      overflow="hidden"
+    >
       {children}
     </View>
   );
 }
 
-PhoneFrame.displayName = "PhoneFrame";
+ToastFrame.displayName = "ToastFrame";
 
-/** `error` (the default): the coral icon and an assertive announcement. */
+/** The toast with the «есть действие» handle applied. */
+function ToastPreview({ withAction, action, ...toastArgs }: ToastCatalogProps) {
+  return (
+    <ToastFrame>
+      <Toast {...toastArgs} action={withAction ? (action ?? UNDO_ACTION) : undefined} />
+    </ToastFrame>
+  );
+}
+
+ToastPreview.displayName = "ToastPreview";
+
+/**
+ * The sandbox: write `message` and `title`, pick a `tone`, flip «есть действие»,
+ * `dismissible` and `visible`. Flip `visible` off to see how the host takes the
+ * toast away — the card fades and leaves the frame empty.
+ */
+export const Playground: Story = {
+  render: function PlaygroundStory(args) {
+    return <ToastPreview {...args} />;
+  },
+};
+
+/**
+ * An undo toast: the action «Отменить» is a text button under the message. Focus
+ * is on the action, as the screen puts it right after closing a wish.
+ */
+export const WithUndoAction: Story = {
+  args: {
+    tone: "info",
+    message: "Желание удалено",
+    withAction: true,
+  },
+  render: function WithUndoActionStory(args) {
+    return <ToastPreview {...args} />;
+  },
+  play: focusAction,
+};
+
+/** `error` (the component default): the coral icon and an assertive announcement. */
 export const Error: Story = {
+  tags: ["!dev"],
+  args: {
+    tone: "error",
+    message: "Не удалось сохранить желание. Попробуйте ещё раз.",
+    withAction: false,
+  },
   render: function ErrorStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
 };
 
 /** `info`: the primary icon and a polite announcement, e.g. «Желание сохранено». */
 export const Info: Story = {
-  args: { tone: "info", message: "Желание сохранено" },
+  tags: ["!dev"],
+  args: { tone: "info", message: "Желание сохранено", withAction: false },
   render: function InfoStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
 };
 
 /** `success`: the green check, polite — the action went through. */
 export const Success: Story = {
-  args: { tone: "success", message: "Куплено — владелец увидит отметку" },
+  tags: ["!dev"],
+  args: { tone: "success", message: "Куплено — владелец увидит отметку", withAction: false },
   render: function SuccessStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
 };
 
 /** `warning`: a muted terracotta triangle, assertive — no yellow anywhere in v8. */
 export const Warning: Story = {
-  args: { tone: "warning", message: "Список скоро станет приватным" },
+  tags: ["!dev"],
+  args: { tone: "warning", message: "Список скоро станет приватным", withAction: false },
   render: function WarningStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
 };
 
 /** Title + description: the two-line card of the reference. */
 export const WithTitle: Story = {
+  tags: ["!dev"],
   args: {
     tone: "success",
     title: "Желание забронировано",
     message: "Владелец списка не узнает, кто его выбрал.",
-    action: { label: "Отменить", onPress: noop },
   },
   render: function WithTitleStory(args) {
-    return (
-      <PhoneFrame height={220}>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
-};
-
-/** An undo toast: the action «Отменить» is a text button under the message. */
-export const WithUndoAction: Story = {
-  args: {
-    tone: "info",
-    message: "Желание удалено",
-    action: { label: "Отменить", onPress: noop },
-  },
-  render: function WithUndoActionStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
-  },
-  play: focusAction,
 };
 
 /** Focus and hover pause the countdown; the ring on the card is the regular `$ring`. */
@@ -140,17 +286,13 @@ function focusAction({ canvasElement }: { canvasElement: HTMLElement }) {
  * (`DESIGN.md` → «Куда уходит фокус», пункт «а»).
  */
 export const ClosedUndo: Story = {
+  tags: ["!dev"],
   args: {
     tone: "success",
     message: "Отмечено полученным",
-    action: { label: "Отменить", onPress: noop },
   },
   render: function ClosedUndoStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
   play: focusAction,
   globals: { viewport: { value: "w360" } },
@@ -158,59 +300,57 @@ export const ClosedUndo: Story = {
 
 /** The action is running: a spinner instead of the icon, the card is announced busy. */
 export const LoadingAction: Story = {
-  args: { tone: "info", message: "Сохраняем изменения", loading: true },
+  tags: ["!dev"],
+  args: {
+    tone: "info",
+    message: "Сохраняем изменения",
+    withAction: false,
+    loading: true,
+  },
   render: function LoadingActionStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
 };
 
 /** Without a close cross: a blocking toast that the host dismisses itself. */
 export const WithoutClose: Story = {
-  args: { tone: "warning", message: "Отправляем приглашение…", loading: true, dismissible: false },
+  tags: ["!dev"],
+  args: {
+    tone: "warning",
+    message: "Отправляем приглашение…",
+    loading: true,
+    dismissible: false,
+    withAction: false,
+  },
   render: function WithoutCloseStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
 };
 
 /** A sticky bottom control lifts the toast above itself. */
 export const AboveStickyButton: Story = {
-  args: { tone: "info", message: "Ссылка скопирована", offsetBottom: 64 },
+  tags: ["!dev"],
+  args: { tone: "info", message: "Ссылка скопирована", offsetBottom: 64, withAction: false },
   render: function AboveStickyButtonStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
 };
 
 /** A long message at 360 px: the text shrinks and wraps, the controls stay 44 × 44. */
 export const LongMessageNarrow: Story = {
+  tags: ["!dev"],
   args: {
     tone: "error",
     message:
       "Не удалось забронировать желание: его только что забронировал другой человек. Обновите список.",
     action: { label: "Повторить", onPress: noop },
+    withAction: true,
   },
   render: function LongMessageNarrowStory(args) {
-    return (
-      <PhoneFrame>
-        <Toast {...args} onClose={noop} />
-      </PhoneFrame>
-    );
+    return <ToastPreview {...args} />;
   },
   globals: { viewport: { value: "w360" } },
 };
-
-const GALLERY_TONES: ToastTone[] = ["info", "success", "warning", "error"];
 
 const GALLERY_COPY: Record<ToastTone, { title: string; text: string }> = {
   info: { title: "Ссылка скопирована", text: "Отправьте её друзьям в любом мессенджере." },
@@ -221,10 +361,11 @@ const GALLERY_COPY: Record<ToastTone, { title: string; text: string }> = {
 
 /** The whole set: every tone in the three shapes the app may ask for. */
 export const AllToasts: Story = {
+  tags: ["!dev"],
   render: function AllToastsStory() {
     return (
-      <YStack gap="$3" padding="$3" backgroundColor="$background" width={1180}>
-        {GALLERY_TONES.map(function toneRow(tone) {
+      <YStack gap="$3" padding="$3" backgroundColor="$background" width={1180} maxWidth="100%">
+        {TOAST_TONES.map(function toneRow(tone) {
           const copy = GALLERY_COPY[tone];
           return (
             <YStack key={tone} gap="$1">
@@ -232,10 +373,10 @@ export const AllToasts: Story = {
                 {tone}
               </Text>
               <YStack flexDirection="row" gap="$2" flexWrap="wrap">
-                <View position="relative" width={360} height={110} backgroundColor="$background">
+                <ToastFrame height={110}>
                   <Toast tone={tone} message={copy.text} closeLabel="Закрыть" onClose={noop} />
-                </View>
-                <View position="relative" width={360} height={150} backgroundColor="$background">
+                </ToastFrame>
+                <ToastFrame height={150}>
                   <Toast
                     tone={tone}
                     title={copy.title}
@@ -244,8 +385,8 @@ export const AllToasts: Story = {
                     closeLabel="Закрыть"
                     onClose={noop}
                   />
-                </View>
-                <View position="relative" width={360} height={130} backgroundColor="$background">
+                </ToastFrame>
+                <ToastFrame height={130}>
                   <Toast
                     tone={tone}
                     title={copy.title}
@@ -254,7 +395,7 @@ export const AllToasts: Story = {
                     closeLabel="Закрыть"
                     onClose={noop}
                   />
-                </View>
+                </ToastFrame>
               </YStack>
             </YStack>
           );
@@ -267,6 +408,7 @@ export const AllToasts: Story = {
 
 /** The text alone, for the docs panel: what the host announces. */
 export const MessageCopy: Story = {
+  tags: ["!dev"],
   render: function MessageCopyStory(args) {
     return <Text kind="body">{args.message}</Text>;
   },

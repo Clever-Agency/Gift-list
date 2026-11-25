@@ -254,6 +254,7 @@ describe("PATCH /api/v1/me/gifts/[id] with a stored value above a cap", () => { 
         quantity: "SINGLE",
         archivedAt: null,
         reservedById: null,
+        updatedAt: new Date("2026-11-01T00:00:00.000Z"),
       })
       .mockResolvedValueOnce(giftRow({ title: "я".repeat(5000), visibility: "SECRET" }));
 
@@ -262,7 +263,7 @@ describe("PATCH /api/v1/me/gifts/[id] with a stored value above a cap", () => { 
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: "OPEN", reservedById: null },
+      where: { id: "g1", archivedAt: null, updatedAt: new Date("2026-11-01T00:00:00.000Z") },
       data: { visibility: "SECRET" },
       select: { id: true },
     });

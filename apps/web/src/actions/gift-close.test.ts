@@ -133,6 +133,25 @@ describe("closeGift (the owner marks a wish as received)", () => {
     expect(result).toEqual({ ok: false, code: "CONFLICT", message: "Gift is already closed" });
   });
 
+  /**
+   * D-49 (CLE-124): a reservation that landed between the read and the CAS is not
+   * a CONFLICT for the owner. The action re-reads the row, closes the wish that is
+   * actually there and answers the same card as for an open wish.
+   */
+  it("closes a wish that became RESERVED between the read and the CAS", async () => {
+    findFirst
+      .mockResolvedValueOnce(ownerRow({ status: "OPEN", closedAt: null }))
+      .mockResolvedValueOnce(ownerRow({ status: "RESERVED", closedAt: null }))
+      .mockResolvedValueOnce(ownerRow({ status: "CLOSED" }));
+    close.mockResolvedValueOnce("lost").mockResolvedValueOnce("success");
+
+    const result = await closeGift(headers, "g1");
+
+    expect(result.ok).toBe(true);
+    expect(close).toHaveBeenNthCalledWith(1, "g1", "owner", "OPEN", NOW);
+    expect(close).toHaveBeenNthCalledWith(2, "g1", "owner", "RESERVED", NOW);
+  });
+
   /** D-49: the owner's card never tells them somebody held the wish. */
   it("returns the owner card without the holder of a closed wish", async () => {
     findFirst

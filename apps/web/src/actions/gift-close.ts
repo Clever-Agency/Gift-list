@@ -55,6 +55,13 @@ const closeSelect = {
 } satisfies Prisma.GiftSelect;
 
 /**
+ * D-49 (CLE-124): how many times the close re-reads when a reservation landed
+ * between its read and its CAS. The transition is internal: the owner's answer
+ * never depends on whether the wish is open or reserved.
+ */
+const MAX_CLOSE_ATTEMPTS = 3;
+
+/**
  * The owner's card after the write. The mutation answers the card, not `{ id }`:
  * the card is what carries `undoUntil`, so the client shows «Вернуть в открытые ·
  * ещё N мин» without re-reading the whole list.
@@ -74,15 +81,19 @@ async function ownerCard(
 }
 
 /**
- * Story 5.3 (FR-32, AD-8): the owner marks a wish as received. The transition
- * `OPEN | RESERVED → CLOSED` goes through the only writer of `Gift.status` as a
- * CAS on the status read here: `reserved*`, `quantity` and `visibility` stay,
- * `closedAt` and `closedFromStatus` are written, so the undo can restore exactly
- * the previous status.
+ * Story 5.3 (FR-32, AD-8), D-49 (CLE-124): the owner marks a wish as received.
+ * The transition `OPEN | RESERVED → CLOSED` goes through the only writer of
+ * `Gift.status` as a CAS on the status read for the attempt: `reserved*`,
+ * `quantity` and `visibility` stay, `closedAt` and `closedFromStatus` are
+ * written, so the undo can restore exactly the previous status.
+ *
+ * D-49: a reservation that lands between the read and the CAS is not a CONFLICT
+ * for the owner. The action re-reads the row and repeats (`MAX_CLOSE_ATTEMPTS`)
+ * with the status that is actually there, so an open wish and a reserved one
+ * answer the same. Only a wish that is really closed already answers CONFLICT.
  *
  * A foreign or unknown id and an archived wish are told apart (AD-7 keeps the
- * first invisible, AD-8 gives the owner the archived reason), and an already
- * closed wish answers CONFLICT without touching the row.
+ * first invisible, AD-8 gives the owner the archived reason).
  */
 export async function closeGift(
   headers: Headers,
@@ -92,22 +103,24 @@ export async function closeGift(
   if (!session) return unauthenticated;
 
   const ownerId = session.user.id;
-  const stored = await prisma.gift.findFirst({
-    where: { id: giftId, list: { ownerId } },
-    select: closeSelect,
-  });
-  if (!stored) return notFound;
-  if (stored.archivedAt !== null) return archivedValidation;
-  if (stored.status === "CLOSED" || !canCloseGift(stored)) return alreadyClosed;
-
-  const from = stored.status;
   const now = new Date();
-  const outcome = await runGiftStatusTransaction(function closeOwnGift(service) {
-    return service.closeGift(giftId, ownerId, from, now);
-  });
-  if (outcome === "lost") return alreadyClosed;
+  for (let attempt = 1; attempt <= MAX_CLOSE_ATTEMPTS; attempt += 1) {
+    const stored = await prisma.gift.findFirst({
+      where: { id: giftId, list: { ownerId } },
+      select: closeSelect,
+    });
+    if (!stored) return notFound;
+    if (stored.archivedAt !== null) return archivedValidation;
+    if (stored.status === "CLOSED" || !canCloseGift(stored)) return alreadyClosed;
 
-  return ownerCard(headers, giftId, ownerId);
+    const from = stored.status;
+    const outcome = await runGiftStatusTransaction(function closeOwnGift(service) {
+      return service.closeGift(giftId, ownerId, from, now);
+    });
+    if (outcome === "success") return ownerCard(headers, giftId, ownerId);
+  }
+
+  return alreadyClosed;
 }
 
 /**

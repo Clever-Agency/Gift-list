@@ -3,7 +3,6 @@ import "server-only";
 import type { ActionResult, NotificationAction } from "@gift-list/contracts";
 import { auth } from "@/lib/auth";
 import { isDueOnInRange, reservationDueAtFromDueOn } from "@/domain/reservation-due";
-import { keptReservationDueAt } from "@/domain/gift-status";
 import { runGiftStatusTransaction } from "@/lib/gift-status-store";
 import { notificationGiftSnapshot, notificationIsActionable, isHiddenOwnerReservationNotification } from "@/lib/notification-store";
 import { canonicalTimeZone } from "@/lib/time-zone";
@@ -44,18 +43,12 @@ export async function actOnNotification(
 
     const giftId = row.giftId;
     let outcome: "success" | "lost";
-    if (row.kind === "RESERVATION_OWNER_ASK") {
-      if (command.action === "received") {
-        outcome = await service.closeGift(giftId, userId, "RESERVED", now);
-      } else if (command.action === "keep") {
-        const dueAt = keptReservationDueAt(now, canonicalTimeZone(gift.reservationTimeZone));
-        outcome = await service.keepReservationByOwner(giftId, userId, { dueAt, at: now });
-      } else if (command.action === "release") {
-        outcome = await service.releaseReservationByOwner(giftId, userId, now);
-      } else {
-        return stale;
-      }
-    } else if (row.kind === "RESERVATION_DUE") {
+    // D-49 (CLE-124): the owner never gets an actionable row about somebody
+    // else's reservation, so the owner's «Получил» / «Оставить бронь» / «Снять
+    // бронь» actions no longer exist here. `RESERVATION_OWNER_ASK` rows are hidden
+    // above and an old link answers NOTIFICATION_NOT_FOUND. The holder's own
+    // actions (RESERVATION_DUE) are unchanged.
+    if (row.kind === "RESERVATION_DUE") {
       if (command.action === "extend") {
         const holder = await tx.user.findUnique({ where: { id: userId }, select: { timeZone: true } });
         const timeZone = canonicalTimeZone(holder?.timeZone ?? null);

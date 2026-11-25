@@ -89,7 +89,11 @@ const visibilityRaceConflict = {
   message: "The wish changed while saving",
 };
 
-/** Columns the owner card reads; the same shape the list read selects (AD-12). */
+/**
+ * Columns the owner card reads; the same shape the list read selects (AD-12).
+ * D-49: the owner never sees a reservation, so the reservation columns
+ * (`reservedBy`, phase, toggles) are not read here at all.
+ */
 export const ownerGiftSelect = {
   id: true,
   title: true,
@@ -102,11 +106,8 @@ export const ownerGiftSelect = {
   expiresOn: true,
   archivedAt: true,
   status: true,
-  reservationPhase: true,
-  holderVisibleToOwner: true,
   // Story 5.3: read only to compute the owner's `undoUntil`.
   closedAt: true,
-  reservedBy: { select: { id: true, nick: true, name: true } },
   // Story 2.5/AD-22: only what the card shows. `slug` is fetched for the card's
   // deterministic display order (2.5.7); it never reaches the client.
   tags: {

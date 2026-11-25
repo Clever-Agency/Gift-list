@@ -321,7 +321,7 @@ describe("updateMyReservation", () => {
     expect(extendReservation).not.toHaveBeenCalled();
   });
 
-  it("clears the owner's request after an extension from AWAITING_OWNER", async () => {
+  it("keeps the owner card quiet after an extension from AWAITING_OWNER", async () => {
     findFirst
       .mockResolvedValueOnce({ ...preflight, reservationPhase: "AWAITING_OWNER" })
       .mockResolvedValueOnce(cardRow({ reservationPhase: "ACTIVE" }));
@@ -335,7 +335,7 @@ describe("updateMyReservation", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data.phase).toBe("ACTIVE");
-    // `ownerAction` is derived from the phase, so the owner's next read is quiet.
+    // D-49: the owner never receives an action or a holder, whatever the phase.
     const ownerCard = toOwnerGiftCard(
       {
         id: "g1",
@@ -351,13 +351,12 @@ describe("updateMyReservation", () => {
         closedAt: null,
         tags: [],
         status: "RESERVED",
-        reservationPhase: result.data.phase,
-        holderVisibleToOwner: false,
-        reservedBy: null,
       },
       "ru",
     );
+    expect(ownerCard.status).toBe("OPEN");
     expect(ownerCard.ownerAction).toBeNull();
+    expect(ownerCard.reservedBy).toBeNull();
   });
 
   it("marks the wish as bought with one attribute write", async () => {

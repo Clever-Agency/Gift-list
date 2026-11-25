@@ -8,8 +8,11 @@ import { reservationDueOn } from "./reservation-due";
 import type { OwnerGiftRow } from "./owner-gift-card";
 import { toGiftTags } from "./tag";
 
-/** Plain row the viewer mapper reads; adds the two reservation facts D-13 uses. */
+/** Plain row the viewer mapper reads; adds the reservation facts D-13 uses. */
 export type ViewerGiftRow = OwnerGiftRow & {
+  reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
+  holderVisibleToOwner: boolean;
+  reservedBy: { id: string; nick: string; name: string } | null;
   reservationBought: boolean;
   holderVisibleToOthers: boolean;
   reservationDueAt: Date | null;

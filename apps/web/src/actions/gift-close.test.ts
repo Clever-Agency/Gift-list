@@ -133,8 +133,8 @@ describe("closeGift (the owner marks a wish as received)", () => {
     expect(result).toEqual({ ok: false, code: "CONFLICT", message: "Gift is already closed" });
   });
 
-  /** AD-8: a closed wish keeps the reservation snapshot, adjusted only in tests. */
-  it("returns the owner card with the holder by the toggle", async () => {
+  /** D-49: the owner's card never tells them somebody held the wish. */
+  it("returns the owner card without the holder of a closed wish", async () => {
     findFirst
       .mockResolvedValueOnce(ownerRow({ status: "RESERVED" }))
       .mockResolvedValueOnce(
@@ -150,9 +150,11 @@ describe("closeGift (the owner marks a wish as received)", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data.reservedBy).toEqual({ id: "u2", nick: "holder", displayName: "Даритель" });
+    expect(result.data.status).toBe("CLOSED");
+    expect(result.data.reservedBy).toBeNull();
     expect(result.data.reservationLabel).toBeNull();
     expect(result.data.ownerAction).toBeNull();
+    expect(JSON.stringify(result.data)).not.toContain("Даритель");
   });
 });
 
@@ -239,7 +241,14 @@ describe("undoGiftClose (the owner reverts a close inside the window)", () => {
     expect(undo).toHaveBeenCalledWith("g1", "owner", { closedAt, closedFromStatus: "RESERVED" }, NOW);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toMatchObject({ id: "g1", status: "RESERVED", undoUntil: null });
+    // D-49: the restored reservation still reads as an open wish to its owner.
+    expect(result.data).toMatchObject({
+      id: "g1",
+      status: "OPEN",
+      reservedBy: null,
+      ownerAction: null,
+      undoUntil: null,
+    });
   });
 
   it("answers CONFLICT without a reason when the undo CAS lost the race", async () => {

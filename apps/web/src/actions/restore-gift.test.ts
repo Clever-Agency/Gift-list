@@ -110,6 +110,25 @@ describe("restoreGift", () => {
     });
   });
 
+  /** D-49: a restored wish that is still held reads as an open one to its owner. */
+  it("returns a restored reserved wish without any reservation sign", async () => {
+    giftFindFirst.mockResolvedValue({
+      ...giftRow(),
+      status: "RESERVED",
+      reservationPhase: "ACTIVE",
+      holderVisibleToOwner: true,
+      reservedBy: { id: "u2", nick: "anna", name: "Анна" },
+    });
+
+    const result = await restoreGift(headers, "g1", { expiresOn: null });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { id: "g1", status: "OPEN", reservedBy: null, ownerAction: null },
+    });
+    expect(JSON.stringify(result)).not.toContain("Анна");
+  });
+
   it("passes a cleared date through to the service", async () => {
     giftFindFirst.mockResolvedValue({ ...giftRow(), expiresOn: null });
 

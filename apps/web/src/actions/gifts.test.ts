@@ -307,9 +307,9 @@ describe("getGift", () => {
       id: "g7",
       title: "Наушники",
       visibility: "FRIENDS",
-      status: "RESERVED",
+      status: "OPEN",
       reservedBy: null,
-      ownerAction: "CONFIRM_GIVEN",
+      ownerAction: null,
     });
   });
 
@@ -802,9 +802,9 @@ describe("updateGift", () => {
       title: "Наушники",
       priceAmount: 19900,
       priceCurrency: "BYN",
-      status: "RESERVED",
+      status: "OPEN",
       reservedBy: null,
-      ownerAction: "CONFIRM_GIVEN",
+      ownerAction: null,
     });
   });
 
@@ -857,7 +857,7 @@ describe("updateGift", () => {
       select: { id: true },
     });
     expect(releaseMany).not.toHaveBeenCalled();
-    expect(card).toMatchObject({ status: "RESERVED", visibility: "FRIENDS" });
+    expect(card).toMatchObject({ status: "OPEN", visibility: "FRIENDS" });
   });
 
   /**
@@ -1061,7 +1061,7 @@ describe("updateGift", () => {
       select: { id: true },
     });
     expect(releaseMany).not.toHaveBeenCalled();
-    expect(card).toMatchObject({ status: "RESERVED", visibility: "FRIENDS" });
+    expect(card).toMatchObject({ status: "OPEN", visibility: "FRIENDS" });
   });
 
   /**
@@ -2059,7 +2059,9 @@ describe("gift tags", () => {
       data: {},
       select: { id: true },
     });
-    expect(card.status).toBe("RESERVED");
+    expect(card.status).toBe("OPEN");
+    expect(card.reservedBy).toBeNull();
+    expect(card.ownerAction).toBeNull();
     expect(card.tags).toEqual([{ catalogId: null, label: "своё" }]);
   });
 

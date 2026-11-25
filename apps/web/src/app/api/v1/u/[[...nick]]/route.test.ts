@@ -260,6 +260,27 @@ describe("GET /api/v1/u/:nick", () => {
     expect(body.data.owner).toEqual({ displayName: "Анна", nick: "Anna" });
   });
 
+  /** D-49: the owner's own profile is the owner branch, so a reservation stays hidden. */
+  it("shows the owner their own reserved wish as an open one", async () => {
+    signIn("u1");
+    findManyGifts.mockResolvedValue([
+      gift({
+        id: "g-reserved",
+        title: "Забронированное",
+        status: "RESERVED",
+        reservationPhase: "ACTIVE",
+        holderVisibleToOwner: true,
+        reservedBy: { id: "u9", nick: "petr", name: "Пётр" },
+      }),
+    ]);
+
+    const { body } = await callRoute(["Anna"]);
+
+    const card = body.data.gifts[0];
+    expect(card).toMatchObject({ status: "OPEN", reservedBy: null, ownerAction: null });
+    expect(JSON.stringify(body)).not.toContain("Пётр");
+  });
+
   it("shows the owner card and no gifts when there is no relation, even with hideFromSearch", async () => {
     signIn();
 

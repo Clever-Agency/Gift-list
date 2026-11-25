@@ -185,7 +185,8 @@ describe("keepReservation (the owner keeps the reservation)", () => {
     if (!result.ok) return;
     expect(result.data).toMatchObject({
       id: "g1",
-      status: "RESERVED",
+      status: "OPEN",
+      reservedBy: null,
       ownerAction: null,
     });
     // AD-7: the owner card never carries the reservation facts.

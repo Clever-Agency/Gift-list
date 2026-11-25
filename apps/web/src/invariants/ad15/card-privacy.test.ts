@@ -413,9 +413,9 @@ describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () 
     state.gifts = [ownerRow];
   });
 
-  it("не отдаёт владельцу держателя, bought и dueAt при выключенном переключателе", async () => {
-    // The row really has a holder and a purchase fact; the card just never
-    // carries them.
+  it("не отдаёт владельцу ни одного признака брони", async () => {
+    // The row really has a holder, a purchase fact and a running phase; the card
+    // just looks exactly like the same wish without a reservation (D-49).
     expect(ownerRow).toMatchObject({
       status: "RESERVED",
       reservationPhase: "ACTIVE",
@@ -430,8 +430,8 @@ describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () 
     const [card] = result.data.gifts;
     if (card === undefined) throw new Error("expected the owner card");
 
-    // AD-15 (5) / FR-31: the toggle is off, so the holder is absent and the
-    // phase asks nothing of the owner while the reservation is still running.
+    // AD-15 (5) / D-49: the wish is a surprise, so the owner sees an open wish.
+    expect(card.status).toBe("OPEN");
     expect(card.reservedBy).toBeNull();
     expect(card.reservationLabel).toBeNull();
     expect(card.ownerAction).toBeNull();
@@ -440,8 +440,19 @@ describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () 
     expect(card).not.toHaveProperty("dueAt");
 
     // The rest is the shared owner-card contract, field for field, built by the
-    // same mapper.
+    // same mapper — and it equals the card of the same wish without them.
+    const openTwin: Row = {
+      ...ownerRow,
+      status: "OPEN",
+      reservationPhase: null,
+      reservationBought: false,
+      holderVisibleToOwner: false,
+      reservedById: null,
+      reservedBy: null,
+      titleSnapshotOnReserve: null,
+    };
     expect(card).toEqual(toOwnerGiftCard(ownerRow));
+    expect(card).toEqual(toOwnerGiftCard(openTwin));
     expect(giftCardSchema.safeParse(card).success).toBe(true);
     expect(Object.keys(card).sort()).toEqual(OWNER_CARD_KEYS);
 
@@ -454,5 +465,6 @@ describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () 
     expect(body).not.toContain("daria");
     expect(body).not.toContain('"bought"');
     expect(body).not.toContain('"dueAt"');
+    expect(body).not.toContain("RESERVED");
   });
 });

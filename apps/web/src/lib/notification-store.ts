@@ -154,12 +154,33 @@ export function notificationIsActionable(row: Notification, gift: GiftSnapshot |
   );
 }
 
+/**
+ * CLE-124: a wish's reservation is a surprise for its owner. The owner must not
+ * learn about a reservation, its release, the owner phase or its automatic
+ * release, so rows addressed to them are hidden from every read path.
+ *
+ * The rule covers rows already written before the change, which is why it lives
+ * here and the rows stay in the database: `RESERVATION_CREATED` and
+ * `RESERVATION_OWNER_ASK` are owner-only kinds, while the two release kinds also
+ * go to the holder and are hidden for the owner by their payload.
+ */
+export function isHiddenOwnerReservationNotification(
+  row: Pick<Notification, "kind" | "payload">,
+): boolean {
+  if (row.kind === "RESERVATION_CREATED" || row.kind === "RESERVATION_OWNER_ASK") return true;
+  if (row.kind !== "RESERVATION_RELEASED" && row.kind !== "RESERVATION_AUTO_RELEASE") return false;
+  const payload = row.payload;
+  return payload !== null && typeof payload === "object" && !Array.isArray(payload) &&
+    (payload as { role?: unknown }).role === "owner";
+}
+
 export async function projectNotification(
   row: Notification,
   prefs: NotificationPreferences,
   channel: "inApp" | "email",
   now = new Date(),
 ): Promise<NotificationItem | null> {
+  if (isHiddenOwnerReservationNotification(row)) return null;
   if (row.deliverAfter > now || !inChannel(row.kind, prefs, channel)) return null;
   const raw = row.payload;
   const payload = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};

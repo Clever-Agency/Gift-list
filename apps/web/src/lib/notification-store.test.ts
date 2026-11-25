@@ -31,7 +31,9 @@ import {
   cancelCloseNotification,
   countUnreadNotifications,
   readNotifications,
+  readNotification,
   enqueueGiftNotification,
+  isHiddenOwnerReservationNotification,
   markNotificationRead,
   notificationGiftSnapshot,
   notificationIsActionable,
@@ -91,15 +93,18 @@ beforeEach(function reset() {
 });
 
 describe("notification privacy and availability", function privacyTests() {
-  it("rechecks FR-31 and omits holder identity, purchase mark and due date from the owner feed", async function hidesFields() {
+  it("rechecks FR-31 and omits holder identity, purchase mark and due date from an owner-facing row", async function hidesFields() {
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "GIVEN" });
     const row = record({
+      kind: "GIFT_GIVEN",
       payload: { role: "owner", titleSnapshot: gift.title, holderName: gift.reservedBy.name, bought: true, dueAt: gift.reservationDueAt.toISOString() },
     });
     const item = await projectNotification(row, defaults, "inApp", now);
     expect(item?.event).toEqual({
-      kind: row.kind, giftId: gift.id, titleSnapshot: gift.title, actionable: true,
+      kind: "GIFT_GIVEN", giftId: gift.id, titleSnapshot: gift.title, actionable: true,
     });
-    db.gift.findUnique.mockResolvedValue({ ...gift, holderVisibleToOwner: true });
+    expect(JSON.stringify(item)).not.toContain(gift.reservedBy.name);
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "GIVEN", holderVisibleToOwner: true });
     expect((await projectNotification(row, defaults, "inApp", now))?.event)
       .toHaveProperty("holderName", gift.reservedBy.name);
   });
@@ -131,8 +136,11 @@ describe("notification privacy and availability", function privacyTests() {
 
   it("rejects a stale control before the GiftStatusService CAS", async function rejectStaleMutation() {
     db.$transaction.mockImplementation(async function run(work) { return work(db); });
-    db.notification.findFirst.mockResolvedValue(record({ phaseAt: reservedAt }));
-    await expect(actOnNotification("owner", "notification", { action: "keep" }))
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "AWAITING_GIVER" });
+    db.notification.findFirst.mockResolvedValue(record({
+      kind: "RESERVATION_DUE", recipientId: "holder", actorId: "owner", phaseAt: reservedAt,
+    }));
+    await expect(actOnNotification("holder", "notification", { action: "bought" }))
       .resolves.toMatchObject({ ok: false, code: "CONFLICT" });
     expect(db.$queryRaw).toHaveBeenCalledOnce();
     expect(db.gift.updateMany).not.toHaveBeenCalled();
@@ -191,7 +199,8 @@ describe("notification privacy and availability", function privacyTests() {
   });
 
   it("updates unread state only for the recipient's ready event", async function markRead() {
-    db.notification.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(record());
+    const visible = record({ kind: "DATE_OWN", giftId: null, payload: {} });
+    db.notification.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(visible);
     await expect(markNotificationRead("other", "notification")).resolves.toBe(false);
     expect(db.notification.updateMany).not.toHaveBeenCalled();
     await expect(markNotificationRead("owner", "notification")).resolves.toBe(true);
@@ -228,6 +237,74 @@ describe("notification privacy and availability", function privacyTests() {
   });
 });
 
+/**
+ * CLE-124: a wish's reservation is a surprise for its owner. Rows written
+ * before the rule stay in the database and are hidden by one rule at read time.
+ */
+describe("CLE-124: owner reservation rows are hidden", function hiddenOwnerRows() {
+  const hiddenOwnerRows = [
+    { kind: "RESERVATION_CREATED" as const, payload: { role: "owner", titleSnapshot: gift.title } },
+    { kind: "RESERVATION_OWNER_ASK" as const, payload: { role: "owner", titleSnapshot: gift.title } },
+    { kind: "RESERVATION_RELEASED" as const, payload: { role: "owner", titleSnapshot: gift.title } },
+    { kind: "RESERVATION_AUTO_RELEASE" as const, payload: { role: "owner", titleSnapshot: gift.title } },
+  ];
+
+  it.each(hiddenOwnerRows)("hides an owner's $kind row from every read path", async function hidden(fixture) {
+    const row = record({ kind: fixture.kind, recipientId: "owner", payload: fixture.payload });
+    expect(isHiddenOwnerReservationNotification(row)).toBe(true);
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+    await expect(projectNotification(row, defaults, "email", now)).resolves.toBeNull();
+
+    db.notification.findFirst.mockResolvedValue(row);
+    await expect(readNotification("owner", row.id)).resolves.toBeNull();
+    await expect(markNotificationRead("owner", row.id)).resolves.toBe(false);
+    expect(db.notification.updateMany).not.toHaveBeenCalled();
+
+    db.notification.findMany.mockResolvedValue([row]);
+    await expect(countUnreadNotifications("owner")).resolves.toBe(0);
+    await expect(readNotifications("owner")).resolves.toEqual({ items: [], nextCursor: null });
+  });
+
+  it("skips the owner's email and marks the attempt done without deleting the row", async function noOwnerEmail() {
+    const rows = mockEmailQueue([record({ payload: { role: "owner", titleSnapshot: gift.title } })]);
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 0 });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.emailDoneAt).toEqual(expect.any(Date));
+    expect(db.notification.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps the holder's release and auto-release rows visible", async function holderRowsStay() {
+    for (const kind of ["RESERVATION_RELEASED", "RESERVATION_AUTO_RELEASE"] as const) {
+      const row = record({
+        kind,
+        recipientId: "holder",
+        actorId: "owner",
+        payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve },
+      });
+      expect(isHiddenOwnerReservationNotification(row)).toBe(false);
+      await expect(projectNotification(row, defaults, "inApp", now))
+        .resolves.toMatchObject({ event: { kind, titleSnapshot: gift.titleSnapshotOnReserve } });
+    }
+  });
+
+  it("answers NOT_FOUND to an action on an old owner ask and changes nothing", async function noOwnerAction() {
+    db.$transaction.mockImplementation(async function run(work) { return work(db); });
+    db.notification.findFirst.mockResolvedValue(record());
+
+    await expect(actOnNotification("owner", "notification", { action: "keep" }))
+      .resolves.toMatchObject({ ok: false, code: "NOT_FOUND" });
+
+    expect(db.$queryRaw).not.toHaveBeenCalled();
+    expect(db.gift.updateMany).not.toHaveBeenCalled();
+    expect(db.notification.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("email notification queue", function mailTests() {
   it("keeps the notification id on the existing return path through sign-in", function link() {
     const href = new URL(notificationEmailLink("http://example.test", "example"));
@@ -239,8 +316,11 @@ describe("email notification queue", function mailTests() {
     "lets only one worker claim the same pending attempt (%s)",
     async function concurrentClaim(firstAttemptAt) {
       const row = record({
+        kind: "RESERVATION_RELEASED",
+        recipientId: "holder",
+        actorId: "owner",
         emailFirstAttemptAt: firstAttemptAt,
-        payload: { role: "owner", titleSnapshot: gift.title, holderName: gift.reservedBy.name },
+        payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve, holderName: gift.reservedBy.name },
       });
       const rows = mockEmailQueue([row]);
       const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
@@ -254,35 +334,39 @@ describe("email notification queue", function mailTests() {
       }), "notification/notification");
       if (firstAttemptAt) expect(rows[0]?.emailFirstAttemptAt).toEqual(firstAttemptAt);
       const body = send.mock.calls[0]![0].text;
-      expect(body.split("\n")[0]).toBe("Срок брони «Текущее название» истёк, даритель пока не ответил. Подарок уже у вас?");
+      expect(body.split("\n")[0]).toBe("Бронь на «Снимок названия» снята");
       expect(body).not.toContain(gift.reservedBy.name);
-      expect(body).not.toContain(gift.reservationDueAt.toISOString());
+      expect(body).not.toContain(gift.title);
     },
   );
 
-  it("orders retries and new attempts by delivery time and gives edited and stale events localized copy", async function mailCopy() {
+  it("orders retries and new attempts by delivery time and gives edited and holder events localized copy", async function mailCopy() {
     const edited = record({
       id: "edited", recipientId: "holder", actorId: "owner", kind: "GIFT_EDITED",
       deliverAfter: new Date(now.getTime() - 1),
       emailFirstAttemptAt: new Date(now.getTime() - 60_000),
       payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve, fields: ["title", "price"] },
     });
-    const stale = record({ id: "stale", phaseAt: reservedAt });
-    mockEmailQueue([stale, edited]);
+    const due = record({
+      id: "due", recipientId: "holder", actorId: "owner", kind: "RESERVATION_DUE",
+      payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve },
+    });
+    mockEmailQueue([due, edited]);
     const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
     await processNotificationEmails(now, send, "https://example.test");
-    expect(send.mock.calls.map(call => call[1])).toEqual(["notification/edited", "notification/stale"]);
+    expect(send.mock.calls.map(call => call[1])).toEqual(["notification/edited", "notification/due"]);
     expect(send.mock.calls[0]![0].text).toContain("Изменилось: название, цена");
     expect(send.mock.calls[0]![0].html).toContain("<p>Изменилось: название, цена</p>");
-    expect(send.mock.calls[1]![0].text.split("\n")[0]).toBe("Даритель уже ответил");
-    expect(send.mock.calls[1]![0].html).toContain("<p>Даритель уже ответил</p>");
-    expect(send.mock.calls[1]![0].text).not.toContain("пока не ответил");
+    expect(send.mock.calls[1]![0].text.split("\n")[0]).toBe("Срок брони «Снимок названия» истёк");
+    expect(send.mock.calls[1]![0].html).toContain("<p>Срок брони «Снимок названия» истёк</p>");
     expect(db.notification.findMany.mock.calls[1]![0].orderBy).toEqual([{ deliverAfter: "asc" }, { id: "asc" }]);
   });
 
   it("retires expired attempts and reports them once across competing workers", async function expiredAttempts() {
     const expiredAt = new Date(now.getTime() - 23 * 60 * 60_000);
-    const rows = mockEmailQueue([record({ emailFirstAttemptAt: expiredAt })]);
+    const rows = mockEmailQueue([record({
+      kind: "RESERVATION_DUE", recipientId: "holder", emailFirstAttemptAt: expiredAt,
+    })]);
     const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>();
     const log = vi.spyOn(console, "error").mockImplementation(function quiet() {});
     try {

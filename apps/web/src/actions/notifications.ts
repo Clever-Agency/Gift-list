@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { isDueOnInRange, reservationDueAtFromDueOn } from "@/domain/reservation-due";
 import { keptReservationDueAt } from "@/domain/gift-status";
 import { runGiftStatusTransaction } from "@/lib/gift-status-store";
-import { notificationGiftSnapshot, notificationIsActionable } from "@/lib/notification-store";
+import { notificationGiftSnapshot, notificationIsActionable, isHiddenOwnerReservationNotification } from "@/lib/notification-store";
 import { canonicalTimeZone } from "@/lib/time-zone";
 
 export const NOTIFICATION_NOT_FOUND = {
@@ -32,6 +32,9 @@ export async function actOnNotification(
       where: { id, recipientId: userId, deliverAfter: { lte: now } },
     });
     if (!row?.giftId) return NOTIFICATION_NOT_FOUND;
+    // CLE-124: a row the owner must not see behaves as if it never existed, so
+    // an old «Подарок уже у вас?» link cannot act on the reservation.
+    if (isHiddenOwnerReservationNotification(row)) return NOTIFICATION_NOT_FOUND;
 
     // Hold the gift row through the action CAS so the checked reservation and
     // phase cannot be replaced by another request between the check and write.

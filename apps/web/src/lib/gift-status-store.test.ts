@@ -598,7 +598,7 @@ describe("CLE-124/S9b-2: «Подарил» and the deadline reminder", () => {
     };
     expect(data.kind).toBe("RESERVATION_DUE");
     expect(data.recipientId).toBe("u2");
-    expect(data.eventKey).toBe(`RESERVATION_DUE:g1:${dueAt.toISOString()}`);
+    expect(data.eventKey).toBe(`RESERVATION_DUE:reminder:g1:${dueAt.toISOString()}`);
     expect(data.payload).toMatchObject({
       role: "holder",
       dueAt: dueAt.toISOString(),
@@ -634,10 +634,33 @@ describe("CLE-124/S9b-2: «Подарил» and the deadline reminder", () => {
     await tx.remindReservationDue("g1", at);
 
     expect(createMany.mock.calls.map(([args]) => (args as { data: { eventKey: string } }).data.eventKey)).toEqual([
-      `RESERVATION_DUE:g1:${firstDue.toISOString()}`,
-      `RESERVATION_DUE:g1:${firstDue.toISOString()}`,
-      `RESERVATION_DUE:g1:${secondDue.toISOString()}`,
+      `RESERVATION_DUE:reminder:g1:${firstDue.toISOString()}`,
+      `RESERVATION_DUE:reminder:g1:${firstDue.toISOString()}`,
+      `RESERVATION_DUE:reminder:g1:${secondDue.toISOString()}`,
     ]);
+  });
+
+  it("gives the reminder and the deadline notice at the same moment two different keys", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const dueAt = new Date(at.getTime() + 24 * 60 * 60 * 1000);
+    findUnique.mockResolvedValue({ ...snapshot, reservationDueAt: dueAt });
+    const tx = giftStatusTransaction(transactionClient());
+
+    // The reminder lands earlier, anchored on the deadline; the timer then sees
+    // `at == dueAt` and writes «Срок истёк» for the same gift and the same date.
+    await tx.remindReservationDue("g1", at);
+    await tx.moveReservationToAwaitingGiver("g1", dueAt);
+
+    const keys = createMany.mock.calls.map(
+      ([args]) => (args as { data: { eventKey: string; kind: string } }).data,
+    );
+    expect(keys.map((data) => data.kind)).toEqual(["RESERVATION_DUE", "RESERVATION_DUE"]);
+    expect(keys.map((data) => data.eventKey)).toEqual([
+      `RESERVATION_DUE:reminder:g1:${dueAt.toISOString()}`,
+      `RESERVATION_DUE:g1:${dueAt.toISOString()}`,
+    ]);
+    expect(new Set(keys.map((data) => data.eventKey)).size).toBe(2);
+    info.mockRestore();
   });
 });
 

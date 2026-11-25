@@ -87,8 +87,15 @@ type GiftNotification = {
   reminder?: boolean;
 };
 
-function giftEventKey(kind: GiftEventKind, giftId: string, at: Date) {
-  return `${kind}:${giftId}:${at.toISOString()}`;
+/**
+ * CLE-124/S9b-2 fix: the reminder before the deadline and «Срок истёк» are both
+ * `RESERVATION_DUE` for the same gift and both anchor on the deadline, so a run
+ * exactly at the deadline would give them one key and `skipDuplicates` would
+ * silently drop the deadline notice. The reminder therefore names itself in the
+ * key; every other kind keeps the plain `kind:giftId:at` shape.
+ */
+function giftEventKey(kind: GiftEventKind, giftId: string, at: Date, reminder = false) {
+  return reminder ? `${kind}:reminder:${giftId}:${at.toISOString()}` : `${kind}:${giftId}:${at.toISOString()}`;
 }
 
 export async function enqueueGiftNotification(
@@ -113,7 +120,7 @@ export async function enqueueGiftNotification(
     ...(fields ? { fields: [...fields] } : {}),
   };
   await enqueueNotification(tx, {
-    eventKey: giftEventKey(kind, gift.id, eventAt ?? at),
+    eventKey: giftEventKey(kind, gift.id, eventAt ?? at, reminder === true),
     kind,
     giftId: gift.id,
     actorId: role === "owner" ? gift.reservedById : gift.list.ownerId,

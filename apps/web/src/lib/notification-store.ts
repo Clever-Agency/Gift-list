@@ -32,8 +32,6 @@ const giftSelect = {
   reservationDueAt: true,
   reservationTimeZone: true,
   titleSnapshotOnReserve: true,
-  holderVisibleToOwner: true,
-  reservedBy: { select: { name: true } },
   list: { select: { ownerId: true, owner: { select: { nick: true } } } },
 } satisfies Prisma.GiftSelect;
 
@@ -208,19 +206,18 @@ export async function projectNotification(
 
     const sameReservation = Boolean(gift?.reservedAt && row.reservationAt &&
       gift.reservedAt.getTime() === row.reservationAt.getTime());
-    const allowedName = payload.role === "owner" && sameReservation && gift?.holderVisibleToOwner &&
-      row.actorId && gift.reservedById === row.actorId &&
-      !(await relationshipReader.relationsBetween(row.recipientId, row.actorId)).blocked;
     const actionable = notificationIsActionable(row, gift);
-    const { holderName: _expiredName, ...rest } = payload;
-    void _expiredName;
+    // CLE-124/D-49: the holder's name never reaches the owner. A legacy payload
+    // may still carry `holderName` from before the change, so it is dropped here
+    // for every recipient rather than trusted.
+    const { holderName: _legacyHolderName, ...rest } = payload;
+    void _legacyHolderName;
     data = {
       ...rest,
       giftId: row.giftId,
       actionable,
       // The payload is historical. The purchase mark is live and holder-only.
       bought: row.kind === "RESERVATION_DUE" && actionable ? gift?.reservationBought : undefined,
-      ...(allowedName && gift?.reservedBy ? { holderName: gift.reservedBy.name } : {}),
     };
     if (visible && gift) {
       href = gift.list.ownerId === row.recipientId ? `/gifts/${row.giftId}` :

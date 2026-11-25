@@ -38,7 +38,7 @@ export type ReservationCardProps = {
 /**
  * Карточка одной брони держателя (Story 5.5, `DESIGN.md` → ReservationCard,
  * `EXPERIENCE.md` → «Подписи брони»): снимок названия, `@ник` владельца, срок,
- * фаза, чип «Куплено», свёрнутые переключатели «Кто видит, что это я» и действия
+ * фаза, чип «Куплено», свёрнутый переключатель «Кто видит, что это я» и действия
  * «Купил», «Продлить до…», «Снять бронь» (⋮). Без цены, тегов и остальных
  * желаний: набор полей задан контрактом `reservationCardSchema` (A-14, AD-7).
  *
@@ -173,7 +173,6 @@ export function ReservationCard({
         expanded={visibilityExpanded}
         onToggle={onToggleVisibility}
         values={{
-          holderVisibleToOwner: card.holderVisibleToOwner,
           holderVisibleToOthers: card.holderVisibleToOthers,
         }}
         busy={busy}

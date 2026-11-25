@@ -55,7 +55,6 @@ export type ReserveGiftWrite = {
   readonly reservationDueAt: Date;
   readonly reservationTimeZone: string;
   readonly reservationPhaseAt: Date;
-  readonly holderVisibleToOwner: boolean;
   readonly holderVisibleToOthers: boolean;
 };
 
@@ -80,9 +79,8 @@ export type SetReservationBoughtWrite = {
   readonly value: boolean;
 };
 
-/** Story 5.5: both toggles of the holder's visibility arrive in one body. */
+/** Story 5.5: the holder's guest-visibility switch. CLE-124/D-49: the owner toggle is always `false`. */
 export type SetReservationVisibilityWrite = {
-  readonly holderVisibleToOwner: boolean;
   readonly holderVisibleToOthers: boolean;
 };
 
@@ -407,7 +405,7 @@ export function canExtendReservation(row: ReservationAttributeRow): boolean {
 }
 
 /**
- * Story 5.5 (AD-9): `bought` and the two visibility toggles are attributes of any
+ * Story 5.5 (AD-9): `bought` and the guests' visibility switch are attributes of any
  * live reservation — every phase, `GIVEN` included, may change them. Only the
  * status limits them; an `OPEN` or `CLOSED` row is not a reservation anymore.
  */

@@ -315,11 +315,10 @@ export default function GiftDetailScreen() {
     await runAction({ action: "bought", value });
   }
 
-  /** Both switches travel in one `visibility` action; the answer replaces the card. */
+  /** The visibility switch travels in one `visibility` action; the answer replaces the card. */
   async function submitVisibility(next: ReservationVisibilityValues) {
     await runAction({
       action: "visibility",
-      holderVisibleToOwner: next.holderVisibleToOwner,
       holderVisibleToOthers: next.holderVisibleToOthers,
     });
   }
@@ -467,7 +466,6 @@ export default function GiftDetailScreen() {
                         expanded={visibilityOpen}
                         onToggle={toggleVisibility}
                         values={{
-                          holderVisibleToOwner: current.reservation.holderVisibleToOwner,
                           holderVisibleToOthers: current.reservation.holderVisibleToOthers,
                         }}
                         busy={holderBusy}

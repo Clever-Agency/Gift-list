@@ -490,16 +490,18 @@ describe("деталь желания: действия держателя", () 
     expect(text()).toContain("Вы берёте · до 01.12.2026");
   });
 
-  it("переключатели видимости уходят одной парой", async () => {
+  it("переключатель видимости для гостей уходит без флага владельца", async () => {
     respond(gift(), undefined, {
       ok: true,
-      data: reservationCard({ holderVisibleToOwner: true, holderVisibleToOthers: true }),
+      data: reservationCard({ holderVisibleToOthers: false }),
     });
     await mount();
 
+    expect(text()).not.toContain("Показать владельцу, что это я");
+
     await click(control("Кто видит, что это я"));
     await settle();
-    await click(switchNamed("Показать владельцу, что это я"));
+    await click(switchNamed("Показать другим, кто берёт"));
     await settle();
 
     const calls = actionCalls();
@@ -508,14 +510,12 @@ describe("деталь желания: действия держателя", () 
       method: "PATCH",
       body: {
         action: "visibility",
-        holderVisibleToOwner: true,
-        holderVisibleToOthers: true,
+        holderVisibleToOthers: false,
       },
     });
-    expect(switchNamed("Показать владельцу, что это я")?.getAttribute("aria-checked")).toBe(
-      "true",
+    expect(switchNamed("Показать другим, кто берёт")?.getAttribute("aria-checked")).toBe(
+      "false",
     );
-    expect(text()).toContain("он может уже знать");
   });
 
   it("в GIVEN подпись «Ждёт подтверждения», продления нет, остальное на месте", async () => {

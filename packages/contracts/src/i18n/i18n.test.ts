@@ -316,11 +316,9 @@ describe("reservation copy", () => {
     expect(reservations.boughtChip).toBe("Куплено");
 
     expect(reservations.visibility.title).toBe("Кто видит, что это я");
-    expect(reservations.visibility.owner).toBe("Показать владельцу, что это я");
     expect(reservations.visibility.others).toBe("Показать другим, кто берёт");
-    expect(reservations.visibility.hint).toBe(
-      "Владелец сразу увидит ваше имя; если потом выключить, он может уже знать",
-    );
+    // CLE-124/D-49: the owner switch and its hint are gone.
+    expect(Object.keys(reservations.visibility).sort()).toEqual(["others", "title"]);
 
     expect(reservations.extend).toBe("Продлить до…");
     expect(reservations.extendCaption).toBe("Не позже {max}");

@@ -360,10 +360,16 @@ export const giftUpdateSchema = z
     return update;
   });
 
-/** Story 5.1 (AD-9): body of `POST /api/v1/gifts/:id/reserve`. */
+/**
+ * Story 5.1 (AD-9): body of `POST /api/v1/gifts/:id/reserve`.
+ *
+ * CLE-124/D-49: the owner never learns that a wish is reserved, so there is no
+ * «Показать владельцу» switch anymore. The key stays optional and is ignored by
+ * the server, so an older app version can still send it without breaking.
+ */
 export const giftReserveBodySchema = z.strictObject({
   dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  holderVisibleToOwner: z.boolean(),
+  holderVisibleToOwner: z.boolean().optional(),
   holderVisibleToOthers: z.boolean(),
 });
 
@@ -435,7 +441,8 @@ export const reservationActionBodySchema = z.discriminatedUnion("action", [
   }),
   z.strictObject({
     action: z.literal("visibility"),
-    holderVisibleToOwner: z.boolean(),
+    /** CLE-124/D-49: ignored by the server; kept optional for older clients. */
+    holderVisibleToOwner: z.boolean().optional(),
     holderVisibleToOthers: z.boolean(),
   }),
 ]);

@@ -35,7 +35,6 @@ export type DetailCopy = {
   due: string;
   phase: Record<NonNullable<GiftCard["reservation"]>["phase"], string>;
   bought: string;
-  showOwner: string;
   showOthers: string;
   yes: string;
   no: string;
@@ -64,7 +63,6 @@ export function detailCopy(messages: Messages = getMessages()): DetailCopy {
     due: gift.reserveConfirm.dueLabel,
     phase: gift.detail.phase,
     bought: gift.detail.bought,
-    showOwner: gift.reserveConfirm.showOwner,
     showOthers: gift.reserveConfirm.showOthers,
     yes: gift.detail.yes,
     no: gift.detail.no,
@@ -149,7 +147,6 @@ export function toDetailFacts(
     add("due", copy.reservation, fill(copy.due, { date }));
     add("phase", copy.reservation, fill(copy.phase[reservation.phase], { date }));
     if (reservation.bought) add("bought", copy.reservation, copy.bought);
-    add("showOwner", copy.showOwner, reservation.holderVisibleToOwner ? copy.yes : copy.no);
     add("showOthers", copy.showOthers, reservation.holderVisibleToOthers ? copy.yes : copy.no);
   }
   return facts;

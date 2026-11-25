@@ -80,10 +80,10 @@ export const Bought: Story = {
   args: { ...base, card: sample({ bought: true }) },
 };
 
-/** Раскрытые переключатели видимости с подсказкой включённого «владельцу». */
+/** Раскрытый переключатель «Показать другим, кто берёт». */
 export const VisibilityOpen: Story = {
   tags: ["!dev"],
-  args: { ...base, card: sample({ holderVisibleToOwner: true }), visibilityExpanded: true },
+  args: { ...base, visibilityExpanded: true },
 };
 
 /** `canOpenGift = false`: карточка без ссылки на деталь, действия на месте (A-14). */

@@ -182,7 +182,7 @@ describe("ReservationCard", () => {
     expect(text()).toContain("Ждёт подтверждения");
     expect(control("Продлить до…")).toBeUndefined();
     expect(byLabel("Купил")).not.toBeNull();
-    expect(byLabel("Показать владельцу, что это я")).not.toBeNull();
+    expect(byLabel("Показать другим, кто берёт")).not.toBeNull();
     expect(byLabel("Меню")).not.toBeNull();
   });
 

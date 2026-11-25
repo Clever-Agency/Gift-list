@@ -312,7 +312,6 @@ function ReservationsContent({
   async function changeVisibility(card: ReservationCard, next: ReservationVisibilityValues) {
     await sendAction(card, {
       action: "visibility",
-      holderVisibleToOwner: next.holderVisibleToOwner,
       holderVisibleToOthers: next.holderVisibleToOthers,
     });
   }

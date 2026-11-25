@@ -2,7 +2,11 @@ import { releaseMyReservation } from "@/actions/gift-release";
 import { reserveGift } from "@/actions/gift-reserve";
 import { notFoundResponse, parseJson, toResponse } from "@/lib/api-v1";
 
-/** Story 5.1 (AD-9): CAS reserve `OPEN → RESERVED` with due date and visibility toggles. */
+/**
+ * Story 5.1 (AD-9): CAS reserve `OPEN → RESERVED` with the due date and the
+ * guests' visibility switch. CLE-124/D-49: a `holderVisibleToOwner` sent by an
+ * older client is accepted and ignored; the server stores `false`.
+ */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },

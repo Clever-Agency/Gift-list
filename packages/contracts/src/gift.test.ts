@@ -646,6 +646,7 @@ describe("reservation cards and actions", () => {
     { action: "extend", dueOn: "2026-12-08" },
     { action: "bought", value: true },
     { action: "visibility", holderVisibleToOwner: true, holderVisibleToOthers: false },
+    { action: "visibility", holderVisibleToOthers: false },
   ])("accepts the %j action", (body) => {
     expect(reservationActionBodySchema.parse(body)).toEqual(body);
   });
@@ -696,7 +697,7 @@ describe("reservation cards and actions", () => {
     expect(dueOn.success).toBe(false);
     if (!dueOn.success) expect(dueOn.error.issues[0]?.path).toEqual(["dueOn"]);
     expect(holder.success).toBe(false);
-    if (!holder.success) expect(holder.error.issues[0]?.path).toEqual(["holderVisibleToOwner"]);
+    if (!holder.success) expect(holder.error.issues[0]?.path).toEqual(["holderVisibleToOthers"]);
   });
 
   it("tells a missing action apart from a field error", () => {

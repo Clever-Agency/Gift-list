@@ -240,10 +240,11 @@ export async function updateMyReservation(
       return service.setReservationBought(giftId, actorId, { value });
     });
   } else {
-    const { holderVisibleToOwner, holderVisibleToOthers } = parsed.data;
+    // CLE-124/D-49: the owner switch is gone; a `holderVisibleToOwner` sent by an
+    // older client is ignored and the store always writes `false`.
+    const { holderVisibleToOthers } = parsed.data;
     outcome = await runGiftStatusTransaction(function setHolderVisibility(service) {
       return service.setReservationVisibility(giftId, actorId, {
-        holderVisibleToOwner,
         holderVisibleToOthers,
       });
     });

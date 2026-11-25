@@ -67,7 +67,8 @@ function holderReservation(
     dueAt: reservationDueOn(row.reservationDueAt, timeZone),
     phase: row.reservationPhase,
     bought: row.reservationBought,
-    holderVisibleToOwner: row.holderVisibleToOwner,
+    // CLE-124/D-49: the owner never sees the holder, so the flag is always false.
+    holderVisibleToOwner: false,
     holderVisibleToOthers: row.holderVisibleToOthers,
   };
 }

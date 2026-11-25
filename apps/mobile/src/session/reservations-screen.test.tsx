@@ -360,16 +360,18 @@ describe("экран «Мои брони»", () => {
     expect(readCalls().length).toBe(before + 1);
   });
 
-  it("переключатели видимости уходят одной парой", async () => {
+  it("переключатель видимости для гостей уходит без флага владельца", async () => {
     respond(listAnswer([card()]), {
       ok: true,
-      data: card({ holderVisibleToOwner: true, holderVisibleToOthers: true }),
+      data: card({ holderVisibleToOthers: false }),
     });
     await mount();
 
+    expect(text()).not.toContain("Показать владельцу, что это я");
+
     await click(control("Кто видит, что это я"));
     await settle(10);
-    await click(byLabel("Показать владельцу, что это я"));
+    await click(byLabel("Показать другим, кто берёт"));
     await settle(20);
 
     const calls = updateCalls();
@@ -378,8 +380,7 @@ describe("экран «Мои брони»", () => {
       method: "PATCH",
       body: {
         action: "visibility",
-        holderVisibleToOwner: true,
-        holderVisibleToOthers: true,
+        holderVisibleToOthers: false,
       },
     });
   });

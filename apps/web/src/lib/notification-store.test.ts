@@ -104,9 +104,11 @@ describe("notification privacy and availability", function privacyTests() {
       kind: "GIFT_GIVEN", giftId: gift.id, titleSnapshot: gift.title, actionable: true,
     });
     expect(JSON.stringify(item)).not.toContain(gift.reservedBy.name);
+    // CLE-124/D-49: even a legacy row with the old `true` flag does not name the holder.
     db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "GIVEN", holderVisibleToOwner: true });
-    expect((await projectNotification(row, defaults, "inApp", now))?.event)
-      .toHaveProperty("holderName", gift.reservedBy.name);
+    const legacy = await projectNotification(row, defaults, "inApp", now);
+    expect(legacy?.event).not.toHaveProperty("holderName");
+    expect(JSON.stringify(legacy)).not.toContain(gift.reservedBy.name);
   });
 
   it("keeps the holder's reservation snapshot after losing wishlist access", async function holderOnly() {
@@ -278,8 +280,29 @@ describe("CLE-124: owner reservation rows are hidden", function hiddenOwnerRows(
     expect(db.notification.deleteMany).not.toHaveBeenCalled();
   });
 
-  it("keeps the holder's release and auto-release rows visible", async function holderRowsStay() {
-    for (const kind of ["RESERVATION_RELEASED", "RESERVATION_AUTO_RELEASE"] as const) {
+  it("drops a legacy holderName from the owner feed and email even with the old true flag", async function legacyName() {
+    const row = record({
+      kind: "GIFT_GIVEN",
+      payload: {
+        role: "owner",
+        titleSnapshot: gift.title,
+        holderName: gift.reservedBy.name,
+      },
+    });
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationPhase: "GIVEN", holderVisibleToOwner: true });
+
+    const item = await projectNotification(row, defaults, "inApp", now);
+    expect(item?.event).not.toHaveProperty("holderName");
+    expect(JSON.stringify(item)).not.toContain(gift.reservedBy.name);
+
+    mockEmailQueue([row]);
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+    await expect(processNotificationEmails(now, send, "https://example.test")).resolves.toMatchObject({ sent: 1 });
+    expect(send.mock.calls[0]![0].text).not.toContain(gift.reservedBy.name);
+    expect(send.mock.calls[0]![0].html).not.toContain(gift.reservedBy.name);
+  });
+
+  it("keeps the holder's release and auto-release rows visible", async function holderRowsStay() {    for (const kind of ["RESERVATION_RELEASED", "RESERVATION_AUTO_RELEASE"] as const) {
       const row = record({
         kind,
         recipientId: "holder",

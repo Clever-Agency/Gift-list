@@ -116,9 +116,9 @@ describe("toDetailFacts", () => {
     expect(facts.find(function isDue(fact) {
       return fact.id === "due";
     })?.value).toContain("01.12.2026");
-    expect(facts.find(function isShowOwner(fact) {
-      return fact.id === "showOwner";
-    })?.value).toBe("нет");
+    expect(facts.find(function isShowOthers(fact) {
+      return fact.id === "showOthers";
+    })?.value).toBe("да");
     expect(facts.map(function valueOf(fact) {
       return fact.value;
     }).join(" ")).not.toContain("Друзьям");
@@ -132,8 +132,8 @@ describe("toDetailFacts", () => {
     expect(factIds).not.toContain("due");
     expect(factIds).not.toContain("phase");
     expect(factIds).not.toContain("bought");
-    expect(factIds).not.toContain("showOwner");
     expect(factIds).not.toContain("showOthers");
+    expect(factIds).not.toContain("showOwner");
     expect(factIds).not.toContain("reservationLabel");
     expect(factIds).not.toContain("visibility");
   });

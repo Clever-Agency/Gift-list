@@ -159,7 +159,7 @@ describe("updateReservation", () => {
     expect((init.headers as Headers).get("content-type")).toBe("application/json");
   });
 
-  it("sends «Купил» and both switches as their own bodies", async () => {
+  it("sends «Купил» and the guests' switch as their own bodies", async () => {
     fetchMock.mockResolvedValue(respond({ ok: true, data: card({ bought: true }) }));
     await updateReservation("g1", { action: "bought", value: true });
     expect(fetchMock.mock.calls[0]![1].body).toBe(
@@ -169,18 +169,16 @@ describe("updateReservation", () => {
     fetchMock.mockResolvedValue(
       respond({
         ok: true,
-        data: card({ holderVisibleToOwner: true, holderVisibleToOthers: false }),
+        data: card({ holderVisibleToOthers: false }),
       }),
     );
     await updateReservation("g1", {
       action: "visibility",
-      holderVisibleToOwner: true,
       holderVisibleToOthers: false,
     });
     expect(fetchMock.mock.calls[1]![1].body).toBe(
       JSON.stringify({
         action: "visibility",
-        holderVisibleToOwner: true,
         holderVisibleToOthers: false,
       }),
     );

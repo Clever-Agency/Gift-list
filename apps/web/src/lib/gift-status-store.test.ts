@@ -116,7 +116,6 @@ describe("giftStatusTransaction.releaseReservation", () => {
       reservationDueAt: new Date("2026-06-22T00:00:00.000Z"),
       reservationTimeZone: "UTC",
       reservationPhaseAt: at,
-      holderVisibleToOwner: false,
       holderVisibleToOthers: true,
     };
 
@@ -436,17 +435,17 @@ describe("the Story 5.5 reservation attributes", () => {
     expect(Object.keys(data)).toEqual(["reservationBought"]);
   });
 
-  it("writes only the two toggles, so the phase, its moment and bought stay", async () => {
+  it("writes the guests' toggle and always false for the owner, so the phase, its moment and bought stay", async () => {
     const outcome = await giftStatusTransaction(transactionClient()).setReservationVisibility(
       "g1",
       actorId,
-      { holderVisibleToOwner: true, holderVisibleToOthers: false },
+      { holderVisibleToOthers: false },
     );
 
     expect(outcome).toBe("success");
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "g1", status: "RESERVED", reservedById: actorId },
-      data: { holderVisibleToOwner: true, holderVisibleToOthers: false },
+      data: { holderVisibleToOwner: false, holderVisibleToOthers: false },
     });
     const { data } = updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> };
     expect(Object.keys(data).sort()).toEqual(["holderVisibleToOthers", "holderVisibleToOwner"]);
@@ -464,7 +463,6 @@ describe("the Story 5.5 reservation attributes", () => {
     await expect(tx.setReservationBought("g1", actorId, { value: false })).resolves.toBe("lost");
     await expect(
       tx.setReservationVisibility("g1", actorId, {
-        holderVisibleToOwner: false,
         holderVisibleToOthers: true,
       }),
     ).resolves.toBe("lost");
@@ -478,7 +476,6 @@ describe("the Story 5.5 reservation attributes", () => {
     await tx.extendReservation("g1", actorId, { dueAt, timeZone: "UTC", at });
     await tx.setReservationBought("g1", actorId, { value: true });
     await tx.setReservationVisibility("g1", actorId, {
-      holderVisibleToOwner: true,
       holderVisibleToOthers: true,
     });
 
@@ -1036,7 +1033,6 @@ describe("CLE-124: the owner is never notified about a reservation", () => {
       reservationDueAt: at,
       reservationTimeZone: "UTC",
       reservationPhaseAt: at,
-      holderVisibleToOwner: false,
       holderVisibleToOthers: true,
     })).resolves.toBe("success");
     await expect(service.releaseReservationByHolder("g1", "u2", at)).resolves.toBe("success");

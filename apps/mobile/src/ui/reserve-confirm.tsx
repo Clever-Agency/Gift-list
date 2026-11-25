@@ -32,8 +32,10 @@ export function defaultDueOn(timeZone: string, now = new Date()): string {
 }
 
 /**
- * Reserve confirm (`EXPERIENCE.md` → Reserve confirm): date and two visibility
- * toggles in a bottom sheet on compact widths and a dialog otherwise.
+ * Reserve confirm (`EXPERIENCE.md` → Reserve confirm): the date and the
+ * «Показать другим, кто берёт» switch in a bottom sheet on compact widths and a
+ * dialog otherwise. CLE-124/D-49 removed the «Показать владельцу» switch: a
+ * reservation is always a surprise for the owner.
  */
 export function ReserveConfirm({
   open,
@@ -49,7 +51,6 @@ export function ReserveConfirm({
   const locale = useLocale();
   const compact = !useMedia().medium;
   const [dueOn, setDueOn] = useState(() => defaultDueOn(timeZone));
-  const [holderVisibleToOwner, setHolderVisibleToOwner] = useState(false);
   const [holderVisibleToOthers, setHolderVisibleToOthers] = useState(true);
 
   const minDue = useMemo(function computeMin() {
@@ -74,7 +75,6 @@ export function ReserveConfirm({
   function handleConfirm() {
     onConfirm({
       dueOn,
-      holderVisibleToOwner,
       holderVisibleToOthers,
     });
   }
@@ -90,12 +90,6 @@ export function ReserveConfirm({
         caption={t("dueCaption", { max: maxCaption })}
         dateError={dateError}
         onChange={setDueOn}
-      />
-      <Switch
-        label={t("showOwner")}
-        checked={holderVisibleToOwner}
-        disabled={busy}
-        onChange={setHolderVisibleToOwner}
       />
       <Switch
         label={t("showOthers")}

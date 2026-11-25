@@ -98,7 +98,8 @@ export function recordGiftEvent(event: GiftStatusEvent): void {
  * `giftStatusTransaction` defaults to writing the line immediately, but no
  * use-case calls the event methods that way.
  *
- * Story 5.5 adds the holder's extension, «Купил» and the two visibility toggles.
+ * Story 5.5 adds the holder's extension, «Купил» and the guests' visibility
+ * switch (CLE-124/D-49 keeps `holderVisibleToOwner` always `false`).
  * They change attributes of a live `RESERVED` row and never its status, so they
  * emit nothing: NFR-6 audits a status transition only, and 5.5 has none.
  *
@@ -135,7 +136,8 @@ export function giftStatusTransaction(
           reservationPhase: "ACTIVE",
           reservationPhaseAt: data.reservationPhaseAt,
           reservationBought: false,
-          holderVisibleToOwner: data.holderVisibleToOwner,
+          // CLE-124/D-49: the owner never learns about a reservation.
+          holderVisibleToOwner: false,
           holderVisibleToOthers: data.holderVisibleToOthers,
         },
       });
@@ -174,7 +176,8 @@ export function giftStatusTransaction(
       const { count } = await tx.gift.updateMany({
         where: { id: giftId, status: "RESERVED", reservedById: actorId },
         data: {
-          holderVisibleToOwner: write.holderVisibleToOwner,
+          // CLE-124/D-49: the client can only change the guests' switch.
+          holderVisibleToOwner: false,
           holderVisibleToOthers: write.holderVisibleToOthers,
         },
       });

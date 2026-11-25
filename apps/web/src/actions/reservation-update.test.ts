@@ -389,7 +389,7 @@ describe("updateMyReservation", () => {
     }
   });
 
-  it("writes both visibility toggles in one request", async () => {
+  it("writes the guests' visibility switch and ignores the owner flag", async () => {
     findFirst
       .mockResolvedValueOnce(preflight)
       .mockResolvedValueOnce(cardRow({ holderVisibleToOwner: true, holderVisibleToOthers: false }));
@@ -402,12 +402,12 @@ describe("updateMyReservation", () => {
     });
 
     expect(setReservationVisibility).toHaveBeenCalledWith("g1", "holder", {
-      holderVisibleToOwner: true,
       holderVisibleToOthers: false,
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.holderVisibleToOwner).toBe(true);
+      // CLE-124/D-49: the stored `true` of a legacy row never reaches the client.
+      expect(result.data.holderVisibleToOwner).toBe(false);
       expect(result.data.holderVisibleToOthers).toBe(false);
     }
   });

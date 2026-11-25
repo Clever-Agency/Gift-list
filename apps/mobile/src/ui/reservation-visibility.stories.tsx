@@ -4,8 +4,9 @@ import { ReservationVisibility, type ReservationVisibilityProps } from "./reserv
 
 /**
  * «Кто видит, что это я» (Story 5.5, `DESIGN.md` → ReservationCard): свёрнутый
- * блок двух переключателей держателя. Свёрнутый в дереве не держит ни одного
- * переключателя; включённое «владельцу» показывает подсказку FR-31.
+ * блок переключателя держателя. Свёрнутый в дереве не держит ни одного
+ * переключателя. CLE-124/D-49: «владельцу» больше нет, остался только
+ * «Показать другим, кто берёт».
  */
 const meta = {
   title: "App/ReservationVisibility",
@@ -24,7 +25,7 @@ function noop() {}
 const base = {
   expanded: false,
   onToggle: noop,
-  values: { holderVisibleToOwner: false, holderVisibleToOthers: true },
+  values: { holderVisibleToOthers: true },
   onChange: noop,
 } satisfies ReservationVisibilityProps;
 
@@ -36,7 +37,7 @@ function column(args: Partial<ReservationVisibilityProps>) {
         expanded={args.expanded ?? false}
         onToggle={args.onToggle ?? noop}
         values={
-          args.values ?? { holderVisibleToOwner: false, holderVisibleToOthers: true }
+          args.values ?? { holderVisibleToOthers: true }
         }
         busy={args.busy}
         onChange={args.onChange ?? noop}
@@ -51,24 +52,13 @@ export const Collapsed: Story = {
   render: column,
 };
 
-/** Раскрытый: два переключателя, имя владельцу скрыто. */
+/** Раскрытый: один переключатель «Показать другим, кто берёт». */
 export const Expanded: Story = {
   args: { ...base, expanded: true },
   render: column,
 };
 
-/** Раскрытый с включённым «владельцу»: подсказка «он может уже знать». */
-export const OwnerVisible: Story = {
-  tags: ["!dev"],
-  args: {
-    ...base,
-    expanded: true,
-    values: { holderVisibleToOwner: true, holderVisibleToOthers: true },
-  },
-  render: column,
-};
-
-/** Запрос в полёте: значения показаны, менять нельзя. */
+/** Запрос в полёте: значение показано, менять нельзя. */
 export const Busy: Story = {
   tags: ["!dev"],
   args: { ...base, expanded: true, busy: true },

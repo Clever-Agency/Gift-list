@@ -10,9 +10,10 @@ import { processReservationTimers } from "@/lib/gift-status-store";
  * holder marked it as bought (CLE-124/S9b-1). The `AWAITING_OWNER` phase is
  * internal: the owner is never asked and never notified (CLE-124/D-49).
  *
- * The answer carries the three counters and nothing else — no ids, titles, nicks
- * or moments. A partly failed run is an empty 500, so the scheduler sees it as
- * failed without the body naming any row.
+ * The answer carries the counters and nothing else — no ids, titles, nicks or
+ * moments. CLE-124/S9b-2 adds `reminded` for the reminder 1–2 days before the
+ * deadline; the other counters keep their names. A partly failed run is an empty
+ * 500, so the scheduler sees it as failed without the body naming any row.
  */
 export async function POST(request: Request): Promise<Response> {
   if (!cronAuthorized(request)) {
@@ -24,9 +25,9 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const { expiredToGiver, toAwaitingOwner, released, failed } = await processReservationTimers();
+    const { expiredToGiver, toAwaitingOwner, released, reminded, failed } = await processReservationTimers();
     if (failed > 0) return new Response(null, { status: 500 });
-    return toResponse({ ok: true, data: { expiredToGiver, toAwaitingOwner, released } });
+    return toResponse({ ok: true, data: { expiredToGiver, toAwaitingOwner, released, reminded } });
   } catch (error) {
     console.error(
       `reservation-timers: run failed: ${error instanceof Error ? error.name : "unknown"}`,

@@ -11,6 +11,7 @@ const {
   extendReservation,
   setReservationBought,
   setReservationVisibility,
+  markReservationGiven,
 } = vi.hoisted(() => ({
   getSession: vi.fn(),
   findFirst: vi.fn(),
@@ -20,6 +21,7 @@ const {
   extendReservation: vi.fn(),
   setReservationBought: vi.fn(),
   setReservationVisibility: vi.fn(),
+  markReservationGiven: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
@@ -37,7 +39,6 @@ vi.mock("@/lib/relationships", () => ({
 }));
 
 import { addCalendarDays, calendarDayInZone } from "@/domain/reservation-due";
-import { toOwnerGiftCard } from "@/domain/owner-gift-card";
 import { reservationUpdateResult, updateMyReservation } from "./reservation-update";
 
 const headers = new Headers();
@@ -51,6 +52,8 @@ const preflight = {
   status: "RESERVED" as const,
   reservedById: "holder",
   reservationPhase: "ACTIVE" as const,
+  // CLE-124/S9b-2: an extension is allowed only while the deadline is ahead.
+  reservationDueAt: new Date("2099-01-01T00:00:00.000Z"),
 };
 
 /** The row the success path re-reads for the answer. */
@@ -89,18 +92,23 @@ beforeEach(() => {
       extendReservation,
       setReservationBought,
       setReservationVisibility,
+      markReservationGiven,
     });
   });
 });
 
 describe("reservationUpdateResult", () => {
+  const now = new Date("2026-11-20T12:00:00.000Z");
+  const future = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
   it("answers NOT_FOUND for an unknown row and for another holder's row", () => {
-    expect(reservationUpdateResult(null, "holder", "bought")).toBe("NOT_FOUND");
+    expect(reservationUpdateResult(null, "holder", "bought", now)).toBe("NOT_FOUND");
     expect(
       reservationUpdateResult(
         { status: "RESERVED", reservedById: "other", reservationPhase: "ACTIVE" },
         "holder",
         "bought",
+        now,
       ),
     ).toBe("NOT_FOUND");
   });
@@ -111,35 +119,68 @@ describe("reservationUpdateResult", () => {
         { status: "CLOSED", reservedById: "holder", reservationPhase: "ACTIVE" },
         "holder",
         "visibility",
+        now,
       ),
     ).toBe("CONFLICT");
   });
 
   it("refuses an extension from GIVEN but keeps bought and visibility open", () => {
-    const given = { status: "RESERVED" as const, reservedById: "holder", reservationPhase: "GIVEN" as const };
-    expect(reservationUpdateResult(given, "holder", "extend")).toBe("CONFLICT");
-    expect(reservationUpdateResult(given, "holder", "bought")).toBe("ok");
-    expect(reservationUpdateResult(given, "holder", "visibility")).toBe("ok");
+    const given = {
+      status: "RESERVED" as const,
+      reservedById: "holder",
+      reservationPhase: "GIVEN" as const,
+      reservationDueAt: future,
+    };
+    expect(reservationUpdateResult(given, "holder", "extend", now)).toBe("CONFLICT");
+    expect(reservationUpdateResult(given, "holder", "bought", now)).toBe("ok");
+    expect(reservationUpdateResult(given, "holder", "visibility", now)).toBe("ok");
   });
 
-  it("accepts an extension from every phase the service allows", () => {
-    for (const phase of ["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER"] as const) {
+  it("accepts an extension only from ACTIVE before the deadline", () => {
+    expect(
+      reservationUpdateResult(
+        { status: "RESERVED", reservedById: "holder", reservationPhase: "ACTIVE", reservationDueAt: future },
+        "holder",
+        "extend",
+        now,
+      ),
+    ).toBe("ok");
+  });
+
+  it.each(["AWAITING_GIVER", "AWAITING_OWNER"] as const)(
+    "answers DUE_PASSED for an extension in %s",
+    (phase) => {
       expect(
         reservationUpdateResult(
-          { status: "RESERVED", reservedById: "holder", reservationPhase: phase },
+          { status: "RESERVED", reservedById: "holder", reservationPhase: phase, reservationDueAt: future },
           "holder",
           "extend",
+          now,
         ),
-      ).toBe("ok");
+      ).toBe("DUE_PASSED");
+    },
+  );
+
+  it("answers DUE_PASSED at, before and without a deadline", () => {
+    for (const reservationDueAt of [now, new Date(now.getTime() - 1), null]) {
+      expect(
+        reservationUpdateResult(
+          { status: "RESERVED", reservedById: "holder", reservationPhase: "ACTIVE", reservationDueAt },
+          "holder",
+          "extend",
+          now,
+        ),
+      ).toBe("DUE_PASSED");
     }
   });
 
   it("refuses an extension of a reservation without a phase", () => {
     expect(
       reservationUpdateResult(
-        { status: "RESERVED", reservedById: "holder", reservationPhase: null },
+        { status: "RESERVED", reservedById: "holder", reservationPhase: null, reservationDueAt: future },
         "holder",
         "extend",
+        now,
       ),
     ).toBe("CONFLICT");
   });
@@ -321,10 +362,8 @@ describe("updateMyReservation", () => {
     expect(extendReservation).not.toHaveBeenCalled();
   });
 
-  it("keeps the owner card quiet after an extension from AWAITING_OWNER", async () => {
-    findFirst
-      .mockResolvedValueOnce({ ...preflight, reservationPhase: "AWAITING_OWNER" })
-      .mockResolvedValueOnce(cardRow({ reservationPhase: "ACTIVE" }));
+  it("refuses an extension from AWAITING_OWNER because the deadline has passed", async () => {
+    findFirst.mockResolvedValueOnce({ ...preflight, reservationPhase: "AWAITING_OWNER" });
     extendReservation.mockResolvedValue("success");
 
     const result = await updateMyReservation(headers, "g1", {
@@ -332,31 +371,27 @@ describe("updateMyReservation", () => {
       dueOn: dueOnFromNow(5),
     });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.data.phase).toBe("ACTIVE");
-    // D-49: the owner never receives an action or a holder, whatever the phase.
-    const ownerCard = toOwnerGiftCard(
-      {
-        id: "g1",
-        title: "Плед",
-        description: null,
-        priceAmount: null,
-        priceCurrency: null,
-        linkUrl: null,
-        visibility: "PUBLIC",
-        quantity: "SINGLE",
-        expiresOn: null,
-        archivedAt: null,
-        closedAt: null,
-        tags: [],
-        status: "RESERVED",
-      },
-      "ru",
-    );
-    expect(ownerCard.status).toBe("OPEN");
-    expect(ownerCard.ownerAction).toBeNull();
-    expect(ownerCard.reservedBy).toBeNull();
+    expect(result).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      reason: "RESERVATION_DUE_PASSED",
+    });
+    expect(extendReservation).not.toHaveBeenCalled();
+  });
+
+  it("refuses an extension when the stored deadline has already passed", async () => {
+    findFirst.mockResolvedValueOnce({
+      ...preflight,
+      reservationDueAt: new Date("2000-01-01T00:00:00.000Z"),
+    });
+
+    const result = await updateMyReservation(headers, "g1", {
+      action: "extend",
+      dueOn: dueOnFromNow(5),
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "CONFLICT", reason: "RESERVATION_DUE_PASSED" });
+    expect(extendReservation).not.toHaveBeenCalled();
   });
 
   it("marks the wish as bought with one attribute write", async () => {
@@ -387,6 +422,39 @@ describe("updateMyReservation", () => {
       expect(result.data.phase).toBe("AWAITING_OWNER");
       expect(result.data.bought).toBe(false);
     }
+  });
+
+  it("marks the wish as given with one phase write and answers the card", async () => {
+    findFirst
+      .mockResolvedValueOnce(preflight)
+      .mockResolvedValueOnce(cardRow({ reservationPhase: "GIVEN" }));
+    markReservationGiven.mockResolvedValue("success");
+
+    const result = await updateMyReservation(headers, "g1", { action: "given" });
+
+    expect(markReservationGiven).toHaveBeenCalledWith("g1", "holder", expect.any(Date));
+    expect(extendReservation).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.phase).toBe("GIVEN");
+      // The wish status and the deadline stay as they were.
+      expect(result.data.status).toBe("RESERVED");
+      expect(result.data.dueAt).toBe("2026-12-08");
+    }
+  });
+
+  it("answers a repeated given in GIVEN with the same card and no second write", async () => {
+    findFirst
+      .mockResolvedValueOnce({ ...preflight, reservationPhase: "GIVEN" })
+      .mockResolvedValueOnce(cardRow({ reservationPhase: "GIVEN" }));
+    markReservationGiven.mockResolvedValue("success");
+
+    const result = await updateMyReservation(headers, "g1", { action: "given" });
+
+    // The store answers `success` for an idempotent press; the route returns the card.
+    expect(markReservationGiven).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.phase).toBe("GIVEN");
   });
 
   it("writes the guests' visibility switch and ignores the owner flag", async () => {
@@ -453,6 +521,11 @@ describe("updateMyReservation", () => {
     ["the reservation is gone", null, "NOT_FOUND"],
     ["the wish was closed", { ...preflight, status: "CLOSED" }, "CONFLICT"],
     ["the extension ran into GIVEN", { ...preflight, reservationPhase: "GIVEN" }, "CONFLICT"],
+    [
+      "the deadline passed between the preflight and the write",
+      { ...preflight, reservationPhase: "ACTIVE", reservationDueAt: new Date("2000-01-01T00:00:00.000Z") },
+      "CONFLICT",
+    ],
   ] as const)(
     "classifies a lost CAS as %s",
     async (_case, after, code) => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   EXTENDABLE_RESERVATION_PHASES,
+  GIVABLE_RESERVATION_PHASES,
   RESERVATION_GIVER_WINDOW_MS,
   RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
@@ -10,6 +11,7 @@ import {
   canCloseGift,
   canExpireToGiver,
   canExtendReservation,
+  canMarkReservationGiven,
   canReleaseByExpiry,
   canSetReservationAttributes,
   canUndoClose,
@@ -381,39 +383,72 @@ describe("the Story 5.4 event payload", () => {
 });
 
 /**
- * Story 5.5 (AD-9): an extension leaves only ACTIVE/AWAITING_*; «Купил» and the
- * toggles are attributes of any live reservation, `GIVEN` included.
+ * Story 5.5, CLE-124/S9b-2 (Story 5.7): an extension leaves only `ACTIVE` and
+ * only while the deadline is ahead; «Подарил» moves any live phase to `GIVEN`.
  */
 describe("reservation attributes of Story 5.5", () => {
+  const now = new Date("2026-11-20T12:00:00.000Z");
+  const future = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
   it.each(EXTENDABLE_RESERVATION_PHASES)(
-    "allows extending a RESERVED %s reservation",
+    "allows extending a RESERVED %s reservation before its deadline",
     (phase) => {
-      expect(canExtendReservation({ status: "RESERVED", reservationPhase: phase })).toBe(true);
+      expect(
+        canExtendReservation({ status: "RESERVED", reservationPhase: phase, reservationDueAt: future }, now),
+      ).toBe(true);
     },
   );
 
-  /** «Ждёт подтверждения» stops the timers (Story 5.7), so an extension is refused. */
-  it("refuses to extend a GIVEN reservation", () => {
-    expect(canExtendReservation({ status: "RESERVED", reservationPhase: "GIVEN" })).toBe(false);
+  it.each(["GIVEN", "AWAITING_GIVER", "AWAITING_OWNER"] as const)(
+    "refuses to extend a %s reservation even with a future deadline",
+    (phase) => {
+      expect(
+        canExtendReservation({ status: "RESERVED", reservationPhase: phase, reservationDueAt: future }, now),
+      ).toBe(false);
+    },
+  );
+
+  /** CLE-124/S9b-2: the deadline itself is already too late — step 1 moves it then. */
+  it("refuses an extension at, before and without a deadline", () => {
+    for (const dueAt of [now, new Date(now.getTime() - 1), null]) {
+      expect(
+        canExtendReservation({ status: "RESERVED", reservationPhase: "ACTIVE", reservationDueAt: dueAt }, now),
+      ).toBe(false);
+    }
   });
 
   it.each(["OPEN", "CLOSED"] as const)(
     "refuses a %s wish even with a leftover phase",
     (status) => {
-      expect(canExtendReservation({ status, reservationPhase: "ACTIVE" })).toBe(false);
+      expect(
+        canExtendReservation({ status, reservationPhase: "ACTIVE", reservationDueAt: future }, now),
+      ).toBe(false);
     },
   );
 
   it("refuses an incomplete reservation without a phase", () => {
-    expect(canExtendReservation({ status: "RESERVED", reservationPhase: null })).toBe(false);
+    expect(
+      canExtendReservation({ status: "RESERVED", reservationPhase: null, reservationDueAt: future }, now),
+    ).toBe(false);
   });
 
-  it("keeps the extendable list exactly ACTIVE and both AWAITING phases", () => {
-    expect([...EXTENDABLE_RESERVATION_PHASES]).toEqual([
-      "ACTIVE",
-      "AWAITING_GIVER",
-      "AWAITING_OWNER",
-    ]);
+  it.each(GIVABLE_RESERVATION_PHASES)(
+    "marks a RESERVED %s reservation as given",
+    (phase) => {
+      expect(canMarkReservationGiven({ status: "RESERVED", reservationPhase: phase })).toBe(true);
+    },
+  );
+
+  it.each(["GIVEN", null] as const)("does not move a %s reservation again", (phase) => {
+    expect(canMarkReservationGiven({ status: "RESERVED", reservationPhase: phase })).toBe(false);
+  });
+
+  it.each(["OPEN", "CLOSED"] as const)("does not mark a %s wish as given", (status) => {
+    expect(canMarkReservationGiven({ status, reservationPhase: null })).toBe(false);
+  });
+
+  it("keeps the extendable list exactly ACTIVE", () => {
+    expect([...EXTENDABLE_RESERVATION_PHASES]).toEqual(["ACTIVE"]);
     expect([...EXTENDABLE_RESERVATION_PHASES]).not.toContain("GIVEN");
   });
 

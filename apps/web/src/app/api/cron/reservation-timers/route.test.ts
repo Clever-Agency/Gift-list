@@ -36,11 +36,12 @@ describe("POST /api/cron/reservation-timers", () => {
     expect(processReservationTimers).not.toHaveBeenCalled();
   });
 
-  it("returns only the three counters", async () => {
+  it("returns only the counters", async () => {
     processReservationTimers.mockResolvedValue({
       expiredToGiver: 2,
       toAwaitingOwner: 1,
       released: 1,
+      reminded: 3,
       failed: 0,
     });
 
@@ -49,7 +50,7 @@ describe("POST /api/cron/reservation-timers", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       ok: true,
-      data: { expiredToGiver: 2, toAwaitingOwner: 1, released: 1 },
+      data: { expiredToGiver: 2, toAwaitingOwner: 1, released: 1, reminded: 3 },
     });
   });
 
@@ -59,6 +60,7 @@ describe("POST /api/cron/reservation-timers", () => {
       expiredToGiver: 1,
       toAwaitingOwner: 0,
       released: 0,
+      reminded: 0,
       failed: 1,
     });
 

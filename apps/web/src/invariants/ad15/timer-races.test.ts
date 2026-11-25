@@ -103,6 +103,8 @@ const { state, timerClient } = vi.hoisted(() => {
     writes: [] as WriteAttempt[],
     /** Every notification row the timer asked to write. */
     notifications: [] as NotificationAttempt[],
+    /** The unique (recipientId, eventKey) pairs, as the database enforces them. */
+    notificationKeys: new Set<string>(),
     transactions: 0,
     /** Fires once at the start of the next transaction, before the CAS. */
     beforeTransaction: null as (() => void) | null,
@@ -148,8 +150,12 @@ const { state, timerClient } = vi.hoisted(() => {
   }
 
   async function createMany(args: {
-    data: { kind: string; recipientId: string; payload: { role: string } };
+    data: { kind: string; recipientId: string; eventKey: string; payload: { role: string } };
   }): Promise<{ count: number }> {
+    // `@@unique([recipientId, eventKey])` with `skipDuplicates: true`.
+    const key = `${args.data.recipientId}:${args.data.eventKey}`;
+    if (state.notificationKeys.has(key)) return { count: 0 };
+    state.notificationKeys.add(key);
     state.notifications.push({
       kind: args.data.kind,
       recipientId: args.data.recipientId,
@@ -192,7 +198,7 @@ const OWNER_DEADLINE = new Date(NOW.getTime() - OWNER_WINDOW_MS);
 /** One minute before the deadline window: a live row would be released. */
 const PAST_OWNER_WINDOW = new Date(NOW.getTime() - OWNER_WINDOW_MS - 60_000);
 
-const ZEROS = { expiredToGiver: 0, toAwaitingOwner: 0, released: 0, failed: 0 };
+const ZEROS = { expiredToGiver: 0, toAwaitingOwner: 0, released: 0, reminded: 0, failed: 0 };
 
 /** A timer row of `holder` whose deadline is older than 168 hours. */
 function timerRow(overrides: Partial<Row> & { id: string }): Row {
@@ -221,6 +227,7 @@ beforeEach(() => {
   state.candidateReads = [];
   state.writes = [];
   state.notifications = [];
+  state.notificationKeys.clear();
   state.transactions = 0;
   state.beforeTransaction = null;
 });
@@ -240,11 +247,13 @@ describe("AD-15 (6) — cron снимает любую живую бронь ч�
       released: 1,
     });
 
-    // The row was a candidate of step 3 only: steps 1–2 read their own phases.
+    // The row was a candidate of step 3 only: steps 1–2 and the reminder read
+    // their own predicates.
     expect(state.candidateReads.map((read) => read.phase)).toEqual([
       "ACTIVE",
       "AWAITING_GIVER",
       { in: ["AWAITING_OWNER", "GIVEN"] },
+      "ACTIVE",
     ]);
     expect(state.candidateReads[2]?.ids).toEqual(["g-bought"]);
 
@@ -511,6 +520,89 @@ describe("AD-15 (7) — гонка cron и пользователя", () => {
     info.mockRestore();
     error.mockRestore();
   });
+
+describe("CLE-124/S9b-2 — напоминание держателю до срока", () => {
+  it("шлёт одно напоминание только держателю в окне 48 ч и не дублирует его", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    state.rows = [
+      timerRow({
+        id: "g-soon",
+        reservationPhase: "ACTIVE",
+        reservationPhaseAt: new Date(NOW.getTime() - 60_000),
+        reservationDueAt: new Date(NOW.getTime() + 24 * 60 * 60 * 1000),
+      }),
+    ];
+
+    await expect(processReservationTimers(NOW, db)).resolves.toMatchObject({ reminded: 1 });
+    expect(state.notifications).toEqual([
+      { kind: "RESERVATION_DUE", recipientId: "holder", role: "holder" },
+    ]);
+
+    // A repeated run selects the same row again, but the unique event key keeps
+    // the single reminder: the owner gets nothing at any point.
+    await expect(processReservationTimers(NOW, db)).resolves.toMatchObject({ reminded: 1 });
+    expect(state.notifications).toEqual([
+      { kind: "RESERVATION_DUE", recipientId: "holder", role: "holder" },
+    ]);
+    expect(info).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    info.mockRestore();
+    error.mockRestore();
+  });
+
+  it("получает новое напоминание после продления на новый срок", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const laterDue = new Date(NOW.getTime() + 72 * 60 * 60 * 1000);
+    state.rows = [
+      timerRow({
+        id: "g-soon",
+        reservationPhase: "ACTIVE",
+        reservationPhaseAt: new Date(NOW.getTime() - 60_000),
+        reservationDueAt: new Date(NOW.getTime() + 24 * 60 * 60 * 1000),
+      }),
+    ];
+
+    await expect(processReservationTimers(NOW, db)).resolves.toMatchObject({ reminded: 1 });
+
+    // The holder extends to a deadline that is still ahead but not in the window;
+    // then time moves on so the new deadline enters it.
+    const extended = state.rows[0]!;
+    extended.reservationDueAt = laterDue;
+    extended.reservationPhaseAt = NOW;
+    await expect(processReservationTimers(NOW, db)).resolves.toMatchObject({ reminded: 0 });
+
+    const inNewWindow = new Date(laterDue.getTime() - 24 * 60 * 60 * 1000);
+    await expect(processReservationTimers(inNewWindow, db)).resolves.toMatchObject({ reminded: 1 });
+
+    expect(state.notifications).toHaveLength(2);
+    expect(state.notifications.every((row) => row.recipientId === "holder")).toBe(true);
+    info.mockRestore();
+  });
+
+  it("не напоминает в GIVEN и после срока, и никогда не пишет владельцу", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    state.rows = [
+      timerRow({
+        id: "g-given-soon",
+        reservationPhase: "GIVEN",
+        reservationPhaseAt: new Date(NOW.getTime() - 60_000),
+        reservationDueAt: new Date(NOW.getTime() + 24 * 60 * 60 * 1000),
+      }),
+      timerRow({
+        id: "g-past",
+        reservationPhase: "AWAITING_GIVER",
+        reservationPhaseAt: NOW,
+        reservationDueAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+        reservedById: "holder",
+      }),
+    ];
+
+    await expect(processReservationTimers(NOW, db)).resolves.toMatchObject({ reminded: 0 });
+    expect(state.notifications).toEqual([]);
+    info.mockRestore();
+  });
+});
 
   it("повторный прогон с тем же now не даёт второго перехода", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);

@@ -5,10 +5,12 @@ import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
 import {
   EXTENDABLE_RESERVATION_PHASES,
+  GIVABLE_RESERVATION_PHASES,
   RELEASABLE_RESERVATION_PHASES,
   RESERVATION_GIVER_WINDOW_MS,
   RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
+  RESERVATION_REMINDER_WINDOW_MS,
   UNDO_WINDOW_MS,
   closeGiftData,
   type GiftStatusEvent,
@@ -20,6 +22,7 @@ import {
 
 import {
   cancelCloseNotification,
+  enqueueGiftGivenNotice,
   enqueueGiftNotification,
   lockClosureGift,
   notificationGiftSnapshot,
@@ -153,9 +156,12 @@ export function giftStatusTransaction(
           id: giftId,
           status: "RESERVED",
           reservedById: actorId,
-          // The same phase list as `canExtendReservation`, so `GIVEN` is refused
-          // here even when a stale pre-check let the request through.
+          // CLE-124/S9b-2: the same predicate as `canExtendReservation` — only
+          // `ACTIVE`, and only while the deadline is still in the future. The
+          // internal `AWAITING_*` phases exist only after the deadline, and
+          // `GIVEN` never extends.
           reservationPhase: { in: [...EXTENDABLE_RESERVATION_PHASES] },
+          reservationDueAt: { gt: write.at },
         },
         data: {
           reservationDueAt: write.dueAt,
@@ -165,6 +171,53 @@ export function giftStatusTransaction(
         },
       });
       return count === 1 ? "success" : "lost";
+    },
+    async markReservationGiven(giftId, actorId, at) {
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      if (gift === null || gift.status !== "RESERVED" || gift.reservedById !== actorId) {
+        return "lost";
+      }
+      // Idempotent: a repeated press in `GIVEN` is a success and sends no
+      // second letter to the owner.
+      if (gift.reservationPhase === "GIVEN") return "success";
+      const { count } = await tx.gift.updateMany({
+        where: {
+          id: giftId,
+          status: "RESERVED",
+          reservedById: actorId,
+          reservedAt: gift.reservedAt,
+          reservationPhase: { in: [...GIVABLE_RESERVATION_PHASES] },
+        },
+        data: { reservationPhase: "GIVEN", reservationPhaseAt: at },
+      });
+      if (count !== 1) {
+        // Two presses raced: the winner wrote `GIVEN`, the loser still answers
+        // success and does not write a second line or letter.
+        const after = await notificationGiftSnapshot(tx, giftId);
+        return after !== null && after.status === "RESERVED" &&
+          after.reservedById === actorId && after.reservationPhase === "GIVEN"
+          ? "success"
+          : "lost";
+      }
+      // CLE-124/S9b-2 (Story 5.7): one general letter to the owner, without the
+      // wish, the holder or any action.
+      await enqueueGiftGivenNotice(tx, gift.list.ownerId, at);
+      return "success";
+    },
+    async remindReservationDue(giftId, at) {
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      if (gift === null || gift.status !== "RESERVED" || gift.archivedAt !== null) return "lost";
+      if (gift.reservationPhase !== "ACTIVE" || gift.reservationDueAt === null) return "lost";
+      const dueAt = gift.reservationDueAt;
+      const inWindow = dueAt.getTime() > at.getTime() &&
+        dueAt.getTime() <= at.getTime() + RESERVATION_REMINDER_WINDOW_MS;
+      if (!inWindow) return "lost";
+      // The key is anchored on the deadline, so a repeated run and a holder's
+      // extension (a new deadline) each produce exactly one reminder per term.
+      await enqueueGiftNotification(tx, gift, {
+        kind: "RESERVATION_DUE", role: "holder", email: true, at, eventAt: dueAt, reminder: true,
+      });
+      return "success";
     },
     async setReservationBought(giftId, actorId, write) {
       const { count } = await tx.gift.updateMany({
@@ -454,17 +507,20 @@ export async function processWishExpiry(
   return { archived, failed };
 }
 
-/** Story 5.6: the counters the cron route reports (only these three reach it). */
+/** Story 5.6: the counters the cron route reports (only these reach it). */
 export type ReservationTimersResult = {
   readonly expiredToGiver: number;
   readonly toAwaitingOwner: number;
   readonly released: number;
+  /** CLE-124/S9b-2: reminders queued for a deadline within the next 48 hours. */
+  readonly reminded: number;
   readonly failed: number;
 };
 
 /**
  * Story 5.6 (AD-9, ARCH-A15), CLE-124/D-49: the hourly reservation cycle. Three
- * steps run in the order AD-9 fixes, with one `now` for the whole run:
+ * transitions run in the order AD-9 fixes, followed by the reminder of
+ * CLE-124/S9b-2; one `now` is used for the whole run:
  *
  * 1. `ACTIVE → AWAITING_GIVER` when `reservationDueAt ≤ now`;
  * 2. `AWAITING_GIVER → AWAITING_OWNER` when `phaseAt ≤ now − 72 ч`;
@@ -473,6 +529,11 @@ export type ReservationTimersResult = {
  *    `GIVEN` is released like `AWAITING_OWNER` — a holder cannot keep a wish
  *    blocked forever with «Купил» or «Подарил». Steps 1–2 never touch `GIVEN`:
  *    a holder who already promised the gift gets no deadline reminder.
+ *
+ * CLE-124/S9b-2 adds a fourth, non-transition step: a reminder to the holder of
+ * every `ACTIVE` reservation whose deadline falls within the next 48 hours. It
+ * writes no reservation column, is deduplicated by `kind + gift + dueAt`, and
+ * never addresses the owner. The remaining steps keep their order and one `now`.
  *
  * Step 2 is internal: nobody is notified, and the owner never learns that their
  * wish is reserved. Step 3 counts the 168 hours from the deadline, not from the
@@ -537,11 +598,32 @@ export async function processReservationTimers(
     },
   );
 
+  const reminded = await runReservationTimerStep(
+    db,
+    "reminded",
+    {
+      status: "RESERVED",
+      archivedAt: null,
+      // CLE-124/S9b-2: only a deadline that is still ahead and at most 48 hours
+      // away. `GIVEN` and the phases after the deadline are not reminded, and the
+      // owner is never addressed.
+      reservationPhase: "ACTIVE",
+      reservationDueAt: {
+        gt: now,
+        lte: new Date(now.getTime() + RESERVATION_REMINDER_WINDOW_MS),
+      },
+    },
+    function remindBeforeDeadline(service, giftId) {
+      return service.remindReservationDue(giftId, now);
+    },
+  );
+
   return {
     expiredToGiver: expired.done,
     toAwaitingOwner: toAwaitingOwner.done,
     released: released.done,
-    failed: expired.failed + toAwaitingOwner.failed + released.failed,
+    reminded: reminded.done,
+    failed: expired.failed + toAwaitingOwner.failed + released.failed + reminded.failed,
   };
 }
 
@@ -552,7 +634,7 @@ export async function processReservationTimers(
  */
 async function runReservationTimerStep(
   db: ReservationTimerDb,
-  step: "expiredToGiver" | "toAwaitingOwner" | "released",
+  step: "expiredToGiver" | "toAwaitingOwner" | "released" | "reminded",
   where: Prisma.GiftWhereInput,
   write: (
     service: GiftStatusTransaction,

@@ -16,6 +16,8 @@ export const NOTIFICATION_AUTH_REQUIRED = {
 
 const stale = { ok: false, code: "CONFLICT", message: "The reservation request is no longer current" } as const;
 const invalidDate = { ok: false, code: "VALIDATION", reason: "DUE_OUT_OF_RANGE", message: "Invalid reservation date" } as const;
+/** CLE-124/S9b-2: an extension from a notice is refused once the deadline passed. */
+const duePassed = { ok: false, code: "CONFLICT", reason: "RESERVATION_DUE_PASSED", message: "The reservation deadline has passed" } as const;
 
 export async function notificationUserId(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
@@ -39,7 +41,16 @@ export async function actOnNotification(
     // phase cannot be replaced by another request between the check and write.
     await tx.$queryRaw`SELECT id FROM "Gift" WHERE id = ${row.giftId} FOR UPDATE`;
     const gift = await notificationGiftSnapshot(tx, row.giftId);
-    if (!gift || !notificationIsActionable(row, gift)) return stale;
+    if (!gift) return stale;
+
+    // CLE-124/S9b-2: «Подарил» is idempotent — a second press on the same notice
+    // after the phase is already `GIVEN` is a success and writes no line.
+    if (command.action === "given" && gift.status === "RESERVED" &&
+      gift.reservedById === userId && gift.reservationPhase === "GIVEN") {
+      await tx.notification.updateMany({ where: { id, recipientId: userId, readAt: null }, data: { readAt: now } });
+      return { ok: true, data: { id } };
+    }
+    if (!notificationIsActionable(row, gift)) return stale;
 
     const giftId = row.giftId;
     let outcome: "success" | "lost";
@@ -47,9 +58,11 @@ export async function actOnNotification(
     // else's reservation, so the owner's «Получил» / «Оставить бронь» / «Снять
     // бронь» actions no longer exist here. `RESERVATION_OWNER_ASK` rows are hidden
     // above and an old link answers NOTIFICATION_NOT_FOUND. The holder's own
-    // actions (RESERVATION_DUE) are unchanged.
+    // actions (RESERVATION_DUE) are unchanged; CLE-124/S9b-2 adds «Подарил» and
+    // refuses an extension once the deadline has passed.
     if (row.kind === "RESERVATION_DUE") {
       if (command.action === "extend") {
+        if (!gift.reservationDueAt || gift.reservationDueAt.getTime() <= now.getTime()) return duePassed;
         const holder = await tx.user.findUnique({ where: { id: userId }, select: { timeZone: true } });
         const timeZone = canonicalTimeZone(holder?.timeZone ?? null);
         if (!isDueOnInRange(command.dueOn, timeZone, now)) return invalidDate;
@@ -57,6 +70,8 @@ export async function actOnNotification(
         outcome = await service.extendReservation(giftId, userId, { dueAt, timeZone, at: now });
       } else if (command.action === "bought" || command.action === "clearBought") {
         outcome = await service.setReservationBought(giftId, userId, { value: command.action === "bought" });
+      } else if (command.action === "given") {
+        outcome = await service.markReservationGiven(giftId, userId, now);
       } else if (command.action === "release") {
         outcome = await service.releaseReservationByHolder(giftId, userId, now);
       } else {

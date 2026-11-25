@@ -77,6 +77,14 @@ type GiftNotification = {
   email: boolean;
   at: Date;
   fields?: readonly GiftEditEventField[];
+  /**
+   * CLE-124/S9b-2: the stable moment of the event for `eventKey`. The reminder
+   * has no write of its own, so it anchors its key on the deadline: a repeated
+   * cron run and a new run over the same deadline are one row.
+   */
+  eventAt?: Date;
+  /** CLE-124/S9b-2: `true` for the reminder before the deadline. */
+  reminder?: boolean;
 };
 
 function giftEventKey(kind: GiftEventKind, giftId: string, at: Date) {
@@ -86,7 +94,7 @@ function giftEventKey(kind: GiftEventKind, giftId: string, at: Date) {
 export async function enqueueGiftNotification(
   tx: Tx,
   gift: GiftSnapshot | null,
-  { kind, role, email, at, fields }: GiftNotification,
+  { kind, role, email, at, fields, eventAt, reminder }: GiftNotification,
 ) {
   if (!gift?.reservedAt || !gift.reservedById) return;
   const recipientId = role === "owner" ? gift.list.ownerId : gift.reservedById;
@@ -96,10 +104,16 @@ export async function enqueueGiftNotification(
     ...(kind === "RESERVATION_KEPT_BY_OWNER" && gift.reservationDueAt
       ? { dueAt: gift.reservationDueAt.toISOString(), timeZone: canonicalTimeZone(gift.reservationTimeZone) }
       : {}),
+    // CLE-124/S9b-2: the deadline notice and the reminder name their dates on
+    // the client (AD-27), so both carry the stored deadline and its zone.
+    ...(kind === "RESERVATION_DUE" && gift.reservationDueAt
+      ? { dueAt: gift.reservationDueAt.toISOString(), timeZone: canonicalTimeZone(gift.reservationTimeZone) }
+      : {}),
+    ...(kind === "RESERVATION_DUE" && reminder === true ? { reminder: true } : {}),
     ...(fields ? { fields: [...fields] } : {}),
   };
   await enqueueNotification(tx, {
-    eventKey: giftEventKey(kind, gift.id, at),
+    eventKey: giftEventKey(kind, gift.id, eventAt ?? at),
     kind,
     giftId: gift.id,
     actorId: role === "owner" ? gift.reservedById : gift.list.ownerId,
@@ -110,6 +124,26 @@ export async function enqueueGiftNotification(
     deliverAfter: kind === "GIFT_CLOSED" ? new Date(at.getTime() + UNDO_WINDOW_MS) : at,
     emailRequired: email,
     payload,
+  });
+}
+
+/**
+ * CLE-124/S9b-2 (Story 5.7): the owner's one general e-mail after «Подарил».
+ * It names no wish, no holder and no gift id, is not actionable and never
+ * appears in the in-app feed; only the e-mail channel delivers it. The key is
+ * the UTC day, so several gifts marked on one day do not spam the owner with
+ * identical letters — the task allows this deduplication.
+ */
+export async function enqueueGiftGivenNotice(tx: Tx, ownerId: string, at: Date) {
+  const day = at.toISOString().slice(0, 10);
+  await enqueueNotification(tx, {
+    eventKey: `GIFT_GIVEN:${day}`,
+    kind: "GIFT_GIVEN",
+    recipientId: ownerId,
+    createdAt: at,
+    deliverAfter: at,
+    emailRequired: true,
+    payload: {},
   });
 }
 
@@ -138,9 +172,13 @@ function inChannel(kind: NotificationKind, prefs: NotificationPreferences, chann
 }
 
 export function notificationIsActionable(row: Notification, gift: GiftSnapshot | null) {
-  const phase = row.kind === "RESERVATION_DUE" ? "AWAITING_GIVER" :
+  const payload = row.payload;
+  const reminder = row.kind === "RESERVATION_DUE" && payload !== null &&
+    typeof payload === "object" && !Array.isArray(payload) &&
+    (payload as { reminder?: unknown }).reminder === true;
+  const phase = row.kind === "RESERVATION_DUE" ? (reminder ? "ACTIVE" : "AWAITING_GIVER") :
     row.kind === "RESERVATION_OWNER_ASK" ? "AWAITING_OWNER" :
-      row.kind === "GIFT_GIVEN" ? "GIVEN" : null;
+      null;
   const ownsAction = row.kind === "RESERVATION_DUE"
     ? gift?.reservedById === row.recipientId
     : gift?.list.ownerId === row.recipientId && gift?.reservedById === row.actorId;
@@ -179,6 +217,9 @@ export async function projectNotification(
   now = new Date(),
 ): Promise<NotificationItem | null> {
   if (isHiddenOwnerReservationNotification(row)) return null;
+  // CLE-124/S9b-2: «Подарил» sends the owner one general e-mail and writes no
+  // in-app notification. The row stays addressable through its e-mail link.
+  if (row.kind === "GIFT_GIVEN" && channel === "inApp") return null;
   if (row.deliverAfter > now || !inChannel(row.kind, prefs, channel)) return null;
   const raw = row.payload;
   const payload = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};

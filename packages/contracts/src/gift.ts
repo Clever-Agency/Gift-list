@@ -424,11 +424,13 @@ export const reservationListSchema = z.strictObject({
 export type ReservationList = z.infer<typeof reservationListSchema>;
 
 /**
- * Story 5.5 (FR-25, FR-29–FR-31): one action per request on
- * `PATCH /api/v1/me/reservations/:giftId`. A closed discriminated union, so two
- * actions in one body, an extra key or an empty `action` are `VALIDATION`; the
- * server reads `firstIssueField` to name the field. Removing a reservation stays
- * with `DELETE /api/v1/gifts/:id/reserve` (Story 5.2) and is not listed here.
+ * Story 5.5 (FR-25, FR-29–FR-31), CLE-124/S9b-2: one action per request on
+ * `PATCH /api/v1/me/reservations/:giftId` — `extend { dueOn }`, `bought { value }`,
+ * `visibility { holderVisibleToOthers }` or `given`. A closed discriminated
+ * union, so two actions in one body, an extra key or an empty `action` are
+ * `VALIDATION`; the server reads `firstIssueField` to name the field. Removing a
+ * reservation stays with `DELETE /api/v1/gifts/:id/reserve` (Story 5.2) and is
+ * not listed here.
  */
 export const reservationActionBodySchema = z.discriminatedUnion("action", [
   z.strictObject({

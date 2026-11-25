@@ -273,6 +273,7 @@ export const AllVariants: Story = {
       </YStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
 };
 
@@ -336,6 +337,7 @@ export const AsLink: Story = {
       </YStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
 };
 
@@ -391,6 +393,7 @@ export const IconOnly: Story = {
       </YStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
 };
 
@@ -415,6 +418,7 @@ export const InfoButtonNearLabel: Story = {
       </XStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
 };
 
@@ -439,6 +443,7 @@ export const InfoButtonOpened: Story = {
       </XStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   play: pressInfoButton,
   globals: { viewport: { value: "w360" } },
 };
@@ -474,5 +479,6 @@ export const BusyKeepsWidth: Story = {
       </YStack>
     );
   },
+  parameters: { docs: { story: { inline: false, iframeHeight: "860px" } } },
   globals: { viewport: { value: "w360" } },
 };

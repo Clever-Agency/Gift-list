@@ -358,20 +358,26 @@ describe("reservation copy", () => {
 });
 
 /**
- * Story 5.4: правка и удаление забронированного желания. Подсказка правки —
- * дословно из EXPERIENCE (Interaction Primitives); тела confirm про бронь —
- * новые, без утверждения в UX (Open Questions спеки 5.4, п. 1). Прежние строки
- * удаления («Удалить «{title}»?», «Удалить», «Отмена», «Удаляем…»,
- * «Желание удалено.») не меняются.
+ * Story 5.4: удаление забронированного желания. Тела confirm про бронь — новые,
+ * без утверждения в UX (Open Questions спеки 5.4, п. 1). D-49 (CLE-124) убрал
+ * подсказку правки и снял бронь из окна блокировки: владелец не знает о брони.
+ * Прежние строки удаления («Удалить «{title}»?», «Удалить», «Отмена»,
+ * «Удаляем…», «Желание удалено.») не меняются.
  */
 describe("reserved wish editing and deletion copy", () => {
-  it("keeps the edit notice of a reserved wish verbatim", () => {
-    const notice = getMessages("ru").app.giftForm.notice;
+  it("block confirm does not mention a reservation", () => {
+    const body = getMessages("ru").app.friends.block.body;
 
-    expect(notice.reserved).toBe(
-      "Желание забронировано — бронировавший получит уведомление",
-    );
-    expect(notice.reserved.length).toBeGreaterThan(0);
+    expect(body).toBe("Вы перестанете видеть друг друга, дружба и подписки удалятся.");
+    expect(body).not.toContain("бронь");
+  });
+
+  it("no longer carries the edit notice of a reserved wish", () => {
+    const { giftForm } = getMessages("ru").app;
+
+    expect("notice" in giftForm).toBe(false);
+    expect("quantityLocked" in giftForm.field).toBe(false);
+    expect("quantityLocked" in giftForm.error).toBe(false);
   });
 
   it("keeps the delete texts of a reserved wish verbatim and not empty", () => {

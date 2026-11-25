@@ -25,7 +25,6 @@ import {
   createGift,
   deleteGift,
   fetchMyGifts,
-  previewGiftVisibility,
   restoreGift,
   undoGiftClose,
   updateGift,
@@ -117,15 +116,6 @@ const DELETED_TOAST = "gift_deleted";
 const COPY_LINK_REASON_ID = "wishlist-copy-link-reason";
 
 /**
- * The write released the reservation: the server answers the wish as `OPEN` (S23.2).
- * A reserved card may carry `reservedBy: null` when the holder hid the name, so the
- * status is the signal and the missing name is not.
- */
-function reservationReleased(before: GiftCard, after: GiftCard): boolean {
-  return before.status === "RESERVED" && after.status === "OPEN";
-}
-
-/**
  * «Мой вишлист» (Story 2.1): AD-7 owner branch through `api/v1`, so every own wish
  * comes back, including `SECRET`. The gift card is the shared AD-12 contract; the
  * screen only adds the owner chip, status pill and the empty/loading/error states.
@@ -184,13 +174,6 @@ export default function MyWishlistScreen() {
   const [restoreDate, setRestoreDate] = useState("");
   const [restoreError, setRestoreError] = useState<string | undefined>();
   const [archiveBusy, setArchiveBusy] = useState(false);
-  // CLE-82/S23.3: narrowing a reserved wish may take the holder's access away — the
-  // step asks first, and only its «Подтвердить» runs the PATCH.
-  const [visibilityConfirm, setVisibilityConfirm] = useState<{
-    gift: GiftCard;
-    next: GiftCard["visibility"];
-  } | null>(null);
-  const [visibilityBusy, setVisibilityBusy] = useState(false);
   // A second tap on the same chip while its PATCH is in flight is ignored.
   const saving = useRef(new Set<string>());
   // The chip node of every wish, so focus can return there after the dialog closes.
@@ -204,9 +187,6 @@ export default function MyWishlistScreen() {
   const [skipDetailFocus, setSkipDetailFocus] = useState(false);
   // The chip that should get focus once the closed dialog has left the tree.
   const pendingFocus = useRef<string | null>(null);
-  // The chip behind the confirm step: it owns the focus return while that step is
-  // on screen, so the closing picker must not pull focus out of it.
-  const confirmChip = useRef<string | null>(null);
   // Review m9: coming back to the screen (e.g. from the composer) refetches the list.
   // The mount effect owns the very first load, so the first focus right after mount is
   // not a reason to fetch again; a refocus refresh is silent (only `retry` shows the
@@ -785,23 +765,12 @@ export default function MyWishlistScreen() {
   /**
    * `DESIGN.md` → VisibilityChip: the dialog reports its closing, and the chip that
    * opened it gets focus back. Every close goes through `closePicker`, so the target is
-   * always known; a repeated report finds nothing pending and changes nothing. The
-   * confirm step replaces the picker: while it is on screen, focus waits for its own
-   * close (`returnFocusAfterConfirm`) instead of landing behind the layer.
+   * always known; a repeated report finds nothing pending and changes nothing.
    */
   function returnFocusToChip() {
     const id = pendingFocus.current;
     if (id === null) return;
     pendingFocus.current = null;
-    if (confirmChip.current !== null) return;
-    restoreFocus(chipNodes.current.get(id));
-  }
-
-  /** The confirm step has left the tree: the chip it was opened for gets focus back. */
-  function returnFocusAfterConfirm() {
-    const id = confirmChip.current;
-    confirmChip.current = null;
-    if (id === null) return;
     restoreFocus(chipNodes.current.get(id));
   }
 
@@ -838,11 +807,9 @@ export default function MyWishlistScreen() {
    * `EXPERIENCE.md` → Visibility chip: the choice is saved at once (optimistic), the
    * success toast names the new value, and a failure rolls the chip back.
    *
-   * CLE-82/S23.3: a reserved wish may still change its visibility, but narrowing it
-   * can take the holder's access away and release the reservation. The preflight
-   * (`GET .../visibility`) answers that before anything is written; only a `true`
-   * raises the confirm «Бронирующий потеряет доступ, бронь снимется», and the chip
-   * stays as it was until the person agrees. A `false` saves as on an open wish.
+   * D-49 (CLE-124): an open and a reserved wish take the same path. The owner does
+   * not know about reservations, so nothing is previewed and no question comes
+   * before the write.
    */
   async function changeVisibility(gift: GiftCard, next: GiftCard["visibility"]) {
     if (saving.current.has(gift.id)) return;
@@ -850,28 +817,10 @@ export default function MyWishlistScreen() {
     closePicker(gift.id);
     // The picker itself treats the current value as a no-op; nothing to save either.
     if (next === previous) return;
-    if (gift.status !== "RESERVED") {
-      await saveVisibility(gift, next, previous);
-      return;
-    }
-    saving.current.add(gift.id);
-    const preview = await previewGiftVisibility(gift.id, next).finally(function releaseChip() {
-      saving.current.delete(gift.id);
-    });
-    if (!preview.ok) {
-      // No answer is not a licence to write or to ask «наугад»: the chip stays put.
-      await reportVisibilityIssue(gift, preview, null);
-      return;
-    }
-    if (preview.preview.wouldCancelReservation) {
-      confirmChip.current = gift.id;
-      setVisibilityConfirm({ gift, next });
-      return;
-    }
     await saveVisibility(gift, next, previous);
   }
 
-  /** The optimistic write of a visibility change, shared by the chip and its confirm. */
+  /** The optimistic write of a visibility change. */
   async function saveVisibility(
     gift: GiftCard,
     next: GiftCard["visibility"],
@@ -885,9 +834,7 @@ export default function MyWishlistScreen() {
       if (result.ok) {
         replaceGift(result.gift);
         setToast({
-          message: reservationReleased(gift, result.gift)
-            ? t("gift.toast.visibilityReservationCancelled", { value: tLower(next) })
-            : t("gift.toast.visibility", { value: tLower(next) }),
+          message: t("gift.toast.visibility", { value: tLower(next) }),
           tone: "info",
         });
         return;
@@ -899,19 +846,17 @@ export default function MyWishlistScreen() {
   }
 
   /**
-   * The shared tail of a failed visibility request (the preflight or the write).
-   * `previous` rolls an optimistic chip back; the preflight passes `null` because it
-   * never moved the chip. A known reason — the archive, a closed wish, an oversized
-   * body — has its own sentence; the card behind the chip may have moved on, so the
-   * list reloads. CONFLICT is the reservation race of S23.2b: roll back, say so and
-   * reload rather than pretend the chip owns the value.
+   * The shared tail of a failed visibility write. `previous` rolls the optimistic
+   * chip back. A known reason — the archive, a closed wish, an oversized body — has
+   * its own sentence; the card behind the chip may have moved on, so the list
+   * reloads. A plain CONFLICT is neutral: roll back, say the data changed and reload.
    */
   async function reportVisibilityIssue(
     gift: GiftCard,
     result: FailedRequest,
-    previous: GiftCard["visibility"] | null,
+    previous: GiftCard["visibility"],
   ): Promise<void> {
-    if (previous !== null) setGiftVisibility(gift.id, previous);
+    setGiftVisibility(gift.id, previous);
     if ("network" in result) {
       setToast({ message: t("form.network"), tone: "error" });
       return;
@@ -936,22 +881,6 @@ export default function MyWishlistScreen() {
       return;
     }
     setToast({ message: common(`errors.code.${result.code}`), tone: "error" });
-  }
-
-  /** «Подтвердить»: the person accepted the loss, so the one PATCH runs now. */
-  async function confirmVisibilityChange() {
-    const pending = visibilityConfirm;
-    if (!pending) return;
-    setVisibilityBusy(true);
-    await saveVisibility(pending.gift, pending.next, pending.gift.visibility);
-    setVisibilityBusy(false);
-    setVisibilityConfirm(null);
-  }
-
-  /** «Отмена», Esc, the scrim and Android back: the visibility is left as it was. */
-  function cancelVisibilityChange() {
-    if (visibilityBusy) return;
-    setVisibilityConfirm(null);
   }
 
   function closeArchiveMenu() {
@@ -1368,18 +1297,6 @@ export default function MyWishlistScreen() {
           onSelect={handleVisibilitySelect}
           onClose={cancelPicker}
           onClosed={returnFocusToChip}
-        />
-        {/* CLE-82/S23.3: a reserved wish loses its holder only after this answer. */}
-        <ConfirmDialog
-          variant="confirm"
-          visible={visibilityConfirm !== null}
-          title={t("gift.visibilityConfirm.title")}
-          confirmLabel={t("gift.visibilityConfirm.confirm")}
-          cancelLabel={t("gift.visibilityConfirm.cancel")}
-          busy={visibilityBusy}
-          onConfirm={confirmVisibilityChange}
-          onCancel={cancelVisibilityChange}
-          onClosed={returnFocusAfterConfirm}
         />
         {detail ? (
           <WishDetailDialog

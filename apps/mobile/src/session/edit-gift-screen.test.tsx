@@ -1240,7 +1240,7 @@ describe("изменение желания: видимость, read-only и у
     });
   });
 
-  it("RESERVED: видимость меняется сразу, окна и предпросмотра нет", async () => {
+  it("RESERVED: сужение видимости спрашивает нейтрально, затем сохраняет", async () => {
     loaded(reserved);
     gifts.updateGift.mockResolvedValue({
       ok: true,
@@ -1251,9 +1251,20 @@ describe("изменение желания: видимость, read-only и у
     await press("Секрет");
     await press("Сохранить");
 
-    expect(dialogElement()).toBeNull();
+    // FRIENDS→SECRET is a narrowing of an open non-secret wish: the neutral
+    // question comes first and nothing is written (D-49).
+    expect(dialogElement()).not.toBeNull();
+    expect(text()).toContain("Изменить, кто видит «Наушники»?");
+    expect(text()).toContain(
+      "Кто-то мог уже забронировать или купить этот подарок. Если он перестанет видеть желание, бронь снимется.",
+    );
     expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
     expect(text()).not.toContain("забронировано");
+    expect(gifts.updateGift).not.toHaveBeenCalled();
+
+    await pressInDialog("Изменить");
+
+    expect(dialogElement()).toBeNull();
     expect(gifts.updateGift).toHaveBeenCalledTimes(1);
     expect(gifts.updateGift).toHaveBeenCalledWith("g1", {
       title: "Наушники",
@@ -1270,6 +1281,68 @@ describe("изменение желания: видимость, read-only и у
     });
   });
 
+  it("«Отмена» в окне сужения оставляет форму с введёнными данными", async () => {
+    loaded();
+    await mount();
+
+    await press("Секрет");
+    await press("Сохранить");
+
+    expect(dialogElement()).not.toBeNull();
+    expect(text()).toContain("Изменить, кто видит «Наушники»?");
+    await pressInDialog("Отмена");
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(gifts.updateGift).not.toHaveBeenCalled();
+    expect(button("Сохранить")).toBeDefined();
+    expect(selected("Секрет")).toBe(true);
+    expect(navigation.dismissTo).not.toHaveBeenCalled();
+  });
+
+  it("расширение видимости из формы окна не открывает", async () => {
+    loaded();
+    gifts.updateGift.mockResolvedValue({
+      ok: true,
+      gift: { ...stored, visibility: "PUBLIC" },
+    });
+    await mount();
+
+    await press("Всем");
+    await press("Сохранить");
+
+    expect(dialogElement()).toBeNull();
+    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+    expect(gifts.updateGift).toHaveBeenCalledWith(
+      "g1",
+      expect.objectContaining({ visibility: "PUBLIC" }),
+    );
+  });
+
+  it("секретное желание: окна сужения нет", async () => {
+    loaded({ ...stored, visibility: "SECRET" });
+    gifts.updateGift.mockResolvedValue({ ok: true, gift: { ...stored, visibility: "SECRET" } });
+    await mount();
+
+    await press("Сохранить");
+
+    expect(dialogElement()).toBeNull();
+    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
+    expect(gifts.updateGift).toHaveBeenCalledTimes(1);
+  });
+
+  it("секретное желание удаляется через обычное подтверждение", async () => {
+    loaded({ ...stored, visibility: "SECRET" });
+    await mount();
+
+    await press("Удалить желание");
+
+    expect(text()).toContain("Удалить «Наушники»?");
+    expect(text()).toContain("Желание исчезнет из вишлиста. Это нельзя отменить.");
+    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
+  });
+
   it("RESERVED: CONFLICT при сохранении — нейтральный текст и перечитывание", async () => {
     loaded(reserved);
     gifts.fetchGift.mockResolvedValue({ ok: true, gift: reserved });
@@ -1278,6 +1351,9 @@ describe("изменение желания: видимость, read-only и у
 
     await press("Секрет");
     await press("Сохранить");
+    expect(text()).toContain("Изменить, кто видит «Наушники»?");
+    await pressInDialog("Изменить");
+    await settle(300);
 
     expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
     expect(text()).not.toContain("бронь");
@@ -1321,6 +1397,7 @@ describe("изменение желания: видимость, read-only и у
     expect(button("Сохранить")).toBeUndefined();
     expect(button("Удалить желание")).toBeUndefined();
     expect(button("Отмена")).toBeDefined();
+    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
     expect(gifts.updateGift).not.toHaveBeenCalled();
   });
 
@@ -1376,7 +1453,10 @@ describe("изменение желания: видимость, read-only и у
 
     expect(dialogElement()).not.toBeNull();
     expect(text()).toContain("Удалить «Наушники»?");
-    expect(text()).toContain("Желание исчезнет из вишлиста. Это нельзя отменить.");
+    expect(text()).toContain(
+      "Кто-то мог уже забронировать или купить этот подарок. Даритель получит уведомление. Это нельзя отменить.",
+    );
+    expect(text()).not.toContain("Желание исчезнет из вишлиста. Это нельзя отменить.");
 
     await pressExact("Отмена");
 
@@ -1530,7 +1610,10 @@ describe("изменение желания: удаление заброниро
     await press("Удалить желание");
 
     expect(text()).toContain("Удалить «Наушники»?");
-    expect(text()).toContain("Желание исчезнет из вишлиста. Это нельзя отменить.");
+    expect(text()).toContain(
+      "Кто-то мог уже забронировать или купить этот подарок. Даритель получит уведомление. Это нельзя отменить.",
+    );
+    expect(text()).not.toContain("Желание исчезнет из вишлиста. Это нельзя отменить.");
     expect(text()).not.toContain("Бронь снимется");
     expect(text()).not.toContain("Даритель отметил");
     // Nothing is written before the confirm.

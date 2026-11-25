@@ -282,6 +282,20 @@ async function press(label: string) {
   await settle(10);
 }
 
+/** A button of the open layer by its whole visible text. */
+async function pressInDialog(label: string) {
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"], [role="alertdialog"]');
+  expect(dialog).not.toBeNull();
+  const target = controls(dialog as Element).find(
+    (node) => (node.textContent ?? "").trim() === label,
+  );
+  expect(target, `кнопка «${label}» в слое`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
 /** The wish card's main zone: its content name starts with the title, not an action. */
 async function pressCard(title: string) {
   const target = container.querySelector('[role="listitem"] > [role="button"]');
@@ -451,6 +465,17 @@ describe("поток: редактирование желания из спис�
 
     expect(navigation.pathname()).toBe("/");
     await press("Изменить желание");
+    await flush();
+
+    // D-49 (CLE-124): the open non-secret wish asks the neutral question before
+    // the form; only the accepted «Изменить» opens `/gifts/[id]/edit`.
+    expect(text()).toContain("Изменить желание?");
+    expect(text()).toContain(
+      "Кто-то мог уже забронировать или купить этот подарок. Если вы измените желание, даритель получит уведомление.",
+    );
+    expect(navigation.pathname()).toBe("/");
+
+    await pressInDialog("Изменить");
     await flush();
 
     expect(navigation.pathname()).toBe("/gifts/[id]/edit");

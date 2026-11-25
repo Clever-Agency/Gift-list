@@ -329,6 +329,31 @@ async function chooseInDialog(label: string) {
   await settle(10);
 }
 
+/** A button of the open layer by its whole visible text. */
+async function pressInDialog(label: string) {
+  const dialog = dialogElement();
+  expect(dialog).not.toBeNull();
+  if (!dialog) throw new Error("нет открытого слоя");
+  const target = controls(dialog).find((node) => (node.textContent ?? "").trim() === label);
+  expect(target, `кнопка «${label}» в слое`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
+/**
+ * D-49 (CLE-124): the neutral warning of an open non-secret wish. It is the only
+ * question of the three paths, and it never mentions a reservation as a fact.
+ */
+function expectSurpriseWarning(body: string) {
+  const dialog = dialogElement();
+  expect(dialog).not.toBeNull();
+  expect(dialog?.textContent).toContain("Кто-то мог уже забронировать или купить этот подарок.");
+  expect(dialog?.textContent).toContain(body);
+  return dialog as HTMLElement;
+}
+
 async function mount(extra?: ReactNode) {
   await act(async () => {
     root.render(
@@ -694,6 +719,72 @@ describe("мой вишлист: список", () => {
     await act(async () => {
       edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
+    await settle();
+
+    // D-49 (CLE-124): PUBLIC is an open non-secret wish, so the neutral question is
+    // a step of the same details layer, and the form has not opened yet.
+    expectSurpriseWarning(
+      "Если вы измените желание, даритель получит уведомление.",
+    );
+    expect(text()).toContain("Изменить желание?");
+    expect(navigation.push).not.toHaveBeenCalled();
+
+    await pressInDialog("Изменить");
+
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
+  });
+
+  it("«Отмена» в окне «Изменить» оставляет подробности и не открывает форму", async () => {
+    respond(giftsAnswer([gift({ visibility: "FRIENDS" })]));
+    await mount();
+
+    const card = container.querySelector(
+      '[role="listitem"] > [role="button"]',
+    ) as HTMLElement;
+    await act(async () => {
+      card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
+    await act(async () => {
+      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    expectSurpriseWarning(
+      "Если вы измените желание, даритель получит уведомление.",
+    );
+
+    await pressInDialog("Отмена");
+    await settle(300);
+
+    expect(navigation.push).not.toHaveBeenCalled();
+    // One layer: the step is gone and the details are back, not a second window.
+    expect(dialogElement()?.textContent).toContain("Изменить желание");
+    expect(text()).not.toContain("Изменить желание?");
+  });
+
+  it("секретное желание открывает форму сразу, без окна", async () => {
+    respond(giftsAnswer([gift({ visibility: "SECRET" })]));
+    await mount();
+
+    const card = container.querySelector(
+      '[role="listitem"] > [role="button"]',
+    ) as HTMLElement;
+    await act(async () => {
+      card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
+    await act(async () => {
+      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(text()).not.toContain("Изменить желание?");
+    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
     expect(navigation.push).toHaveBeenCalledWith({
       pathname: "/gifts/[id]/edit",
       params: { id: "g1" },
@@ -1542,7 +1633,7 @@ describe("мой вишлист: у владельца нет признаков
  * value chip. The dialog returns focus to the chip it was opened from.
  */
 describe("мой вишлист: смена видимости с чипа", () => {
-  it("выбор «Друзьям» виден сразу, затем toast и ответ сервера", async () => {
+  it("выбор «Друзьям» спрашивает, затем виден сразу, toast и ответ сервера", async () => {
     respond(giftsAnswer([gift()]));
     await mount();
 
@@ -1551,6 +1642,7 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(text()).toContain("Кто видит «Наушники»");
     // The chip is a sibling of the card button: it must not open wish details.
     expect(text()).not.toContain("Изменить желание");
+    expect(text()).not.toContain("Если вы измените желание");
 
     // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
     let answer: (value: unknown) => void = function pendingAnswer() {};
@@ -1566,8 +1658,16 @@ describe("мой вишлист: смена видимости с чипа", () 
 
     await chooseInDialog("Друзьям");
 
+    // PUBLIC→FRIENDS is a narrowing: the neutral question comes first, nothing is
+    // written yet and the chip is still «Всем» (D-49).
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    expect(text()).toContain("Изменить, кто видит «Наушники»?");
+    expect(chip("Всем")).toBeDefined();
+    expect(patchCalls()).toHaveLength(0);
+
+    await pressInDialog("Изменить");
+
     expect(chip("Друзьям")).toBeDefined();
-    expect(text()).not.toContain("Кто видит «Наушники»");
     expect(patchCalls()).toHaveLength(1);
     expect(patchCalls()[0]?.[1]).toEqual({
       method: "PATCH",
@@ -1597,6 +1697,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     });
 
     await chooseInDialog("Друзьям");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    await pressInDialog("Изменить");
 
     expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("true");
     expect(container.querySelector("#wishlist-copy-link-reason")?.textContent).toContain(
@@ -1616,6 +1718,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     });
 
     await chooseInDialog("Друзьям");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    await pressInDialog("Изменить");
 
     expect(chip("Всем")).toBeDefined();
     expect(chip("Друзьям")).toBeUndefined();
@@ -1665,6 +1769,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     });
 
     await chooseInDialog("Друзьям");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    await pressInDialog("Изменить");
 
     expect(chip("Всем")).toBeDefined();
     expect(text()).toContain("Проверьте введённые данные.");
@@ -1695,6 +1801,8 @@ describe("мой вишлист: смена видимости с чипа", () 
       });
 
       await chooseInDialog("Друзьям");
+      expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+      await pressInDialog("Изменить");
 
       expect(chip("Всем")).toBeDefined();
       expect(text()).toContain("Архивное желание можно только просматривать.");
@@ -1719,6 +1827,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     });
 
     await chooseInDialog("Друзьям");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    await pressInDialog("Изменить");
 
     expect(chip("Всем")).toBeDefined();
     expect(chip("Друзьям")).toBeUndefined();
@@ -1746,6 +1856,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     });
 
     await chooseInDialog("Друзьям");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    await pressInDialog("Изменить");
 
     expect(chip("Всем")).toBeDefined();
     expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
@@ -1769,6 +1881,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     });
 
     await chooseInDialog("Друзьям");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    await pressInDialog("Изменить");
 
     expect(chip("Всем")).toBeDefined();
     expect(chip("Друзьям")).toBeUndefined();
@@ -1779,10 +1893,10 @@ describe("мой вишлист: смена видимости с чипа", () 
 
   /**
    * D-49 (CLE-124): the owner does not know about reservations, so a reserved wish
-   * changes its visibility exactly like an open one — one optimistic PATCH, the same
-   * toast, no preflight and no question about a holder.
+   * gets exactly the same neutral question as an open one — no preflight, no word
+   * about a holder, and only the accepted «Изменить» writes.
    */
-  it("RESERVED: сужение видимости — сразу PATCH, тост как у открытого, без окна о брони", async () => {
+  it("RESERVED: сужение видимости — то же окно, затем PATCH, без слов о брони", async () => {
     const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
     respond(giftsAnswer([card]));
     await mount();
@@ -1800,16 +1914,21 @@ describe("мой вишлист: смена видимости с чипа", () 
     });
 
     await chooseInDialog("Секрет");
-    await settle(300);
 
-    // No confirm step took the picker's place and no preflight ran.
-    expect(dialogElement()).toBeNull();
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    expect(text()).toContain("Изменить, кто видит «Наушники»?");
     expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
     expect(
       api.apiRequest.mock.calls.some(([path]) =>
         String(path).includes("/g1/visibility"),
       ),
     ).toBe(false);
+    expect(patchCalls()).toHaveLength(0);
+
+    await pressInDialog("Изменить");
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
     expect(patchCalls()).toHaveLength(1);
     expect(patchCalls()[0]?.[1]).toEqual({
       method: "PATCH",
@@ -1834,6 +1953,8 @@ describe("мой вишлист: смена видимости с чипа", () 
     });
 
     await chooseInDialog("Секрет");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    await pressInDialog("Изменить");
     await settle(300);
 
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
@@ -1876,6 +1997,81 @@ describe("мой вишлист: смена видимости с чипа", () 
     expect(chip("Всем")).toBeDefined();
     expect(patchCalls()).toHaveLength(0);
     expect(text()).not.toContain("Видимость: друзьям");
+  });
+
+  /**
+   * D-49 (CLE-124): only a narrowing asks. A wider value, the same value, a secret
+   * or a closed wish and the archive save (or do nothing) without a window.
+   */
+  it("расширение видимости окна не открывает", async () => {
+    const card = gift({ visibility: "FRIENDS" });
+    respond(giftsAnswer([card]));
+    await mount();
+    await press("Друзьям");
+
+    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: true, data: gift({ visibility: "PUBLIC" }) });
+      }
+      return Promise.resolve(giftsAnswer([card]));
+    });
+
+    await chooseInDialog("Всем");
+
+    expect(dialogElement()).toBeNull();
+    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
+    expect(patchCalls()).toHaveLength(1);
+    expect(text()).toContain("Видимость: всем");
+  });
+
+  it("то же значение: выбор закрывает окно и ничего не пишет", async () => {
+    respond(giftsAnswer([gift({ visibility: "FRIENDS" })]));
+    await mount();
+    await press("Друзьям");
+
+    await chooseInDialog("Друзьям");
+
+    expect(dialogElement()).toBeNull();
+    expect(patchCalls()).toHaveLength(0);
+    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
+  });
+
+  it("«Отмена» в нейтральном окне сужения ничего не сохраняет", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+
+    await chooseInDialog("Друзьям");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+
+    await pressInDialog("Отмена");
+
+    expect(dialogElement()).toBeNull();
+    expect(chip("Всем")).toBeDefined();
+    expect(patchCalls()).toHaveLength(0);
+    expect(text()).not.toContain("Видимость: друзьям");
+  });
+
+  it("окно одно и то же для открытого и для старого RESERVED", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+    await press("Всем");
+    await chooseInDialog("Друзьям");
+    const openText = dialogElement()?.textContent ?? "";
+    expect(openText).toContain("Кто-то мог уже забронировать или купить этот подарок.");
+
+    await act(async () => {
+      root.unmount();
+    });
+    respond(giftsAnswer([gift({ status: "RESERVED" })]));
+    root = createRoot(container);
+    await mount();
+    await press("Всем");
+    await chooseInDialog("Друзьям");
+    const reservedText = dialogElement()?.textContent ?? "";
+
+    expect(reservedText).toBe(openText);
   });
 });
 
@@ -1943,6 +2139,8 @@ describe("мой вишлист: возврат фокуса на чип", () =>
     });
 
     await chooseInDialog("Друзьям");
+    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
+    await pressInDialog("Изменить");
     // Фокус возвращается после exit-fade диалога (160 мс).
     await settle(300);
 

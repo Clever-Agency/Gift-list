@@ -56,11 +56,23 @@ CatalogSurface.displayName = "CatalogSurface";
  *
  * This frame is the viewport column instead, full bleed (the app page paints its
  * own background, so the catalog's padding and surface would only fake a border).
+ * The height is the one thing the chain cannot get from its parents: `#storybook-root`
+ * is a block box with an automatic height, so `100vh` is what gives `flex: 1` a
+ * definite space to fill, in the canvas and in a docs iframe alike. `overflow:
+ * hidden` keeps a stray box from pushing the catalog page itself, while the screen's
+ * own `PageScroll` still scrolls inside the frame.
  * Colours are `$` tokens, so the frame follows the theme the provider is given.
  */
 function ScreenFrame({ children }: { children: ReactNode }) {
   return (
-    <YStack minWidth={0} backgroundColor="$background" color="$foreground">
+    <YStack
+      width="100%"
+      height="100vh"
+      minWidth={0}
+      overflow="hidden"
+      backgroundColor="$background"
+      color="$foreground"
+    >
       {children}
     </YStack>
   );

@@ -56,9 +56,9 @@ describe("toDetailFacts", () => {
       "status",
       "visibility",
       "archived",
-      "reservedBy",
-      "ownerAction",
     ]);
+    expect(factIds).not.toContain("reservedBy");
+    expect(factIds).not.toContain("ownerAction");
     expect(factIds).not.toContain("due");
     expect(factIds).not.toContain("phase");
     expect(factIds).not.toContain("bought");
@@ -70,6 +70,9 @@ describe("toDetailFacts", () => {
     expect(facts.find(function isExpires(fact) {
       return fact.id === "expires";
     })?.value).toBe("31.12.2026");
+    expect(facts.find(function isStatus(fact) {
+      return fact.id === "status";
+    })?.value).toBe("Открыт");
     expect(facts.map(function valueOf(fact) {
       return fact.value;
     }).join(" ")).not.toContain("01.12.2026");
@@ -79,12 +82,22 @@ describe("toDetailFacts", () => {
     expect(facts.map(function valueOf(fact) {
       return fact.value;
     }).join(" ")).not.toContain("Куплен");
+    expect(facts.map(function valueOf(fact) {
+      return fact.value;
+    }).join(" ")).not.toContain("Анна");
   });
 
-  it("владелец без имени бронирующего не получает строку «Берёт»", () => {
-    expect(ids("owner", { reservedBy: null, ownerAction: null, archivedAt: null })).not.toContain(
-      "reservedBy",
-    );
+  /** D-49: a stale owner payload with `RESERVED` still reads as an open wish. */
+  it("владелец не получает ни одного признака брони, даже если ответ старый", () => {
+    const facts = toDetailFacts(gift(), "owner", "ru");
+    const text = facts.map(function valueOf(fact) {
+      return fact.value;
+    }).join(" ");
+
+    expect(text).not.toContain("Забронирован");
+    expect(text).not.toContain("Берёт");
+    expect(text).not.toContain("Ждёт вашего подтверждения");
+    expect(text).not.toContain("Срок брони истёк");
   });
 
   it("гость не видит видимость и действия владельца, держатель видит свою бронь", () => {

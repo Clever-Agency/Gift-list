@@ -224,8 +224,9 @@ describe("invite confirmation copy", () => {
 
 describe("reservation release copy", () => {
   /**
-   * Story 5.2: the holder's confirm and the owner's step are worded by the AC of
-   * the story and by `EXPERIENCE.md`, so the catalog keeps the sentences verbatim.
+   * Story 5.2: the holder's confirm is worded by the AC of the story and by
+   * `EXPERIENCE.md`. D-49 (CLE-124) removed the owner's release, so the warning
+   * sentences are gone with it.
    */
   it("keeps the release texts verbatim and not empty", () => {
     const release = getMessages("ru").app.gift.release;
@@ -233,10 +234,6 @@ describe("reservation release copy", () => {
     expect(release.title).toBe("Снять бронь? Желание снова станет открытым.");
     expect(release.confirm).toBe("Снять бронь");
     expect(release.cancel).toBe("Отмена");
-    expect(release.warningBought).toBe(
-      "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё",
-    );
-    expect(release.warningGiven).toBe("Даритель отметил, что уже вручил");
     for (const text of Object.values(release)) {
       expect(text.length).toBeGreaterThan(0);
     }
@@ -255,7 +252,6 @@ describe("closing copy", () => {
 
     expect(close.menuAction).toBe("Отметить полученным");
     expect(close.title).toBe("Подарок «{title}» получен?");
-    expect(close.reservedBody).toBe("Бронь будет закрыта, бронировавший получит уведомление");
     expect(close.confirm).toBe("Подтвердить");
     expect(close.cancel).toBe("Отмена");
 
@@ -405,21 +401,6 @@ describe("reserved wish editing and deletion copy", () => {
     expect(remove.confirmTitle.replace("{title}", "Наушники")).toBe(
       "Удалить «Наушники»?",
     );
-  });
-
-  /**
-   * Story 5.6: ответ владельца на истёкшую бронь. Обе строки — дословно из epics
-   * (Story 5.6) и `DESIGN.md` → OwnerActionLabel; новых текстов нет, подстановок
-   * тоже.
-   */
-  it("keeps the two answers of the expired reservation verbatim and not empty", () => {
-    const ownerRequest = getMessages("ru").app.gift.ownerRequest;
-
-    expect(ownerRequest.received).toBe("Получил");
-    expect(ownerRequest.keep).toBe("Не получал, оставить бронь");
-    expect(ownerRequest.received.trim().length).toBeGreaterThan(0);
-    expect(ownerRequest.keep.trim().length).toBeGreaterThan(0);
-    expect(ownerRequest.keep).not.toContain("{");
   });
 });
 

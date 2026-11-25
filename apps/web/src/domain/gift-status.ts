@@ -8,7 +8,9 @@
 // Story 5.6: the reservation timers of AD-9 (72 and 168 hours). The rules are
 // pure; the CAS writes live in the same adapter. CLE-124/D-49: the owner has no
 // answer to give — `AWAITING_OWNER` is an internal phase, and the release is
-// counted from `reservationDueAt`, not from the phase moment.
+// counted from `reservationDueAt`, not from the phase moment. CLE-124/S9b-1:
+// neither `bought` nor `GIVEN` protects a reservation from the timer — a holder
+// cannot keep a wish blocked forever by marking it or promising it.
 
 import { RESERVATION_PHASES } from "@gift-list/contracts";
 import type { GiftEditEventField } from "./gift-edit";
@@ -94,6 +96,17 @@ export const EXTENDABLE_RESERVATION_PHASES = [
   "ACTIVE",
   "AWAITING_GIVER",
   "AWAITING_OWNER",
+] as const satisfies readonly ReservationPhase[];
+
+/**
+ * CLE-124/S9b-1: the phases the timer releases from. `AWAITING_OWNER` is the
+ * ordinary end of the cycle, `GIVEN` is the holder's «Подарил» promise — and the
+ * promise does not protect the reservation either: after 168 hours past
+ * `reservationDueAt` both are released, so a wish cannot stay blocked forever.
+ */
+export const RELEASABLE_RESERVATION_PHASES = [
+  "AWAITING_OWNER",
+  "GIVEN",
 ] as const satisfies readonly ReservationPhase[];
 
 /** Only a live reservation is released; an OPEN or CLOSED row has nothing to clear. */
@@ -367,11 +380,14 @@ export interface GiftStatusTransaction {
    */
   moveReservationToAwaitingOwner(giftId: string, at: Date): Promise<"success" | "lost">;
   /**
-   * Story 5.6 (AD-9), CLE-124/D-49: CAS `AWAITING_OWNER → OPEN` once the
-   * deadline itself is at least 168 hours old and the holder did not mark the
-   * gift as bought. A row moved to the phase by step 2 of the same run carries
-   * `phaseAt = at` and is not released in that run. The write is the same
-   * `RESERVATION_RELEASE_DATA` the 5.2 release uses.
+   * Story 5.6 (AD-9), CLE-124/D-49/S9b-1: CAS `RESERVED` in one of
+   * {@link RELEASABLE_RESERVATION_PHASES} → `OPEN` once the deadline itself is
+   * at least 168 hours old. Neither `bought` nor the `GIVEN` phase protects the
+   * reservation: a holder who marked the gift as bought or promised it still
+   * loses it after the window, so no wish stays blocked forever. A row moved to
+   * the phase by step 2 of the same run carries `phaseAt = at` and is not
+   * released in that run. The write is the same `RESERVATION_RELEASE_DATA` the
+   * 5.2 release uses.
    */
   releaseReservationByExpiry(giftId: string, at: Date): Promise<"success" | "lost">;
 }
@@ -417,10 +433,11 @@ export function canSetReservationAttributes(row: GiftStatusRow): boolean {
  * Story 5.6 (AD-9), CLE-124/D-49: the two windows of the reservation cycle.
  * After `reservationDueAt` has passed, the giver has 72 hours (from the run that
  * noticed the deadline) before the wish enters the internal `AWAITING_OWNER`
- * phase; 168 hours after `reservationDueAt` itself, if the holder did not mark
- * «Купил», the reservation is released. The release window is counted from the
- * deadline (FR-29), never from `reservationPhaseAt`, so the internal phase is
- * only a marker and a skipped run cannot restart the release window.
+ * phase; 168 hours after `reservationDueAt` itself the reservation is released,
+ * whatever phase it is in and whether or not the holder marked «Купил». The
+ * release window is counted from the deadline (FR-29), never from
+ * `reservationPhaseAt`, so the internal phase is only a marker and a skipped run
+ * cannot restart the release window.
  */
 export const RESERVATION_GIVER_WINDOW_MS = 72 * 60 * 60 * 1000;
 export const RESERVATION_OWNER_WINDOW_MS = 168 * 60 * 60 * 1000;
@@ -449,10 +466,10 @@ export type ReservationPhaseMomentRow = ReservationPhaseRow & {
 /**
  * Step 3 reads the deadline and the phase moment: the deadline opens the
  * window, the moment keeps a row moved by step 2 of the same run out of it.
+ * CLE-124/S9b-1: `bought` is not read anymore — it no longer protects the row.
  */
 export type ReservationReleaseRow = ReservationDueRow & {
   readonly reservationPhaseAt: Date | null;
-  readonly reservationBought: boolean;
 };
 
 function hasLivePhase(row: ReservationPhaseRow, phase: ReservationPhase): boolean {
@@ -460,6 +477,18 @@ function hasLivePhase(row: ReservationPhaseRow, phase: ReservationPhase): boolea
     row.status === "RESERVED" &&
     row.archivedAt === null &&
     row.reservationPhase === phase
+  );
+}
+
+/** CLE-124/S9b-1: either of the two phases the timer may release from. */
+function hasReleasablePhase(row: ReservationPhaseRow): boolean {
+  return (
+    row.status === "RESERVED" &&
+    row.archivedAt === null &&
+    row.reservationPhase !== null &&
+    (RELEASABLE_RESERVATION_PHASES as readonly ReservationPhase[]).includes(
+      row.reservationPhase,
+    )
   );
 }
 
@@ -490,17 +519,17 @@ export function canAskOwner(row: ReservationPhaseMomentRow, now: Date): boolean 
 }
 
 /**
- * Story 5.6 (AD-9), step 3, CLE-124/D-49: may the timer release the reservation
- * by expiry? Only `RESERVED/AWAITING_OWNER` whose `reservationDueAt` is at
- * least 168 hours old and that the holder did not mark as bought — «Купил»
- * always wins over the timer. A row whose phase started at `now` (step 2 of the
- * same run) is refused: one run moves a row one step, and the release waits for
- * the next run.
+ * Story 5.6 (AD-9), step 3, CLE-124/D-49/S9b-1: may the timer release the
+ * reservation by expiry? Only a live `RESERVED` row in one of
+ * {@link RELEASABLE_RESERVATION_PHASES} whose `reservationDueAt` is at least 168
+ * hours old. `bought` and `GIVEN` do not protect the row: «Купил» is the
+ * holder's own note and «Подарил» a promise, and neither may keep a wish blocked
+ * forever. A row whose phase started at `now` (step 2 of the same run) is
+ * refused: one run moves a row one step, and the release waits for the next run.
  */
 export function canReleaseByExpiry(row: ReservationReleaseRow, now: Date): boolean {
   return (
-    hasLivePhase(row, "AWAITING_OWNER") &&
-    !row.reservationBought &&
+    hasReleasablePhase(row) &&
     row.reservationDueAt !== null &&
     row.reservationDueAt.getTime() <= now.getTime() - RESERVATION_OWNER_WINDOW_MS &&
     row.reservationPhaseAt !== null &&

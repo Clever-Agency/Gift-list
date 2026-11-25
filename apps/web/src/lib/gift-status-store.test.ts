@@ -910,7 +910,7 @@ describe("the Story 5.6 timer CAS writes", () => {
     info.mockRestore();
   });
 
-  it("releases AWAITING_OWNER when the deadline is 168 hours old, with the 5.2 clear and `bought = false` in the CAS", async () => {
+  it("releases AWAITING_OWNER or GIVEN when the deadline is 168 hours old, with the 5.2 clear and no `bought` in the CAS", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     const outcome = await giftStatusTransaction(transactionClient()).releaseReservationByExpiry(
@@ -936,8 +936,8 @@ describe("the Story 5.6 timer CAS writes", () => {
         id: "g1",
         status: "RESERVED",
         archivedAt: null,
-        reservationPhase: "AWAITING_OWNER",
-        reservationBought: false,
+        // CLE-124/S9b-1: both phases of the release, and no `bought` condition.
+        reservationPhase: { in: ["AWAITING_OWNER", "GIVEN"] },
         reservedAt,
         reservationDueAt: {
           equals: reservationDueAt,
@@ -1141,15 +1141,22 @@ describe("processReservationTimers", () => {
 
   type FindArgs = {
     where: {
-      reservationPhase?: string;
+      reservationPhase?: string | { in: string[] };
       id?: { gt: string };
     };
     take: number;
   };
 
+  /** Steps 1–2 look up one phase, step 3 a list: `AWAITING_OWNER|GIVEN`. */
+  function candidateKey(phase: string | { in: string[] } | undefined): string {
+    if (typeof phase === "string") return phase;
+    if (phase === undefined) return "";
+    return phase.in.join("|");
+  }
+
   function candidatesByPhase(byPhase: Record<string, { id: string }[]>): void {
     findMany.mockImplementation(({ where }: FindArgs) =>
-      Promise.resolve(byPhase[String(where.reservationPhase)] ?? []),
+      Promise.resolve(byPhase[candidateKey(where.reservationPhase)] ?? []),
     );
   }
 
@@ -1158,7 +1165,7 @@ describe("processReservationTimers", () => {
     candidatesByPhase({
       ACTIVE: [{ id: "a" }],
       AWAITING_GIVER: [{ id: "b" }],
-      AWAITING_OWNER: [{ id: "c" }],
+      "AWAITING_OWNER|GIVEN": [{ id: "c" }],
     });
 
     await expect(processReservationTimers(now, timerClient())).resolves.toEqual({
@@ -1171,7 +1178,7 @@ describe("processReservationTimers", () => {
     expect(findMany.mock.calls.map(([args]) => (args as FindArgs).where.reservationPhase)).toEqual([
       "ACTIVE",
       "AWAITING_GIVER",
-      "AWAITING_OWNER",
+      { in: ["AWAITING_OWNER", "GIVEN"] },
     ]);
     for (const [args] of findMany.mock.calls) {
       expect(args).toMatchObject({
@@ -1201,8 +1208,7 @@ describe("processReservationTimers", () => {
         id: "c",
         status: "RESERVED",
         archivedAt: null,
-        reservationPhase: "AWAITING_OWNER",
-        reservationBought: false,
+        reservationPhase: { in: ["AWAITING_OWNER", "GIVEN"] },
         reservedAt,
         reservationDueAt: {
           equals: reservationDueAt,
@@ -1245,7 +1251,7 @@ describe("processReservationTimers", () => {
     info.mockRestore();
   });
 
-  it("reads only live RESERVED candidates of the three timer phases, never GIVEN or a closed wish", async () => {
+  it("reads live RESERVED candidates: steps 1–2 by phase, step 3 from AWAITING_OWNER or GIVEN", async () => {
     findMany.mockResolvedValue([]);
 
     await expect(processReservationTimers(now, timerClient())).resolves.toEqual({
@@ -1257,8 +1263,7 @@ describe("processReservationTimers", () => {
 
     expect(findMany).toHaveBeenCalledTimes(3);
     const phases = findMany.mock.calls.map(([args]) => (args as FindArgs).where.reservationPhase);
-    expect(phases).toEqual(["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER"]);
-    expect(phases).not.toContain("GIVEN");
+    expect(phases).toEqual(["ACTIVE", "AWAITING_GIVER", { in: ["AWAITING_OWNER", "GIVEN"] }]);
     for (const [args] of findMany.mock.calls) {
       expect(args).toMatchObject({ where: { status: "RESERVED", archivedAt: null } });
     }
@@ -1275,12 +1280,40 @@ describe("processReservationTimers", () => {
       where: {
         status: "RESERVED",
         archivedAt: null,
-        reservationPhase: "AWAITING_OWNER",
-        reservationBought: false,
+        reservationPhase: { in: ["AWAITING_OWNER", "GIVEN"] },
         reservationDueAt: { lte: new Date(now.getTime() - OWNER_WINDOW_MS) },
         reservationPhaseAt: { lt: now },
       },
     });
+  });
+
+  it("releases a GIVEN candidate too and writes only the holder's row", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    candidatesByPhase({ "AWAITING_OWNER|GIVEN": [{ id: "given" }] });
+
+    await expect(processReservationTimers(now, timerClient())).resolves.toEqual({
+      expiredToGiver: 0,
+      toAwaitingOwner: 0,
+      released: 1,
+      failed: 0,
+    });
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "given",
+          status: "RESERVED",
+          reservationPhase: { in: ["AWAITING_OWNER", "GIVEN"] },
+        }),
+        data: RESERVATION_RELEASE_DATA,
+      }),
+    );
+    // CLE-124/S9b-1: only the holder is told, the owner never is (D-49).
+    expect(createMany.mock.calls.map(([args]) => {
+      const row = args.data as { kind: string; recipientId: string };
+      return `${row.kind}:${row.recipientId}`;
+    })).toEqual(["RESERVATION_AUTO_RELEASE:u2"]);
+    info.mockRestore();
   });
 
   it("finds nothing and reports zeros when the run repeats with the same now", async () => {

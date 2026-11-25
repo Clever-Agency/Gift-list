@@ -458,7 +458,6 @@ describe("the Story 5.6 reservation timers", () => {
       reservationPhase: "AWAITING_OWNER",
       reservationPhaseAt: new Date(now.getTime() - 60_000),
       reservationDueAt: new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS),
-      reservationBought: false,
       ...overrides,
     };
   }
@@ -537,7 +536,7 @@ describe("the Story 5.6 reservation timers", () => {
   });
 
   describe("canReleaseByExpiry", () => {
-    /** CLE-124/D-49: `dueAt ≤ now − 168 ч`, `bought = false`, phase not started now. */
+    /** CLE-124/D-49/S9b-1: `dueAt ≤ now − 168 ч` and a phase not started now. */
     it("releases when the deadline is at least 168 hours old", () => {
       const boundary = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS);
       expect(canReleaseByExpiry(releaseRow({ reservationDueAt: boundary }), now)).toBe(true);
@@ -571,15 +570,23 @@ describe("the Story 5.6 reservation timers", () => {
       expect(canReleaseByExpiry(releaseRow({ reservationPhaseAt: now }), now)).toBe(false);
     });
 
-    /** CRON_BOUGHT: «Купил» always wins over the timer. */
-    it("never releases a gift the holder marked as bought", () => {
-      const boundary = new Date(now.getTime() - RESERVATION_OWNER_WINDOW_MS);
+    /** CLE-124/S9b-1: a promise («Подарил») does not protect it either. */
+    it("releases a GIVEN reservation once the deadline is 168 hours old", () => {
       expect(
-        canReleaseByExpiry(releaseRow({ reservationDueAt: boundary, reservationBought: true }), now),
+        canReleaseByExpiry(
+          releaseRow({ reservationPhase: "GIVEN", reservationDueAt: new Date(now.getTime() - 169 * 60 * 60 * 1000) }),
+          now,
+        ),
+      ).toBe(true);
+      expect(
+        canReleaseByExpiry(
+          releaseRow({ reservationPhase: "GIVEN", reservationDueAt: new Date(now.getTime() - 167 * 60 * 60 * 1000) }),
+          now,
+        ),
       ).toBe(false);
     });
 
-    it.each(["ACTIVE", "AWAITING_GIVER", "GIVEN", null] as const)(
+    it.each(["ACTIVE", "AWAITING_GIVER", null] as const)(
       "refuses the %s phase",
       (reservationPhase) => {
         expect(canReleaseByExpiry(releaseRow({ reservationPhase }), now)).toBe(false);

@@ -5,6 +5,7 @@ import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
 import {
   EXTENDABLE_RESERVATION_PHASES,
+  RELEASABLE_RESERVATION_PHASES,
   RESERVATION_GIVER_WINDOW_MS,
   RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
@@ -321,13 +322,13 @@ export function giftStatusTransaction(
           id: giftId,
           status: "RESERVED", reservedAt: gift.reservedAt,
           archivedAt: null,
-          reservationPhase: "AWAITING_OWNER",
-          // `bought` is part of the CAS: a mark set between the read and the
-          // write keeps the gift from being opened by the timer.
-          reservationBought: false,
+          // CLE-124/S9b-1: both phases are released, `GIVEN` included.
+          reservationPhase: { in: [...RELEASABLE_RESERVATION_PHASES] },
           // CLE-124/D-49: the 168 hours count from the deadline, and the CAS
           // compares the deadline it read, so a holder's extension (a new
           // `dueAt`, phase `ACTIVE`) wins the race and answers `lost`.
+          // CLE-124/S9b-1: `bought` is deliberately absent — a mark set before
+          // or after the read neither protects the row nor makes the CAS lose.
           reservationDueAt: {
             equals: gift.reservationDueAt,
             lte: new Date(at.getTime() - RESERVATION_OWNER_WINDOW_MS),
@@ -467,8 +468,11 @@ export type ReservationTimersResult = {
  *
  * 1. `ACTIVE → AWAITING_GIVER` when `reservationDueAt ≤ now`;
  * 2. `AWAITING_GIVER → AWAITING_OWNER` when `phaseAt ≤ now − 72 ч`;
- * 3. `AWAITING_OWNER → OPEN` when `reservationDueAt ≤ now − 168 ч`,
- *    `bought = false` and `phaseAt < now`.
+ * 3. `AWAITING_OWNER` or `GIVEN → OPEN` when `reservationDueAt ≤ now − 168 ч`
+ *    and `phaseAt < now`. CLE-124/S9b-1: `bought` does not protect the row and
+ *    `GIVEN` is released like `AWAITING_OWNER` — a holder cannot keep a wish
+ *    blocked forever with «Купил» or «Подарил». Steps 1–2 never touch `GIVEN`:
+ *    a holder who already promised the gift gets no deadline reminder.
  *
  * Step 2 is internal: nobody is notified, and the owner never learns that their
  * wish is reserved. Step 3 counts the 168 hours from the deadline, not from the
@@ -520,8 +524,9 @@ export async function processReservationTimers(
     {
       status: "RESERVED",
       archivedAt: null,
-      reservationPhase: "AWAITING_OWNER",
-      reservationBought: false,
+      // CLE-124/S9b-1: `GIVEN` is released too, and `bought` is not a filter: the
+      // release depends on the deadline alone.
+      reservationPhase: { in: [...RELEASABLE_RESERVATION_PHASES] },
       reservationDueAt: { lte: ownerDeadline },
       // Step 2 of this same run sets `phaseAt = now`; such a row waits for the
       // next run instead of being released immediately.

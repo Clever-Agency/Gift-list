@@ -1,6 +1,6 @@
 // AD-15 (6) and (7): the reservation timer (`processReservationTimers`, Story
-// 5.6) against the two rows it must never move and against a user who wins the
-// race between the candidate read and the CAS.
+// 5.6) against the rows it releases and against a user who wins the race between
+// the candidate read and the CAS.
 //
 // The two invariants are checked on a stateful fake, not on spies: `findMany`
 // returns a row only when the production query's own predicate matches it, and
@@ -10,20 +10,19 @@
 // assertion about the shape of the arguments.
 //
 // The canonical per-piece tests stay where they are and are not repeated here:
-// `domain/gift-status.test.ts` (the release rule and `bought`),
-// `lib/gift-status-store.test.ts` (the three timer steps, the CAS predicates,
-// the lost CAS of the keeper action) and
-// `actions/gift-reservation-keep.test.ts` (the opposite direction: the user
+// `domain/gift-status.test.ts` (the release rule),
+// `lib/gift-status-store.test.ts` (the three timer steps and the CAS predicates)
+// and `actions/gift-reservation-keep.test.ts` (the opposite direction: the user
 // loses to the timer and gets CONFLICT). What none of them has is this
-// scenario: the whole cron run over a `bought = true` row, a `GIVEN` row, and
-// a row the user changed after it was read as a candidate.
+// scenario: the whole cron run over a `bought = true` row, a `GIVEN` row, and a
+// row the user changed after it was read as a candidate.
 //
 // This is not the real PostgreSQL race: two simultaneous transactions on one
 // row are proven only in `db/disposable-pg/*.pgtest.ts`, which needs a
 // disposable database and is not part of `npm test`/CI (see README,
 // «Отложено»). Here the use-case contract and the CAS shape are checked; row
 // locks and isolation levels are not.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -40,15 +39,24 @@ type Row = {
   reservationBought: boolean;
   reservedById: string | null;
   reservedAt: Date | null;
+  title: string;
   titleSnapshotOnReserve: string | null;
   holderVisibleToOwner: boolean;
   holderVisibleToOthers: boolean;
+  list: { ownerId: string };
 };
 
 type WriteAttempt = {
   id: string;
   matched: number;
   data: Record<string, unknown>;
+};
+
+/** One row the timer tried to enqueue; `recipientId` tells the owner from the holder. */
+type NotificationAttempt = {
+  kind: string;
+  recipientId: string;
+  role: string;
 };
 
 /**
@@ -93,6 +101,8 @@ const { state, timerClient } = vi.hoisted(() => {
     candidateReads: [] as { phase: unknown; ids: string[] }[],
     /** Every CAS attempt: which row it targeted and how many rows it matched. */
     writes: [] as WriteAttempt[],
+    /** Every notification row the timer asked to write. */
+    notifications: [] as NotificationAttempt[],
     transactions: 0,
     /** Fires once at the start of the next transaction, before the CAS. */
     beforeTransaction: null as (() => void) | null,
@@ -131,7 +141,21 @@ const { state, timerClient } = vi.hoisted(() => {
   async function findUnique(args: {
     where: { id: string };
   }): Promise<Row | null> {
-    return state.rows.find((candidate) => candidate.id === args.where.id) ?? null;
+    // A copy, not the live row: `updateMany` mutates the stored row, and the
+    // notification snapshot must keep the values read before the CAS.
+    const row = state.rows.find((candidate) => candidate.id === args.where.id);
+    return row === undefined ? null : { ...row };
+  }
+
+  async function createMany(args: {
+    data: { kind: string; recipientId: string; payload: { role: string } };
+  }): Promise<{ count: number }> {
+    state.notifications.push({
+      kind: args.data.kind,
+      recipientId: args.data.recipientId,
+      role: args.data.payload.role,
+    });
+    return { count: 1 };
   }
 
   async function transaction(work: (tx: unknown) => Promise<unknown>): Promise<unknown> {
@@ -139,7 +163,10 @@ const { state, timerClient } = vi.hoisted(() => {
     const before = state.beforeTransaction;
     state.beforeTransaction = null;
     before?.();
-    return work({ gift: { findMany, updateMany, findUnique } });
+    return work({
+      gift: { findMany, updateMany, findUnique },
+      notification: { createMany },
+    });
   }
 
   return {
@@ -179,9 +206,11 @@ function timerRow(overrides: Partial<Row> & { id: string }): Row {
     reservationBought: false,
     reservedById: "holder",
     reservedAt: new Date("2026-11-01T00:00:00.000Z"),
+    title: "Плед",
     titleSnapshotOnReserve: "Плед",
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    list: { ownerId: "owner" },
     ...overrides,
     id: overrides.id,
   };
@@ -191,59 +220,141 @@ beforeEach(() => {
   state.rows = [];
   state.candidateReads = [];
   state.writes = [];
+  state.notifications = [];
   state.transactions = 0;
   state.beforeTransaction = null;
 });
 
-describe("AD-15 (6) — cron не открывает bought и GIVEN", () => {
-  it("не трогает бронь с bought=true, даже когда 168 часов прошли", async () => {
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("AD-15 (6) — cron снимает любую живую бронь через 168 ч после срока", () => {
+  it("снимает бронь с bought=true, уведомляет только держателя и ставит OPEN, не CLOSED", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    state.rows = [timerRow({ id: "g-bought", reservationBought: true })];
+    state.rows = [timerRow({ id: "g-bought", reservationBought: true, reservationDueAt: OWNER_DEADLINE })];
+
+    await expect(processReservationTimers(NOW, db)).resolves.toEqual({
+      ...ZEROS,
+      released: 1,
+    });
+
+    // The row was a candidate of step 3 only: steps 1–2 read their own phases.
+    expect(state.candidateReads.map((read) => read.phase)).toEqual([
+      "ACTIVE",
+      "AWAITING_GIVER",
+      { in: ["AWAITING_OWNER", "GIVEN"] },
+    ]);
+    expect(state.candidateReads[2]?.ids).toEqual(["g-bought"]);
+
+    // The status is `OPEN`, never `CLOSED`, and no closure column is written.
+    expect(state.rows[0]).toMatchObject({
+      status: "OPEN",
+      reservationPhase: null,
+      reservationBought: false,
+      reservedById: null,
+      reservationDueAt: null,
+    });
+    expect(state.writes).toEqual([
+      expect.objectContaining({ id: "g-bought", matched: 1, data: expect.objectContaining({ status: "OPEN" }) }),
+    ]);
+
+    // Only the holder learns about the release; the owner gets nothing (D-49).
+    expect(state.notifications).toEqual([
+      { kind: "RESERVATION_AUTO_RELEASE", recipientId: "holder", role: "holder" },
+    ]);
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+      event: "gift.reservation.released-by-expiry",
+      from: "RESERVED",
+      to: "OPEN",
+      recipientId: "holder",
+    });
+    expect(error).not.toHaveBeenCalled();
+    info.mockRestore();
+    error.mockRestore();
+  });
+
+  it("не снимает бронь с bought=true, пока 168 часов не прошли", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // One hour inside the window: the deadline is 167 hours old.
+    state.rows = [
+      timerRow({
+        id: "g-bought-inside",
+        reservationBought: true,
+        reservationDueAt: new Date(NOW.getTime() - 167 * 60 * 60 * 1000),
+      }),
+    ];
     const before = state.rows.map((row) => ({ ...row }));
 
     await expect(processReservationTimers(NOW, db)).resolves.toEqual(ZEROS);
 
-    // The row was never even a candidate of step 3 and no CAS was attempted.
-    expect(state.candidateReads.map((read) => read.phase)).toEqual([
-      "ACTIVE",
-      "AWAITING_GIVER",
-      "AWAITING_OWNER",
-    ]);
-    expect(state.candidateReads[2]?.ids).toEqual([]);
     expect(state.writes).toEqual([]);
-
-    // Neither the status nor a single reservation column moved, and the run
-    // wrote no audit line.
+    expect(state.notifications).toEqual([]);
     expect(state.rows).toEqual(before);
-    expect(state.rows[0]).toMatchObject({
-      status: "RESERVED",
-      reservationPhase: "AWAITING_OWNER",
-      reservationBought: true,
-      reservedById: "holder",
-    });
     expect(info).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
     info.mockRestore();
     error.mockRestore();
   });
 
-  it("не трогает бронь в фазе GIVEN, даже когда 168 часов прошли", async () => {
+  it("снимает бронь в фазе GIVEN через 168 ч после срока", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    state.rows = [timerRow({ id: "g-given", reservationPhase: "GIVEN" })];
+    state.rows = [
+      timerRow({
+        id: "g-given",
+        reservationPhase: "GIVEN",
+        reservationDueAt: new Date(NOW.getTime() - 200 * 60 * 60 * 1000),
+      }),
+    ];
+
+    await expect(processReservationTimers(NOW, db)).resolves.toEqual({
+      ...ZEROS,
+      released: 1,
+    });
+
+    expect(state.candidateReads[2]?.ids).toEqual(["g-given"]);
+    expect(state.rows[0]).toMatchObject({
+      status: "OPEN",
+      reservationPhase: null,
+      reservedById: null,
+    });
+    expect(state.notifications).toEqual([
+      { kind: "RESERVATION_AUTO_RELEASE", recipientId: "holder", role: "holder" },
+    ]);
+    // The only line is the release: a GIVEN row gets no deadline reminder.
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+      event: "gift.reservation.released-by-expiry",
+    });
+    expect(error).not.toHaveBeenCalled();
+    info.mockRestore();
+    error.mockRestore();
+  });
+
+  it("не трогает GIVEN, пока 168 часов с срока не прошли, и не шлёт напоминаний", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    state.rows = [
+      timerRow({
+        id: "g-given-inside",
+        reservationPhase: "GIVEN",
+        reservationDueAt: new Date(NOW.getTime() - 100 * 60 * 60 * 1000),
+      }),
+    ];
     const before = state.rows.map((row) => ({ ...row }));
 
     await expect(processReservationTimers(NOW, db)).resolves.toEqual(ZEROS);
 
-    expect(state.candidateReads[2]?.ids).toEqual([]);
+    // Steps 1–2 do not read `GIVEN` at all, so no `RESERVATION_DUE` is written.
+    expect(state.candidateReads[0]?.ids).toEqual([]);
+    expect(state.candidateReads[1]?.ids).toEqual([]);
     expect(state.writes).toEqual([]);
+    expect(state.notifications).toEqual([]);
     expect(state.rows).toEqual(before);
-    expect(state.rows[0]).toMatchObject({
-      status: "RESERVED",
-      reservationPhase: "GIVEN",
-      reservedById: "holder",
-    });
     expect(info).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
     info.mockRestore();
@@ -360,38 +471,40 @@ describe("AD-15 (6) — окно снятия считается от срока
       reservedById: "holder",
       titleSnapshotOnReserve: "Плед",
     });
+    expect(state.notifications).toEqual([]);
     expect(info).not.toHaveBeenCalled();
     info.mockRestore();
   });
 });
 
 describe("AD-15 (7) — гонка cron и пользователя", () => {
-  it("не переписывает строку, которую держатель изменил между выборкой и CAS", async () => {
+  it("не снимает бронь, которую держатель снял между выборкой и CAS", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     state.rows = [timerRow({ id: "g-race" })];
 
-    // The holder presses «Купил» after the cron read the candidate but before
-    // its CAS transaction; the same fake applies the production CAS predicate.
-    state.beforeTransaction = function holderBuysFirst() {
+    // The holder releases the reservation after the cron read the candidate but
+    // before its CAS transaction; the snapshot inside the transaction is fresh.
+    state.beforeTransaction = function holderReleasesFirst() {
       const target = state.rows.find((row) => row.id === "g-race");
       if (target === undefined) throw new Error("expected the timer candidate");
-      target.reservationBought = true;
+      target.status = "OPEN";
+      target.reservedAt = null;
+      target.reservedById = null;
+      target.reservationDueAt = null;
+      target.reservationPhase = null;
+      target.reservationPhaseAt = null;
     };
 
     await expect(processReservationTimers(NOW, db)).resolves.toEqual(ZEROS);
 
-    // The CAS ran exactly once and matched no row: the transition was lost,
-    // nothing was cleared and no audit line was written.
-    expect(state.writes).toHaveLength(1);
-    expect(state.writes[0]).toMatchObject({ id: "g-race", matched: 0 });
+    // The release found no live reservation and wrote nothing at all.
+    expect(state.writes).toEqual([]);
+    expect(state.notifications).toEqual([]);
     expect(state.rows[0]).toMatchObject({
-      status: "RESERVED",
-      reservationPhase: "AWAITING_OWNER",
-      reservationPhaseAt: PAST_OWNER_WINDOW,
-      reservationBought: true,
-      reservedById: "holder",
-      titleSnapshotOnReserve: "Плед",
+      status: "OPEN",
+      reservationPhase: null,
+      reservedById: null,
     });
     expect(info).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
@@ -401,11 +514,17 @@ describe("AD-15 (7) — гонка cron и пользователя", () => {
 
   it("повторный прогон с тем же now не даёт второго перехода", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const extendedDueAt = new Date(NOW.getTime() + 7 * 24 * 60 * 60 * 1000);
     state.rows = [timerRow({ id: "g-race" })];
-    state.beforeTransaction = function holderBuysFirst() {
+
+    // The holder extends the reservation before the CAS: the CAS compares the
+    // new deadline it read, so it cannot match and the transition is lost.
+    state.beforeTransaction = function holderExtendsFirst() {
       const target = state.rows.find((row) => row.id === "g-race");
       if (target === undefined) throw new Error("expected the timer candidate");
-      target.reservationBought = true;
+      target.reservationPhase = "ACTIVE";
+      target.reservationDueAt = extendedDueAt;
+      target.reservationPhaseAt = NOW;
     };
 
     await expect(processReservationTimers(NOW, db)).resolves.toEqual(ZEROS);
@@ -416,10 +535,11 @@ describe("AD-15 (7) — гонка cron и пользователя", () => {
     await expect(processReservationTimers(NOW, db)).resolves.toEqual(ZEROS);
 
     expect(state.writes).toHaveLength(writesAfterFirstRun);
+    expect(state.notifications).toEqual([]);
     expect(state.rows[0]).toMatchObject({
       status: "RESERVED",
-      reservationPhase: "AWAITING_OWNER",
-      reservationBought: true,
+      reservationPhase: "ACTIVE",
+      reservationDueAt: extendedDueAt,
       reservedById: "holder",
     });
     expect(info).not.toHaveBeenCalled();

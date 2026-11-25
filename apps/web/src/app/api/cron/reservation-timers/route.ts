@@ -5,10 +5,10 @@ import { processReservationTimers } from "@/lib/gift-status-store";
 /**
  * Story 5.6 (AD-9, AD-16, ARCH-A15): the hourly reservation cycle. The same
  * secret and the same timing-safe check as `/api/cron/wish-expiry`; the run moves
- * a row at most one phase (72 h, then 168 h) and releases only a reservation
- * whose deadline is at least 168 hours old and that the holder did not mark as
- * bought. The `AWAITING_OWNER` phase is internal: the owner is never asked and
- * never notified (CLE-124/D-49).
+ * a row at most one phase (72 h, then 168 h) and releases a reservation whose
+ * deadline is at least 168 hours old — whatever its phase and whether or not the
+ * holder marked it as bought (CLE-124/S9b-1). The `AWAITING_OWNER` phase is
+ * internal: the owner is never asked and never notified (CLE-124/D-49).
  *
  * The answer carries the three counters and nothing else — no ids, titles, nicks
  * or moments. A partly failed run is an empty 500, so the scheduler sees it as

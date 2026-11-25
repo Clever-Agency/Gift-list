@@ -79,8 +79,16 @@ README, «Деплой вне Vercel»): `prisma migrate deploy` с `DATABASE_UR
 ### Таймеры брони (Story 5.6)
 
 Таймеры брони двигают фазу брони по сроку (`ACTIVE → AWAITING_GIVER →
-AWAITING_OWNER → OPEN`) через `POST /api/cron/reservation-timers`. Устроены так
-же, как ночное архивирование, и новых секретов и окружений не требуют:
+AWAITING_OWNER → OPEN`) через `POST /api/cron/reservation-timers`. Цикл простой
+(D-49): когда наступает срок брони, напоминание получает только даритель; через
+72 часа бронь переходит во внутреннюю фазу `AWAITING_OWNER`, и об этом не
+сообщается никому; через 7 дней после срока (168 часов от `reservationDueAt`)
+бронь без отметки «Купил» снимается, и об этом узнаёт только даритель. Владельцу
+желания не приходит ни одного уведомления ни на одном шаге — для него подарок
+остаётся сюрпризом. Уведомления дарителю — `RESERVATION_DUE` при наступлении
+срока и `RESERVATION_AUTO_RELEASE` при авто-снятии, оба в приложении и письмом.
+Устроены так же, как ночное архивирование, и новых секретов и окружений не
+требуют:
 
 - секрет и окружение — те же: `CRON_SECRET` (не короче 32 символов, совпадает
   со значением на хосте) и GitHub Environment `cron-staging`;
@@ -96,11 +104,12 @@ AWAITING_OWNER → OPEN`) через `POST /api/cron/reservation-timers`. Уст
 - ручной запуск: Actions → Reservation timers → Run workflow (выбора окружения
   нет) или, если Actions недоступен,
   `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://staging.wishmoon.clever-agency.dev/api/cron/reservation-timers`.
-  Успех — `{ "ok": true, "data": { "expiredToGiver", "askedOwner", "released" } }`;
+  Успех — `{ "ok": true, "data": { "expiredToGiver", "toAwaitingOwner", "released" } }`;
   частичный сбой строки даёт пустой 500, счётчики наружу не отдаются;
 - пропущенный запуск только откладывает переходы: за прогон строка делает не
   больше одного шага, а следующие шаги ждут своих окон (72 ч и 168 ч от
-  `reservationPhaseAt`). Догона «сразу в `OPEN`» нет (ARCH-A15);
+  `reservationDueAt`; бронь, переведённую в `AWAITING_OWNER` этим же прогоном,
+  снимают не раньше следующего). Догона «сразу в `OPEN`» нет (ARCH-A15);
 - миграций нет: колонки брони и индексы для выборки уже есть в применённой
   `20261103074333_gift_reservations`; схема Prisma не меняется;
 - смена `CRON_SECRET` — в том же порядке, что у `wish-expiry.yml`: сначала
@@ -112,6 +121,8 @@ AWAITING_OWNER → OPEN`) через `POST /api/cron/reservation-timers`. Уст
   секретов, на существующих секретах репозитория `APP_URL` и `CRON_SECRET`, как
   у `wish-expiry.yml`) и проверить первый запуск. Пока job не добавлен,
   расписание трогает только staging.
+- после выката этой версии на прод почасовой запуск на проде можно включать —
+  это отдельная задача CLE-126.
 
 ### Хотфикс
 

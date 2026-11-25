@@ -19,11 +19,17 @@ const catalog = JSON.parse(
     reserveNoButton: Record<string, string>;
     reserveCta: string;
   };
+  reservations: Record<string, string>;
 };
 
 vi.mock("use-intl", () => ({
   useTranslations: (namespace: string) => (key: string, values?: Record<string, string>) => {
-    const group = namespace === "app.gift.reserveConfirm" ? catalog.gift.reserveConfirm : {};
+    const group =
+      namespace === "app.gift.reserveConfirm"
+        ? catalog.gift.reserveConfirm
+        : namespace === "app.reservations"
+          ? catalog.reservations
+          : {};
     const text = group[key] ?? key;
     return text.replace(/\{(\w+)\}/g, (_, name: string) => String(values?.[name] ?? ""));
   },
@@ -92,6 +98,20 @@ describe("ReserveConfirm", () => {
     expect(switches()).toHaveLength(1);
     expect(switches()[0]?.getAttribute("aria-label")).toBe("Показать другим, кто берёт");
     expect(dialogElement()?.textContent ?? "").not.toContain("Показать владельцу");
+  });
+
+  /**
+   * CLE-124/S9b-3 (§10.3, DESIGN → ReserveConfirm): under the date — the release
+   * run-off line; the 30-day cap caption stays.
+   */
+  it("под датой — строка о снятии через 7 дней и потолок «Не позже»", async () => {
+    await render(
+      <ReserveConfirm open title="Плед" timeZone="Europe/Minsk" onClose={noop} onConfirm={noop} />,
+    );
+
+    const text = dialogElement()?.textContent ?? "";
+    expect(text).toContain("Если не продлить, бронь снимется через 7 дней после этой даты");
+    expect(text).toContain("Не позже");
   });
 
   it("sends the guests' switch without the removed owner flag", async () => {

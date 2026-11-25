@@ -1,5 +1,5 @@
 import { formatDate, type GiftReserveBody } from "@gift-list/contracts";
-import { BottomSheet, Button, Dialog, Switch, YStack } from "@gift-list/ui";
+import { BottomSheet, Button, Dialog, Switch, Text, YStack } from "@gift-list/ui";
 import { useMedia } from "@tamagui/core";
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
@@ -50,6 +50,7 @@ export function ReserveConfirm({
   onConfirm,
 }: ReserveConfirmProps) {
   const t = useTranslations("app.gift.reserveConfirm");
+  const tReservations = useTranslations("app.reservations");
   const locale = useLocale();
   const compact = !useMedia().medium;
   const [dueOn, setDueOn] = useState(() => defaultDueOn(timeZone));
@@ -83,16 +84,22 @@ export function ReserveConfirm({
 
   const body = (
     <YStack gap="$4">
-      <ReserveDateField
-        dueOn={dueOn}
-        minDue={minDue}
-        maxDue={maxDue}
-        label={t("dueLabel", { date: dueLabelDate })}
-        hint={t("dueHint")}
-        caption={t("dueCaption", { max: maxCaption })}
-        dateError={dateError}
-        onChange={setDueOn}
-      />
+      <YStack gap="$1">
+        <ReserveDateField
+          dueOn={dueOn}
+          minDue={minDue}
+          maxDue={maxDue}
+          label={t("dueLabel", { date: dueLabelDate })}
+          hint={t("dueHint")}
+          caption={t("dueCaption", { max: maxCaption })}
+          dateError={dateError}
+          onChange={setDueOn}
+        />
+        {/* CLE-124/S9b-3 (§10.3): the line under the date names the release run-off. */}
+        <Text kind="caption" tone="muted">
+          {tReservations("dueNote")}
+        </Text>
+      </YStack>
       <Switch
         label={t("showOthers")}
         checked={holderVisibleToOthers}

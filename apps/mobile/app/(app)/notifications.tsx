@@ -7,6 +7,7 @@ import { fetchNotification, fetchNotifications, markNotificationRead, submitNoti
 import { useNotificationBadge } from "@/navigation/notification-badge";
 import { SidebarNav } from "@/navigation/sidebar-nav";
 import { useAuth } from "@/session/auth-context";
+import { mutationErrorMessage } from "@/session/form-issue";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { NotificationsList } from "@/ui/notifications-list";
 import { ReservationExtendDialog } from "@/ui/reservation-extend-dialog";
@@ -153,7 +154,13 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
     if ("code" in result && result.code === "CONFLICT") {
       setExtendFor(null);
       setConfirm(null);
-      setActionError(t("stale"));
+      // CLE-124/S9b-3 (D-12): a late extension has its own sentence; any other lost
+      // race keeps «Даритель уже ответил».
+      setActionError(
+        result.reason === "RESERVATION_DUE_PASSED"
+          ? mutationErrorMessage(result, common)
+          : t("stale"),
+      );
       await Promise.all([reload(), reloadSelected()]);
     } else {
       setActionError(common("errors.generic"));

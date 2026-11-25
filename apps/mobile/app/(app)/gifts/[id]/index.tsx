@@ -21,7 +21,11 @@ import { formatDate, formatPrice } from "@gift-list/contracts";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
-import { updateReservation, type ReservationUpdateResult } from "@/api/reservations";
+import {
+  markReservationGiven,
+  updateReservation,
+  type ReservationUpdateResult,
+} from "@/api/reservations";
 import { fetchViewerGift, releaseMyReservation, reserveGift } from "@/api/viewer-gift";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
@@ -30,7 +34,7 @@ import { mutationErrorMessage } from "@/session/form-issue";
 import { EmptyState } from "@/ui/empty-state";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
-import { ReservationExtendDialog } from "@/ui/reservation-extend-dialog";
+import { ReservationExtendDialog, canExtendReservation } from "@/ui/reservation-extend-dialog";
 import { ReservationReleaseConfirm } from "@/ui/reservation-release-confirm";
 import {
   ReservationVisibility,
@@ -267,15 +271,26 @@ export default function GiftDetailScreen() {
   }
 
   /** One holder action at a time; a second tap while the answer is missing sends nothing. */
-  async function requestAction(body: ReservationActionBody): Promise<ReservationUpdateResult | null> {
+  async function requestReservation(
+    request: (giftId: string) => Promise<ReservationUpdateResult>,
+  ): Promise<ReservationUpdateResult | null> {
     if (!id || actionInFlight.current || releaseInFlight.current) return null;
     actionInFlight.current = true;
     setActionBusy(true);
     setToast(null);
-    const result = await updateReservation(id, body);
+    const result = await request(id);
     actionInFlight.current = false;
     setActionBusy(false);
     return result;
+  }
+
+  /** The answer of a holder action: a card replaces the facts, an error takes the tail. */
+  function applyAnswer(result: ReservationUpdateResult) {
+    if (result.ok) {
+      applyReservation(result.reservation);
+      return;
+    }
+    reportActionFailure(result);
   }
 
   /**
@@ -301,18 +316,27 @@ export default function GiftDetailScreen() {
   }
 
   async function runAction(body: ReservationActionBody) {
-    const result = await requestAction(body);
+    const result = await requestReservation(function request(giftId) {
+      return updateReservation(giftId, body);
+    });
     if (!result) return;
-    if (result.ok) {
-      applyReservation(result.reservation);
-      return;
-    }
-    reportActionFailure(result);
+    applyAnswer(result);
   }
 
   /** «Купил»: only the flag changes — phase, deadline and switches stay (AD-9). */
   async function submitBought(value: boolean) {
     await runAction({ action: "bought", value });
+  }
+
+  /**
+   * «Подарил» (Story 5.7): the reservation moves into `GIVEN`, so the stage under
+   * the deadline reads «Подарено» from the answer. The wish status stays as it was,
+   * and a repeated press is a no-op success on the server.
+   */
+  async function submitGiven() {
+    const result = await requestReservation(markReservationGiven);
+    if (!result) return;
+    applyAnswer(result);
   }
 
   /** The visibility switch travels in one `visibility` action; the answer replaces the card. */
@@ -343,11 +367,14 @@ export default function GiftDetailScreen() {
   /**
    * «Подтвердить» of the extension: one `extend` action. A day outside the window
    * keeps the sheet open with «Выберите дату не позже {max}.»; the other failures
-   * close it and follow the shared tail. `GIVEN` never opens the sheet: an
-   * extension there would silently restart the timers of Story 5.7.
+   * close it and follow the shared tail. A passed deadline (`RESERVATION_DUE_PASSED`)
+   * is named by that tail and the wish is reread, so the button disappears with the
+   * refreshed phase.
    */
   async function submitExtend(dueOn: string) {
-    const result = await requestAction({ action: "extend", dueOn });
+    const result = await requestReservation(function request(giftId) {
+      return updateReservation(giftId, { action: "extend", dueOn });
+    });
     if (!result) return;
     if (result.ok) {
       applyReservation(result.reservation);
@@ -451,15 +478,27 @@ export default function GiftDetailScreen() {
                         }}
                         testID="gift-bought"
                       />
-                      {/* `GIVEN` ждёт подтверждения (Story 5.7): продление
-                          вернуло бы `ACTIVE` и таймеры, поэтому кнопки нет. */}
-                      {current.reservation.phase === "GIVEN" ? null : (
+                      {/* CLE-124/S9b-3 (D-12, §10.2): продления нет в `GIVEN` и
+                          после Срока — сервер отвечает `RESERVATION_DUE_PASSED`. */}
+                      {canExtendReservation(current.reservation, timeZone) ? (
                         <Button
                           label={tReservations("extend")}
                           variant="outline"
                           onPress={openExtend}
                           disabled={holderBusy}
                           testID="gift-extend"
+                        />
+                      ) : null}
+                      {/* Story 5.7: «Подарил» — этап «Подарено»; в `GIVEN` кнопки нет. */}
+                      {current.reservation.phase === "GIVEN" ? null : (
+                        <Button
+                          label={tReservations("given")}
+                          variant="secondary"
+                          onPress={function markGiven() {
+                            void submitGiven();
+                          }}
+                          disabled={holderBusy}
+                          testID="gift-given"
                         />
                       )}
                       <ReservationVisibility

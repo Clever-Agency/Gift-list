@@ -67,6 +67,7 @@ const ready = {
 
 const base = {
   state: ready,
+  timeZone: "Europe/Minsk",
   expanded: new Set<string>(),
   busyIds: new Set<string>(),
   onRetry: noop,
@@ -74,12 +75,13 @@ const base = {
   onOpenGift: noop,
   onMenu: noop,
   onExtend: noop,
+  onGiven: noop,
   onToggleVisibility: noop,
   onBoughtChange: noop,
   onVisibilityChange: noop,
 } satisfies ReservationsScreenProps;
 
-/** Список: три фазы, «Куплено», одна карточка без ссылки на деталь. */
+/** Список: три фазы, «Куплено», «Подарил» у активной и одна карточка без ссылки. */
 export const List: Story = {
   args: base,
 };

@@ -6,8 +6,9 @@ import { ReservationCard, type ReservationCardProps } from "./reservation-card";
 /**
  * Карточка брони держателя (Story 5.5, `DESIGN.md` → ReservationCard): снимок
  * названия, «у @ник», срок «до DD.MM», подпись фазы из «Подписи брони», чип
- * «Куплено», «Купил», «Продлить до…» и свёрнутые переключатели «Кто видит, что
- * это я». Ссылка на деталь — только при `canOpenGift`; в `GIVEN` продления нет.
+ * «Куплено», «Купил», «Подарил» (Story 5.7), «Продлить до…» и свёрнутые
+ * переключатели «Кто видит, что это я». Ссылка на деталь — только при
+ * `canOpenGift`; в `GIVEN` и после Срока продления нет (CLE-124/S9b-3).
  */
 const meta = {
   title: "App/ReservationCard",
@@ -43,11 +44,13 @@ function sample(overrides: Partial<ReservationCardData> = {}): ReservationCardDa
 /** The props every story shares; each story changes the card or one state. */
 const base = {
   card: sample(),
+  timeZone: "Europe/Minsk",
   visibilityExpanded: false,
   onToggleVisibility: noop,
   onOpenGift: noop,
   onMenu: noop,
   onExtend: noop,
+  onGiven: noop,
   onBoughtChange: noop,
   onVisibilityChange: noop,
 } satisfies ReservationCardProps;
@@ -57,18 +60,18 @@ export const Active: Story = {
   args: base,
 };
 
-/** `AWAITING_GIVER`: «Срок истёк», действия остаются. */
+/** `AWAITING_GIVER`: «Срок истёк», «Подарил» и «Снять бронь» остаются, продления нет. */
 export const AwaitingGiver: Story = {
   tags: ["!dev"],
   args: { ...base, card: sample({ phase: "AWAITING_GIVER" }) },
 };
 
-/** `AWAITING_OWNER`: «Срок истёк · ждём ответа владельца». */
+/** `AWAITING_OWNER`: тоже «Срок истёк» — владельца больше ни о чём не спрашивают. */
 export const AwaitingOwner: Story = {
   args: { ...base, card: sample({ phase: "AWAITING_OWNER" }) },
 };
 
-/** `GIVEN`: «Ждёт подтверждения», «Продлить до…» не предлагается (Story 5.7). */
+/** `GIVEN`: «Подарено»; «Подарил» и «Продлить до…» не предлагаются (Story 5.7). */
 export const Given: Story = {
   tags: ["!dev"],
   args: { ...base, card: sample({ phase: "GIVEN" }) },

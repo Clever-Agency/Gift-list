@@ -231,6 +231,117 @@ it("marks bought before offering a date and allows clearing the mark from the sa
   }
 });
 
+/**
+ * CLE-124/S9b-3 (§10.2, §10.4): the reminder arrives before the deadline, so it
+ * keeps «Продлить до…» and adds «Подарил»; the expiry notice keeps «Подарил» but
+ * loses the extension.
+ */
+it("напоминание до срока оставляет «Продлить до…», а «Срок истёк» — нет", async function dueActions() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "reminder", createdAt: "2026-11-24T13:30:00.000Z", readAt: null, href: null,
+      event: {
+        kind: "RESERVATION_DUE", giftId: "gift", titleSnapshot: "Плед", actionable: true,
+        dueAt: "2999-01-01T21:00:00.000Z", timeZone: "UTC", reminder: true,
+      },
+    }],
+    nextCursor: null,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    expect(container.textContent).toContain("снимется через 7 дней после этой даты");
+    for (const label of ["Подарил", "Купил, ещё не вручил", "Продлить до…", "Снять бронь"]) {
+      expect(actionButton(label), `кнопка «${label}»`).toBeDefined();
+    }
+
+    mocks.fetchFeed.mockResolvedValue({
+      items: [{
+        id: "due", createdAt: "2026-11-24T13:30:00.000Z", readAt: null, href: null,
+        event: {
+          kind: "RESERVATION_DUE", giftId: "gift", titleSnapshot: "Плед", actionable: true,
+          dueAt: "2020-01-01T21:00:00.000Z", timeZone: "UTC",
+        },
+      }],
+      nextCursor: null,
+    });
+    await act(async function refocus() { mocks.focus.run?.(); });
+    expect(container.textContent).toContain("Если ничего не сделать, бронь снимется");
+    for (const label of ["Подарил", "Купил, ещё не вручил", "Снять бронь"]) {
+      expect(actionButton(label), `кнопка «${label}»`).toBeDefined();
+    }
+    expect(actionButton("Продлить до…")).toBeUndefined();
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
+it("«Подарил» из уведомления отправляет действие given (Story 5.7)", async function markGiven() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "due", createdAt: "2026-11-24T13:30:00.000Z", readAt: null, href: null,
+      event: {
+        kind: "RESERVATION_DUE", giftId: "gift", titleSnapshot: "Плед", actionable: true,
+        dueAt: "2020-01-01T21:00:00.000Z", timeZone: "UTC",
+      },
+    }],
+    nextCursor: null,
+  });
+  mocks.submit.mockResolvedValue({ ok: true, data: { id: "due" } });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    await press("Подарил");
+    expect(mocks.submit).toHaveBeenCalledExactlyOnceWith("due", { action: "given" });
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
+it("позднее продление из уведомления называет срок, а не «даритель ответил»", async function lateExtend() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "reminder", createdAt: "2026-11-24T13:30:00.000Z", readAt: null, href: null,
+      event: {
+        kind: "RESERVATION_DUE", giftId: "gift", titleSnapshot: "Плед", actionable: true,
+        dueAt: "2999-01-01T21:00:00.000Z", timeZone: "UTC", reminder: true,
+      },
+    }],
+    nextCursor: null,
+  });
+  mocks.submit.mockResolvedValue({
+    ok: false,
+    code: "CONFLICT",
+    message: "The reservation deadline has passed",
+    reason: "RESERVATION_DUE_PASSED",
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    await press("Продлить до…");
+    await press("Подтвердить");
+    expect(container.textContent).toContain("Срок брони прошёл — продлить уже нельзя.");
+    expect(container.textContent).not.toContain("Даритель уже ответил");
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
 it("владельческое уведомление больше не предлагает ответов (D-49)", async function ownerAskNoActions() {
   mocks.session.ready = true;
   mocks.params.id = undefined;
@@ -259,8 +370,14 @@ it("владельческое уведомление больше не пред
 });
 
 async function press(label: string) {
-  const button = Array.from(document.querySelectorAll<HTMLElement>('[role="button"]'))
-    .find(element => element.getAttribute("aria-label") === label);
+  const button = actionButton(label);
   expect(button).toBeDefined();
   await act(async function click() { button?.click(); });
+}
+
+/** The control whose accessible name is the label; notifications actions have no text. */
+function actionButton(label: string): HTMLElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="button"]')).find(
+    element => element.getAttribute("aria-label") === label,
+  );
 }

@@ -4,7 +4,12 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import type { ClientResult } from "@/api/client";
-import { fetchReservations, updateReservation } from "@/api/reservations";
+import {
+  fetchReservations,
+  markReservationGiven,
+  updateReservation,
+  type ReservationUpdateResult,
+} from "@/api/reservations";
 import { releaseMyReservation } from "@/api/viewer-gift";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
@@ -291,8 +296,21 @@ function ReservationsContent({
   }
 
   async function sendAction(card: ReservationCard, body: ReservationActionBody): Promise<boolean> {
+    return send(card, function request() {
+      return updateReservation(card.giftId, body);
+    });
+  }
+
+  /**
+   * One request of one card inside the shared busy/in-flight frame: whichever action
+   * runs, a second tap of the same card waits for this answer.
+   */
+  async function send(
+    card: ReservationCard,
+    request: () => Promise<ReservationUpdateResult>,
+  ): Promise<boolean> {
     if (!startCard(card)) return false;
-    const result = await updateReservation(card.giftId, body).finally(function release() {
+    const result = await request().finally(function release() {
       finishCard(card);
     });
     if (result.ok) {
@@ -306,6 +324,18 @@ function ReservationsContent({
   /** «Купил»: only the flag changes — phase, deadline and switches stay (AD-9). */
   async function changeBought(card: ReservationCard, value: boolean) {
     await sendAction(card, { action: "bought", value });
+  }
+
+  /**
+   * «Подарил» (Story 5.7): the server moves the reservation into `GIVEN` and answers
+   * the updated card, so the phase under the deadline reads «Подарено» at once.
+   * A repeated press is a no-op success on the server; the card sends one request
+   * at a time, so a double tap never leaves twice.
+   */
+  async function markGiven(card: ReservationCard) {
+    await send(card, function request() {
+      return markReservationGiven(card.giftId);
+    });
   }
 
   /** Both switches travel in one `visibility` action; the answer replaces the card. */
@@ -471,12 +501,16 @@ function ReservationsContent({
     <>
       <ReservationsView
         state={state}
+        timeZone={timeZone}
         expanded={expanded}
         busyIds={busyIds}
         onRetry={retry}
         onOpenGift={openGift}
         onMenu={openMenu}
         onExtend={openExtend}
+        onGiven={function givenOf(card) {
+          void markGiven(card);
+        }}
         onToggleVisibility={toggleVisibility}
         onBoughtChange={function changeBoughtOf(card, value) {
           void changeBought(card, value);

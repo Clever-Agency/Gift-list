@@ -25,7 +25,14 @@ export function NotificationsList({ items, selectedId, busyId, onOpen, onAction 
         const request = "actionable" in event;
         const actions: NotificationAction["action"][] = [];
         if (request && event.actionable) {
-          if (event.kind === "RESERVATION_DUE") actions.push(event.bought ? "clearBought" : "bought", "extend", "release");
+          if (event.kind === "RESERVATION_DUE") {
+            // Story 5.7 and D-12: «Подарил» first, and «Продлить до…» only while the
+            // deadline has not passed. A row written before `dueAt` existed keeps the
+            // old set: the server still refuses a late extension itself.
+            actions.push("given", event.bought ? "clearBought" : "bought");
+            if (extendStillOpen(event.dueAt)) actions.push("extend");
+            actions.push("release");
+          }
         }
         const time = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" })
           .format(new Date(item.createdAt));
@@ -59,6 +66,17 @@ export function NotificationsList({ items, selectedId, busyId, onOpen, onAction 
 }
 
 NotificationsList.displayName = "NotificationsList";
+
+/**
+ * CLE-124/S9b-3 (D-12, §10.4): the expiry notice names the release date and offers
+ * no extension — the stored deadline is the exclusive end of the chosen day, so
+ * the action lives only while that instant is ahead. A reminder is always ahead of
+ * it, and a row without `dueAt` keeps the pre-change set.
+ */
+function extendStillOpen(dueAt: string | undefined, now = Date.now()): boolean {
+  if (dueAt === undefined) return true;
+  return Date.parse(dueAt) > now;
+}
 
 function NotificationActionButton({ label, disabled, onPress }: {
   label: string;

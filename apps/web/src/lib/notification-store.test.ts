@@ -190,10 +190,12 @@ describe("notification privacy and availability", function privacyTests() {
 
   it("checks the phase timestamp and reservation instance independently", async function staleSnapshots() {
     const live = await notificationGiftSnapshot(db as never, gift.id);
-    expect(notificationIsActionable(record(), live)).toBe(true);
-    expect(notificationIsActionable(record({ phaseAt: reservedAt }), live)).toBe(false);
-    expect(notificationIsActionable(record({ reservationAt: now }), live)).toBe(false);
-    expect(notificationIsActionable(record(), live && { ...live, reservationPhase: "ACTIVE" })).toBe(false);
+    const active = live && { ...live, reservationPhase: "AWAITING_GIVER" as const };
+    const due = record({ kind: "RESERVATION_DUE", recipientId: "holder", actorId: "owner" });
+    expect(notificationIsActionable(due, active)).toBe(true);
+    expect(notificationIsActionable({ ...due, phaseAt: reservedAt }, active)).toBe(false);
+    expect(notificationIsActionable({ ...due, reservationAt: now }, active)).toBe(false);
+    expect(notificationIsActionable(due, live)).toBe(false);
   });
 
   it("rejects a stale control before the GiftStatusService CAS", async function rejectStaleMutation() {
@@ -421,7 +423,7 @@ describe("CLE-124: owner reservation rows are hidden", function hiddenOwnerRows(
     db.$transaction.mockImplementation(async function run(work) { return work(db); });
     db.notification.findFirst.mockResolvedValue(record());
 
-    await expect(actOnNotification("owner", "notification", { action: "keep" }))
+    await expect(actOnNotification("owner", "notification", { action: "release" }))
       .resolves.toMatchObject({ ok: false, code: "NOT_FOUND" });
 
     expect(db.$queryRaw).not.toHaveBeenCalled();

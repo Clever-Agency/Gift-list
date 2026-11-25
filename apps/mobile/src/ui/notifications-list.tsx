@@ -39,10 +39,9 @@ export function NotificationsList({ items, selectedId, busyId, onOpen, onAction 
         const icon = event.kind.startsWith("FRIEND_")
           ? <Users size={20} />
           : "titleSnapshot" in event ? <CalendarCheck size={20} /> : <Bell size={20} />;
-        const holder = "holderName" in event && event.holderName ? t("holder", { name: event.holderName }) : null;
         const stale = request && !event.actionable ? t("stale") : null;
         const fields = notificationChangedFields(event, locale);
-        const subtitle = [holder, stale, fields].filter(Boolean).join(". ");
+        const subtitle = [stale, fields].filter(Boolean).join(". ");
 
         function open() {
           onOpen(item);

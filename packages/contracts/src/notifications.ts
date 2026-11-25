@@ -28,7 +28,6 @@ export const notificationPayloadSchema = z.discriminatedUnion("kind", [
     dueAt: z.iso.datetime().optional(), timeZone: z.string().optional(),
     /** `true` — the reminder 1–2 days before the deadline; absent — the expiry notice. */
     reminder: z.boolean().optional() }),
-  z.object({ kind: z.literal("RESERVATION_OWNER_ASK"), ...wish, ...holder, ...phase }),
   z.object({ kind: z.literal("RESERVATION_KEPT_BY_OWNER"), ...wish, dueAt: z.iso.datetime(), timeZone: z.string() }),
   z.object({ kind: z.literal("RESERVATION_AUTO_RELEASE"), ...wish, ...holder }),
   z.object({ kind: z.literal("GIFT_EDITED"), ...wish, fields: z.array(z.enum(["title", "description", "linkUrl", "price"])) }),
@@ -68,8 +67,6 @@ export const notificationPreferencesSchema = z.object({
 });
 export const notificationPreferencesPatchSchema = notificationPreferencesSchema.partial().strict();
 export const notificationActionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("received") }),
-  z.object({ action: z.literal("keep") }),
   z.object({ action: z.literal("release") }),
   z.object({ action: z.literal("bought") }),
   z.object({ action: z.literal("clearBought") }),

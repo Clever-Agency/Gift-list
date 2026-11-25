@@ -183,12 +183,8 @@ export function notificationIsActionable(row: Notification, gift: GiftSnapshot |
   const reminder = row.kind === "RESERVATION_DUE" && payload !== null &&
     typeof payload === "object" && !Array.isArray(payload) &&
     (payload as { reminder?: unknown }).reminder === true;
-  const phase = row.kind === "RESERVATION_DUE" ? (reminder ? "ACTIVE" : "AWAITING_GIVER") :
-    row.kind === "RESERVATION_OWNER_ASK" ? "AWAITING_OWNER" :
-      null;
-  const ownsAction = row.kind === "RESERVATION_DUE"
-    ? gift?.reservedById === row.recipientId
-    : gift?.list.ownerId === row.recipientId && gift?.reservedById === row.actorId;
+  const phase = row.kind === "RESERVATION_DUE" ? (reminder ? "ACTIVE" : "AWAITING_GIVER") : null;
+  const ownsAction = row.kind === "RESERVATION_DUE" && gift?.reservedById === row.recipientId;
   return Boolean(
     phase && gift?.status === "RESERVED" && !gift.archivedAt && ownsAction &&
     gift.reservationPhase === phase && row.reservationAt && row.phaseAt &&
@@ -204,8 +200,9 @@ export function notificationIsActionable(row: Notification, gift: GiftSnapshot |
  *
  * The rule covers rows already written before the change, which is why it lives
  * here and the rows stay in the database: `RESERVATION_CREATED` and
- * `RESERVATION_OWNER_ASK` are owner-only kinds, while the two release kinds also
- * go to the holder and are hidden for the owner by their payload.
+ * `RESERVATION_OWNER_ASK` are owner-only kinds (the enum value of the latter
+ * stays in the schema for those rows), while the two release kinds also go to
+ * the holder and are hidden for the owner by their payload.
  */
 export function isHiddenOwnerReservationNotification(
   row: Pick<Notification, "kind" | "payload">,

@@ -342,33 +342,6 @@ it("позднее продление из уведомления называе
   }
 });
 
-it("владельческое уведомление больше не предлагает ответов (D-49)", async function ownerAskNoActions() {
-  mocks.session.ready = true;
-  mocks.params.id = undefined;
-  mocks.fetchFeed.mockResolvedValue({
-    items: [{
-      id: "owner-ask", createdAt: "2026-11-24T13:30:00.000Z", readAt: null, href: null,
-      event: { kind: "RESERVATION_OWNER_ASK", giftId: "gift", titleSnapshot: "Плед", actionable: true },
-    }],
-    nextCursor: null,
-  });
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  try {
-    await act(async function show() { root.render(render()); });
-    expect(container.textContent).toContain("Плед");
-    for (const label of ["Получил", "Не получал, оставить бронь", "Снять бронь"]) {
-      const button = Array.from(document.querySelectorAll<HTMLElement>('[role="button"]'))
-        .find(element => element.getAttribute("aria-label") === label);
-      expect(button, `кнопка «${label}»`).toBeUndefined();
-    }
-  } finally {
-    await act(async function remove() { root.unmount(); });
-    container.remove();
-  }
-});
-
 async function press(label: string) {
   const button = actionButton(label);
   expect(button).toBeDefined();

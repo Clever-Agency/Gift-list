@@ -1,7 +1,8 @@
 /**
- * Story 5.2 (AD-15-1): the holder and the owner release one reservation at the
- * same time. Exactly one CAS succeeds, the second answers `lost`, and exactly
- * one NFR-6 audit line is written.
+ * Story 5.2 (AD-15-1), CLE-124/D-49: a holder's release and the timer's expiry
+ * release of one reservation at the same time. Exactly one CAS succeeds, the
+ * second answers `lost`, and exactly one NFR-6 audit line is written. The owner
+ * takes no part in a reservation of their own wish anymore.
  *
  * Not part of `npm test` (`*.test.ts` only). It refuses anything except a
  * disposable loopback database named by `DISPOSABLE_*` — never `DATABASE_URL`
@@ -77,7 +78,7 @@ function runPrisma(args: readonly string[]): void {
   }
 }
 
-describe.sequential("parallel release CAS (Story 5.2)", () => {
+describe.sequential("parallel release CAS (Story 5.2 / CLE-124)", () => {
   beforeAll(async () => {
     target = resolveTargetOrReport();
     tempDir = mkdtempSync(join(tmpdir(), "gift-list-release-"));
@@ -109,7 +110,7 @@ describe.sequential("parallel release CAS (Story 5.2)", () => {
     });
   });
 
-  it("lets exactly one of a simultaneous holder and owner release win, with one audit line", async () => {
+  it("lets exactly one of a simultaneous holder release and timer release win, with one audit line", async () => {
     const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
     const owner = await prisma.user.create({
       data: {
@@ -133,6 +134,9 @@ describe.sequential("parallel release CAS (Story 5.2)", () => {
       data: { ownerId: owner.id, publicToken: `tok${suffix}` },
     });
     const at = new Date("2026-11-19T10:00:00.000Z");
+    // The deadline is already 168 hours old: the timer may release the row, and
+    // the phase started an hour ago, so step 3 is allowed for it.
+    const reservationDueAt = new Date(at.getTime() - 200 * 60 * 60 * 1000);
     const gift = await prisma.gift.create({
       data: {
         listId: list.id,
@@ -142,10 +146,10 @@ describe.sequential("parallel release CAS (Story 5.2)", () => {
         reservedById: holder.id,
         reservedAt: at,
         titleSnapshotOnReserve: "Плед",
-        reservationDueAt: at,
+        reservationDueAt,
         reservationTimeZone: "Europe/Minsk",
-        reservationPhase: "ACTIVE",
-        reservationPhaseAt: at,
+        reservationPhase: "AWAITING_OWNER",
+        reservationPhaseAt: new Date(at.getTime() - 60 * 60 * 1000),
         holderVisibleToOwner: false,
         holderVisibleToOthers: false,
       },
@@ -153,24 +157,25 @@ describe.sequential("parallel release CAS (Story 5.2)", () => {
 
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
-    const [byHolder, byOwner] = await Promise.all([
+    const [byHolder, byTimer] = await Promise.all([
       prisma.$transaction(function releaseAsHolder(tx) {
         return giftStatusTransaction(tx).releaseReservationByHolder(gift.id, holder.id, at);
       }),
-      prisma.$transaction(function releaseAsOwner(tx) {
-        return giftStatusTransaction(tx).releaseReservationByOwner(gift.id, owner.id, at);
+      prisma.$transaction(function releaseAsTimer(tx) {
+        return giftStatusTransaction(tx).releaseReservationByExpiry(gift.id, at);
       }),
     ]);
 
-    expect([byHolder, byOwner].sort()).toEqual(["lost", "success"]);
+    expect([byHolder, byTimer].sort()).toEqual(["lost", "success"]);
     expect(info).toHaveBeenCalledTimes(1);
     const line = JSON.parse(String(info.mock.calls[0]?.[0])) as Record<string, unknown>;
     expect(line).toEqual({
-      event: "gift.status",
+      event: byTimer === "success" ? "gift.reservation.released-by-expiry" : "gift.status",
       giftId: gift.id,
-      actorId: byHolder === "success" ? holder.id : owner.id,
+      actorId: byTimer === "success" ? null : holder.id,
       from: "RESERVED",
       to: "OPEN",
+      ...(byTimer === "success" ? { recipientId: holder.id } : {}),
       at: at.toISOString(),
     });
     info.mockRestore();
@@ -193,8 +198,8 @@ describe.sequential("parallel release CAS (Story 5.2)", () => {
       prisma.$transaction(function releaseAgainAsHolder(tx) {
         return giftStatusTransaction(tx).releaseReservationByHolder(gift.id, holder.id, at);
       }),
-      prisma.$transaction(function releaseAgainAsOwner(tx) {
-        return giftStatusTransaction(tx).releaseReservationByOwner(gift.id, owner.id, at);
+      prisma.$transaction(function releaseAgainAsTimer(tx) {
+        return giftStatusTransaction(tx).releaseReservationByExpiry(gift.id, at);
       }),
     ]);
     expect(again).toEqual(["lost", "lost"]);

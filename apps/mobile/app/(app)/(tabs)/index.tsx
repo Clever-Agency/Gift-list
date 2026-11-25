@@ -33,6 +33,7 @@ import { loadOwnerDetail } from "@/ui/wish-detail-load";
 import { WishDetailDialog, type WishDetailStep } from "@/ui/wish-detail-dialog";
 import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
+import { needsSurpriseWarning, needsVisibilityWarning } from "@/domain/surprise-warning";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
@@ -48,6 +49,7 @@ import { WishCard } from "@/ui/gift-card";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
+import { SurpriseWarningDialog, useSurpriseWarningCopy } from "@/ui/surprise-warning";
 import { ToastHost } from "@/ui/toast";
 import { useCardGrid } from "@/ui/use-card-grid";
 import { useUndoWindow } from "@/ui/use-undo-window";
@@ -148,6 +150,12 @@ export default function MyWishlistScreen() {
   const [sessionExpired, setSessionExpired] = useState(false);
   // Story 2.3: the chip of an open wish opens the visibility dialog over the list.
   const [picker, setPicker] = useState<{ gift: GiftCard } | null>(null);
+  // D-49 (CLE-124): a narrowing of an open non-secret wish asks one neutral
+  // question; the chip stays as it was until the person answers.
+  const [visibilitySurprise, setVisibilitySurprise] = useState<{
+    gift: GiftCard;
+    next: GiftCard["visibility"];
+  } | null>(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [archiveMenu, setArchiveMenu] = useState<GiftCard | null>(null);
   // Story 5.3: «Получено (N)» is closed until the owner opens it.
@@ -181,12 +189,18 @@ export default function MyWishlistScreen() {
   const cardNodes = useRef(new Map<string, ChipNode | null>());
   const [detail, setDetail] = useState<GiftCard | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  // D-49 (CLE-124): «Изменить» of an open non-secret wish asks the neutral
+  // question as a step of the details layer, never as a second window over it.
+  const [editStep, setEditStep] = useState(false);
   const detailReturn = useRef<string | null>(null);
   // A close from the details hands focus to «Отменить» in the toast, so the closing
   // layer must not put it back on the card.
   const [skipDetailFocus, setSkipDetailFocus] = useState(false);
   // The chip that should get focus once the closed dialog has left the tree.
   const pendingFocus = useRef<string | null>(null);
+  // The chip behind the neutral warning: while the warning is on screen it owns the
+  // focus return, so the closing picker must not pull focus behind the layer.
+  const surpriseChip = useRef<string | null>(null);
   // Review m9: coming back to the screen (e.g. from the composer) refetches the list.
   // The mount effect owns the very first load, so the first focus right after mount is
   // not a reason to fetch again; a refocus refresh is silent (only `retry` shows the
@@ -203,6 +217,9 @@ export default function MyWishlistScreen() {
   const closedMenuWindow = useUndoWindow(
     cardMenu?.status === "CLOSED" ? cardMenu.undoUntil : null,
   );
+  // The neutral question of «Изменить»: the details layer shows it as its own step,
+  // so it reads exactly the stand-alone window's texts (D-49).
+  const editWarning = useSurpriseWarningCopy("edit", detail?.title ?? "");
 
   // The closing toast lands focus on «Отменить» (`DESIGN.md` → «Куда уходит
   // фокус», пункт «а»). The toast is on screen by the time the effect runs.
@@ -409,6 +426,7 @@ export default function MyWishlistScreen() {
     detailReturn.current = gift.id;
     setDetail(gift);
     setCloseStep(null);
+    setEditStep(false);
     setDetailOpen(true);
   }
 
@@ -420,6 +438,7 @@ export default function MyWishlistScreen() {
     const id = detailReturn.current;
     detailReturn.current = null;
     setCloseStep(null);
+    setEditStep(false);
     setCloseBusy(false);
     setDetail(null);
     const skip = skipDetailFocus;
@@ -428,12 +447,33 @@ export default function MyWishlistScreen() {
     restoreFocus(id ? cardNodes.current.get(id) : null);
   }
 
+  /**
+   * «Изменить желание» in the details (Story 2.2). D-49 (CLE-124): an open
+   * non-secret wish gets the neutral question first, as a step of the same
+   * details layer; any other wish goes straight to the form.
+   */
   function editDetail() {
     if (!detail) return;
+    if (needsSurpriseWarning(detail)) {
+      setEditStep(true);
+      return;
+    }
+    openEditForm();
+  }
+
+  /** The accepted «Изменить»: the details leave and the existing form route opens. */
+  function openEditForm() {
+    if (!detail) return;
     const id = detail.id;
+    setEditStep(false);
     setDetailOpen(false);
     setDetail(null);
     router.push({ pathname: "/gifts/[id]/edit", params: { id } });
+  }
+
+  /** «Отмена» of the neutral question: back to the details, the form never opened. */
+  function cancelEditStep() {
+    setEditStep(false);
   }
 
   function loadDetail() {
@@ -463,6 +503,21 @@ export default function MyWishlistScreen() {
         onCancel: cancelCloseStep,
       }
     : null;
+
+  /** The «Изменить» question of the details layer (`WishDetailStep`, one layer). */
+  const editStepView: WishDetailStep | null =
+    editStep && detail
+      ? {
+          key: "surprise-edit",
+          title: editWarning.title,
+          body: editWarning.body,
+          cancelLabel: editWarning.cancel,
+          confirmLabel: editWarning.confirm,
+          returnTo: "edit",
+          onConfirm: openEditForm,
+          onCancel: cancelEditStep,
+        }
+      : null;
 
   /**
    * Story 5.3: one transition `OPEN | RESERVED → CLOSED`, whoever asked — the ⋯
@@ -771,6 +826,16 @@ export default function MyWishlistScreen() {
     const id = pendingFocus.current;
     if (id === null) return;
     pendingFocus.current = null;
+    // The neutral warning took the picker's place: it returns focus when it closes.
+    if (surpriseChip.current !== null) return;
+    restoreFocus(chipNodes.current.get(id));
+  }
+
+  /** The neutral warning has left the tree: its chip gets focus back. */
+  function returnFocusAfterSurprise() {
+    const id = surpriseChip.current;
+    surpriseChip.current = null;
+    if (id === null) return;
     restoreFocus(chipNodes.current.get(id));
   }
 
@@ -807,9 +872,10 @@ export default function MyWishlistScreen() {
    * `EXPERIENCE.md` → Visibility chip: the choice is saved at once (optimistic), the
    * success toast names the new value, and a failure rolls the chip back.
    *
-   * D-49 (CLE-124): an open and a reserved wish take the same path. The owner does
-   * not know about reservations, so nothing is previewed and no question comes
-   * before the write.
+   * D-49 (CLE-124): an open non-secret wish asks one neutral question before any
+   * narrowing (`PUBLIC→FRIENDS`, `PUBLIC→SECRET`, `FRIENDS→SECRET`) — the same with
+   * a reservation and without one. Widening, the same value, a `SECRET`, a closed
+   * or an archived wish save (or do nothing) without a window.
    */
   async function changeVisibility(gift: GiftCard, next: GiftCard["visibility"]) {
     if (saving.current.has(gift.id)) return;
@@ -817,7 +883,25 @@ export default function MyWishlistScreen() {
     closePicker(gift.id);
     // The picker itself treats the current value as a no-op; nothing to save either.
     if (next === previous) return;
+    if (needsVisibilityWarning(gift, next)) {
+      surpriseChip.current = gift.id;
+      setVisibilitySurprise({ gift, next });
+      return;
+    }
     await saveVisibility(gift, next, previous);
+  }
+
+  /** «Изменить» of the neutral warning: the one PATCH runs now. */
+  async function confirmVisibilitySurprise() {
+    const pending = visibilitySurprise;
+    if (!pending) return;
+    setVisibilitySurprise(null);
+    await saveVisibility(pending.gift, pending.next, pending.gift.visibility);
+  }
+
+  /** «Отмена» of the neutral warning: the chip and the list stay as they were. */
+  function cancelVisibilitySurprise() {
+    setVisibilitySurprise(null);
   }
 
   /** The optimistic write of a visibility change. */
@@ -1298,6 +1382,15 @@ export default function MyWishlistScreen() {
           onClose={cancelPicker}
           onClosed={returnFocusToChip}
         />
+        {/* D-49 (CLE-124): the neutral question before a visibility narrowing. */}
+        <SurpriseWarningDialog
+          visible={visibilitySurprise !== null}
+          kind="visibility"
+          title={visibilitySurprise?.gift.title ?? ""}
+          onConfirm={confirmVisibilitySurprise}
+          onCancel={cancelVisibilitySurprise}
+          onClosed={returnFocusAfterSurprise}
+        />
         {detail ? (
           <WishDetailDialog
             open={detailOpen}
@@ -1310,7 +1403,7 @@ export default function MyWishlistScreen() {
             onMarkReceived={requestMarkReceived}
             onUndoClose={undoDetailClose}
             undoUntil={detail.undoUntil ?? null}
-            step={closeStepView}
+            step={closeStepView ?? editStepView}
           />
         ) : null}
         {/* Story 5.3: the ⋯ of one card — received, undo, copy or delete. */}

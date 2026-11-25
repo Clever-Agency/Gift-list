@@ -37,6 +37,11 @@ export type WishDetailStep = {
   confirmLabel: string;
   /** Coral confirm: for removing someone else's data (`DESIGN.md` → Colors → Destructive). */
   destructive?: boolean;
+  /**
+   * Which details action gets focus once the step has closed. «Отметить полученным»
+   * is the default; an «Изменить» step hands focus back to its own button.
+   */
+  returnTo?: "edit" | "received";
   busy?: boolean;
   onConfirm: () => void;
   /** «Отмена», Esc, the cross: back to the details of the same wish. */
@@ -115,6 +120,7 @@ export function WishDetailDialog({
   const stepKey = step?.key ?? null;
   const stepCancelRef = useRef<FocusTarget>(null);
   const receivedRef = useRef<FocusTarget>(null);
+  const editRef = useRef<FocusTarget>(null);
   const previousStep = useRef<WishDetailStep | null>(step ?? null);
 
   useEffect(
@@ -126,7 +132,7 @@ export function WishDetailDialog({
         return;
       }
       if (!step && previous) {
-        focusInLayer(receivedRef.current);
+        focusInLayer(previous.returnTo === "edit" ? editRef.current : receivedRef.current);
       }
     },
     // The step object is rebuilt on every render of the screen; only its key and
@@ -273,7 +279,12 @@ export function WishDetailDialog({
         canEdit || canMarkReceived || canUndoClose ? (
           <>
             {canEdit ? (
-              <Button label={tGift("detail.edit")} variant="secondary" onPress={onEdit} />
+              <Button
+                ref={editRef as never}
+                label={tGift("detail.edit")}
+                variant="secondary"
+                onPress={onEdit}
+              />
             ) : null}
             {canMarkReceived ? (
               <Button

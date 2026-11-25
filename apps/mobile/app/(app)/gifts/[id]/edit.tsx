@@ -12,6 +12,7 @@ import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { useTranslations } from "use-intl";
 import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
+import { needsSurpriseWarning, needsVisibilityWarning } from "@/domain/surprise-warning";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
@@ -32,6 +33,7 @@ import {
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
+import { SurpriseWarningDialog } from "@/ui/surprise-warning";
 import { ToastHost } from "@/ui/toast";
 import { useTagCatalog } from "@/ui/use-tag-catalog";
 
@@ -69,7 +71,8 @@ type ToastState = { message: string; tone: "info" | "error" };
  * изменения?» once it differs from the wish it opened with; the same step offers
  * «Сохранить» (the form's own submit) and «Не сохранять», while the cross, Esc
  * and the scrim return to the form. The system back is caught by
- * `useDiscardGuard` and asks the same question. A save never asks.
+ * `useDiscardGuard` and asks the same question. A save asks only for the neutral
+ * visibility warning below.
  *
  * Story 2.3 lives next to it as a second, independent step: an open wish offers
  * «Удалить желание», which confirms in the same dialog of this form. The server
@@ -77,9 +80,10 @@ type ToastState = { message: string; tone: "info" | "error" };
  * transaction; D-49 (CLE-124) leaves the owner nothing to see or confirm about it.
  *
  * D-49 (CLE-124): the owner never sees a reservation, so the edit of a reserved
- * wish is the edit of an open one — no caption, no frozen quantity and no question
- * before a visibility change. A `CLOSED` or archived wish is read-only
- * (`GiftForm` → `readOnly`) and offers no delete.
+ * wish is the edit of an open one — no caption and no frozen quantity. Before a
+ * narrowing of the visibility of an open non-secret wish the screen asks the one
+ * neutral question (never about a reservation); a `CLOSED` or archived wish is
+ * read-only (`GiftForm` → `readOnly`) and offers no delete.
  */
 export default function EditGiftScreen() {
   const t = useTranslations("app");
@@ -109,8 +113,9 @@ export default function EditGiftScreen() {
   // Story 2.3: deleting is a confirm step of this form, not a separate layer.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  // Story 5.4: an override for the delete confirm body; `null` keeps the stored one.
-  const [deleteBody, setDeleteBody] = useState<string | null>(null);
+  // D-49 (CLE-124): a visibility narrowing asks before the PATCH; the values stay
+  // here while the neutral warning is on screen, so «Отмена» keeps the draft.
+  const [surpriseSave, setSurpriseSave] = useState<GiftFormValues | null>(null);
   // The disabled button follows a state update, which flushes after the handler:
   // a second tap in the same frame must not send a second PATCH.
   const inFlight = useRef(false);
@@ -223,11 +228,23 @@ export default function EditGiftScreen() {
 
   /**
    * The save, opened by the form's button (or by the discard step's «Сохранить»).
-   * D-49 (CLE-124): every wish — open or reserved — saves with one PATCH at once;
-   * a reservation is invisible to the owner, so no preflight or question runs here.
+   * D-49 (CLE-124): a reservation is invisible to the owner and the write is
+   * always one plain PATCH. A narrowing of the visibility of an open non-secret
+   * wish first asks the neutral question; «Отмена» keeps the form and its draft
+   * exactly as they were, and nothing is written.
    */
-  async function save(values: GiftFormValues) {
+  function save(values: GiftFormValues) {
     // The form only exists in `ready`; this narrows the state for the values below.
+    if (state.status !== "ready") return;
+    if (needsVisibilityWarning(state.gift, values.visibility)) {
+      setSurpriseSave(values);
+      return;
+    }
+    void saveNow(values);
+  }
+
+  /** The write itself, after the neutral warning (or when it is not needed). */
+  async function saveNow(values: GiftFormValues) {
     if (state.status !== "ready") return;
     if (inFlight.current) return;
     inFlight.current = true;
@@ -292,8 +309,9 @@ export default function EditGiftScreen() {
       return;
     }
     if (result.code === "CONFLICT") {
-      // It was reserved (or released) while the form was open: say so and re-read
-      // the wish instead of saving over a state the owner has not seen (S23.2b).
+      // The row changed while the form was open (it was closed, archived or
+      // restored elsewhere): say so and re-read it instead of saving over a state
+      // the owner has not seen. Nothing here names a reservation (D-49).
       setToast({ message: common("errors.code.CONFLICT"), tone: "error" });
       reloadGift();
       return;
@@ -302,10 +320,22 @@ export default function EditGiftScreen() {
   }
 
   function submit(values: GiftFormValues) {
-    void save(values);
+    save(values);
   }
 
-  /** Re-reads the wish: the form then shows its real status (read-only or reserved). */
+  /** «Изменить» of the neutral warning: the accepted save runs now. */
+  function confirmSurpriseSave() {
+    const values = surpriseSave;
+    setSurpriseSave(null);
+    if (values) void saveNow(values);
+  }
+
+  /** «Отмена» of the neutral warning: the form stays with every entered value. */
+  function cancelSurpriseSave() {
+    setSurpriseSave(null);
+  }
+
+  /** Re-reads the wish: the form then shows the status it really has now. */
   function reloadGift() {
     setState({ status: "loading" });
     setAttempt((value) => value + 1);
@@ -430,34 +460,19 @@ export default function EditGiftScreen() {
     setConfirmingDelete(false);
   }
 
-  /** «Удалить желание»: the plain confirm; D-49 leaves nothing to preflight. */
-  function startDelete() {
-    beginDelete();
-  }
-
   /**
-   * Story 5.4: a reserved wish used to be previewed with the owner's reservation
-   * route. D-49 (CLE-124) removed that route: the owner sees a reserved wish as
-   * open, so the plain delete confirm is always used and nothing is read first.
+   * «Удалить желание»: one confirm step of this form (`DESIGN.md` → Dialog). An
+   * open non-secret wish gets the neutral warning text instead of the plain body
+   * (D-49) — the same question, the same two actions, and no second window.
+   * «Удалить желание» gets focus back once the layer has closed, unless the delete
+   * goes through and the screen leaves for the list.
    */
-  function beginDelete() {
+  function startDelete() {
     if (state.status !== "ready") return;
     // Only one step of this form is open at a time.
     setToast(null);
     setDiscardOpen(false);
-    openDeleteConfirm(null);
-  }
-
-  /**
-   * The confirm step itself (`DESIGN.md` → Dialog): «Удалить желание» gets focus
-   * back once the layer has closed — unless the delete goes through and the screen
-   * leaves for the list. `body` is the sentence about the reservation, or `null`
-   * for an open wish, whose body stays the stored one.
-   */
-  function openDeleteConfirm(body: string | null) {
-    // «Удалить желание» gets focus back once the confirm layer has closed.
     pendingDeleteFocus.current = true;
-    setDeleteBody(body);
     setConfirmingDelete(true);
   }
 
@@ -480,6 +495,14 @@ export default function EditGiftScreen() {
   function restoreFormFocus() {
     formRef.current?.focusCancel();
   }
+
+  /** The neutral save warning has left the tree: «Сохранить» gets focus back. */
+  function restoreSubmitFocus() {
+    formRef.current?.focusSubmit();
+  }
+
+  /** The neutral delete body belongs to an open non-secret wish (D-49). */
+  const deleteWarning = state.status === "ready" && needsSurpriseWarning(state.gift);
 
   return (
     <Screen>
@@ -590,16 +613,37 @@ export default function EditGiftScreen() {
           <ConfirmDialog
             variant="confirm"
             visible={confirmingDelete}
-            title={giftForm("delete.confirmTitle", { title: state.gift.title })}
-            body={deleteBody ?? giftForm("delete.confirmBody")}
-            confirmLabel={deleting ? giftForm("delete.deleting") : giftForm("delete.confirm")}
-            cancelLabel={giftForm("delete.cancel")}
+            title={giftForm(
+              deleteWarning ? "surpriseWarning.delete.title" : "delete.confirmTitle",
+              { title: state.gift.title },
+            )}
+            body={giftForm(
+              deleteWarning ? "surpriseWarning.delete.body" : "delete.confirmBody",
+            )}
+            confirmLabel={
+              deleting
+                ? giftForm("delete.deleting")
+                : giftForm(deleteWarning ? "surpriseWarning.delete.confirm" : "delete.confirm")
+            }
+            cancelLabel={giftForm(
+              deleteWarning ? "surpriseWarning.delete.cancel" : "delete.cancel",
+            )}
             busy={deleting}
             onConfirm={confirmDelete}
             onCancel={cancelDelete}
             onClosed={restoreDeleteFocus}
           />
         ) : null}
+        {/* D-49: a visibility narrowing asks the same neutral question in the same
+            window as the chip of «Мой вишлист». */}
+        <SurpriseWarningDialog
+          visible={surpriseSave !== null}
+          kind="visibility"
+          title={state.status === "ready" ? state.gift.title : ""}
+          onConfirm={confirmSurpriseSave}
+          onCancel={cancelSurpriseSave}
+          onClosed={restoreSubmitFocus}
+        />
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}

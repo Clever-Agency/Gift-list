@@ -645,6 +645,7 @@ describe("reservation cards and actions", () => {
   it.each([
     { action: "extend", dueOn: "2026-12-08" },
     { action: "bought", value: true },
+    { action: "given" },
     { action: "visibility", holderVisibleToOwner: true, holderVisibleToOthers: false },
     { action: "visibility", holderVisibleToOthers: false },
   ])("accepts the %j action", (body) => {
@@ -668,6 +669,7 @@ describe("reservation cards and actions", () => {
         value: true,
       }).success,
     ).toBe(false);
+    expect(reservationActionBodySchema.safeParse({ action: "given", value: true }).success).toBe(false);
   });
 
   it("rejects an empty action, a missing field and an impossible day", () => {

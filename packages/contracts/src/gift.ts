@@ -439,6 +439,13 @@ export const reservationActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("bought"),
     value: z.boolean(),
   }),
+  /**
+   * CLE-124/S9b-2 (Story 5.7): «Подарил». Only the holder of a live reservation
+   * may mark it; the wish keeps its status. A repeat in `GIVEN` is a success.
+   */
+  z.strictObject({
+    action: z.literal("given"),
+  }),
   z.strictObject({
     action: z.literal("visibility"),
     /** CLE-124/D-49: ignored by the server; kept optional for older clients. */

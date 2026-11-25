@@ -138,7 +138,7 @@ flowchart TB
 - **Rule:** **Этап разработки:** Web → Vercel (Hobby) — хостинг разработки, **не целевой**; DB → managed Postgres; email → Resend; секреты — env хостинга.
   **Переезд** обязателен до публикации в сторе (D-15). До этого сервер остаётся на Vercel. Юрлицо и место хостинга выбираются к публикации (Q-7), не сейчас. Hobby — только некоммерческая разработка. Публикация сборки в Google Play или App Store с API на Vercel запрещена.
   **Целевая схема:** Docker-образ (`output: 'standalone'`) → сборка в GitHub Actions → деплой на собственный сервер в РБ или РФ. Провайдер и место хостинга не выбраны (Deferred). После переезда репозиторий становится приватным (D-17).
-  Таймеры брони (D-12, D-49) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h` (внутренняя фаза, владельцу ничего не отправляется); AWAITING_OWNER→OPEN при `dueAt ≤ now−168h AND bought=false` (7 дней после Срока). Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Веб-сборка приложения деплоится вместе с `apps/web` (AD-26). Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
+  Таймеры брони (D-12, D-49) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h` (внутренняя фаза, владельцу ничего не отправляется); RESERVED→OPEN при `dueAt ≤ now−168h` в любой фазе и независимо от `bought` (7 дней после Срока). Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Веб-сборка приложения деплоится вместе с `apps/web` (AD-26). Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
 
 ### AD-6 — Один список, токен, профиль `[ADOPTED D-23]`
 
@@ -188,7 +188,7 @@ flowchart TB
   | status | да | **нет**: `RESERVED` отдаётся как `OPEN`; `CLOSED` остаётся `CLOSED` | да |
   | reservedBy | да | **нет**: всегда `null` | только `holderVisibleToOthers` |
   | bought | да | **нет** | да |
-  | phase | да | **нет** | только `GIVEN` (как label); `GIVEN` в MVP не наступает |
+  | phase | да | **нет** | да, только этап (label): «Забронировано» / «Куплено» / «Подарено»; остальные поля фазы — нет |
   | dueAt | да | **нет** | нет |
   | visibility toggles | да (один: «видим другим») | нет | нет |
   | ownerAction | нет | **нет**: всегда `null` | нет |
@@ -207,12 +207,12 @@ flowchart TB
 
   `Gift.quantity`: `SINGLE | UNLIMITED` (D-25, уточнено D-49). `UNLIMITED` не переходит в `RESERVED` (отказ `VALIDATION`). `quantity` меняется и у `RESERVED`: смена «Один раз» → «Можно дарить снова» бронь не снимает, событие держателю не шлёт и отдельного попапа не требует. Счётчик «сколько подарили» в MVP не хранится как публичное поле.
 
-  `Gift.archivedAt`: срок жизни (D-26); ручного архива в MVP нет. Срок прошёл, когда локальная дата владельца позже `expiresOn`. Архив скрывает желание из активного списка. Восстановление → `OPEN` и сбрасывает бронь. Дублирование создаёт новое `OPEN`. Cron `wish-expiry` за 3 дня до `expiresOn` (локальная дата держателя, окно ~10:00) шлёт одно `WISH_EXPIRY_SOON`, если статус `RESERVED`; просроченное архивирует и снимает активную бронь, если `bought=false` (D-49: «Подарил» от авто-снятия не защищает, фаза `GIVEN` в MVP не наступает). Раннее письмо задним числом не досылается.
+  `Gift.archivedAt`: срок жизни (D-26); ручного архива в MVP нет. Срок прошёл, когда локальная дата владельца позже `expiresOn`. Архив скрывает желание из активного списка. Восстановление → `OPEN` и сбрасывает бронь. Дублирование создаёт новое `OPEN`. Cron `wish-expiry` за 3 дня до `expiresOn` (локальная дата держателя, окно ~10:00) шлёт одно `WISH_EXPIRY_SOON`, если статус `RESERVED`; просроченное архивирует и снимает активную бронь, если `bought=false` (D-49: «Подарил» от авто-снятия не защищает; фаза `GIVEN` наступает по Story 5.7 и от снятия по сроку брони тоже не защищает). Раннее письмо задним числом не досылается.
 
   Переходы MVP:
   - `OPEN → RESERVED` — только `SINGLE`; даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны. Отдельного права «забронировать первым» нет (D-28)
-  - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, видимость для других; `given` в MVP не используется, D-49); cron (таймеры). Владельческих действий с бронью нет (D-49)
-  - `RESERVED → OPEN` — держатель | владелец только как следствие сужения `visibility`, из-за которого держатель теряет доступ по AD-7 | cron (только `bought=false`, через 168 ч после Срока)
+  - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, видимость для других; `given` переводит фазу в `GIVEN`, Story 5.7); cron (таймеры). Владельческих действий с бронью нет (D-49)
+  - `RESERVED → OPEN` — держатель | владелец только как следствие сужения `visibility`, из-за которого держатель теряет доступ по AD-7 | cron (через 168 ч после Срока в любой фазе, независимо от `bought`)
   - `OPEN | RESERVED → CLOSED` — владелец; reserved* **сохраняются** для аудита; пишутся `closedAt`, `closedFromStatus`; FR-25 активные = `status=RESERVED`
   - `CLOSED → closedFromStatus` — только владелец, только при `closedAt > now()-UNDO_WINDOW` (отмена; `UNDO_WINDOW` = 10 min, D-43) `[ARCH-A5]`
   - Остальные `CLOSED → *` запрещены
@@ -242,10 +242,10 @@ flowchart TB
   | Transition | Predicate |
   |------------|-----------|
   | OPEN→RESERVED | `status=OPEN AND quantity=SINGLE AND archivedAt IS NULL`; set reserved*, `phase=ACTIVE` |
-  | holder: extend / bought / given / visibility | `status=RESERVED AND reservedById=actor` (+ `phase<>GIVEN` только для given, если фаза ещё используется). Любой возврат фазы в `ACTIVE` в том же UPDATE ставит `reservationDueAt` в будущее; иначе следующий тик cron снова увидит `dueAt<=now` |
+  | holder: extend / bought / given / visibility | `status=RESERVED AND reservedById=actor`. `given` переводит `phase` в `GIVEN` из любой фазы (Story 5.7). Любой возврат фазы в `ACTIVE` в том же UPDATE ставит `reservationDueAt` в будущее; иначе следующий тик cron снова увидит `dueAt<=now` |
   | cron: ACTIVE→AWAITING_GIVER | `status=RESERVED AND phase=ACTIVE AND dueAt<=now()` |
   | cron: AWAITING_GIVER→AWAITING_OWNER | `phase=AWAITING_GIVER AND phaseAt<=now()-72h`; владельцу ничего не отправляется, это внутренняя фаза (D-49) |
-  | cron: AWAITING_OWNER→OPEN | `status=RESERVED AND phase=AWAITING_OWNER AND dueAt<=now()-168h AND bought=false`; clear reserved*; событие только держателю (D-49). Считается от Срока, внутренняя фаза `AWAITING_OWNER` срок не сдвигает |
+  | cron: RESERVED→OPEN | `status=RESERVED AND dueAt<=now()-168h` в любой фазе (`ACTIVE`, `AWAITING_GIVER`, `AWAITING_OWNER`, `GIVEN`) и независимо от `bought`; clear reserved*; событие только держателю (D-49). Считается от Срока, внутренняя фаза `AWAITING_OWNER` срок не сдвигает |
   | RESERVED→OPEN (holder) | `status=RESERVED AND reservedById=actor`; clear reserved* |
   | RESERVED→OPEN (owner, только сужение visibility) | `status=RESERVED`; clear reserved*; тот же переход выполняет снятие при сужении `visibility`, отнявшем доступ у держателя (AD-7, AD-8) — в одной транзакции с записью `visibility`. Отдельного владельческого действия «снять бронь» нет (D-49) |
   | OPEN/RESERVED→CLOSED | `status = expected`; set CLOSED, `closedAt`, `closedFromStatus`; keep reserved* |
@@ -311,7 +311,7 @@ flowchart TB
 
 - **Binds:** AD-7, AD-9, AD-14, SM-2, FR-12, FR-31, D-49
 - **Prevents:** «забытые» гонки и privacy в epics; утечка брони владельцу
-- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → HTTP 404 `NOT_FOUND`, статус, тело и заголовки идентичны неизвестному токену; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец не получает ни одного признака брони: ни `status=RESERVED`, ни идентичности держателя, ни `bought`, ни `phase`, ни `dueAt`, ни `ownerAction` — ни в gift card, ни в Notification, ни в письме; ответы и ошибки одинаковы с бронью и без неё (D-49); (6) cron не переводит в OPEN брони с `bought=true`; (7) гонка cron-таймера и действия держателя → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера; (13) владелец не отличает забронированное желание от открытого: list, one, свой `/u/:nick`, PATCH, close, undo-close, restore, keep и удаление дают одинаковые данные и ошибки с бронью и без неё (D-49). Остальной test pyramid — на epics.
+- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → HTTP 404 `NOT_FOUND`, статус, тело и заголовки идентичны неизвестному токену; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец не получает ни одного признака брони: ни `status=RESERVED`, ни идентичности держателя, ни `bought`, ни `phase`, ни `dueAt`, ни `ownerAction` — ни в gift card, ни в Notification, ни в письме; ответы и ошибки одинаковы с бронью и без неё (D-49); (6) cron снимает бронь через 168 ч после Срока в любой фазе и независимо от `bought`; `bought=true` и `GIVEN` не защищают (D-49); (7) гонка cron-таймера и действия держателя → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера; (13) владелец не отличает забронированное желание от открытого: list, one, свой `/u/:nick`, PATCH, close, undo-close, restore, keep и удаление дают одинаковые данные и ошибки с бронью и без неё (D-49). Остальной test pyramid — на epics.
 
 ### AD-16 — Переносимость `[ADOPTED D-16]`
 
@@ -527,12 +527,11 @@ stateDiagram-v2
     AWAITING_GIVER --> AWAITING_OWNER: cron +72h
     AWAITING_GIVER --> ACTIVE: holder extend / bought
     AWAITING_OWNER --> ACTIVE: holder extend
-    ACTIVE --> GIVEN: holder given (не используется в MVP, D-49)
-    AWAITING_GIVER --> GIVEN: holder given (не используется в MVP, D-49)
-    AWAITING_OWNER --> GIVEN: holder given (не используется в MVP, D-49)
-    GIVEN --> ACTIVE: owner not received (выключено в MVP, D-49)
+    ACTIVE --> GIVEN: holder given (Story 5.7)
+    AWAITING_GIVER --> GIVEN: holder given (Story 5.7)
+    AWAITING_OWNER --> GIVEN: holder given (Story 5.7)
   }
-  RESERVED --> OPEN: holder release / owner visibility narrowing / cron +168h if !bought
+  RESERVED --> OPEN: holder release / owner visibility narrowing / cron +168h (any phase)
   OPEN --> CLOSED: owner received
   RESERVED --> CLOSED: owner received
   CLOSED --> OPEN: undo ≤UNDO_WINDOW (closedFromStatus)

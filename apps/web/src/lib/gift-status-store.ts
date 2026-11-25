@@ -142,9 +142,8 @@ export function giftStatusTransaction(
         },
       });
       if (count !== 1) return "lost";
-      await enqueueGiftNotification(tx, await notificationGiftSnapshot(tx, giftId), {
-        kind: "RESERVATION_CREATED", role: "owner", email: false, at: data.reservedAt,
-      });
+      // CLE-124: a reservation is a surprise for the wish's owner, so no
+      // `RESERVATION_CREATED` row is written for them anymore.
       return "success";
     },
     async extendReservation(giftId, actorId, write) {
@@ -191,7 +190,7 @@ export function giftStatusTransaction(
         data: RESERVATION_RELEASE_DATA,
       });
       if (count !== 1) return "lost";
-      await enqueueGiftNotification(tx, gift, { kind: "RESERVATION_RELEASED", role: "owner", email: false, at });
+      // CLE-124: the owner is never told that a holder released the reservation.
       emit({
         giftId,
         actorId,
@@ -319,9 +318,8 @@ export function giftStatusTransaction(
         data: { reservationPhase: "AWAITING_OWNER", reservationPhaseAt: at },
       });
       if (count !== 1) return "lost";
-      await enqueueGiftNotification(tx, await notificationGiftSnapshot(tx, giftId), {
-        kind: "RESERVATION_OWNER_ASK", role: "owner", email: true, at: at,
-      });
+      // CLE-124: `AWAITING_OWNER` still happens on the timer, but the owner is
+      // never asked about it; no `RESERVATION_OWNER_ASK` row is written.
       emit({
         giftId,
         actorId: null,
@@ -352,8 +350,8 @@ export function giftStatusTransaction(
         data: RESERVATION_RELEASE_DATA,
       });
       if (count !== 1) return "lost";
+      // CLE-124: only the holder learns about the automatic release.
       await enqueueGiftNotification(tx, gift, { kind: "RESERVATION_AUTO_RELEASE", role: "holder", email: true, at });
-      await enqueueGiftNotification(tx, gift, { kind: "RESERVATION_AUTO_RELEASE", role: "owner", email: true, at });
       emit({
         giftId,
         actorId: null,

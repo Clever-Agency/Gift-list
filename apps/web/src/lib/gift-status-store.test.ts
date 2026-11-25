@@ -136,6 +136,8 @@ describe("giftStatusTransaction.releaseReservation", () => {
         holderVisibleToOthers: true,
       },
     });
+    // CLE-124: the owner is not told about the reservation at all.
+    expect(createMany).not.toHaveBeenCalled();
   });
 
   it("writes nothing for a row that is no longer reserved", async () => {
@@ -173,6 +175,8 @@ describe("the Story 5.2 releases", () => {
       to: "OPEN",
       at: "2026-11-19T10:00:00.000Z",
     });
+    // CLE-124: the owner learns nothing, so the holder's release writes no row.
+    expect(createMany).not.toHaveBeenCalled();
     info.mockRestore();
   });
 
@@ -888,6 +892,12 @@ describe("the Story 5.6 timer CAS writes", () => {
       },
       data: { reservationPhase: "AWAITING_GIVER", reservationPhaseAt: at },
     });
+    expect(createMany).toHaveBeenCalledExactlyOnceWith({
+      skipDuplicates: true,
+      data: expect.objectContaining({
+        kind: "RESERVATION_DUE", recipientId: "u2", emailRequired: true,
+      }),
+    });
     expectOneAuditLine(info.mock.calls, {
       event: "gift.reservation.giver-deadline-passed",
       giftId: "g1",
@@ -918,6 +928,8 @@ describe("the Story 5.6 timer CAS writes", () => {
       },
       data: { reservationPhase: "AWAITING_OWNER", reservationPhaseAt: at },
     });
+    // CLE-124: the owner is never asked, so the timer writes no row here.
+    expect(createMany).not.toHaveBeenCalled();
     expectOneAuditLine(info.mock.calls, {
       event: "gift.reservation.owner-asked",
       giftId: "g1",
@@ -938,10 +950,13 @@ describe("the Story 5.6 timer CAS writes", () => {
     );
 
     expect(outcome).toBe("success");
-    expect(createMany.mock.calls.map(([args]) => args.data)).toEqual([
-      expect.objectContaining({ kind: "RESERVATION_AUTO_RELEASE", recipientId: "u2", emailRequired: true }),
-      expect.objectContaining({ kind: "RESERVATION_AUTO_RELEASE", recipientId: "u1", emailRequired: true }),
-    ]);
+    // CLE-124: only the holder is notified about the automatic release.
+    expect(createMany).toHaveBeenCalledExactlyOnceWith({
+      skipDuplicates: true,
+      data: expect.objectContaining({
+        kind: "RESERVATION_AUTO_RELEASE", recipientId: "u2", emailRequired: true,
+      }),
+    });
     // The holder and reservation snapshot come from the transition transaction.
     expect(findUnique).toHaveBeenCalledWith({
       where: { id: "g1" },
@@ -1084,6 +1099,54 @@ describe("the Story 5.6 timer CAS writes", () => {
       info.mockRestore();
     },
   );
+});
+
+/**
+ * CLE-124: a wish's reservation is a surprise for its owner. No transition
+ * writes a notification row addressed to the owner; the holder's rows, the
+ * audit lines and the transitions themselves stay as they were.
+ */
+describe("CLE-124: the owner is never notified about a reservation", () => {
+  const at = new Date("2026-11-24T12:00:00.000Z");
+
+  it("writes no row at all on reserve, the holder's release and the owner phase", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const service = giftStatusTransaction(transactionClient());
+
+    await expect(service.reserveGift("g1", {
+      reservedById: "u2",
+      reservedAt,
+      titleSnapshotOnReserve: "Плед",
+      reservationDueAt: at,
+      reservationTimeZone: "UTC",
+      reservationPhaseAt: at,
+      holderVisibleToOwner: false,
+      holderVisibleToOthers: true,
+    })).resolves.toBe("success");
+    await expect(service.releaseReservationByHolder("g1", "u2", at)).resolves.toBe("success");
+    await expect(service.moveReservationToAwaitingOwner("g1", at)).resolves.toBe("success");
+
+    // u1 owns g1 and u2 holds it, so an owner row would carry `recipientId: "u1"`.
+    expect(createMany).not.toHaveBeenCalled();
+    // The transitions themselves still happen and are still audited.
+    expect(updateMany).toHaveBeenCalledTimes(3);
+    expect(info).toHaveBeenCalledTimes(2);
+    info.mockRestore();
+  });
+
+  it("keeps the holder's automatic-release row and writes none for the owner", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    await expect(
+      giftStatusTransaction(transactionClient()).releaseReservationByExpiry("g1", at),
+    ).resolves.toBe("success");
+
+    expect(createMany.mock.calls.map(([args]) => {
+      const row = args.data as { kind: string; recipientId: string };
+      return `${row.kind}:${row.recipientId}`;
+    })).toEqual(["RESERVATION_AUTO_RELEASE:u2"]);
+    info.mockRestore();
+  });
 });
 
 /**

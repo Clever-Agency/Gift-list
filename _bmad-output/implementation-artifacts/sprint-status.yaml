@@ -94,6 +94,8 @@ development_status:
   6-4-доступность-ключевых-потоков: backlog
   6-5-приложение-в-браузере-на-одном-домене-с-next-js: backlog
   6-6-срок-жизни-желания-бронь-и-уведомления: backlog # после 5.1, 5.5, 5.7 и 6.1
+  6-7-профиль-поля-публичный-вид-и-общий-переключатель: backlog # CLE-129: D-58, FR-54, FR-55; sprint-change-proposal-2026-11-26-ui-review.md; истории в epics 2026-11-26
+  6-8-смена-email-с-подтверждением: backlog # CLE-129: D-58, FR-56; sprint-change-proposal-2026-11-26-ui-review.md
   epic-6-retrospective: optional
 
   epic-7: backlog

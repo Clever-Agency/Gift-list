@@ -7,7 +7,7 @@ paradigm: modular-monolith-layered
 scope: "Gift List MVP — один вишлист, нативный клиент Expo и веб для публичной ссылки и админки. Бронь «куплю сам». Без оплаты и без денежных сборов."
 status: final
 created: 2026-09-30
-updated: 2026-11-18
+updated: 2026-11-26
 language: ru
 workflow: bmad-architecture
 round: 1
@@ -18,6 +18,10 @@ binds:
   - FR-23..FR-37
   - FR-38
   - FR-40..FR-52
+  - FR-54
+  - FR-55
+  - FR-56
+  - FR-57
   - D-10
   - D-11
   - D-12
@@ -52,6 +56,7 @@ sources:
   - _bmad-output/planning-artifacts/ux-designs/ux-gift-list-2026-09-30/DESIGN.md
   - _bmad-output/planning-artifacts/ux-designs/ux-gift-list-2026-09-30/EXPERIENCE.md
   - _bmad-output/planning-artifacts/briefs/brief-gift-list-2026-09-29/brief.md
+  - _bmad-output/planning-artifacts/sprint-change-proposal-2026-11-26-ui-review.md
 companions: []
 decisions_locked:
   - mutual-friendship-D-10
@@ -65,6 +70,11 @@ decisions_locked:
   - monorepo-D-41
   - i18n-next-intl-use-intl-D-46
   - shared-ui-tamagui-D-47
+  - ui-review-navigation-D-50
+  - profile-fields-D-58
+  - settings-profile-split-D-59
+  - wish-page-D-63
+  - ui-review-defaults-D-64
 ---
 
 # Architecture Spine — Gift List (MVP)
@@ -125,6 +135,8 @@ flowchart TB
 
   **Текущий пароль нельзя задать снова (ред. 2026-11-18, `sprint-change-proposal-2026-11-18-password-reuse.md`, approved by Сергей 2026-11-18, CLE-92).** При сбросе и при смене новый пароль сравнивается с действующим хешем credential-аккаунта через `ctx.password.verify`. Своего хеширования и таблицы истории нет. Совпадение — конверт AD-12 `{ code: "VALIDATION", field: "password", reason: "PASSWORD_REUSED" }`, текст «Этот пароль уже используется. Выберите другой.» Хеш и пароль в лог не пишутся, ссылка сброса не гаснет. Регистрация и вход эту сверку не делают. Сырые `/reset-password` и `/change-password` её не обходят. На `/change-password` отказ звучит только после подтверждения `currentPassword` из запроса: неверный текущий пароль по-прежнему отвечает как неверный и не сообщает, совпал ли новый с хранимым. Запрос forgot не меняется (одинаковый ответ, AD-3).
 
+  **Смена email (ред. 2026-11-26, `sprint-change-proposal-2026-11-26-ui-review.md`, D-58, FR-56).** Смена идёт средствами Better Auth без новых зависимостей. Пользователь запрашивает новый адрес из `/profile` (веб-сборка и Android/iOS — через `api/v1`, Next-страницы пользователя не имеют). На **новый** адрес уходит одноразовая ссылка с ограниченным сроком; до перехода по ней `User.email` не меняется и вход остаётся по старому адресу. Применение — только после успешного перехода; после применения на **старый** адрес уходит уведомление «Email изменён». Ссылка одноразовая, просроченная и повторно использованная отклоняются понятным сообщением. Частота запросов ограничена тем же rate limit, что у auth (AD-3); занятый адрес отклоняется тем же текстом, что при регистрации (`EMAIL_TAKEN`), без раскрытия существования аккаунта до подтверждения. Активные сессии не гасятся, `User.nick`, дружба, подписка и профильные поля не меняются.
+
 ### AD-4 — Система записи `[ASSUMPTION]`
 
 - **Binds:** all persistent state
@@ -172,7 +184,7 @@ flowchart TB
 
   Поиск без отношения отдаёт карточку личности (ник, имя) и **ноль** желаний, пока нет подписки, дружбы, совпадения по телефону или ссылки. `hideFromSearch` убирает человека только из текстового поиска; совпадение по телефону и прямые URL работают.
 
-  Даты, интересы и год рождения этим фильтром **не** открываются (AD-23).
+  **Профильные данные (ред. 2026-11-26, D-58, FR-54, FR-55, AD-29).** ДР (только день и месяц, без года), пол, страна и «Обо мне» не входят в фильтр желаний и решаются отдельным правилом профиля: их получает **только принятый Друг** при включённом у `владельца профиля` переключателе `profileVisibleToFriends`; сам пользователь — всегда; подписчик, зритель по ссылке, `ContactMatch`, аноним и любой другой зритель — никогда. При выключенном переключателе Друг видит только имя, ник и аватар. Имя, ник и аватар видны всем, кто может открыть `/u/:nick` (Block — AD-7 шаг 2). Личные даты (`UserDate`, FR-38) сохраняют собственную видимость `only_me | friends | everyone` и общим переключателем не управляются. Желания, интересы и даты этим правилом не открываются. Профильные поля не отдаются ни в `/l/:token`, ни в поиске, ни в уведомлениях.
 
   **Матрица чтения подарка:**
   | Контекст | Поля |
@@ -289,6 +301,10 @@ flowchart TB
   `{ id, title, description, priceAmount: number|null, priceCurrency: "USD"|"EUR"|"CNY"|"BYN"|"RUB"|null, linkUrl, visibility: "PUBLIC"|"FRIENDS"|"SECRET", quantity: "SINGLE"|"UNLIMITED", expiresOn: string|null, archivedAt: string|null, tags: { catalogId: string|null, label: string }[], status: "OPEN"|"RESERVED"|"CLOSED", reservedBy: null | { id, nick, displayName }, reservationLabel: null | "BOUGHT" | "GIVEN", ownerAction: null | "CONFIRM_GIVEN" | "EXPIRED_NO_REPLY" }`.
   `reservedBy` — по матрице AD-7 (D-13) и может быть `null` при `RESERVED`. Для владельца `RESERVED` отдаётся как `OPEN` (`reservedBy: null`, `ownerAction: null`, `reservationLabel: null`), а `CLOSED` остаётся `CLOSED` (D-49). `reservationLabel` — только не-владельцу; `ownerAction` в MVP не используется и всегда `null` (поле остаётся в контракте до отдельной чистки). Держателю дополнительно — `reservation: { dueAt, phase, bought, holderVisibleToOthers }`. Пустая цена — оба поля `null`. Непустая цена без выбранной валюты сохраняется как `USD`. `visibility` чужое желание не раскрывает: в выдаче только те карточки, которые фильтр уже пропустил.
 
+  **Карточка брони (ред. 2026-11-26, D-56, FR-25).** DTO карточки брони расширяется закрытым набором: `{ giftId, titleSnapshot, status, ownerNick, ownerDisplayName?, dueAt, phase, bought, holderVisibleToOthers, priceAmount: number|null, priceCurrency: "USD"|"EUR"|"CNY"|"BYN"|"RUB"|null, photoUrl: string|null, canOpenGift: boolean }`. `priceAmount` / `priceCurrency` — **текущая** цена желания (не снимок на момент брони); оба `null`, если желание больше недоступно держателю (`canOpenGift = false`) или цены нет. `photoUrl` — `null` до появления фото у желания; когда фото появится (ARCH-A18), значение выдаётся по правилам AD-7 для держателя. Остальные поля карточки не добавляются: теги, описание, видимость и чужие желания в DTO карточки брони не входят (AD-7 матрица, A-14). `ownerNick` — ссылка на `/u/{ник}` у держателя по D-55; имя владельца при этом не раскрывает бронь никому, кроме держателя. `canOpenGift` вычисляется тем же `VisibilityPolicy` для держателя после разрыва дружбы или блока.
+
+  **Страница желания (ред. 2026-11-26, D-63, FR-57).** Нажатие на карточку в любом списке ведёт на `/gifts/{id}`; страница читает тот же gift card по AD-7. Владелец читает **только** `GET /api/v1/me/gifts/:id` (owner-ветка), без брони и без `reservation`; `RESERVED` отдаётся как `OPEN` (D-49). Чужой или скрытый `id`, архивное чужое и Block дают тот же `NOT_FOUND`, что и раньше. Анонимная страница Next `/l/:token/:giftId` строит тот же ответ, что и `/l/:token`, и ничего сверх него не отдаёт. Отдельной кнопки «Поделиться желанием» нет.
+
   **Размер тела запроса (2026-11-10).** Мутация с телом больше 32 КиБ (32768 байт) отклоняется до `JSON.parse`: HTTP 413 и конверт AD-12 `{ ok: false, code: "VALIDATION", message, reason: "PAYLOAD_TOO_LARGE" }`, без `field`. Закрытый `ErrorCode` не расширяется — размера в нём нет, номер ответа несёт `reason`, расширяемая часть конверта (`apps/web/src/lib/api-v1.ts`). `Content-Length` — только ранний отказ: без заголовка (chunked) тело читается с бюджетом, и поток отменяется при превышении. Клиент показывает `common.errors.reason.PAYLOAD_TOO_LARGE` (AD-27).
 
 ### AD-13 — Идентификаторы, ник, поиск
@@ -310,9 +326,9 @@ flowchart TB
 
 ### AD-15 — Тестирование инвариантов `[ASSUMPTION]`
 
-- **Binds:** AD-7, AD-9, AD-14, SM-2, FR-12, FR-31, D-49
+- **Binds:** AD-7, AD-9, AD-14, SM-2, FR-12, FR-31, D-49, D-63
 - **Prevents:** «забытые» гонки и privacy в epics; утечка брони владельцу
-- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → HTTP 404 `NOT_FOUND`, статус, тело и заголовки идентичны неизвестному токену; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец не получает ни одного признака брони: ни `status=RESERVED`, ни идентичности держателя, ни `bought`, ни `phase`, ни `dueAt`, ни `ownerAction` — ни в gift card, ни в Notification, ни в письме; ответы и ошибки одинаковы с бронью и без неё (D-49); (6) cron снимает бронь через 168 ч после Срока в любой фазе и независимо от `bought`; `bought=true` и `GIVEN` не защищают (D-49); (7) гонка cron-таймера и действия держателя → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера; (13) владелец не отличает забронированное желание от открытого: list, one, свой `/u/:nick`, PATCH, close, undo-close, restore, keep и удаление дают одинаковые данные и ошибки с бронью и без неё (D-49). Остальной test pyramid — на epics.
+- **Rule:** Обязательные автотесты (уровень ниже выбирает runner): (1) параллельные две брони SINGLE → ровно одна success; (2) аноним по `/l/:token` получает только PUBLIC и не получает число остальных; (3) Block + валидный token → HTTP 404 `NOT_FOUND`, статус, тело и заголовки идентичны неизвестному токену; (4) unfriend + активная бронь → reservation card без остальных желаний; (5) владелец не получает ни одного признака брони: ни `status=RESERVED`, ни идентичности держателя, ни `bought`, ни `phase`, ни `dueAt`, ни `ownerAction` — ни в gift card, ни в Notification, ни в письме; ответы и ошибки одинаковы с бронью и без неё (D-49); (6) cron снимает бронь через 168 ч после Срока в любой фазе и независимо от `bought`; `bought=true` и `GIVEN` не защищают (D-49); (7) гонка cron-таймера и действия держателя → ровно один переход; (8) отмена закрытия после `UNDO_WINDOW` → `CONFLICT`; (9) `UNLIMITED` → отказ брони; (10) подписчик не получает FRIENDS и даты; (11) регистрация по `/l/` не создаёт Friendship, по `/i/` создаёт; (12) сопоставление телефонов не пишет сырые номера; (13) владелец не отличает забронированное желание от открытого: list, one, свой `/u/:nick`, PATCH, close, undo-close, restore, keep и удаление дают одинаковые данные и ошибки с бронью и без неё (D-49); (14) страница владельца `/gifts/{id}` читает только `GET /api/v1/me/gifts/:id`, не получает `reservation`, `reservedBy`, `status=RESERVED`, срока и этапа; анонимная `/l/:token/:giftId` не отдаёт ничего сверх `/l/:token` (D-63). Остальной test pyramid — на epics.
 
 ### AD-16 — Переносимость `[ADOPTED D-16]`
 
@@ -324,7 +340,7 @@ flowchart TB
 
 - **Binds:** весь UI, AD-1, AD-2, AD-3, D-20
 - **Prevents:** Expo вызывает Server Actions; две копии доменных правил
-- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Приложение — полный клиент на Android, iOS и в браузере (react-native-web, D-40). Платформенные модули (`expo-contacts`, `expo-secure-store`) подключаются через платформенные файлы; веб-сборка без них собирается, сверка контактов в браузере не предлагается. Next.js отдаёт только серверные страницы: `/l/:token` (первый показ анониму и мета-теги превью), `/i/:token`, `/unsubscribe/:token`, `/admin`, `.well-known`. Отдельного UI пользователя на Next.js нет. Выход iOS — шаг публикации и не меняет это правило. Общий код между клиентами — `packages/contracts` (zod-схемы и каталоги переводов AD-27, без React) и `packages/ui` (компоненты и тема, AD-2, без логики и данных); импорт `apps/web` из Expo запрещён. SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб — на той же версии React (AD-28). Отображаемое имя — AD-24, не строковый литерал в экранах.
+- **Rule:** Каталог `apps/mobile` — Expo SDK **58** (`expo` 58.0.20), одна кодовая база на iOS и Android. Первая публикация — Google Play. Сборка iOS и отправка в App Store идут после неё (D-20). Клиент обращается только к `app/api/v1` JSON с конвертом AD-12. Приложение — полный клиент на Android, iOS и в браузере (react-native-web, D-40). Платформенные модули (`expo-contacts`, `expo-secure-store`) подключаются через платформенные файлы; веб-сборка без них собирается, сверка контактов в браузере не предлагается. Next.js отдаёт только серверные страницы: `/l/:token` (первый показ анониму и мета-теги превью), `/l/:token/:giftId` (страница одного желания анониму, D-63), `/i/:token`, `/unsubscribe/:token`, `/admin`, `.well-known`. Отдельного UI пользователя на Next.js нет. Выход iOS — шаг публикации и не меняет это правило. Общий код между клиентами — `packages/contracts` (zod-схемы и каталоги переводов AD-27, без React) и `packages/ui` (компоненты и тема, AD-2, без логики и данных); импорт `apps/web` из Expo запрещён. SDK 58 рассчитан на React Native 0.88 и React 19.3.0; веб — на той же версии React (AD-28). Отображаемое имя — AD-24, не строковый литерал в экранах.
 
 ### AD-18 — Сопоставление телефонной книги `[ADOPTED D-21, D-30]`
 
@@ -360,13 +376,13 @@ flowchart TB
 
 - **Binds:** FR-33..FR-38, D-18, D-22, D-31
 - **Prevents:** напоминание тому, кто дату не видит; госпраздники в календаре; второй источник часового пояса
-- **Rule:** `User.timeZone` IANA, not null, default `UTC` — единственный пояс пользователя. `reservationTimeZone` на брони — снимок на момент Срока, не второй источник правки. `UserDate`: `kind BIRTHDAY|CUSTOM`, день, месяц, год опционален, `visibility only_me|friends|everyone` (default `friends`). `only_me` — владелец. `friends` — принятая дружба. `everyone` — любой зритель профиля после проверки Block, включая анонима на `/u/:nick`, подписчика и `ContactMatch`. Дата не входит в ответ `/l/:token`. BIRTHDAY — не больше одной. CUSTOM — не больше 10. Год — отдельный флаг `yearVisibility`, default `only_me`; видимость даты `everyone` год сама не открывает. Напоминание дарителю (T-14) — только другу, которому дата видна, и только при видимом ему `OPEN` желании. Напоминание владельцу (T-30) — только о своём ДР. `ReminderLog` UNIQUE(получатель, dateId, год, kind). Cron `api/cron/date-reminders`. Напоминания не стоят за платёжным флагом (D-39). Интересы (FR-39) в MVP не создаются; видимость по умолчанию — друзья (D-31).
+- **Rule:** `User.timeZone` IANA, not null, default `UTC` — единственный пояс пользователя. `reservationTimeZone` на брони — снимок на момент Срока, не второй источник правки. **День рождения (D-58, AD-29):** `User.birthDay int?` и `User.birthMonth int?` (1–12 / 1–31, nullable, пара заполняется вместе), **год не хранится**; 29 февраля разрешено. Формат хранения — только день и месяц; `formatDate()` собирает дату в UTC, чтобы день не съезжал. Видимость ДР — общий `User.profileVisibleToFriends` (AD-29): принятый Друг видит при включённом переключателе, себе — всегда, остальным — никогда. Отдельного `yearVisibility` у ДР нет. `UserDate` остаётся только для личных дат: `kind CUSTOM`, день, месяц, год опционален, `visibility only_me|friends|everyone` (default `friends`). `only_me` — владелец. `friends` — принятая дружба. `everyone` — любой зритель профиля после проверки Block, включая анонима на `/u/:nick`, подписчика и `ContactMatch`. Дата не входит в ответ `/l/:token`. CUSTOM — не больше 10; год — отдельный флаг `yearVisibility`, default `only_me`; видимость даты `everyone` год сама не открывает. Напоминание дарителю (T-14) — только другу, которому дата видна (для ДР — при включённом общем переключателе), и только при видимом ему `OPEN` желании. Напоминание владельцу (T-30) — только о своём ДР. `ReminderLog` UNIQUE(получатель, subjectId, год, kind): `subjectId` — `UserDate.id` для личной даты и `User.id` для ДР. Cron `api/cron/date-reminders`. Напоминания не стоят за платёжным флагом (D-39). Интересы (FR-39) в MVP не создаются; видимость по умолчанию — друзья (D-31).
 
 ### AD-24 — Имя продукта и публичный контакт `[ADOPTED D-35, D-48]`
 
 - **Binds:** весь UI веба и Expo
 - **Prevents:** два захардкоженных названия; смена имени правкой экранов
-- **Rule:** Значения по умолчанию — константы в `packages/contracts/src/brand.ts`: `PRODUCT_NAME = "WishMoon"`, `AUTHOR_EMAIL = "support@wishmoon.clever-agency.dev"` (D-35, ред. 2026-11-18, `sprint-change-proposal-2026-11-18-domain-and-mailboxes.md`, approved by Sergey), а `AUTHOR_MAILTO` и `authorMailto(subject?)` — производные от `AUTHOR_EMAIL` (одна точка правки адреса). Это единственный источник: литерала имени и адреса нет ни в `apps/web`, ни в `apps/mobile`, ни в `app.config.ts`, ни в скриптах сборки. Веб читает имя через `env.ts`, приложение — через `src/config/env.ts`; оба падают на константу, когда переменная пуста. `BRAND_NAME` (веб) и `EXPO_PUBLIC_BRAND_NAME` (сборка Expo) — осознанное переопределение, не второй источник: обе стороны получают его из одной переменной CI, `sync-spa.mjs` передаёт в Expo `BRAND_NAME` и очищает ручное значение, поэтому SSR и SPA не расходятся. `AUTHOR_EMAIL` окружением не переопределяется. «Написать автору» — ссылка `mailto:` из `AUTHOR_MAILTO`; `EXPO_PUBLIC_AUTHOR_URL` удаляется. Адрес для запросов о данных и удалении — `privacy@wishmoon.clever-agency.dev` (D-48); когда он понадобится в коде (ссылка на политику), это константа `PRIVACY_EMAIL` в том же файле, не литерал. Домен эта переменная не задаёт: он выбран (D-48) и приходит из конфигурации окружения (AD-26).
+- **Rule:** Значения по умолчанию — константы в `packages/contracts/src/brand.ts`: `PRODUCT_NAME = "WishMoon"`, `AUTHOR_EMAIL = "support@wishmoon.clever-agency.dev"` (D-35, ред. 2026-11-18, `sprint-change-proposal-2026-11-18-domain-and-mailboxes.md`, approved by Sergey), а `AUTHOR_MAILTO` и `authorMailto(subject?)` — производные от `AUTHOR_EMAIL` (одна точка правки адреса). Это единственный источник: литерала имени и адреса нет ни в `apps/web`, ни в `apps/mobile`, ни в `app.config.ts`, ни в скриптах сборки. Веб читает имя через `env.ts`, приложение — через `src/config/env.ts`; оба падают на константу, когда переменная пуста. `BRAND_NAME` (веб) и `EXPO_PUBLIC_BRAND_NAME` (сборка Expo) — осознанное переопределение, не второй источник: обе стороны получают его из одной переменной CI, `sync-spa.mjs` передаёт в Expo `BRAND_NAME` и очищает ручное значение, поэтому SSR и SPA не расходятся. `AUTHOR_EMAIL` окружением не переопределяется. «Написать в техподдержку» — ссылка `mailto:` из `AUTHOR_MAILTO`; `EXPO_PUBLIC_AUTHOR_URL` удаляется. У вошедшего ссылка есть только в `/profile`, в футере — только у экранов без входа и на Next-страницах (D-53). Адрес для запросов о данных и удалении — `privacy@wishmoon.clever-agency.dev` (D-48); когда он понадобится в коде (ссылка на политику), это константа `PRIVACY_EMAIL` в том же файле, не литерал. Домен эта переменная не задаёт: он выбран (D-48) и приходит из конфигурации окружения (AD-26).
 
 ### AD-25 — Валюта цены `[ADOPTED D-36, D-37]`
 
@@ -402,6 +418,21 @@ flowchart TB
 
   Dev-инструменты (Storybook и его аддоны, `vite`) версию React и Tamagui не меняют: после любой установки проверка копий (`scripts/check-boundaries.mjs`) обязана оставаться зелёной, а вложенные `react`, `react-dom`, `tamagui` и `@tamagui/*`, пришедшие из dev-зависимостей, недопустимы так же, как из рантайма (2026-11-10, Story 1.10).
 
+### AD-29 — Профиль пользователя: поля и видимость `[ADOPTED D-58]`
+
+- **Binds:** FR-7, FR-33, FR-43, FR-54, FR-55, D-21, D-31, D-58, D-59, D-64
+- **Prevents:** второй источник профиля; утечка профильных данных подписчику и зрителю по ссылке; хранение года рождения; правка данных в двух местах
+- **Rule:** Профильные поля живут только на `User`: `birthDay int?`, `birthMonth int?` (пара, без года), `gender enum(MALE|FEMALE)?` (`null` — «не указан»), `country char(2)?` (ISO 3166-1 alpha-2), `about text?` (≤ 500 знаков), `profileVisibleToFriends bool not null default true`. Валидация — zod в `packages/contracts` и на сервере: пол вне набора, страна вне ISO, «Обо мне» > 500, день/месяц вне календаря → `VALIDATION` с `field`. Названия стран клиент строит через `Intl.DisplayNames`; сервер хранит только код. Год не принимается и не хранится; 29 февраля разрешено.
+  **Чтение:** `GET /api/v1/me/profile` — свои поля всегда; `GET /api/v1/u/:nick` — профильные поля только когда зритель — принятый Друг и `profileVisibleToFriends = true`, иначе полей в ответе нет (не `null`-заглушки с составом). Имя, ник и аватар (`User.image`, пока инициалы) видны всем, кто может открыть профиль, как и раньше. Подписчик, `ContactMatch`, зритель `/l/:token`, аноним и Block не получают профильных полей никогда. Личные даты (AD-23) отдельны и сохраняют свою видимость. Профильные поля не входят в gift card, `/l/:token`, поиск и уведомления.
+  **Запись:** `PATCH /api/v1/me/profile` — единственный путь правки имени, ника, профильных полей и переключателя. Правка email — AD-3 (FR-56). `/profile` — экран данных, `/settings` — только настройки (D-59). Фото профиля ждёт хранилища (ARCH-A18, Story 2.7); до этого — инициалы, `User.image` не используется.
+  **Страница `/u/:nick`:** аватар, имя, ник, ДР, пол, страна, «Обо мне», ниже открытые желания по AD-7; свой профиль выглядит так же и ведёт на `/profile` для правки.
+
+### AD-30 — Оболочка навигации вошедшего `[ADOPTED D-50]`
+
+- **Binds:** FR-5..FR-8, FR-25, FR-27, D-50, AD-17, AD-26
+- **Prevents:** навигация только на пяти корневых экранах; потеря «назад» и выбранного раздела при переносе `AppShell`; вкладки на экранах без входа
+- **Rule:** Единственная оболочка `AppShell` (боковое меню `SidebarNav` на expanded+ и нижние вкладки на compact/medium) оборачивает **весь стек** экранов вошедшего в `apps/mobile/app/(app)/_layout.tsx`, а не только группу вкладок. Внутри `(app)` — все маршруты вошедшего: корневые вкладки, `/u/:nick`, `/settings`, `/notifications`, `/gifts/:id` и формы желания (включая прилипшую «Куплю сам»), `/wishlist/:token`, `/invite/:token`, «не найдено» для вошедшего. Экраны без входа (`/login`, `/register`, `/forgot`, `/reset`, анонимные `/l`, `/i`, «не найдено» для анонима) остаются вне оболочки. Активный раздел выводится из пути/происхождения и подсвечивается (`aria-current` в браузере, `selected` на телефоне); нижняя панель строится на `NavItem` + `usePathname`, без `TabTrigger`, потому что вне tabs-навигатора он не работает. Системное «назад» Android, жест iOS и кнопка браузера сохраняют прежнее поведение; глубокая ссылка открывает экран внутри правильного раздела. Состав пунктов — UX-A13; высота и safe area — DESIGN.md.
+
 ## Consistency Conventions
 
 | Concern | Convention |
@@ -416,6 +447,9 @@ flowchart TB
 | Config | typed `env.ts` (zod); секреты не в клиент |
 | Locale / theme | Пилот `ru`; ключи каталога и ICU по AD-27; light only |
 | Hide from search | `User.hideFromSearch` boolean default false |
+| Профиль | `User.birthDay` / `birthMonth` без года, `gender` (`MALE\|FEMALE\|null`), `country` ISO alpha-2, `about` ≤ 500, `profileVisibleToFriends` default true (AD-29) |
+| Навигация | `AppShell` над всем стеком `(app)`; экраны без входа — вне оболочки (AD-30) |
+| Карточка брони | `titleSnapshot`, `ownerNick`, `dueAt`, `phase`, `bought`, `holderVisibleToOthers`, `priceAmount` (текущая цена), `priceCurrency`, `photoUrl` (null до фото), `canOpenGift` (AD-12) |
 
 ## Stack
 
@@ -454,6 +488,7 @@ apps/
       app/
         admin/                # AD-22, web only
         l/[token]/            # public link, anonymous PUBLIC wishes
+        l/[token]/[giftId]/   # anonymous wish page (D-63)
         i/[token]/            # invite
         unsubscribe/[token]/
         .well-known/          # assetlinks.json, apple-app-site-association
@@ -546,7 +581,9 @@ stateDiagram-v2
 | --- | --- | --- |
 | FR-1..3 Auth | `lib/auth`, экраны приложения | AD-3, AD-13 |
 | FR-4 Email gate payments | — R2 | AD-11 |
-| FR-5..8 Profile / search / hide | `u/[nick]`, search | AD-7, AD-13 |
+| FR-5..8 Profile / search / hide | `u/[nick]`, `search` | AD-7, AD-13, AD-29 |
+| FR-33..37, FR-43, FR-54, FR-55 Профиль и даты | `User`, `UserDate`, cron date-reminders, `/profile`, `/u/[nick]` | AD-7, AD-23, AD-29 |
+| FR-57 Страница желания | `gifts/[id]`, `l/[token]/[giftId]` | AD-7, AD-12, AD-15, AD-26 |
 | FR-9..12 Один список, CRUD, видимость | actions + domain | AD-1, AD-6, AD-7, AD-8 |
 | FR-27..28 Публичная ссылка | `l/[token]` | AD-6, AD-7, AD-21 |
 | FR-13..15,23..24,46,47 Дружба, подписка, инвайт | `domain/friendship` | AD-10, AD-19, AD-21 |
@@ -601,7 +638,7 @@ stateDiagram-v2
 | ARCH-A12 | Auto-accept при встречном pending инвайте | AD-10 |
 | ARCH-A13 | `titleSnapshot` на бронь для A-14 path и писем держателю | AD-7, AD-14 |
 | ARCH-A14 | Срок брони = конец даты в IANA-поясе дарителя (из устройства или браузера, fallback UTC); хранится как `reservationDueAt timestamptz` | A-27 |
-| ARCH-A17 | Принято: видимость нового желания по умолчанию — `PUBLIC` («всем»), в том числе при «Добавить в мой вишлист» из подборки. Владелец меняет её в форме или чипом. Решение Sergey 2026-10-28 (PRD D-44) | D-23, readiness 2026-10-28 |
+| ARCH-A17 | Принято: видимость нового желания по умолчанию — `PUBLIC` («всем»), в том числе при «Добавить в мой вишлист» из подборки. Владелец меняет её в форме желания; чипа на карточке нет (D-54). Решение Sergey 2026-10-28 (PRD D-44) | D-23, readiness 2026-10-28 |
 | ARCH-A15 | Таймеры брони и срок желания вызываются внешним планировщиком раз в час (не Vercel Cron); вызов идемпотентен, пропуск запуска только сдвигает переходы | D-12, переносимость |
 | ARCH-A16 | Предупреждение о сроке жизни желания — за 3 дня (D-26). Первого права брони нет (D-28) | D-26, D-28 |
 | ARCH-A18 | **Открыто, решить до Story 2.7.** Фото желания (D-45, FR-53): файлы — в S3-совместимом объектном хранилище (не Vercel Blob — Rule выше), в `Gift` — только `photoKey` и `photoThumbKey`; в gift card (AD-12) — `photo: null \| { url, thumbUrl }`, где `url` — короткоживущая подписанная ссылка, выданная после VisibilityPolicy (AD-7); бакет не публичный. Загрузка — presigned PUT от сервера; сервер проверяет тип и размер (≤ 500 КБ). Ужатие и удаление EXIF — на клиенте (UX-A19). Провайдер выбрать с учётом рынков BY/RU | D-45, AD-7, AD-12 |

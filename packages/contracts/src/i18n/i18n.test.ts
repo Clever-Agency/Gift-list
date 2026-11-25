@@ -240,6 +240,28 @@ describe("reservation release copy", () => {
   });
 });
 
+/**
+ * CLE-124/S9b-1: the confirm window no longer promises that «Купил» protects the
+ * reservation — the timer releases any live reservation after 168 hours, so the
+ * hint and its key are gone instead of reworded.
+ */
+describe("reserve confirm copy", () => {
+  it("keeps only the date, the guests' switch and the buttons", () => {
+    const { reserveConfirm } = getMessages("ru").app.gift;
+
+    expect(Object.keys(reserveConfirm).sort()).toEqual([
+      "cancel",
+      "confirm",
+      "dueCaption",
+      "dueHint",
+      "dueLabel",
+      "showOthers",
+      "title",
+    ]);
+    expect("boughtHint" in reserveConfirm).toBe(false);
+  });
+});
+
 describe("closing copy", () => {
   /**
    * Story 5.3: закрытие владельцем, секция «Получено» и undo-тост — дословно из

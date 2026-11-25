@@ -39,14 +39,13 @@ describe("reserve confirm defaults", () => {
     expect(defaultDueOn("UTC", now)).toBe("2026-06-22");
   });
 
-  it("uses the spec copy for the switch, the bought hint and the missing button", () => {
+  it("uses the spec copy for the switch and the missing button", () => {
     expect(catalog.gift.reserveCta).toBe("Куплю сам");
     // CLE-124/D-49: the owner switch is gone; only the guests' switch stays.
     expect(catalog.gift.reserveConfirm.showOwner).toBeUndefined();
     expect(catalog.gift.reserveConfirm.showOthers).toBe("Показать другим, кто берёт");
-    expect(catalog.gift.reserveConfirm.boughtHint).toBe(
-      "Если купите заранее, отметьте «Купил» — бронь не снимется сама",
-    );
+    // CLE-124/S9b-1: no hint promises that «Купил» protects the reservation.
+    expect(catalog.gift.reserveConfirm.boughtHint).toBeUndefined();
     expect(catalog.gift.reserveNoButton).toEqual({
       UNLIMITED: "Можно дарить без брони",
       RESERVED: "Уже забронирован",

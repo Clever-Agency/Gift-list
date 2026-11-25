@@ -1,5 +1,5 @@
 import { formatDate, type GiftReserveBody } from "@gift-list/contracts";
-import { BottomSheet, Button, Dialog, Switch, Text, YStack } from "@gift-list/ui";
+import { BottomSheet, Button, Dialog, Switch, YStack } from "@gift-list/ui";
 import { useMedia } from "@tamagui/core";
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
@@ -35,7 +35,9 @@ export function defaultDueOn(timeZone: string, now = new Date()): string {
  * Reserve confirm (`EXPERIENCE.md` → Reserve confirm): the date and the
  * «Показать другим, кто берёт» switch in a bottom sheet on compact widths and a
  * dialog otherwise. CLE-124/D-49 removed the «Показать владельцу» switch: a
- * reservation is always a surprise for the owner.
+ * reservation is always a surprise for the owner. CLE-124/S9b-1 removed the
+ * «Купил» hint: the timer releases the reservation after the window even with
+ * that mark, so the hint promised something that no longer holds.
  */
 export function ReserveConfirm({
   open,
@@ -97,9 +99,6 @@ export function ReserveConfirm({
         disabled={busy}
         onChange={setHolderVisibleToOthers}
       />
-      <Text kind="caption" tone="muted">
-        {t("boughtHint")}
-      </Text>
     </YStack>
   );
 

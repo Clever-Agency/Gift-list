@@ -138,7 +138,7 @@ flowchart TB
 - **Rule:** **Этап разработки:** Web → Vercel (Hobby) — хостинг разработки, **не целевой**; DB → managed Postgres; email → Resend; секреты — env хостинга.
   **Переезд** обязателен до публикации в сторе (D-15). До этого сервер остаётся на Vercel. Юрлицо и место хостинга выбираются к публикации (Q-7), не сейчас. Hobby — только некоммерческая разработка. Публикация сборки в Google Play или App Store с API на Vercel запрещена.
   **Целевая схема:** Docker-образ (`output: 'standalone'`) → сборка в GitHub Actions → деплой на собственный сервер в РБ или РФ. Провайдер и место хостинга не выбраны (Deferred). После переезда репозиторий становится приватным (D-17).
-  Таймеры брони (D-12, D-49) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: ACTIVE→AWAITING_GIVER при `dueAt ≤ now`; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h` (внутренняя фаза, владельцу ничего не отправляется); RESERVED→OPEN при `dueAt ≤ now−168h` в любой фазе и независимо от `bought` (7 дней после Срока). Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Веб-сборка приложения деплоится вместе с `apps/web` (AD-26). Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
+  Таймеры брони (D-12, D-49) — Route Handler `api/cron/reservation-timers` (секрет) → **только** `GiftStatusService.processReservationTimers()`: напоминание держателю за 1–2 дня до Срока (только держателю; нужен ли для него новый `Notification.kind` — вопрос реализации S9b-2, см. AD-14); ACTIVE→AWAITING_GIVER при `dueAt ≤ now`, `RESERVATION_DUE` называет дату снятия (`dueAt + 7 дней`) и не предлагает продление — после Срока продление запрещено; AWAITING_GIVER→AWAITING_OWNER при `phaseAt ≤ now−72h` (внутренняя фаза, владельцу ничего не отправляется); RESERVED→OPEN при `dueAt ≤ now−168h` в любой фазе и независимо от `bought` (7 дней после Срока). Напоминания о датах — `api/cron/date-reminders` (AD-23). Срок жизни желания — `api/cron/wish-expiry` (AD-8, D-26). Планировщик любой внешний (AD-16). Email — Resend. Бинарники Expo на Vercel не деплоятся: EAS Build или локальный `expo prebuild`. Веб-сборка приложения деплоится вместе с `apps/web` (AD-26). Секреты сторов, push и pepper телефонов — только env, не git (D-17). Staging API = preview + отдельная DB.
 
 ### AD-6 — Один список, токен, профиль `[ADOPTED D-23]`
 
@@ -211,7 +211,7 @@ flowchart TB
 
   Переходы MVP:
   - `OPEN → RESERVED` — только `SINGLE`; даритель ≠ владелец; `dueAt`, `timeZone`, toggles обязательны. Отдельного права «забронировать первым» нет (D-28)
-  - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, видимость для других; `given` переводит фазу в `GIVEN`, Story 5.7); cron (таймеры). Владельческих действий с бронью нет (D-49)
+  - `RESERVED → RESERVED` (смена фазы / атрибутов) — держатель (продлить, bought, given, видимость для других; `given` переводит фазу в `GIVEN`, Story 5.7); cron (таймеры). Продление допустимо только при `dueAt > now()`: после Срока оно запрещено и на сервере, и в приложении (D-12). Владельческих действий с бронью нет (D-49)
   - `RESERVED → OPEN` — держатель | владелец только как следствие сужения `visibility`, из-за которого держатель теряет доступ по AD-7 | cron (через 168 ч после Срока в любой фазе, независимо от `bought`)
   - `OPEN | RESERVED → CLOSED` — владелец; reserved* **сохраняются** для аудита; пишутся `closedAt`, `closedFromStatus`; FR-25 активные = `status=RESERVED`
   - `CLOSED → closedFromStatus` — только владелец, только при `closedAt > now()-UNDO_WINDOW` (отмена; `UNDO_WINDOW` = 10 min, D-43) `[ARCH-A5]`
@@ -242,7 +242,7 @@ flowchart TB
   | Transition | Predicate |
   |------------|-----------|
   | OPEN→RESERVED | `status=OPEN AND quantity=SINGLE AND archivedAt IS NULL`; set reserved*, `phase=ACTIVE` |
-  | holder: extend / bought / given / visibility | `status=RESERVED AND reservedById=actor`. `given` переводит `phase` в `GIVEN` из любой фазы (Story 5.7). Любой возврат фазы в `ACTIVE` в том же UPDATE ставит `reservationDueAt` в будущее; иначе следующий тик cron снова увидит `dueAt<=now` |
+  | holder: extend / bought / given / visibility | `status=RESERVED AND reservedById=actor`. `extend` — только при `dueAt > now()`; после Срока продление отклоняется. `given` переводит `phase` в `GIVEN` из любой фазы (Story 5.7). Любой возврат фазы в `ACTIVE` в том же UPDATE ставит `reservationDueAt` в будущее; иначе следующий тик cron снова увидит `dueAt<=now` |
   | cron: ACTIVE→AWAITING_GIVER | `status=RESERVED AND phase=ACTIVE AND dueAt<=now()` |
   | cron: AWAITING_GIVER→AWAITING_OWNER | `phase=AWAITING_GIVER AND phaseAt<=now()-72h`; владельцу ничего не отправляется, это внутренняя фаза (D-49) |
   | cron: RESERVED→OPEN | `status=RESERVED AND dueAt<=now()-168h` в любой фазе (`ACTIVE`, `AWAITING_GIVER`, `AWAITING_OWNER`, `GIVEN`) и независимо от `bought`; clear reserved*; событие только держателю (D-49). Считается от Срока, внутренняя фаза `AWAITING_OWNER` срок не сдвигает |
@@ -305,6 +305,7 @@ flowchart TB
   `Notification.deliverAfter timestamptz` — для закрытия (= `closedAt + UNDO_WINDOW`, 10 min); отмена удаляет недоставленную запись. Доставка отложенных писем — механизм на выбор dev (after-response task или cron), допустимая задержка ≤ 1 ч.
   Закрытый `Notification.kind`: `FRIEND_INVITE`, `FRIEND_ACCEPT`, `FRIEND_REJECT`, `RESERVATION_CREATED`, `RESERVATION_RELEASED`, `RESERVATION_DUE`, `RESERVATION_OWNER_ASK`, `RESERVATION_KEPT_BY_OWNER`, `RESERVATION_AUTO_RELEASE`, `GIFT_EDITED`, `GIFT_DELETED`, `GIFT_CLOSED`, `GIFT_GIVEN`, `DATE_FRIEND`, `DATE_OWN`, `SUGGESTION`, `WISH_EXPIRY_SOON`, `WISH_EXPIRY`. Другие kind запрещены. Email — подмножество: события брони из FR-26, напоминания дат, `SUGGESTION`, `WISH_EXPIRY_SOON` и `WISH_EXPIRY`, если у получателя включён канал email. `WISH_EXPIRY_SOON` — ровно за 3 дня до `expiresOn` (D-26).
   `RESERVATION_KEPT_BY_OWNER` — одно in-app уведомление держателю об успешном продлении брони владельцем (Story 5.6, FR-26). В MVP владелец бронь не видит и продлить её не может (D-49): действие и событие не создаются; kind остаётся в закрытом наборе для истории. Payload содержит `titleSnapshot` и новый срок в ISO-формате. Дата отображается в часовом поясе брони.
+  **Напоминание до Срока (D-12, дополнение 2026-11-25).** За 1–2 дня до `reservationDueAt` держателю уходит одно напоминание «Если не продлить, бронь снимется через 7 дней после этой даты»; только держателю. В закрытом наборе kind нет типа для напоминания до Срока. Нужен ли новый kind или можно обойтись без него — вопрос реализации S9b-2; здесь набор и схема не меняются. `RESERVATION_DUE` называет дату снятия (`dueAt + 7 дней`) и не предлагает продление: после Срока продление запрещено.
   **Уведомления владельцу о брони (D-49, `sprint-change-proposal-2026-11-25-surprise.md`, CLE-124).** Владельцу не создаются `RESERVATION_CREATED`, `RESERVATION_RELEASED` (owner), `RESERVATION_OWNER_ASK`, `RESERVATION_AUTO_RELEASE` (owner) и `GIFT_GIVEN` с вопросом «Подарок у вас?». Старые строки этих видов не показываются владельцу при чтении (лента, счётчик непрочитанных, рассылка писем), но остаются в БД; миграции нет. После «Подарил» владельцу уходит одно общее письмо без названия желания и имени дарителя (FR-30); отдельного in-app уведомления и kind для него нет. Payload и письма: не содержат названий желаний, которые получатель не может видеть (AD-7); не содержат дат, которые он не может видеть (AD-23); держателю — `titleSnapshot`; владельцу — ни одного признака брони: ни `status`, ни `reservedBy`, ни `bought`, ни `phase`, ни `dueAt`, ни `ownerAction` (D-49). Принятие идеи создаёт обычное желание (`OPEN`, количество выбирает получатель, по умолчанию `SINGLE`); видимость выбирает получатель. Колонки `priorityReserverId` нет (D-28). Имя отправителя в payload есть только если он его раскрыл.
 
 ### AD-15 — Тестирование инвариантов `[ASSUMPTION]`
@@ -523,10 +524,10 @@ stateDiagram-v2
   OPEN --> RESERVED: reserve CAS (dueAt, toggles)
   state RESERVED {
     [*] --> ACTIVE
+    ACTIVE --> ACTIVE: holder extend (dueAt > now)
     ACTIVE --> AWAITING_GIVER: cron dueAt
     AWAITING_GIVER --> AWAITING_OWNER: cron +72h
-    AWAITING_GIVER --> ACTIVE: holder extend / bought
-    AWAITING_OWNER --> ACTIVE: holder extend
+    AWAITING_GIVER --> ACTIVE: holder bought
     ACTIVE --> GIVEN: holder given (Story 5.7)
     AWAITING_GIVER --> GIVEN: holder given (Story 5.7)
     AWAITING_OWNER --> GIVEN: holder given (Story 5.7)

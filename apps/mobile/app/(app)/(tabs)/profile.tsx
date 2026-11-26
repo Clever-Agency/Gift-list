@@ -46,6 +46,7 @@ import {
   mutationErrorMessage,
   nickErrorText,
   nickFieldText,
+  signOutErrorMessage,
 } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { NotificationBell } from "@/ui/notification-bell";
@@ -211,7 +212,7 @@ export default function MyProfileScreen() {
     const signedOut = await auth.signOut();
     if (!signedOut.ok) {
       setSessionExpired(false);
-      showToast(t("form.network"), "error");
+      showToast(signOutErrorMessage(signedOut, t("form.network"), common), "error");
     }
   }
 
@@ -229,7 +230,7 @@ export default function MyProfileScreen() {
   /**
    * «Выйти»: the session is cleared by `AuthContext`, then the guard above opens
    * the login screen with `next=/profile`. A failed request keeps the person here
-   * and reports the one network sentence (`EXPERIENCE.md` → «Нет сети»).
+   * and reports the failure with the matching catalog sentence.
    */
   async function signOut() {
     if (inFlight.current) return;
@@ -238,7 +239,7 @@ export default function MyProfileScreen() {
     const result = await auth.signOut();
     inFlight.current = false;
     setSigningOut(false);
-    if (!result.ok) showToast(t("form.network"), "error");
+    if (!result.ok) showToast(signOutErrorMessage(result, t("form.network"), common), "error");
   }
 
   function handleSignOut() {
@@ -425,7 +426,7 @@ function ProfileDetails({
 
     if (result.ok) {
       setName(result.data.name);
-      auth.setUser(result.data);
+      auth.updateUser(result.data);
       onToast(profile("nameSaved"), "info");
       return;
     }
@@ -505,7 +506,7 @@ function ProfileDetails({
     if (result.ok) {
       // The saved nick is what the server normalized it to, not what was typed.
       setNick(result.data.nick);
-      auth.setUser(result.data);
+      auth.updateUser(result.data);
       onToast(profile("nickSaved"), "info");
       return;
     }

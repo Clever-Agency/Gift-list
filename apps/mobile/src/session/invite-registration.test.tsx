@@ -43,6 +43,7 @@ vi.mock("@/session/auth-context", async () => {
         state: session.user
           ? { status: "ready" as const, user: session.user }
           : { status: "anonymous" as const },
+        getSessionRevision: vi.fn(() => 0),
         setUser(user: NonNullable<typeof session.user>) {
           session.user = user;
           for (const notify of session.listeners) notify();

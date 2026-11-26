@@ -20,6 +20,7 @@ import { getBrandName } from "@/config/env";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { inviteRoute } from "@/invite/invite-route";
 import { useAuth } from "@/session/auth-context";
+import { signOutErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
@@ -108,8 +109,8 @@ export default function InviteScreen() {
         // guest hand-off above, which reopens registration with the same token.
         const signedOut = await auth.signOut();
         if (!signedOut.ok && !cancelled) {
-          setState({ status: "error", kind: "network" });
-          setToast({ message: invite("network"), tone: "error" });
+          setState({ status: "error", kind: "network" in signedOut ? "network" : "generic" });
+          setToast({ message: signOutErrorMessage(signedOut, invite("network"), common), tone: "error" });
         }
         return;
       }
@@ -206,7 +207,7 @@ export default function InviteScreen() {
     }
     if ("code" in result && result.code === "UNAUTHENTICATED") {
       const signedOut = await auth.signOut();
-      if (!signedOut.ok) setToast({ message: invite("network"), tone: "error" });
+      if (!signedOut.ok) setToast({ message: signOutErrorMessage(signedOut, invite("network"), common), tone: "error" });
       return;
     }
     const network = "network" in result;

@@ -86,6 +86,7 @@ export default function LoginScreen() {
       return;
     }
     setPending(true);
+    const sessionRevision = auth.getSessionRevision();
     const result = await apiRequest<{ user: Me; next: string }>("/api/v1/session", {
       method: "POST",
       body: parsed.data,
@@ -99,7 +100,7 @@ export default function LoginScreen() {
       focusIssueField(nextIssue.field);
       return;
     }
-    auth.setUser(result.data.user);
+    auth.setUser(result.data.user, sessionRevision);
     router.replace(safeNextPath(result.data.next) as "/");
   }
 

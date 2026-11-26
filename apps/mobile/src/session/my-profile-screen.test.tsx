@@ -1013,6 +1013,21 @@ describe("профиль: выход", () => {
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
   });
 
+  it("ограничение частоты выхода оставляет человека в «Профиле» и показывает ответ сервера", async function rateLimitedSignOut() {
+    respond({ ok: true, data: user });
+    await mount();
+    api.apiRequest.mockResolvedValueOnce({ ok: false, code: "RATE_LIMITED", message: "" });
+
+    await press("Выйти");
+
+    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/session", { method: "DELETE" });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+    expect(navigation.replace).not.toHaveBeenCalled();
+    expect(button("Выйти")).toBeDefined();
+    expect(text()).toContain("Слишком много попыток.");
+    expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
   it("на 360 px поля и выход остаются на месте", async () => {
     Object.defineProperty(document.documentElement, "clientWidth", {
       configurable: true,

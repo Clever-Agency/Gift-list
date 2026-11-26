@@ -25,6 +25,7 @@ import { loadWishPage } from "@/app/l/[token]/[giftId]/wish-page";
 
 type Row = {
   id: string;
+  listId: string;
   title: string;
   description: string | null;
   priceAmount: number | null;
@@ -45,6 +46,7 @@ type Row = {
 
 function gift(overrides: Partial<Row> & Pick<Row, "id" | "title">): Row {
   return {
+    listId: "l1",
     description: null,
     priceAmount: null,
     priceCurrency: null,
@@ -64,11 +66,12 @@ function gift(overrides: Partial<Row> & Pick<Row, "id" | "title">): Row {
   };
 }
 
-/** One PUBLIC wish, one FRIENDS, one SECRET and one archived PUBLIC one. */
+/** Public, restricted and archived wishes, plus a public wish of another list. */
 const rows: Row[] = [
   gift({ id: "g-public", title: "Публичное" }),
   gift({ id: "g-friends", title: "Только друзьям", visibility: "FRIENDS" }),
   gift({ id: "g-secret", title: "Секретное", visibility: "SECRET" }),
+  gift({ id: "g-other-list", listId: "l2", title: "Из другого списка" }),
   gift({
     id: "g-archived",
     title: "Архивное",
@@ -77,6 +80,7 @@ const rows: Row[] = [
 ];
 
 type GiftWhere = {
+  id?: string;
   listId: string;
   archivedAt?: null;
   NOT?: { archivedAt: null };
@@ -85,9 +89,10 @@ type GiftWhere = {
 
 /** Applies the read's own narrowing, so a widened query shows up as a leaked title. */
 function query(where: GiftWhere): Row[] {
-  if (where.listId !== "l1") return [];
   const archived = where.NOT?.archivedAt === null;
   return rows.filter(function visible(row) {
+    if (row.listId !== where.listId) return false;
+    if (where.id !== undefined && row.id !== where.id) return false;
     if ((row.archivedAt !== null) !== archived) return false;
     return where.visibility === undefined || where.visibility.in.includes(row.visibility);
   });
@@ -236,7 +241,7 @@ describe("AD-15 (14) — анонимная /l/:token/:giftId", () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it("читает тем же узким запросом списка, а не по id желания", async () => {
+  it("читает только нужное желание в границах списка и публичной видимости", async () => {
     await loadWishPage("tok-1", "g-public");
 
     expect(findUnique).toHaveBeenCalledTimes(1);
@@ -245,6 +250,7 @@ describe("AD-15 (14) — анонимная /l/:token/:giftId", () => {
     );
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(findMany.mock.calls[0]?.[0].where).toEqual({
+      id: "g-public",
       listId: "l1",
       archivedAt: null,
       visibility: { in: ["PUBLIC"] },

@@ -64,9 +64,11 @@ const rows: Row[] = [
   gift({ id: "g-public", title: "Публичное" }),
   gift({ id: "g-friends", title: "Только друзьям", visibility: "FRIENDS" }),
   gift({ id: "g-secret", title: "Секретное", visibility: "SECRET" }),
+  gift({ id: "g-archived", title: "В архиве", archivedAt: new Date(0) }),
 ];
 
 type GiftWhere = {
+  id?: string;
   listId: string;
   archivedAt?: null;
   NOT?: { archivedAt: null };
@@ -77,6 +79,7 @@ function query(where: GiftWhere): Row[] {
   if (where.listId !== "l1") return [];
   const archived = where.NOT?.archivedAt === null;
   return rows.filter(function visible(row) {
+    if (where.id !== undefined && row.id !== where.id) return false;
     if ((row.archivedAt !== null) !== archived) return false;
     return where.visibility === undefined || where.visibility.in.includes(row.visibility);
   });
@@ -129,13 +132,36 @@ describe("wishlistPathForToken", () => {
 });
 
 describe("loadLinkPage: session and redirect", () => {
-  it("redirects a real session to the one-segment SPA path built from the token", async () => {
+  it("redirects an authenticated viewer with access without loading gift cards", async () => {
     getSession.mockResolvedValue({ user: { id: "u2" } });
 
     const page = await loadLinkPage("tok-1");
 
     expect(page.view).toEqual({ kind: "redirect", to: "/wishlist/tok-1" });
-    expect(findUnique).not.toHaveBeenCalled();
+    expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: { publicToken: "tok-1" },
+    }));
+    expect(relationsBetween).toHaveBeenCalledWith("u2", "u1");
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns the same closed view for an unknown token and a blocked session", async () => {
+    getSession.mockResolvedValue({ user: { id: "u2" } });
+    findUnique.mockResolvedValueOnce(null);
+
+    const unknown = await loadLinkPage("missing-token");
+    expect(relationsBetween).not.toHaveBeenCalled();
+
+    relationsBetween.mockResolvedValueOnce({
+      blocked: true,
+      friend: false,
+      subscriber: false,
+      contactMatch: false,
+    });
+    const blocked = await loadLinkPage("tok-1");
+
+    expect(unknown).toEqual({ locale: "ru", view: { kind: "not_found" } });
+    expect(blocked).toEqual(unknown);
     expect(findMany).not.toHaveBeenCalled();
   });
 
@@ -192,6 +218,45 @@ describe("loadLinkPage: anonymous read through the one gate", () => {
     expect(unknown.view).toEqual({ kind: "not_found" });
     expect(blocked.view).toEqual(unknown.view);
     expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadLinkPage: access to a single wish", () => {
+  it("rejects a decoded zero byte before querying the database", async () => {
+    expect((await loadLinkPage("tok-1", "g-\0")).view).toEqual({ kind: "not_found" });
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["g-missing", "g-secret", "g-friends", "g-archived"])(
+    "closes the link for %s before redirecting an unrelated authenticated viewer",
+    async function inaccessible(giftId) {
+      getSession.mockResolvedValue({ user: { id: "u2" } });
+
+      expect((await loadLinkPage("tok-1", giftId)).view).toEqual({ kind: "not_found" });
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: giftId, listId: "l1", archivedAt: null, visibility: { in: ["PUBLIC"] } },
+      }));
+    },
+  );
+
+  it("redirects an authenticated friend when the requested wish is visible", async () => {
+    getSession.mockResolvedValue({ user: { id: "u2" } });
+    relationsBetween.mockResolvedValue({
+      blocked: false, friend: true, subscriber: false, contactMatch: false,
+    });
+
+    expect((await loadLinkPage("tok-1", "g-friends")).view).toEqual({
+      kind: "redirect", to: "/wishlist/tok-1",
+    });
+  });
+
+  it("returns only the requested public wish to an anonymous viewer", async () => {
+    const { view } = await loadLinkPage("tok-1", "g-public");
+
+    expect(view.kind).toBe("gifts");
+    if (view.kind !== "gifts") throw new Error("expected a gifts view");
+    expect(view.gifts.map((gift) => gift.id)).toEqual(["g-public"]);
   });
 });
 

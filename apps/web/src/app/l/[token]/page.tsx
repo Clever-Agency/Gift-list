@@ -8,9 +8,9 @@ import { PublicWishlistView } from "./public-wishlist-view";
 /**
  * Story 3.3 / AD-26: the first view of a public wishlist link, rendered by the
  * server for anonymous visitors and for messenger previews. A real session never
- * sees this page: it is handed to the SPA route `/wishlist/{token}`, built from
- * the validated segment only. A forged or expired cookie is no session, so the
- * anonymous page stays instead of an open redirect.
+ * sees the public preview: an available list is handed to the SPA route
+ * `/wishlist/{token}`, built from the validated segment only. A forged or
+ * expired cookie is treated as anonymous.
  *
  * An unknown or malformed token and a `Block` render the segment `not-found.tsx`
  * through `notFound()`: a real HTTP 404 before streaming starts, one page for

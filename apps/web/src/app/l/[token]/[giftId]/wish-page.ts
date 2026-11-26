@@ -44,12 +44,11 @@ function appWishPath(giftId: string, token: string): string {
 /**
  * Story 3.3 / D-63 / AD-15 (14): one wish of a public link. The read is the
  * list read of `/l/[token]` itself — the same gate, the same card, the same
- * allowed fields — narrowed to the requested id. Nothing is read from the
- * database by id, so a wish of another list cannot even be looked up, and a
- * closed wish is simply absent from the answer.
+ * allowed fields — narrowed to the requested id within the token's list.
+ * The check applies before a signed-in visitor is redirected to the app.
  */
 export async function loadWishPage(token: string, giftId: string): Promise<WishPage> {
-  const page = await loadLinkPage(token);
+  const page = await loadLinkPage(token, giftId);
   const paths = {
     listPath: publicListPathForToken(token),
     wishlistPath: wishlistPathForToken(token),

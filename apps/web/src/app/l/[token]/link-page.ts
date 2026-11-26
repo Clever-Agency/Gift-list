@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { createTranslator } from "next-intl";
 import { getMessages, type GiftCard, type SupportedLocale } from "@gift-list/contracts";
 import { readPublicWishlist } from "@/actions/public-wishlist";
+import { canOpenPublicWishlist } from "@/actions/wishlist-read";
 import { auth } from "@/lib/auth";
 import { wishlistPathForToken } from "@/lib/public-token";
 import { requestLocale } from "@/lib/request-locale";
@@ -30,25 +31,40 @@ export type LinkPage = { locale: SupportedLocale; view: LinkView };
  * Story 3.3 / AD-26: everything the page and its metadata need, loaded once.
  *
  * - A malformed token is the closed `not_found` before the session or database.
- * - A real session redirects only to the one-segment `/wishlist/{token}` built
- *   from the validated segment; the request pathname is never used as a target.
+ * - An authenticated visitor passes the same list access check before redirecting
+ *   to `/wishlist/{token}`. The SPA fetches its own wish cards.
  * - Without a session the page reads through the same `readWishlist` gate as
  *   `api/v1`, anonymously, so only `PUBLIC` wishes reach the HTML.
  */
-export async function loadLinkPage(token: string): Promise<LinkPage> {
+export async function loadLinkPage(token: string, giftId?: string): Promise<LinkPage> {
   const requestHeaders = await headers();
   const locale = requestLocale(requestHeaders.get("accept-language"));
 
   const to = wishlistPathForToken(token);
-  if (to === null) return { locale, view: { kind: "not_found" } };
+  // PostgreSQL text cannot contain a zero byte, including one decoded from a URL.
+  if (to === null || giftId?.includes("\0")) {
+    return { locale, view: { kind: "not_found" } };
+  }
 
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (session) return { locale, view: { kind: "redirect", to } };
+  if (session && giftId === undefined) {
+    const allowed = await canOpenPublicWishlist(token, { id: session.user.id });
+    return { locale, view: allowed ? { kind: "redirect", to } : { kind: "not_found" } };
+  }
 
-  const data = await readPublicWishlist(token, null, locale);
+  const data = await readPublicWishlist(
+    token,
+    session ? { id: session.user.id } : null,
+    locale,
+    giftId,
+  );
   // A found list always names its owner for a link read; without it the answer
   // is treated as the same closed gate rather than rendering an unnamed list.
   if (data === null || !data.owner) return { locale, view: { kind: "not_found" } };
+  if (giftId !== undefined && data.gifts.length === 0) {
+    return { locale, view: { kind: "not_found" } };
+  }
+  if (session) return { locale, view: { kind: "redirect", to } };
 
   return {
     locale,

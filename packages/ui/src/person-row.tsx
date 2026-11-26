@@ -3,6 +3,7 @@ import { XStack, YStack } from "@tamagui/stacks";
 import { forwardRef, type ComponentRef, type ReactNode } from "react";
 import { Avatar } from "./avatar";
 import { focusRing } from "./focus-ring";
+import { useHoverTransition } from "./hover";
 import { Skeleton } from "./skeleton";
 import { Text } from "./text";
 import { typography } from "./tokens";
@@ -59,7 +60,8 @@ const PlainRow = styled(View, {
  * click and the context menu itself, without the router. The anchor resets the
  * browser underline (text decoration is inherited by the text descendants) and
  * keeps the pointer, the press feedback and the focus ring of the other
- * interactive surfaces (`DESIGN.md` → App).
+ * interactive surfaces (`DESIGN.md` → App). On hover the card fills `$muted`
+ * (CLE-129); a row on the page background takes the same fill.
  */
 const LinkRow = styled(View, {
   name: "GLPersonRowLink",
@@ -69,7 +71,12 @@ const LinkRow = styled(View, {
   cursor: "pointer",
   opacity: "press:0.9",
   ...focusRing,
-  variants,
+  variants: {
+    variant: {
+      card: { backgroundColor: "$surface hover:$muted" },
+      row: { backgroundColor: "transparent hover:$muted" },
+    },
+  },
   defaultVariants,
 });
 
@@ -126,6 +133,7 @@ export const PersonRow = forwardRef<ComponentRef<typeof LinkRow>, PersonRowProps
     { displayName, nick, photoUrl, variant = "card", chip, actions, pressLabel, href, onPress, testID },
     ref,
   ) {
+    const transition = useHoverTransition();
     const content = (
       <XStack alignItems="center" gap="$2" flex={1}>
         <Avatar name={displayName} photoUrl={photoUrl} size="md" decorative testID={testID ? `${testID}-avatar` : undefined} />
@@ -168,6 +176,7 @@ export const PersonRow = forwardRef<ComponentRef<typeof LinkRow>, PersonRowProps
           role="link"
           aria-label={pressLabel}
           onPress={onPress}
+          transition={transition}
           testID={testID}
           variant={variant}
           flex={actions ? 1 : undefined}

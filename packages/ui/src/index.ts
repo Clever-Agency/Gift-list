@@ -135,6 +135,7 @@ export { Dialog, type DialogProps } from "./dialog";
 export { DetailDialog, type DetailDialogProps, type DetailFactView } from "./detail-dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
 export { useReduceMotion } from "./use-reduce";
+export { hoverTransition, useHoverTransition } from "./hover";
 export { useThemeColor } from "./theme-color";
 export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";

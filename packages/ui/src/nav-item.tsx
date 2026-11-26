@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Badge } from "./badge";
 import { focusRing } from "./focus-ring";
+import { useHoverTransition } from "./hover";
 import { Text } from "./text";
 import { useThemeColor } from "./theme-color";
 
@@ -75,6 +76,7 @@ export const NavItem = forwardRef<ComponentRef<typeof View>, NavItemProps>(funct
 ) {
   const active = selected || Boolean(isFocused);
   const tab = variant === "tab";
+  const transition = useHoverTransition();
   const accessibleName =
     secondary ?? (badge !== undefined && badge > 0 ? `${label}, ${badge}` : label);
   const iconColor = useThemeColor(active ? "primary" : tab ? "muted-foreground" : "foreground");
@@ -103,7 +105,9 @@ export const NavItem = forwardRef<ComponentRef<typeof View>, NavItemProps>(funct
       borderTopWidth={tab ? 3 : undefined}
       borderLeftWidth={tab ? undefined : 3}
       borderColor={active ? "$primary" : "transparent"}
-      backgroundColor={tab ? undefined : active ? "$muted" : "transparent hover:$background"}
+      // The hover fill is `$muted`, not the page `$background`: on the page the
+      // latter is invisible (CLE-129). The active section keeps its own fill.
+      backgroundColor={!tab && active ? "$muted" : "transparent hover:$muted"}
       cursor="pointer"
       textDecorationLine="none"
       // The root is a real `<a>`: without it the browser paints the link
@@ -111,6 +115,7 @@ export const NavItem = forwardRef<ComponentRef<typeof View>, NavItemProps>(funct
       // falls back to `currentColor` turns red. `inherit` keeps the look.
       color="inherit"
       opacity="press:0.9"
+      transition={transition}
       {...focusRing}
     >
       {tab ? (

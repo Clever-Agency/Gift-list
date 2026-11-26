@@ -41,7 +41,6 @@ function ProfileRow({ label, onPress, destructive = false, disabled = false, tes
       paddingVertical={12}
       borderBottomWidth={1}
       borderColor="$border"
-      backgroundColor="transparent hover:$background"
       cursor="pointer"
     >
       <Text kind="button" tone={destructive ? "destructive" : "primary"}>

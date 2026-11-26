@@ -2,7 +2,7 @@
 import { act, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { SegmentTabs, type SegmentTab } from "./segment-tabs";
-import { createMount } from "./test-utils";
+import { createMount, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -94,5 +94,18 @@ describe("SegmentTabs", () => {
     );
 
     expect(tab(container, "Запросы")).not.toBeNull();
+  });
+
+  /**
+   * CLE-129: a tab is a control, so it answers the pointer with the `$muted` fill
+   * of `Pressable` and changes it with the `quick` preset.
+   */
+  it("вкладка получает hover muted и плавный переход", async () => {
+    const { container, render } = mounted();
+    await render(<SegmentTabs label="Разделы друзей" tabs={tabs} value="friends" onChange={noop} />);
+
+    const node = tab(container, "Подписки");
+    expect(stateValues(node, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(node.style.transition).toContain("160ms");
   });
 });

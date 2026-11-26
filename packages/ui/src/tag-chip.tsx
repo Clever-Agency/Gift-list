@@ -233,13 +233,16 @@ export const TagChip = forwardRef<TagChipRef, TagChipProps>(function TagChip(
         error
           ? "$destructive"
           : custom
-            ? "$accent-border"
+            ? "$accent-border hover:$foreground"
             : selected
-              ? "$accent-border"
+              ? "$accent-border hover:$foreground"
               : "$border"
       }
       borderRadius="$md"
       backgroundColor={custom ? "$surface" : selected ? "$accent" : "$background"}
+      // A selected chip keeps its accent fill: it is the state, not a neutral
+      // surface, so the shared `$muted` hover would paint over it (CLE-129).
+      hoverFill={!selected}
       paddingHorizontal="$2"
     >
       {custom ? star(spacing["icon-small"], starColor, testID) : null}

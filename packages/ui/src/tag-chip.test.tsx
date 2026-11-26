@@ -2,7 +2,7 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TagChip, TagChipList } from "./tag-chip";
-import { createMount, errorMessages, nativeOnlyAttributes } from "./test-utils";
+import { createMount, errorMessages, nativeOnlyAttributes, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -507,5 +507,32 @@ describe("TagChip: на вебе нет нативных a11y-пропсов", (
     } finally {
       errors.mockRestore();
     }
+  });
+});
+
+/**
+ * CLE-129: a fixed tag is a control, so an unselected chip fills `$muted` on hover
+ * and changes it with the `quick` preset. A selected chip stays the accent state,
+ * which the muted fill would paint over.
+ */
+describe("TagChip: hover и плавность", () => {
+  it("невыбранный чип заливается muted на hover, переход 160 мс", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip label="мечта" onPress={vi.fn()} />);
+    const chip = container.querySelector('[role="checkbox"]') as HTMLElement;
+
+    expect(stateValues(chip, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(chip.style.transition).toContain("160ms");
+  });
+
+  it("выбранный чип сохраняет свою заливку: muted hover не появляется", async () => {
+    const { container, render } = mounted();
+    await render(<TagChip label="мечта" selected onPress={vi.fn()} />);
+    const chip = container.querySelector('[role="checkbox"]') as HTMLElement;
+
+    expect(stateValues(chip, "base", "background-color")).toEqual(["var(--accent)"]);
+    expect(stateValues(chip, "hover", "background-color")).toEqual([]);
+    // The frame still answers the pointer.
+    expect(stateValues(chip, "hover", "border-color")).toEqual(["var(--foreground)"]);
   });
 });

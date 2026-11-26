@@ -5,7 +5,7 @@ import { Bell, Users } from "./icons";
 import { NavItem } from "./nav-item";
 import navItemNativeSource from "./nav-item.native.tsx?raw";
 import { colors, spacing } from "./tokens";
-import { createMount, declarationsFor } from "./test-utils";
+import { createMount, declarationsFor, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -202,6 +202,24 @@ describe("NavItem (side, web)", () => {
 
   it("displayName совпадает с именем компонента", () => {
     expect(NavItem.displayName).toBe("NavItem");
+  });
+});
+
+/**
+ * CLE-129: the side item used to fill the page `$background` on hover, which is
+ * invisible on the page. It now fills `$muted`; the change rides the `quick`
+ * preset on the web.
+ */
+describe("NavItem (side, web): hover", () => {
+  it("невыбранная строка заливается muted на hover, переход 160 мс", async () => {
+    const { container, render } = mounted();
+    await render(
+      <NavItem variant="side" label="Мои брони" icon={<Users />} selected={false} href="/reservations" testID="res" />,
+    );
+    const item = container.querySelector<HTMLElement>("[data-testid='res']") as HTMLElement;
+
+    expect(stateValues(item, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(item.style.transition).toContain("160ms");
   });
 });
 

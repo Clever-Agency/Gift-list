@@ -2,7 +2,7 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { CollectionCard } from "./collection-card";
-import { createMount } from "./test-utils";
+import { createMount, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -49,5 +49,21 @@ describe("CollectionCard: вариант A", () => {
     expect(image?.getAttribute("src")).toBe("https://example.test/autumn.jpg");
     expect(image?.getAttribute("alt")).toBe("");
     expect(container.querySelector("[role='button']")).toBeNull();
+  });
+
+  /**
+   * CLE-129: the whole card is the button, so the cover lifts its shadow on hover
+   * and the shadow changes with the `quick` preset, not instantly.
+   */
+  it("с onPress обложка поднимает тень на hover и меняет её плавно", async () => {
+    const { container, render } = mounted();
+    await render(<CollectionCard title="Осень" count="18 идей" onPress={vi.fn()} testID="collection" />);
+
+    const cover = container.querySelector<HTMLElement>("[role='button']")?.firstElementChild as HTMLElement;
+    expect(stateValues(cover, "base", "box-shadow").join(" ")).not.toBe(
+      stateValues(cover, "hover", "box-shadow").join(" "),
+    );
+    expect(stateValues(cover, "hover", "box-shadow").length).toBeGreaterThan(0);
+    expect(cover.style.transition).toContain("160ms");
   });
 });

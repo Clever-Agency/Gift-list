@@ -72,7 +72,7 @@ describe("LinkText: кольцо фокуса, hover и press", () => {
     expect(plainFocus).toEqual([]);
   });
 
-  it("hover даёт фон $background только при указателе, press — непрозрачность 0.9", async () => {
+  it("hover даёт видимый фон $muted только при указателе, press — непрозрачность 0.9", async () => {
     const { container, render } = mounted();
     await render(linkText());
 
@@ -82,7 +82,7 @@ describe("LinkText: кольцо фокуса, hover и press", () => {
         (line) =>
           line.includes("@media (hover: hover)") &&
           line.includes(":where(:hover)") &&
-          line.includes("background-color:var(--background)"),
+          line.includes("background-color:var(--muted)"),
       ),
     ).toBe(true);
     expect(
@@ -90,6 +90,9 @@ describe("LinkText: кольцо фокуса, hover и press", () => {
     ).toBe(true);
     // The touch target of DESIGN.md stays 44 px tall.
     expect(lines.some((line) => line.includes("min-height:var(--t-size-touch-target)"))).toBe(true);
+    // The fill changes with the `quick` preset of the CSS driver (160 ms, CLE-129).
+    expect(link(container).style.transition).toContain("160ms");
+    expect(link(container).style.transition).toContain("background-color");
   });
 
   it("Text и Heading не получают кольца, hover-фона и press-непрозрачности", async () => {

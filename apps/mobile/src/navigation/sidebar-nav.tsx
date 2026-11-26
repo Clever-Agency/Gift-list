@@ -5,6 +5,7 @@ import {
   NavItem,
   Sidebar,
   Text,
+  useHoverTransition,
   View,
   YStack,
 } from "@gift-list/ui";
@@ -32,7 +33,9 @@ const USER_CARD_FRAME = {
   paddingHorizontal: 12,
   paddingVertical: 8,
   borderRadius: "$md",
-  backgroundColor: "transparent hover:$background",
+  // `$muted`, not the page `$background`: on the page the latter is invisible
+  // (CLE-129).
+  backgroundColor: "transparent hover:$muted",
   cursor: "pointer",
   textDecorationLine: "none",
   ...focusRing,
@@ -50,6 +53,8 @@ const USER_CARD_FRAME = {
  * clamped, so a long one wraps instead of losing its tail.
  */
 function SidebarUserCard({ name, nick, testID }: SidebarUserCardProps) {
+  const transition = useHoverTransition();
+
   function openProfile() {
     router.navigate("/profile");
   }
@@ -74,14 +79,14 @@ function SidebarUserCard({ name, nick, testID }: SidebarUserCardProps) {
     };
 
     return (
-      <View {...link} testID={testID} {...USER_CARD_FRAME}>
+      <View {...link} testID={testID} transition={transition} {...USER_CARD_FRAME}>
         {content}
       </View>
     );
   }
 
   return (
-    <View role="link" onPress={openProfile} testID={testID} {...USER_CARD_FRAME}>
+    <View role="link" onPress={openProfile} testID={testID} transition={transition} {...USER_CARD_FRAME}>
       {content}
     </View>
   );

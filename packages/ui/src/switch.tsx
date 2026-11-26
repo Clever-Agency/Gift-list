@@ -50,6 +50,7 @@ export function Switch({ label, hint, checked, disabled, onChange, testID }: Swi
       gap="$3"
       minHeight="$row-height"
       paddingVertical="$2"
+      borderRadius="$md"
     >
       <View
         testID="switch-track"

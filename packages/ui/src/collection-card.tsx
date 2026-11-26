@@ -1,16 +1,12 @@
 import { styled } from "@tamagui/core";
 import { YStack } from "@tamagui/stacks";
+import { useHoverTransition } from "./hover";
 import { Photo } from "./photo";
 import { PhotoPlaceholder } from "./photo-placeholder";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
 
 const CardView = styled(YStack, { name: "GLCollectionCard", gap: "$1" });
-const CardButton = styled(Pressable, {
-  name: "GLCollectionCardButton",
-  gap: "$1",
-  cursor: "pointer",
-});
 
 export type CollectionCardProps = {
   /** The editorial title, one line with an ellipsis (Lora, like the other headings). */
@@ -41,6 +37,7 @@ export function CollectionCard({
   pressLabel,
   testID,
 }: CollectionCardProps) {
+  const transition = useHoverTransition();
   const content = (
     <>
       <YStack
@@ -49,7 +46,9 @@ export function CollectionCard({
         borderRadius="$lg"
         overflow="hidden"
         backgroundColor="$muted"
-        boxShadow="$shadow-card"
+        // The cover lifts its shadow on hover of the whole card, like WishCard.
+        boxShadow={onPress ? "$shadow-card hover:$shadow-card-hover" : "$shadow-card"}
+        transition={onPress ? transition : null}
       >
         <Photo
           url={coverUrl}
@@ -77,9 +76,20 @@ export function CollectionCard({
   }
 
   return (
-    <CardButton width={width} role="button" aria-label={pressLabel} onPress={onPress} testID={testID}>
+    <Pressable
+      width={width}
+      role="button"
+      aria-label={pressLabel}
+      onPress={onPress}
+      testID={testID}
+      gap="$1"
+      cursor="pointer"
+      // The card draws the lifted shadow on its cover; a muted fill behind the
+      // title would paint the page background twice.
+      hoverFill={false}
+    >
       {content}
-    </CardButton>
+    </Pressable>
   );
 }
 

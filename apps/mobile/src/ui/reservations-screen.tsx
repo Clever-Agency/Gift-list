@@ -34,8 +34,6 @@ export type ReservationsScreenProps = {
   state: ReservationsState;
   /** The holder's zone: the card counts «срок прошёл» there and offers no extension. */
   timeZone: string;
-  /** The cards whose «Кто видит, что это я» block is open. */
-  expanded: ReadonlySet<string>;
   /** The cards with a request in flight; every other card stays usable. */
   busyIds: ReadonlySet<string>;
   onRetry: () => void;
@@ -50,7 +48,6 @@ export type ReservationsScreenProps = {
   onExtend: (card: ReservationCardData) => void;
   /** «Подарил» (Story 5.7): the card is replaced by the `GIVEN` answer. */
   onGiven: (card: ReservationCardData) => void;
-  onToggleVisibility: (giftId: string) => void;
   onBoughtChange: (card: ReservationCardData, value: boolean) => void;
   onVisibilityChange: (card: ReservationCardData, next: ReservationVisibilityValues) => void;
   /** Registers the ⋮ of a card, so the screen can return focus after its menu closes. */
@@ -69,7 +66,6 @@ export type ReservationsScreenProps = {
 export function ReservationsScreen({
   state,
   timeZone,
-  expanded,
   busyIds,
   onRetry,
   onBack,
@@ -77,7 +73,6 @@ export function ReservationsScreen({
   onMenu,
   onExtend,
   onGiven,
-  onToggleVisibility,
   onBoughtChange,
   onVisibilityChange,
   menuRefFor,
@@ -114,10 +109,6 @@ export function ReservationsScreen({
               busy={busy}
               timeZone={timeZone}
               menuRef={menuRefFor ? menuRefFor(card.giftId) : undefined}
-              visibilityExpanded={expanded.has(card.giftId)}
-              onToggleVisibility={function toggleVisibility() {
-                onToggleVisibility(card.giftId);
-              }}
               onOpenGift={function openGift() {
                 onOpenGift(card);
               }}

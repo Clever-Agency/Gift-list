@@ -97,11 +97,6 @@ function ReservationsContent({
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
 
-  // The open «Кто видит, что это я» blocks, by gift id. The screen owns them, so the
-  // card stays a plain presentation of the stored values.
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(function noneOpen() {
-    return new Set<string>();
-  });
   // The cards with a request in flight: the other cards stay usable, and a second
   // tap on the same card sends nothing.
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(function noneBusy() {
@@ -338,20 +333,11 @@ function ReservationsContent({
     });
   }
 
-  /** Both switches travel in one `visibility` action; the answer replaces the card. */
+  /** The visibility switch travels in one `visibility` action; the answer replaces the card. */
   async function changeVisibility(card: ReservationCard, next: ReservationVisibilityValues) {
     await sendAction(card, {
       action: "visibility",
       holderVisibleToOthers: next.holderVisibleToOthers,
-    });
-  }
-
-  function toggleVisibility(giftId: string) {
-    setExpanded(function flip(current) {
-      const next = new Set(current);
-      if (next.has(giftId)) next.delete(giftId);
-      else next.add(giftId);
-      return next;
     });
   }
 
@@ -502,7 +488,6 @@ function ReservationsContent({
       <ReservationsView
         state={state}
         timeZone={timeZone}
-        expanded={expanded}
         busyIds={busyIds}
         onRetry={retry}
         onOpenGift={openGift}
@@ -511,7 +496,6 @@ function ReservationsContent({
         onGiven={function givenOf(card) {
           void markGiven(card);
         }}
-        onToggleVisibility={toggleVisibility}
         onBoughtChange={function changeBoughtOf(card, value) {
           void changeBought(card, value);
         }}

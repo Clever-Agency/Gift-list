@@ -352,7 +352,8 @@ describe("деталь желания: снятие своей брони", () =
 /**
  * Story 5.5 (`EXPERIENCE.md` → «Подписи брони», `DESIGN.md` → ReservationCard):
  * у держателя в детали те же действия, что в «Моих бронях», — подпись фазы,
- * «Продлить до…», «Купил» и «Кто видит, что это я». Снятие — из 5.2, одно.
+ * «Продлить до…», «Купил» и переключатель «Показывать другим гостям, что дарю я».
+ * Снятие — из 5.2, одно.
  */
 describe("деталь желания: действия держателя", () => {
   it("держатель видит фазу, продление, «Купил» и переключатели", async () => {
@@ -364,7 +365,7 @@ describe("деталь желания: действия держателя", () 
     expect(control("Продлить до…")).toBeDefined();
     expect(control("Подарил")).toBeDefined();
     expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("false");
-    expect(control("Кто видит, что это я")).toBeDefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeDefined();
     // Снятие из 5.2 не продублировано рядом с новыми действиями.
     const releases = Array.from(
       document.querySelectorAll<HTMLElement>('button, [role="button"]'),
@@ -384,7 +385,7 @@ describe("деталь желания: действия держателя", () 
     expect(text()).toContain("Уже забронирован");
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeUndefined();
-    expect(control("Кто видит, что это я")).toBeUndefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeUndefined();
     expect(switchNamed("Купил")).toBeUndefined();
   });
 
@@ -533,9 +534,7 @@ describe("деталь желания: действия держателя", () 
 
     expect(text()).not.toContain("Показать владельцу, что это я");
 
-    await click(control("Кто видит, что это я"));
-    await settle();
-    await click(switchNamed("Показать другим, кто берёт"));
+    await click(switchNamed("Показывать другим гостям, что дарю я"));
     await settle();
 
     const calls = actionCalls();
@@ -547,7 +546,7 @@ describe("деталь желания: действия держателя", () 
         holderVisibleToOthers: false,
       },
     });
-    expect(switchNamed("Показать другим, кто берёт")?.getAttribute("aria-checked")).toBe(
+    expect(switchNamed("Показывать другим гостям, что дарю я")?.getAttribute("aria-checked")).toBe(
       "false",
     );
   });
@@ -571,7 +570,7 @@ describe("деталь желания: действия держателя", () 
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeUndefined();
     expect(switchNamed("Купил")).toBeDefined();
-    expect(control("Кто видит, что это я")).toBeDefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeDefined();
     expect(control("Снять бронь")).toBeDefined();
   });
 

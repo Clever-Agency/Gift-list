@@ -110,12 +110,12 @@ function byLabel(label: string): HTMLElement | null {
 /**
  * Story 5.5 (`DESIGN.md` → ReservationCard, `EXPERIENCE.md` → «Подписи брони»):
  * одна карточка брони держателя — снимок названия, @ник, срок, фаза, «Купил»,
- * «Продлить до…», свёрнутые переключатели и ссылка на деталь только при
- * `canOpenGift`.
+ * «Продлить до…», переключатель «Показывать другим гостям, что дарю я» и ссылка на
+ * деталь только при `canOpenGift`.
  */
 describe("ReservationCard", () => {
   it("показывает снимок названия, ник владельца и срок фазы ACTIVE", async () => {
-    await render(<ReservationCard card={card()} visibilityExpanded={false} onToggleVisibility={noop} onBoughtChange={noop} onVisibilityChange={noop} />);
+    await render(<ReservationCard card={card()} onBoughtChange={noop} onVisibilityChange={noop} />);
 
     expect(text()).toContain("Плед из шерсти мериноса");
     expect(text()).toContain("у @anya");
@@ -127,8 +127,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ phase: "AWAITING_GIVER" })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onBoughtChange={noop}
         onVisibilityChange={noop}
       />,
@@ -140,8 +138,6 @@ describe("ReservationCard", () => {
       host.render(
         <ReservationCard
           card={card({ phase: "AWAITING_OWNER" })}
-          visibilityExpanded={false}
-          onToggleVisibility={noop}
           onBoughtChange={noop}
           onVisibilityChange={noop}
         />,
@@ -157,8 +153,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ bought: true })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onBoughtChange={onBoughtChange}
         onVisibilityChange={noop}
       />,
@@ -179,8 +173,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ phase: "GIVEN" })}
-        visibilityExpanded
-        onToggleVisibility={noop}
         onExtend={onExtend}
         onGiven={onGiven}
         onMenu={noop}
@@ -193,7 +185,7 @@ describe("ReservationCard", () => {
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeUndefined();
     expect(byLabel("Купил")).not.toBeNull();
-    expect(byLabel("Показать другим, кто берёт")).not.toBeNull();
+    expect(byLabel("Показывать другим гостям, что дарю я")).not.toBeNull();
     expect(byLabel("Меню")).not.toBeNull();
   });
 
@@ -202,8 +194,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ dueAt: dueSoon() })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onExtend={onExtend}
         onBoughtChange={noop}
         onVisibilityChange={noop}
@@ -224,8 +214,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ dueAt: "2020-01-01" })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onExtend={onExtend}
         onGiven={onGiven}
         onBoughtChange={noop}
@@ -245,8 +233,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ dueAt: dueSoon() })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onGiven={onGiven}
         onBoughtChange={noop}
         onVisibilityChange={noop}
@@ -260,8 +246,6 @@ describe("ReservationCard", () => {
       host.render(
         <ReservationCard
           card={card({ phase: "GIVEN" })}
-          visibilityExpanded={false}
-          onToggleVisibility={noop}
           onGiven={onGiven}
           onBoughtChange={noop}
           onVisibilityChange={noop}
@@ -277,8 +261,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card()}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onOpenGift={onOpenGift}
         onBoughtChange={noop}
         onVisibilityChange={noop}
@@ -296,8 +278,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ canOpenGift: false })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onOpenGift={onOpenGift}
         onBoughtChange={noop}
         onVisibilityChange={noop}
@@ -316,8 +296,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card()}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onMenu={onMenu}
         onBoughtChange={noop}
         onVisibilityChange={noop}
@@ -330,21 +308,25 @@ describe("ReservationCard", () => {
     expect(onMenu).toHaveBeenCalledTimes(1);
   });
 
-  it("переключатели видимости свёрнуты и раскрываются через экран", async () => {
-    const onToggleVisibility = vi.fn();
+  it("переключатель «Показывать другим гостям, что дарю я» стоит прямо в карточке", async () => {
+    const onVisibilityChange = vi.fn();
     await render(
       <ReservationCard
         card={card()}
-        visibilityExpanded={false}
-        onToggleVisibility={onToggleVisibility}
         onBoughtChange={noop}
-        onVisibilityChange={noop}
+        onVisibilityChange={onVisibilityChange}
       />,
     );
 
-    expect(container.querySelectorAll('[role="switch"]')).toHaveLength(1);
-    await click(control("Кто видит, что это я"));
-    expect(onToggleVisibility).toHaveBeenCalledTimes(1);
+    // «Купил» и видимость — без раскрывашки и без заголовка «Кто видит, что это я».
+    expect(container.querySelectorAll('[role="switch"]')).toHaveLength(2);
+    expect(container.querySelector("[aria-expanded]")).toBeNull();
+    expect(text()).not.toContain("Кто видит, что это я");
+    const others = byLabel("Показывать другим гостям, что дарю я");
+    expect(others?.getAttribute("aria-checked")).toBe("true");
+
+    await click(others);
+    expect(onVisibilityChange).toHaveBeenLastCalledWith({ holderVisibleToOthers: false });
   });
 
   it("пока карточка занята, её действия не отправляют второй запрос", async () => {
@@ -355,8 +337,6 @@ describe("ReservationCard", () => {
       <ReservationCard
         card={card()}
         busy
-        visibilityExpanded
-        onToggleVisibility={noop}
         onMenu={onMenu}
         onExtend={onExtend}
         onBoughtChange={onBoughtChange}

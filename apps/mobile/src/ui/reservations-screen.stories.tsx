@@ -68,7 +68,6 @@ const ready = {
 const base = {
   state: ready,
   timeZone: "Europe/Minsk",
-  expanded: new Set<string>(),
   busyIds: new Set<string>(),
   onRetry: noop,
   onBack: noop,
@@ -76,7 +75,6 @@ const base = {
   onMenu: noop,
   onExtend: noop,
   onGiven: noop,
-  onToggleVisibility: noop,
   onBoughtChange: noop,
   onVisibilityChange: noop,
 } satisfies ReservationsScreenProps;

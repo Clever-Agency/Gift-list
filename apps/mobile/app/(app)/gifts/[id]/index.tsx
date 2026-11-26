@@ -85,7 +85,7 @@ export default function GiftDetailScreen() {
   const [releaseBusy, setReleaseBusy] = useState(false);
   const releaseInFlight = useRef(false);
   // Story 5.5: the holder's three actions of «Мои брони» are also here — «Купил»,
-  // «Продлить до…» and «Кто видит, что это я». One action at a time, the same
+  // «Продлить до…» и переключатель видимости. One action at a time, the same
   // guard as the reserve and the release.
   const [actionBusy, setActionBusy] = useState(false);
   const actionInFlight = useRef(false);
@@ -93,7 +93,6 @@ export default function GiftDetailScreen() {
   // are one queue — while any of them is in flight, the rest are blocked and a
   // second request does not leave the screen.
   const holderBusy = actionBusy || releaseBusy;
-  const [visibilityOpen, setVisibilityOpen] = useState(false);
   const [extendOpen, setExtendOpen] = useState(false);
   const [extendError, setExtendError] = useState<string | null>(null);
   const timeZone =
@@ -347,12 +346,6 @@ export default function GiftDetailScreen() {
     });
   }
 
-  function toggleVisibility() {
-    setVisibilityOpen(function flip(current) {
-      return !current;
-    });
-  }
-
   function openExtend() {
     setExtendError(null);
     setExtendOpen(true);
@@ -502,8 +495,6 @@ export default function GiftDetailScreen() {
                         />
                       )}
                       <ReservationVisibility
-                        expanded={visibilityOpen}
-                        onToggle={toggleVisibility}
                         values={{
                           holderVisibleToOthers: current.reservation.holderVisibleToOthers,
                         }}

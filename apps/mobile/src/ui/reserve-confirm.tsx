@@ -33,11 +33,11 @@ export function defaultDueOn(timeZone: string, now = new Date()): string {
 
 /**
  * Reserve confirm (`EXPERIENCE.md` → Reserve confirm): the date and the
- * «Показать другим, кто берёт» switch in a bottom sheet on compact widths and a
- * dialog otherwise. CLE-124/D-49 removed the «Показать владельцу» switch: a
- * reservation is always a surprise for the owner. CLE-124/S9b-1 removed the
- * «Купил» hint: the timer releases the reservation after the window even with
- * that mark, so the hint promised something that no longer holds.
+ * «Показывать другим гостям, что дарю я» switch in a bottom sheet on compact
+ * widths and a dialog otherwise. CLE-124/D-49 removed the «Показать владельцу»
+ * switch: a reservation is always a surprise for the owner. CLE-124/S9b-1
+ * removed the «Купил» hint: the timer releases the reservation after the window
+ * even with that mark, so the hint promised something that no longer holds.
  */
 export function ReserveConfirm({
   open,

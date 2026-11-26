@@ -22,9 +22,6 @@ export type ReservationCardProps = {
   busy?: boolean;
   /** The holder's zone: the deadline day (`dueAt`) and «срок прошёл» are counted there. */
   timeZone?: string;
-  /** «Кто видит, что это я» is open (the screen owns the state of each card). */
-  visibilityExpanded: boolean;
-  onToggleVisibility: () => void;
   /** Opens the wish detail; the card only makes a link of it when `canOpenGift`. */
   onOpenGift?: () => void;
   /** Opens the ⋮ menu of the screen; without it the card has no menu button. */
@@ -46,25 +43,22 @@ export type ReservationCardProps = {
 /**
  * Карточка одной брони держателя (Story 5.5, `DESIGN.md` → ReservationCard,
  * `EXPERIENCE.md` → «Подписи брони»): снимок названия, `@ник` владельца, срок,
- * фаза, чип «Куплено», свёрнутый переключатель «Кто видит, что это я» и действия
- * «Купил», «Подарил» (Story 5.7), «Продлить до…», «Снять бронь» (⋮). Без цены,
- * тегов и остальных желаний: набор полей задан контрактом `reservationCardSchema`
+ * фаза, чип «Куплено», переключатель «Показывать другим гостям, что дарю я» и
+ * действия «Купил», «Подарил» (Story 5.7), «Продлить до…», «Снять бронь» (⋮). Без
+ * цены, тегов и остальных желаний: набор полей задан контрактом `reservationCardSchema`
  * (A-14, AD-7).
  *
  * Основная зона — ссылка на деталь только при `canOpenGift`: после unfriend,
  * Block или сужения видимости сервер отвечает `false`, и тогда карточка не
  * ссылается никуда, а действия остаются на месте.
  *
- * Компонент ничего не запрашивает: `busy`, раскрытие переключателей и сами
- * действия принадлежат экрану, поэтому одна карточка не может отправить два
- * запроса.
+ * Компонент ничего не запрашивает: `busy` и сами действия принадлежат экрану,
+ * поэтому одна карточка не может отправить два запроса.
  */
 export function ReservationCard({
   card,
   busy,
   timeZone = "UTC",
-  visibilityExpanded,
-  onToggleVisibility,
   onOpenGift,
   onMenu,
   onExtend,
@@ -191,8 +185,6 @@ export function ReservationCard({
         />
       ) : null}
       <ReservationVisibility
-        expanded={visibilityExpanded}
-        onToggle={onToggleVisibility}
         values={{
           holderVisibleToOthers: card.holderVisibleToOthers,
         }}

@@ -6,8 +6,8 @@ import { ReservationCard, type ReservationCardProps } from "./reservation-card";
 /**
  * Карточка брони держателя (Story 5.5, `DESIGN.md` → ReservationCard): снимок
  * названия, «у @ник», срок «до DD.MM», подпись фазы из «Подписи брони», чип
- * «Куплено», «Купил», «Подарил» (Story 5.7), «Продлить до…» и свёрнутые
- * переключатели «Кто видит, что это я». Ссылка на деталь — только при
+ * «Куплено», «Купил», «Подарил» (Story 5.7), «Продлить до…» и переключатель
+ * «Показывать другим гостям, что дарю я». Ссылка на деталь — только при
  * `canOpenGift`; в `GIVEN` и после Срока продления нет (CLE-124/S9b-3).
  */
 const meta = {
@@ -45,8 +45,6 @@ function sample(overrides: Partial<ReservationCardData> = {}): ReservationCardDa
 const base = {
   card: sample(),
   timeZone: "Europe/Minsk",
-  visibilityExpanded: false,
-  onToggleVisibility: noop,
   onOpenGift: noop,
   onMenu: noop,
   onExtend: noop,
@@ -83,10 +81,10 @@ export const Bought: Story = {
   args: { ...base, card: sample({ bought: true }) },
 };
 
-/** Раскрытый переключатель «Показать другим, кто берёт». */
-export const VisibilityOpen: Story = {
+/** Переключатель «Показывать другим гостям, что дарю я» выключен. */
+export const VisibilityOff: Story = {
   tags: ["!dev"],
-  args: { ...base, visibilityExpanded: true },
+  args: { ...base, card: sample({ holderVisibleToOthers: false }) },
 };
 
 /** `canOpenGift = false`: карточка без ссылки на деталь, действия на месте (A-14). */
@@ -98,7 +96,7 @@ export const WithoutLink: Story = {
 /** Запрос карточки в полёте: все действия заняты. */
 export const Busy: Story = {
   tags: ["!dev"],
-  args: { ...base, busy: true, visibilityExpanded: true },
+  args: { ...base, busy: true },
 };
 
 /** Длинная кириллица на 360 px: название в две строки, кнопки не переполняются. */

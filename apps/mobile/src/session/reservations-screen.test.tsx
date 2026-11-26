@@ -411,9 +411,7 @@ describe("экран «Мои брони»", () => {
 
     expect(text()).not.toContain("Показать владельцу, что это я");
 
-    await click(control("Кто видит, что это я"));
-    await settle(10);
-    await click(byLabel("Показать другим, кто берёт"));
+    await click(byLabel("Показывать другим гостям, что дарю я"));
     await settle(20);
 
     const calls = updateCalls();

@@ -50,7 +50,7 @@ describe("reserve confirm defaults", () => {
     expect(catalog.gift.reserveCta).toBe("Куплю сам");
     // CLE-124/D-49: the owner switch is gone; only the guests' switch stays.
     expect(catalog.gift.reserveConfirm.showOwner).toBeUndefined();
-    expect(catalog.gift.reserveConfirm.showOthers).toBe("Показать другим, кто берёт");
+    expect(catalog.gift.reserveConfirm.showOthers).toBe("Показывать другим гостям, что дарю я");
     // CLE-124/S9b-1: no hint promises that «Купил» protects the reservation.
     expect(catalog.gift.reserveConfirm.boughtHint).toBeUndefined();
     expect(catalog.gift.reserveNoButton).toEqual({
@@ -90,14 +90,16 @@ const noop = function noop() {};
 
 /** Story 5.1 / CLE-124/D-49: the reserve window has only the guests' switch. */
 describe("ReserveConfirm", () => {
-  it("shows one switch — «Показать другим, кто берёт» — and no owner switch", async () => {
+  it("shows one switch — «Показывать другим гостям, что дарю я» — and no owner switch", async () => {
     await render(
       <ReserveConfirm open title="Плед" timeZone="Europe/Minsk" onClose={noop} onConfirm={noop} />,
     );
 
     expect(dialogElement()).not.toBeNull();
     expect(switches()).toHaveLength(1);
-    expect(switches()[0]?.getAttribute("aria-label")).toBe("Показать другим, кто берёт");
+    expect(switches()[0]?.getAttribute("aria-label")).toBe(
+      "Показывать другим гостям, что дарю я",
+    );
     expect(dialogElement()?.textContent ?? "").not.toContain("Показать владельцу");
   });
 

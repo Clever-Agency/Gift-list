@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '2026-11-26'
+last_updated: '11-26-2026 19:36'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -58,13 +58,13 @@ development_status:
   2-7-фото-желания: backlog # нужен ARCH-A18 (хранилище фото)
   epic-2-retrospective: optional
 
-  epic-3: in-progress
+  epic-3: done
   3-1-смена-ника-в-настройках: done
   3-2-visibilitypolicy-и-wire-dto-доступа: done
-  3-3-публичная-ссылка-l-publictoken: review # CLE-53: 2026-11-26 добавлена проверка доступа до редиректа на /l/:token и /l/:token/:giftId (spec-3-3-public-wishlist-404.md и spec-3-3-public-wish-404.md); остаётся HTTP-приёмка браузера с сессией. App Links и Universal Links вынесены в отдельную поставку Раунда 1 (D-65, CLE-108)
-  3-4-профиль-u-nick: review # CLE-54: на staging проверены видимость подписчика и друга и HTTP 404 при Block; после исправления повторить подписку и принятие заявки без перезагрузки (spec-3-4-profile-relationship-refresh.md)
-  3-5-поиск-пользователей-и-скрыть-из-поиска: done # CLE-50: 3.5.1–3.5.4 готовы 2026-11-12: поиск, «скрыть из поиска», ранжирование, настоящие ссылки на /u/:nick; epic-3 остаётся in-progress
-  epic-3-retrospective: optional
+  3-3-публичная-ссылка-l-publictoken: done # CLE-53: staging, 2026-11-26, PR #125. Подтверждены браузерные ссылки и HTTP 404 до редиректа при Block, неизвестном ресурсе и переходе желания из публичного в скрытое. App Links и Universal Links — Раунд 1 (D-65, CLE-108).
+  3-4-профиль-u-nick: done # CLE-54: staging b42d474, 2026-11-26, PR #126. Публичное желание появилось после подписки, желание для друзей и «Обо мне» — после принятия заявки, оба раза на той же странице без перезагрузки. Секретное желание осталось скрытым, 404 при Block подтверждён.
+  3-5-поиск-пользователей-и-скрыть-из-поиска: done # CLE-50: 3.5.1–3.5.4 готовы 2026-11-12: поиск, «скрыть из поиска», ранжирование, настоящие ссылки на /u/:nick
+  epic-3-retrospective: done
 
   epic-4: in-progress
   4-1-отправка-приглашения-в-друзья: review # 4.1.1–4.1.3 готовы; 4.1.4: typecheck/lint/test/build exit 0, одноразовая PostgreSQL 17.11 (5/5) и реальный HTTP 31/31 + 13/13 на bce1302 2026-11-06; не done: экран вживую не принимался, 4.2/4.5 ещё не пишут пару
@@ -117,3 +117,24 @@ development_status:
   10-1-роль-admin-и-редакционные-подборки: backlog
   10-2-модерация-своих-тегов: backlog
   epic-10-retrospective: optional
+action_items:
+  - id: "epic-3-retro-public-link-http"
+    epic: 3
+    action: "Закрепить HTTP 404 карточки в CI и сверить пограничные ответы API и вход
+      через публичную ссылку"
+    owner: "Веб и QA"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-26.md"
+  - id: "epic-3-retro-search-postgres"
+    epic: 3
+    action: "Проверить насыщенный поиск и миграцию нормализации имён на PostgreSQL"
+    owner: "Сервер"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-26.md"
+  - id: "epic-3-retro-profile-state"
+    epic: 3
+    action: "Проверить смену зрителя на открытом вишлисте и откат личных полей при
+      ошибке удаления друга"
+    owner: "Клиент"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-26.md"

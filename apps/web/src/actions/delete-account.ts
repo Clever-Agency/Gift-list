@@ -130,8 +130,9 @@ async function notifyHoldersOfOwnWishes(
  * through `GiftStatusService`; the holders of reservations on its wishes are
  * told; then every row that belongs to the account is deleted explicitly —
  * tags, wishes, the list, the invite link, friendships, invites, blocks,
- * subscriptions, cooldowns, notifications it received, sessions, Better Auth
- * accounts, its verification rows and finally the `User` row itself. Phone
+ * subscriptions, cooldowns, notifications it received, reminder logs, sessions,
+ * Better Auth accounts, its verification rows and finally the `User` row
+ * itself. Phone
  * columns are not in the schema yet; when they arrive they belong here too.
  *
  * The rows are removed by id, so `onDelete` is a safety net, not the mechanism.
@@ -194,6 +195,9 @@ export async function deleteAccount(
         },
       });
       await tx.notification.deleteMany({ where: { recipientId: userId } });
+      // AD-23: the date reminders already sent to the account go with it; the
+      // `ReminderLog` rows of other people stay, their `subjectId` has no key.
+      await tx.reminderLog.deleteMany({ where: { recipientId: userId } });
       await tx.session.deleteMany({ where: { userId } });
       await tx.account.deleteMany({ where: { userId } });
       // Password-reset rows store the id as their value, the change-email

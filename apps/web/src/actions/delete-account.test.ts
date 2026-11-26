@@ -66,6 +66,15 @@ type DbState = {
   lists: { id: string; ownerId: string; publicToken: string }[];
   gifts: GiftRow[];
   notifications: Where[];
+  reminderLogs: ReminderLogRow[];
+};
+
+/** AD-23: one sent date reminder; the fake only needs the recipient to delete. */
+type ReminderLogRow = {
+  recipientId: string;
+  subjectId: string;
+  year: number;
+  kind: "BIRTHDAY_FRIEND" | "BIRTHDAY_OWN";
 };
 
 let db: DbState;
@@ -237,6 +246,19 @@ function transactionFor(database: DbState) {
       }),
     },
     inviteLink: { deleteMany: deleteManyMock("inviteLink") },
+    reminderLog: {
+      deleteMany: vi.fn(async function deleteMany(args: { where: Where }) {
+        calls.push("reminderLog");
+        const recipientId = text(args.where.recipientId);
+        const before = database.reminderLogs.length;
+        if (recipientId !== null) {
+          database.reminderLogs = database.reminderLogs.filter(
+            (row) => row.recipientId !== recipientId,
+          );
+        }
+        return { count: before - database.reminderLogs.length };
+      }),
+    },
     friendship: { deleteMany: deleteManyMock("friendship") },
     friendshipInvite: { deleteMany: deleteManyMock("friendshipInvite") },
     block: { deleteMany: deleteManyMock("block") },
@@ -254,6 +276,7 @@ beforeEach(() => {
     lists: [{ id: "l1", ownerId: OWNER, publicToken: "tok" }],
     gifts: [],
     notifications: [],
+    reminderLogs: [],
   };
   calls = [];
   casLosses = 0;
@@ -446,6 +469,7 @@ describe("deleteAccount: the rows of the account", () => {
       "subscription",
       "inviteCooldown",
       "notification",
+      "reminderLog",
       "session",
       "account",
       "verification",
@@ -475,6 +499,7 @@ describe("deleteAccount: the rows of the account", () => {
       },
     });
     expect(tx.notification.deleteMany).toHaveBeenCalledWith({ where: { recipientId: OWNER } });
+    expect(tx.reminderLog.deleteMany).toHaveBeenCalledWith({ where: { recipientId: OWNER } });
     expect(tx.session.deleteMany).toHaveBeenCalledWith({ where: { userId: OWNER } });
     expect(tx.account.deleteMany).toHaveBeenCalledWith({ where: { userId: OWNER } });
     expect(tx.verification.deleteMany).toHaveBeenCalledWith({
@@ -488,6 +513,22 @@ describe("deleteAccount: the rows of the account", () => {
       },
     });
     expect(tx.user.deleteMany).toHaveBeenCalledWith({ where: { id: OWNER } });
+  });
+
+  it("deletes the date reminders sent to the account and keeps other people's", async () => {
+    db.reminderLogs = [
+      { recipientId: OWNER, subjectId: "u2", year: 2026, kind: "BIRTHDAY_FRIEND" },
+      { recipientId: OWNER, subjectId: OWNER, year: 2026, kind: "BIRTHDAY_OWN" },
+      { recipientId: "u2", subjectId: OWNER, year: 2026, kind: "BIRTHDAY_FRIEND" },
+    ];
+
+    const outcome = await deleteAccount(OWNER, { now: NOW });
+
+    expect(outcome).toBe("deleted");
+    // `subjectId` has no foreign key, so the logs of other recipients stay.
+    expect(db.reminderLogs).toEqual([
+      { recipientId: "u2", subjectId: OWNER, year: 2026, kind: "BIRTHDAY_FRIEND" },
+    ]);
   });
 
   it("answers already-deleted and writes nothing on a repeated call", async () => {

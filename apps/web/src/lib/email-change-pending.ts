@@ -82,6 +82,16 @@ export async function rememberEmailChangeRequest(input: {
 }
 
 /**
+ * CLE-129/T9.2: the user cancelled the request on the screen, so the old address
+ * is no longer expected to be notified and the memory of the wish is dropped.
+ * The one-time link itself is a signed token Better Auth cannot revoke; it still
+ * expires in an hour and works once.
+ */
+export async function forgetEmailChangeRequest(userId: string): Promise<void> {
+  await prisma.verification.deleteMany({ where: { identifier: pendingIdentifier(userId) } });
+}
+
+/**
  * Called from Better Auth's `databaseHooks.user.update.after`, which runs for
  * every user write. Only a committed change with a matching pending row sends
  * the notice; a profile or session-only update finds nothing to do.

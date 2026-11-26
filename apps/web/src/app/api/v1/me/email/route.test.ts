@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const requestEmailChange = vi.hoisted(() => vi.fn());
+const cancelEmailChange = vi.hoisted(() => vi.fn());
 
-vi.mock("@/actions/email-change", () => ({ requestEmailChange }));
+vi.mock("@/actions/email-change", () => ({ cancelEmailChange, requestEmailChange }));
 
-import { GET, POST, PUT } from "./route";
+import { DELETE, GET, POST, PUT } from "./route";
 
 function post(body: string) {
   return new Request("http://x/api/v1/me/email", {
@@ -19,6 +20,8 @@ function post(body: string) {
 beforeEach(() => {
   requestEmailChange.mockReset();
   requestEmailChange.mockResolvedValue({ ok: true, data: { accepted: true } });
+  cancelEmailChange.mockReset();
+  cancelEmailChange.mockResolvedValue({ ok: true, data: { cancelled: true } });
 });
 
 describe("POST /api/v1/me/email", () => {
@@ -79,6 +82,34 @@ describe("POST /api/v1/me/email", () => {
 
     expect(res.status).toBe(429);
     expect(await res.json()).toMatchObject({ ok: false, code: "RATE_LIMITED" });
+  });
+});
+
+describe("DELETE /api/v1/me/email", () => {
+  it("cancels the pending request and answers the AD-12 envelope", async () => {
+    const res = await DELETE(
+      new Request("http://x/api/v1/me/email", {
+        method: "DELETE",
+        headers: { cookie: "better-auth.session_token=t" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, data: { cancelled: true } });
+    expect(cancelEmailChange).toHaveBeenCalledWith(expect.any(Headers));
+  });
+
+  it("keeps the use-case answer, e.g. a dead session", async () => {
+    cancelEmailChange.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+
+    const res = await DELETE(new Request("http://x/api/v1/me/email", { method: "DELETE" }));
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ ok: false, code: "UNAUTHENTICATED" });
   });
 });
 

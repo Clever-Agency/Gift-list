@@ -178,6 +178,20 @@ export const emailChangeBodySchema = z.object({
 export type EmailChangeBody = z.infer<typeof emailChangeBodySchema>;
 
 /**
+ * CLE-129/T9.2 (FR-56): the neutral answer of a change request. It is the same
+ * for a free and a taken address — the screen must not learn whether the new
+ * mailbox is free before the link is opened.
+ */
+export const emailChangeAcceptedSchema = z.object({ accepted: z.literal(true) });
+
+export type EmailChangeAccepted = z.infer<typeof emailChangeAcceptedSchema>;
+
+/** The answer of a cancelled request: the letter is no longer expected. */
+export const emailChangeCancelledSchema = z.object({ cancelled: z.literal(true) });
+
+export type EmailChangeCancelled = z.infer<typeof emailChangeCancelledSchema>;
+
+/**
  * Story 3.5 (FR-8): the settings switch stores one flag. Any other key is a
  * `VALIDATION` answer on `hideFromSearch` — the route names the field the
  * screen sent, instead of a bare rejection from `z.strictObject` (whose

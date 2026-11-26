@@ -7,7 +7,7 @@ import {
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { auth } from "@/lib/auth";
-import { rememberEmailChangeRequest } from "@/lib/email-change-pending";
+import { forgetEmailChangeRequest, rememberEmailChangeRequest } from "@/lib/email-change-pending";
 import { authRateLimit, consumeRateLimit } from "@/lib/rate-limit";
 
 const unauthenticated = {
@@ -69,4 +69,21 @@ export async function requestEmailChange(
     headers,
   });
   return accepted;
+}
+
+/**
+ * CLE-129/T9.2 (FR-56): «Отменить» in the waiting block drops the pending wish,
+ * so the old address is not notified if a letter is still opened later. The
+ * confirmation link is a signed one-time token Better Auth cannot revoke; it
+ * keeps its hour-long life. Nothing else is stored, so this is all the cancel
+ * has to forget. The per-user rate limit is left as is: cancelling must not
+ * become a way to send letters without a limit.
+ */
+export async function cancelEmailChange(
+  headers: Headers,
+): Promise<ActionResult<{ cancelled: true }>> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return unauthenticated;
+  await forgetEmailChangeRequest(session.user.id);
+  return { ok: true, data: { cancelled: true as const } };
 }

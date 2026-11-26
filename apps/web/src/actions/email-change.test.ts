@@ -2,14 +2,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, changeEmail, findUnique, consumeRateLimit, rememberEmailChangeRequest } =
-  vi.hoisted(() => ({
-    getSession: vi.fn(),
-    changeEmail: vi.fn(),
-    findUnique: vi.fn(),
-    consumeRateLimit: vi.fn(),
-    rememberEmailChangeRequest: vi.fn(),
-  }));
+const {
+  getSession,
+  changeEmail,
+  findUnique,
+  consumeRateLimit,
+  rememberEmailChangeRequest,
+  forgetEmailChangeRequest,
+} = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  changeEmail: vi.fn(),
+  findUnique: vi.fn(),
+  consumeRateLimit: vi.fn(),
+  rememberEmailChangeRequest: vi.fn(),
+  forgetEmailChangeRequest: vi.fn(),
+}));
 
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession, changeEmail } } }));
 vi.mock("@/db/client", () => ({ prisma: { user: { findUnique } } }));
@@ -17,9 +24,12 @@ vi.mock("@/lib/rate-limit", () => ({
   authRateLimit: () => ({ max: 5, windowSeconds: 3600 }),
   consumeRateLimit,
 }));
-vi.mock("@/lib/email-change-pending", () => ({ rememberEmailChangeRequest }));
+vi.mock("@/lib/email-change-pending", () => ({
+  forgetEmailChangeRequest,
+  rememberEmailChangeRequest,
+}));
 
-import { requestEmailChange } from "./email-change";
+import { cancelEmailChange, requestEmailChange } from "./email-change";
 
 const headers = new Headers({ cookie: "better-auth.session_token=t" });
 
@@ -31,10 +41,12 @@ beforeEach(() => {
   findUnique.mockReset();
   consumeRateLimit.mockReset();
   rememberEmailChangeRequest.mockReset();
+  forgetEmailChangeRequest.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue(row);
   consumeRateLimit.mockResolvedValue({ allowed: true });
   rememberEmailChangeRequest.mockResolvedValue(undefined);
+  forgetEmailChangeRequest.mockResolvedValue(undefined);
   changeEmail.mockResolvedValue({ status: true });
 });
 
@@ -112,5 +124,27 @@ describe("requestEmailChange", () => {
 
     expect(taken).toEqual(free);
     expect(taken).toEqual({ ok: true, data: { accepted: true } });
+  });
+});
+
+describe("cancelEmailChange", () => {
+  it("requires a session before forgetting anything", async () => {
+    getSession.mockResolvedValue(null);
+
+    expect(await cancelEmailChange(headers)).toMatchObject({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
+    expect(forgetEmailChangeRequest).not.toHaveBeenCalled();
+  });
+
+  it("drops the pending wish of the signed-in user", async () => {
+    expect(await cancelEmailChange(headers)).toEqual({
+      ok: true,
+      data: { cancelled: true },
+    });
+    expect(forgetEmailChangeRequest).toHaveBeenCalledWith("u1");
+    expect(changeEmail).not.toHaveBeenCalled();
+    expect(consumeRateLimit).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,8 @@ import {
   nameUpdateBodySchema,
   hideFromSearchUpdateBodySchema,
   passwordForgotBodySchema,
+  emailChangeAcceptedSchema,
+  emailChangeCancelledSchema,
   passwordResetBodySchema,
   registerBodySchema,
   safeNextPath,
@@ -189,6 +191,19 @@ describe("emailChangeBodySchema", () => {
 
   it("accepts an address at the cap", () => {
     expect(emailChangeBodySchema.safeParse({ email: emailOfLength(EMAIL_MAX) }).success).toBe(true);
+  });
+});
+
+describe("email change answers", () => {
+  it("accepts only the neutral «letter sent» answer", () => {
+    expect(emailChangeAcceptedSchema.parse({ accepted: true })).toEqual({ accepted: true });
+    expect(emailChangeAcceptedSchema.safeParse({ accepted: false }).success).toBe(false);
+    expect(emailChangeAcceptedSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts only the «request cancelled» answer", () => {
+    expect(emailChangeCancelledSchema.parse({ cancelled: true })).toEqual({ cancelled: true });
+    expect(emailChangeCancelledSchema.safeParse({ cancelled: false }).success).toBe(false);
   });
 });
 

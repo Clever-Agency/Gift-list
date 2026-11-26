@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  cancelEmailChange,
   getMyProfile,
+  requestEmailChange,
   updateHideFromSearch,
   updateMyProfile,
   updateName,
@@ -336,6 +338,94 @@ describe("updateMyProfile", () => {
       ok: false,
       network: true,
     });
+  });
+});
+
+describe("requestEmailChange", () => {
+  it("POSTs the address to /api/v1/me/email and keeps the neutral answer", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { accepted: true } }));
+
+    await expect(requestEmailChange("new@example.com")).resolves.toEqual({ ok: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://api.test/api/v1/me/email");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ email: "new@example.com" }));
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Headers;
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.get("accept-language")).toBe("ru-RU");
+  });
+
+  it("passes the rate limit through with its wait", async () => {
+    fetchMock.mockResolvedValue(
+      respond(
+        {
+          ok: false,
+          code: "RATE_LIMITED",
+          message: "Too many email change attempts",
+          params: { unit: "minute", count: 15 },
+        },
+        429,
+      ),
+    );
+
+    await expect(requestEmailChange("new@example.com")).resolves.toEqual({
+      ok: false,
+      code: "RATE_LIMITED",
+      message: "Too many email change attempts",
+      params: { unit: "minute", count: 15 },
+    });
+  });
+
+  it("rejects an answer without the accepted flag instead of announcing a letter", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: {} }));
+
+    await expect(requestEmailChange("new@example.com")).resolves.toEqual({
+      ok: false,
+      invalid: true,
+    });
+  });
+
+  it("reports a network failure like the other clients", async () => {
+    fetchMock.mockRejectedValue(new TypeError("offline"));
+
+    await expect(requestEmailChange("new@example.com")).resolves.toEqual({
+      ok: false,
+      network: true,
+    });
+  });
+});
+
+describe("cancelEmailChange", () => {
+  it("DELETEs the pending request and returns the cancelled answer", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { cancelled: true } }));
+
+    await expect(cancelEmailChange()).resolves.toEqual({ ok: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://api.test/api/v1/me/email");
+    expect(init.method).toBe("DELETE");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("passes a dead session through, so the screen can sign out", async () => {
+    fetchMock.mockResolvedValue(
+      respond({ ok: false, code: "UNAUTHENTICATED", message: "Authentication required" }, 401),
+    );
+
+    await expect(cancelEmailChange()).resolves.toMatchObject({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
+  });
+
+  it("rejects an answer without the cancelled flag", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { accepted: true } }));
+
+    await expect(cancelEmailChange()).resolves.toEqual({ ok: false, invalid: true });
   });
 });
 

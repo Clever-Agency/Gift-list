@@ -32,12 +32,13 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { router, Stack } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TextInputInstance } from "react-native";
 import { useLocale, useTranslations } from "use-intl";
 import { getMyProfile, updateMyProfile, updateName, updateNick } from "@/api/me";
 import { getBrandName } from "@/config/env";
+import { EmailChangeSection, emailChangeLinkError } from "@/profile/email-change";
 import { profileRoute } from "@/profile/profile-route";
 import { useAuth } from "@/session/auth-context";
 import {
@@ -46,6 +47,7 @@ import {
   nickErrorText,
   nickFieldText,
 } from "@/session/form-issue";
+import { paramValue } from "@/session/return-path";
 import { NotificationBell } from "@/ui/notification-bell";
 import { ProfileMenu } from "@/ui/profile-menu";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
@@ -67,9 +69,11 @@ type ProfileLoadStatus = "loading" | "ready" | "error";
  * public profile, the settings, the support link and «Выйти».
  *
  * Birthday, gender, country, «Обо мне» and the friends switch are «О себе»
- * (T8.3) right below the nick; the email change comes with T9. The screen guards
- * the session like «Настройки» (`next=/profile`), so a direct anonymous visit
- * lands on the login screen and comes back here.
+ * (T8.3) right below the nick. The email row is read-only until «Изменить»
+ * opens the new-address field (T9.2, FR-56); the confirmation link returns to
+ * `?emailChanged=1` / `?error=…`, and the screen shows the outcome and rereads
+ * the session. The screen guards the session like «Настройки» (`next=/profile`),
+ * so a direct anonymous visit lands on the login screen and comes back here.
  */
 export default function MyProfileScreen() {
   const auth = useAuth();
@@ -78,11 +82,18 @@ export default function MyProfileScreen() {
   const profile = useTranslations("app.profile");
   const common = useTranslations("common");
   const brand = getBrandName();
+  const params = useLocalSearchParams<{
+    emailChanged?: string | string[];
+    error?: string | string[];
+  }>();
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   // One sign-out request at a time: the row is disabled while it is in flight.
   const [signingOut, setSigningOut] = useState(false);
   const inFlight = useRef(false);
+  // The confirmation link hands its outcome in `?emailChanged=1` / `?error=…`;
+  // the marker keeps a repeated render of the same query from repeating the toast.
+  const emailReturnHandled = useRef<string | null>(null);
 
   // «О себе» is a second read on top of the session (`GET /api/v1/me/profile`):
   // the session answer has no profile fields (AD-29).
@@ -147,6 +158,38 @@ export default function MyProfileScreen() {
       }
     },
     [auth.state.status, sessionExpired],
+  );
+
+  /**
+   * The one-time outcome of the confirmation link (T9.1/T9.2, FR-56). Success
+   * rereads the session, so the row shows the address Better Auth has just
+   * committed; a stale or reused link says what to do next. The query is cleaned
+   * at once, so a refresh or a back-navigation does not replay the notice.
+   */
+  useEffect(
+    function applyEmailLinkResult() {
+      const changed = paramValue(params.emailChanged);
+      const linkError = paramValue(params.error);
+      if (changed === undefined && linkError === undefined) {
+        emailReturnHandled.current = null;
+        return;
+      }
+      const marker = `${changed ?? ""}|${linkError ?? ""}`;
+      if (emailReturnHandled.current === marker) return;
+      emailReturnHandled.current = marker;
+      // A stale link keeps the callback URL and only appends `?error=…`, so the
+      // error wins over the success flag Better Auth sent with the callback.
+      const confirmed = changed === "1" && linkError === undefined;
+      setToast({
+        message: confirmed
+          ? profile("emailChange.changed")
+          : emailChangeLinkError(linkError, profile),
+        tone: confirmed ? "info" : "error",
+      });
+      router.setParams({ emailChanged: undefined, error: undefined });
+      if (confirmed) auth.retry();
+    },
+    [params.emailChanged, params.error, auth, profile],
   );
 
   function showToast(message: string, tone: ToastState["tone"]) {
@@ -280,7 +323,9 @@ MyProfileScreen.displayName = "MyProfileScreen";
  * The name uses the registration rule (written as given, 1–50 code points, the
  * cap from `DISPLAY_NAME_MAX`). The nick keeps the 3–24 `[a-z0-9_]` rule of
  * AD-13, moved from «Настройки» with its inline reasons, preview and focus
- * behaviour.
+ * behaviour. The email is the third form (T9.2): read-only until «Изменить»,
+ * and the letter only promises the link — the account keeps the old address
+ * until that link is opened.
  */
 function ProfileDetails({
   user,
@@ -509,12 +554,7 @@ function ProfileDetails({
         <Text kind="caption" tone="muted">
           {t("form.nickPreview", { nick: user.nick })}
         </Text>
-        <YStack alignItems="center">
-          <Text kind="caption" tone="muted">
-            {t("form.email")}
-          </Text>
-          <Text testID="profile-email">{user.email}</Text>
-        </YStack>
+        <EmailChangeSection email={user.email} onToast={onToast} onExpired={onExpired} />
       </YStack>
       <YStack gap="$grid-gap">
         <TextField

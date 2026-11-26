@@ -27,17 +27,20 @@ export function formIssue(
   result: Exclude<ClientResult<unknown>, { ok: true }>,
   t: Translate,
   common: Translate,
-  screen: "login" | "register" | "forgot" | "reset",
+  screen: FormScreen,
 ): FormIssue {
   if ("network" in result) return { text: t("form.network") };
   return issueFromError(result, t, common, screen);
 }
 
+/** The screens whose forms share the error copy; `profile` only names the rate limit. */
+export type FormScreen = "login" | "register" | "forgot" | "reset" | "profile";
+
 export function issueFromError(
   error: ActionError,
   t: Translate,
   common: Translate,
-  screen: "login" | "register" | "forgot" | "reset",
+  screen: FormScreen,
 ): FormIssue {
   if (screen === "login" && error.code === "UNAUTHENTICATED") {
     return { text: t("login.invalid") };

@@ -1,4 +1,6 @@
 import {
+  emailChangeAcceptedSchema,
+  emailChangeCancelledSchema,
   meSchema,
   myProfileSchema,
   type Me,
@@ -110,4 +112,39 @@ export async function updateMyProfile(body: ProfileUpdateBody): Promise<MyProfil
   if (!parsed.success) return { ok: false, invalid: true };
 
   return { ok: true, data: parsed.data };
+}
+
+/**
+ * FR-56 (CLE-129/T9.2): the email change has one neutral answer — the letter
+ * was accepted — and never says whether the new address is free. The body is
+ * re-checked with the shared contract, so a broken envelope is `invalid`, not a
+ * success the screen would wrongly announce.
+ */
+export type EmailChangeResult =
+  | { ok: true }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
+export async function requestEmailChange(email: string): Promise<EmailChangeResult> {
+  const result = await apiRequest<unknown>("/api/v1/me/email", {
+    method: "POST",
+    body: { email },
+  });
+  if (!result.ok) return result;
+
+  const parsed = emailChangeAcceptedSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true };
+}
+
+/** «Отменить» in the waiting block: drops the pending wish on the server. */
+export async function cancelEmailChange(): Promise<EmailChangeResult> {
+  const result = await apiRequest<unknown>("/api/v1/me/email", { method: "DELETE" });
+  if (!result.ok) return result;
+
+  const parsed = emailChangeCancelledSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true };
 }

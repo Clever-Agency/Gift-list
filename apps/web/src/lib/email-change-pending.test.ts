@@ -22,6 +22,7 @@ vi.mock("@/lib/email-change-mail", () => ({ sendEmailChangedNotice }));
 import {
   EMAIL_CHANGE_LINK_TTL_SECONDS,
   EMAIL_CHANGE_PENDING_PREFIX,
+  forgetEmailChangeRequest,
   notifyPreviousEmailAfterChange,
   rememberEmailChangeRequest,
 } from "./email-change-pending";
@@ -81,6 +82,17 @@ describe("rememberEmailChangeRequest", () => {
       newEmail: "new@example.com",
       locale: null,
     });
+  });
+});
+
+describe("forgetEmailChangeRequest", () => {
+  it("deletes only the caller's pending row", async () => {
+    await forgetEmailChangeRequest("u1");
+
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { identifier: `${EMAIL_CHANGE_PENDING_PREFIX}u1` },
+    });
+    expect(sendEmailChangedNotice).not.toHaveBeenCalled();
   });
 });
 

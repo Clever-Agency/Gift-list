@@ -20,13 +20,17 @@ const account = vi.hoisted(() => ({
   updateMyProfile: vi.fn(),
   updateName: vi.fn(),
   updateNick: vi.fn(),
+  requestEmailChange: vi.fn(),
+  cancelEmailChange: vi.fn(),
 }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
   replace: vi.fn(),
   push: vi.fn(),
+  setParams: vi.fn(),
 }));
+const route = vi.hoisted(() => ({ params: {} as Record<string, string> }));
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => account);
@@ -78,6 +82,7 @@ vi.mock("use-intl", async () => {
 vi.mock("expo-router", () => ({
   router: navigation,
   Stack: { Screen: () => null },
+  useLocalSearchParams: () => route.params,
 }));
 vi.mock("react-native-safe-area-context", async () => {
   const React = await import("react");
@@ -264,9 +269,12 @@ async function mount() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  route.params = {};
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   account.getMyProfile.mockResolvedValue({ ok: true, data: profile });
   account.updateMyProfile.mockResolvedValue({ ok: true, data: profile });
+  account.requestEmailChange.mockResolvedValue({ ok: true });
+  account.cancelEmailChange.mockResolvedValue({ ok: true });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -592,6 +600,205 @@ describe("профиль: ник", () => {
 
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(field("Ник").value).toBe("newnick");
+  });
+});
+
+describe("профиль: смена email", () => {
+  it("«Изменить» открывает поле нового адреса, текущий адрес остаётся виден", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    expect(container.querySelector('[data-testid="profile-email"]')?.textContent).toBe("a@b.test");
+    await press("Изменить");
+
+    expect(field("Новый email").value).toBe("");
+    expect(container.querySelector('[data-testid="profile-email"]')?.textContent).toBe("a@b.test");
+    expect(button("Отправить письмо")).toBeDefined();
+  });
+
+  it("неверный адрес: причина под полем, запрос не уходит", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Изменить");
+    await type("Новый email", "anna");
+    await press("Отправить письмо");
+
+    expect(account.requestEmailChange).not.toHaveBeenCalled();
+    expect(fieldText("Новый email")).toContain("Проверьте введённые данные.");
+  });
+
+  it("текущий адрес: «Это ваш текущий email.» и запрос не уходит", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Изменить");
+    await type("Новый email", "A@B.test");
+    await press("Отправить письмо");
+
+    expect(account.requestEmailChange).not.toHaveBeenCalled();
+    expect(fieldText("Новый email")).toContain("Это ваш текущий email.");
+  });
+
+  it("отправка: trimmed-адрес уходит, ожидание с «Отправить ещё раз» и «Отменить»", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Изменить");
+    await type("Новый email", "  New@Example.COM ");
+    await press("Отправить письмо");
+
+    expect(account.requestEmailChange).toHaveBeenCalledWith("new@example.com");
+    expect(text()).toContain(
+      "Мы отправили письмо на new@example.com. Перейдите по ссылке, чтобы подтвердить.",
+    );
+    expect(button("Отправить ещё раз")).toBeDefined();
+    expect(button("Отменить")).toBeDefined();
+    expect(text()).not.toContain("Новый email");
+  });
+
+  it("лимит на повторной отправке: понятный текст в ожидании", async () => {
+    respond({ ok: true, data: user });
+    account.requestEmailChange
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({
+        ok: false,
+        code: "RATE_LIMITED",
+        message: "Too many email change attempts",
+        params: { unit: "minute", count: 15 },
+      });
+    await mount();
+
+    await press("Изменить");
+    await type("Новый email", "new@example.com");
+    await press("Отправить письмо");
+    await press("Отправить ещё раз");
+
+    // The test translator leaves the ICU select as is; the sentence is the
+    // shared `errors.code.RATE_LIMITED`, which the app resolves to minutes.
+    expect(text()).toContain("Слишком много попыток. Попробуйте через");
+    expect(text()).toContain("Мы отправили письмо на new@example.com.");
+    expect(button("Отправить ещё раз")).toBeDefined();
+  });
+
+  it("«Отправить ещё раз» шлёт тот же адрес и снова ждёт", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Изменить");
+    await type("Новый email", "new@example.com");
+    await press("Отправить письмо");
+    await press("Отправить ещё раз");
+
+    expect(account.requestEmailChange).toHaveBeenCalledTimes(2);
+    expect(account.requestEmailChange).toHaveBeenLastCalledWith("new@example.com");
+    expect(text()).toContain("Мы отправили письмо на new@example.com.");
+  });
+
+  it("«Отменить» убирает ожидание и говорит об отмене", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Изменить");
+    await type("Новый email", "new@example.com");
+    await press("Отправить письмо");
+    await press("Отменить");
+
+    expect(account.cancelEmailChange).toHaveBeenCalledTimes(1);
+    expect(text()).toContain("Запрос на смену email отменён.");
+    expect(button("Изменить")).toBeDefined();
+    expect(text()).not.toContain("Мы отправили письмо на");
+  });
+
+  it("сеть при отправке: тост и введённый адрес на месте", async () => {
+    respond({ ok: true, data: user });
+    account.requestEmailChange.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await press("Изменить");
+    await type("Новый email", "new@example.com");
+    await press("Отправить письмо");
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(field("Новый email").value).toBe("new@example.com");
+    expect(text()).not.toContain("Мы отправили письмо на");
+  });
+
+  it("401 при отправке гасит сессию и ведёт на вход", async () => {
+    respond({ ok: true, data: user });
+    account.requestEmailChange.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    await mount();
+
+    await press("Изменить");
+    await type("Новый email", "new@example.com");
+    await press("Отправить письмо");
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/profile", reason: "session_expired" },
+    });
+  });
+
+  it("возврат с ?emailChanged=1: тост, новый адрес из /me и очищенный запрос", async () => {
+    route.params = { emailChanged: "1" };
+    const changed = { ...user, email: "new@example.com" };
+    let sessionReads = 0;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") {
+        sessionReads += 1;
+        return Promise.resolve({ ok: true, data: sessionReads === 1 ? user : changed });
+      }
+      return Promise.resolve({ ok: true, data: { signedOut: true } });
+    });
+    await mount();
+    await settle(20);
+
+    expect(navigation.setParams).toHaveBeenCalledWith({
+      emailChanged: undefined,
+      error: undefined,
+    });
+    expect(sessionReads).toBe(2);
+    expect(text()).toContain("Адрес изменён.");
+    expect(container.querySelector('[data-testid="profile-email"]')?.textContent).toBe(
+      "new@example.com",
+    );
+  });
+
+  it("возврат с просроченной ссылкой: понятный текст и очищенный запрос", async () => {
+    route.params = { error: "TOKEN_EXPIRED" };
+    respond({ ok: true, data: user });
+    await mount();
+    await settle(20);
+
+    expect(text()).toContain("Ссылка устарела. Запросите новое письмо.");
+    expect(navigation.setParams).toHaveBeenCalledWith({
+      emailChanged: undefined,
+      error: undefined,
+    });
+  });
+
+  it("просроченная ссылка приходит вместе с флагом успеха: ошибка важнее", async () => {
+    route.params = { emailChanged: "1", error: "TOKEN_EXPIRED" };
+    respond({ ok: true, data: user });
+    await mount();
+    await settle(20);
+
+    expect(text()).toContain("Ссылка устарела. Запросите новое письмо.");
+    expect(text()).not.toContain("Адрес изменён.");
+  });
+
+  it("неизвестный код ссылки: общий понятный текст", async () => {
+    route.params = { error: "SOMETHING_NEW" };
+    respond({ ok: true, data: user });
+    await mount();
+    await settle(20);
+
+    expect(text()).toContain("Не получилось подтвердить адрес. Запросите новое письмо.");
   });
 });
 

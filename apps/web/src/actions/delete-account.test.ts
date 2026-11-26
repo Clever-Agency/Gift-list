@@ -413,6 +413,8 @@ describe("deleteAccount: the holders of reservations on its wishes", () => {
       datesEmail: true,
       wishExpiryInApp: true,
       wishExpiryEmail: true,
+      remindFriendDates: true,
+      remindOwnList: true,
     };
 
     const item = await projectNotification(

@@ -46,6 +46,9 @@ export const preferenceSelect = {
   datesEmail: true,
   wishExpiryInApp: true,
   wishExpiryEmail: true,
+  // CLE-137 (FR-36): reminder type switches live with the channels.
+  remindFriendDates: true,
+  remindOwnList: true,
 } satisfies Prisma.UserSelect;
 
 export function notificationGiftSnapshot(db: Pick<Tx, "gift">, id: string) {
@@ -210,12 +213,24 @@ export async function cancelCloseNotification(tx: Tx, giftId: string, closedAt: 
   await tx.notification.deleteMany({ where: { eventKey: giftEventKey("GIFT_CLOSED", giftId, closedAt) } });
 }
 
-function inChannel(kind: NotificationKind, prefs: NotificationPreferences, channel: "inApp" | "email") {
-  if (kind === "DATE_FRIEND" || kind === "DATE_OWN") {
-    return channel === "inApp" ? prefs.datesInApp : prefs.datesEmail;
+/**
+ * CLE-137 (FR-36): a date reminder leaves only while its own type switch and
+ * its channel are both on. Other kinds ignore the type switches.
+ */
+export function notificationChannelEnabled(
+  kind: NotificationKind,
+  prefs: NotificationPreferences,
+  channel: "inApp" | "email",
+) {
+  const inApp = channel === "inApp";
+  if (kind === "DATE_FRIEND") {
+    return prefs.remindFriendDates && (inApp ? prefs.datesInApp : prefs.datesEmail);
+  }
+  if (kind === "DATE_OWN") {
+    return prefs.remindOwnList && (inApp ? prefs.datesInApp : prefs.datesEmail);
   }
   if (kind === "WISH_EXPIRY_SOON" || kind === "WISH_EXPIRY") {
-    return channel === "inApp" ? prefs.wishExpiryInApp : prefs.wishExpiryEmail;
+    return inApp ? prefs.wishExpiryInApp : prefs.wishExpiryEmail;
   }
   return true;
 }
@@ -293,7 +308,7 @@ export async function projectNotification(
   // CLE-124/S9b-2: «Подарил» sends the owner one general e-mail and writes no
   // in-app notification. The row stays addressable through its e-mail link.
   if (row.kind === "GIFT_GIVEN" && channel === "inApp") return null;
-  if (row.deliverAfter > now || !inChannel(row.kind, prefs, channel)) return null;
+  if (row.deliverAfter > now || !notificationChannelEnabled(row.kind, prefs, channel)) return null;
   const raw = row.payload;
   const payload = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   let href: string | null = null;

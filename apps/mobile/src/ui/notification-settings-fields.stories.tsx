@@ -11,7 +11,10 @@ const meta = {
   globals: { viewport: { value: "w360" } },
   args: {
     onChange: noop,
-    preferences: { datesInApp: true, datesEmail: false, wishExpiryInApp: false, wishExpiryEmail: true },
+    preferences: {
+      datesInApp: true, datesEmail: false, wishExpiryInApp: false, wishExpiryEmail: true,
+      remindFriendDates: true, remindOwnList: true,
+    },
   },
 } satisfies Meta<typeof NotificationSettingsFields>;
 

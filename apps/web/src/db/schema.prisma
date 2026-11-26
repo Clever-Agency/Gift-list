@@ -46,6 +46,10 @@ model User {
   datesEmail     Boolean  @default(true)
   wishExpiryInApp Boolean @default(true)
   wishExpiryEmail Boolean @default(true)
+  /// CLE-137 (FR-36): reminder type «Дни рождения и даты друзей».
+  remindFriendDates Boolean @default(true)
+  /// CLE-137 (FR-36): reminder type «Напомнить обновить мой список».
+  remindOwnList     Boolean @default(true)
   notifications Notification[]
   /// Null until the client reports an IANA zone. A stored value is not overwritten (Story 1.8).
   timeZone       String?

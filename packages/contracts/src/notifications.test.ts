@@ -4,6 +4,8 @@ import {
   notificationActionSchema,
   notificationItemSchema,
   notificationPayloadSchema,
+  notificationPreferencesPatchSchema,
+  notificationPreferencesSchema,
 } from "./notifications";
 import { notificationEmailSubject, notificationText } from "./i18n/notification-text";
 import type { NotificationItem } from "./notifications";
@@ -172,6 +174,27 @@ describe("Story 6.6: the wish-expiry payload", () => {
       titleSnapshot: "Плед",
       actionable: true,
     })).not.toHaveProperty("actionable");
+  });
+});
+
+describe("CLE-137: reminder preferences carry both type switches", () => {
+  const prefs = {
+    datesInApp: true, datesEmail: true, wishExpiryInApp: true, wishExpiryEmail: true,
+    remindFriendDates: true, remindOwnList: false,
+  };
+
+  it("reads both type switches together with the channels", () => {
+    expect(notificationPreferencesSchema.parse(prefs)).toEqual(prefs);
+    expect(notificationPreferencesSchema.safeParse({
+      ...prefs, remindFriendDates: "yes",
+    }).success).toBe(false);
+  });
+
+  it("changes either type switch alone and rejects an unknown key", () => {
+    expect(notificationPreferencesPatchSchema.parse({ remindFriendDates: false })).toEqual({ remindFriendDates: false });
+    expect(notificationPreferencesPatchSchema.parse({ remindOwnList: true })).toEqual({ remindOwnList: true });
+    expect(notificationPreferencesPatchSchema.safeParse({ remindOwnList: 1 }).success).toBe(false);
+    expect(notificationPreferencesPatchSchema.safeParse({ remindWeekly: true }).success).toBe(false);
   });
 });
 

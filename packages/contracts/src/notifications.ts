@@ -75,6 +75,12 @@ export const notificationPreferencesSchema = z.object({
   datesEmail: z.boolean(),
   wishExpiryInApp: z.boolean(),
   wishExpiryEmail: z.boolean(),
+  /**
+   * CLE-137 (Story 7.2, FR-36): reminder types, not channels. A date reminder
+   * is delivered only while its own type switch and its channel are both on.
+   */
+  remindFriendDates: z.boolean(),
+  remindOwnList: z.boolean(),
 });
 export const notificationPreferencesPatchSchema = notificationPreferencesSchema.partial().strict();
 export const notificationActionSchema = z.discriminatedUnion("action", [

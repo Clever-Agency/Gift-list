@@ -17,7 +17,7 @@ const db = vi.hoisted(function database() {
     gift: { findUnique: vi.fn(), updateMany: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
-    user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
+    user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
     relationsBetween: vi.fn(),
   };
 });
@@ -36,9 +36,13 @@ import {
   enqueueGiftNotification,
   isHiddenOwnerReservationNotification,
   markNotificationRead,
+  notificationChannelEnabled,
   notificationGiftSnapshot,
   notificationIsActionable,
+  notificationPreferences,
+  preferenceSelect,
   projectNotification,
+  updateNotificationPreferences,
   wishExpiryEventKey,
 } from "./notification-store";
 import { getBrandName } from "@/lib/env";
@@ -46,7 +50,10 @@ import { notificationEmailLink, processNotificationEmails } from "./notification
 
 const now = new Date("2026-11-24T12:00:00Z");
 const reservedAt = new Date("2026-11-22T12:00:00Z");
-const defaults = { datesInApp: true, datesEmail: true, wishExpiryInApp: true, wishExpiryEmail: true };
+const defaults = {
+  datesInApp: true, datesEmail: true, wishExpiryInApp: true, wishExpiryEmail: true,
+  remindFriendDates: true, remindOwnList: true,
+};
 const gift = {
   id: "gift",
   title: "Текущее название",
@@ -251,6 +258,46 @@ describe("notification privacy and availability", function privacyTests() {
     await expect(projectNotification(row, { ...defaults, datesInApp: false }, "email", now)).resolves.toMatchObject({ event: { kind: "DATE_OWN" } });
     await expect(projectNotification(row, { ...defaults, datesEmail: false }, "inApp", now)).resolves.toMatchObject({ event: { kind: "DATE_OWN" } });
     await expect(projectNotification(row, { ...defaults, datesEmail: false }, "email", now)).resolves.toBeNull();
+  });
+
+  it("turns a reminder off by its own type switch, not only by the channel", async function reminderTypes() {
+    expect(notificationChannelEnabled("DATE_OWN", defaults, "inApp")).toBe(true);
+    expect(notificationChannelEnabled("DATE_OWN", defaults, "email")).toBe(true);
+    expect(notificationChannelEnabled("DATE_FRIEND", defaults, "inApp")).toBe(true);
+    expect(notificationChannelEnabled("DATE_FRIEND", defaults, "email")).toBe(true);
+
+    expect(notificationChannelEnabled("DATE_OWN", { ...defaults, remindOwnList: false }, "inApp")).toBe(false);
+    expect(notificationChannelEnabled("DATE_OWN", { ...defaults, remindOwnList: false }, "email")).toBe(false);
+    expect(notificationChannelEnabled("DATE_FRIEND", { ...defaults, remindFriendDates: false }, "inApp")).toBe(false);
+    expect(notificationChannelEnabled("DATE_FRIEND", { ...defaults, remindFriendDates: false }, "email")).toBe(false);
+
+    // The switches are not interchangeable and do not affect other kinds.
+    expect(notificationChannelEnabled("DATE_FRIEND", { ...defaults, remindOwnList: false }, "inApp")).toBe(true);
+    expect(notificationChannelEnabled("DATE_OWN", { ...defaults, remindFriendDates: false }, "inApp")).toBe(true);
+    expect(notificationChannelEnabled("WISH_EXPIRY", { ...defaults, remindFriendDates: false, remindOwnList: false }, "email")).toBe(true);
+
+    const row = record({ kind: "DATE_OWN", giftId: null, actorId: null, payload: {} });
+    await expect(projectNotification(row, { ...defaults, remindOwnList: false }, "inApp", now)).resolves.toBeNull();
+  });
+
+  it("reads and updates both reminder switches with the channel preferences", async function preferencesStore() {
+    const stored = { ...defaults, remindOwnList: false };
+    db.user.findUniqueOrThrow.mockResolvedValue(stored);
+    db.user.update.mockResolvedValue(stored);
+
+    await expect(notificationPreferences("owner")).resolves.toEqual(stored);
+    expect(db.user.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: { id: "owner" },
+      select: preferenceSelect,
+    });
+    expect(preferenceSelect).toMatchObject({ remindFriendDates: true, remindOwnList: true });
+
+    await expect(updateNotificationPreferences("owner", { remindFriendDates: false })).resolves.toEqual(stored);
+    expect(db.user.update).toHaveBeenCalledWith({
+      where: { id: "owner" },
+      data: { remindFriendDates: false },
+      select: preferenceSelect,
+    });
   });
 
   it("hides closure from both channels until the undo window and cancels that event atomically", async function deferredClose() {

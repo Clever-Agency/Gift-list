@@ -11,6 +11,7 @@ import {
   VISIBILITIES,
 } from "./enums";
 import { PROFILE_RELATIONSHIPS, profileInviteCooldownSchema } from "./friendship";
+import { profileFieldsSchema } from "./profile";
 
 export const ERROR_CODES = [
   "UNAUTHENTICATED",
@@ -176,6 +177,32 @@ export const meSchema = z.strictObject({
 });
 
 export type Me = z.infer<typeof meSchema>;
+
+/**
+ * CLE-129/T8.1 (D-58, AD-29): `GET /api/v1/me/profile` answers the current user
+ * with the profile fields on top of {@link meSchema}. The fields are always
+ * present for the owner — unlike `/u/:nick`, where a non-friend gets none.
+ */
+export const myProfileSchema = z.strictObject({
+  ...meSchema.shape,
+  ...profileFieldsSchema.shape,
+});
+
+export type MyProfile = z.infer<typeof myProfileSchema>;
+
+export {
+  ABOUT_MAX,
+  COUNTRY_CODES,
+  GENDERS,
+  genderSchema,
+  isCountryCode,
+  isValidBirthDate,
+  profileFieldsSchema,
+  profileUpdateBodySchema,
+  type Gender,
+  type ProfileFields,
+  type ProfileUpdateBody,
+} from "./profile";
 
 export {
   CURRENCIES,

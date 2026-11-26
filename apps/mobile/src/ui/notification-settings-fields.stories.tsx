@@ -22,3 +22,13 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 export const IndependentChannels: Story = {};
 export const Saving: Story = { args: { disabled: true } };
+/** Story 7.2: both reminder types off — the channels keep their own values. */
+export const RemindersOff: Story = {
+  args: {
+    preferences: {
+      ...meta.args.preferences,
+      remindFriendDates: false,
+      remindOwnList: false,
+    },
+  },
+};

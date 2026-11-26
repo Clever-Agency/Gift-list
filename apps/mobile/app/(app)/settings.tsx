@@ -1,18 +1,20 @@
 import { type BlockedCard, type Me } from "@gift-list/contracts";
 import { Button, Column, EmptyState, Heading, PageContainer, PageScroll, PersonRow, PersonRowSkeleton, Pressable, SafeArea, Screen, Switch, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { listBlocked, unblockUser } from "@/api/block";
-import { deleteAccount, updateHideFromSearch } from "@/api/me";
+import { changeTimeZone, deleteAccount, updateHideFromSearch } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { formIssue, mutationErrorMessage } from "@/session/form-issue";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { NotificationSettings } from "@/ui/notification-settings";
+import { OptionField } from "@/ui/option-field";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
+import { timeZoneOptions } from "@/ui/time-zone-options";
 import { ToastHost } from "@/ui/toast";
 
 /** One toast at a time; the saved notice is neutral, a failed save is destructive. */
@@ -295,7 +297,10 @@ function SettingsForm({
                     (`EXPERIENCE.md` → Block); the friendship and the subscriptions
                     are not restored by it. */}
                 <BlockedSection onToast={showToast} onExpired={expireSession} />
-                <NotificationSettings key={user.id} />
+                <NotificationSettings key={user.id} onToast={showToast} />
+                {/* Story 7.2 (FR-37): the reminders and the reservation deadline
+                    are counted in the user's own zone. */}
+                <TimeZoneSection key={`${user.id}-zone`} onToast={showToast} onExpired={expireSession} />
                 {/* Story 6.3 (D-59): the account block keeps the two exits of the
                     screen — «Выйти» and the destructive «Удалить аккаунт» last. */}
                 <YStack gap="$grid-gap" paddingTop="$section-gap" testID="account-section">
@@ -354,6 +359,84 @@ function SettingsForm({
 }
 
 SettingsForm.displayName = "SettingsForm";
+
+/**
+ * «Настройки» → «Часовой пояс» (Story 7.2, FR-37). The row shows the stored IANA
+ * zone and its current offset; the shared picker with search chooses another one.
+ * An explicit choice overwrites the stored zone (`PATCH`), unlike the device
+ * report of Story 1.8. The session user takes the saved value, so the screens
+ * that format dates pick it up without a reload.
+ */
+function TimeZoneSection({
+  onToast,
+  onExpired,
+}: {
+  onToast: (message: string, tone: ToastState["tone"]) => void;
+  onExpired: () => Promise<void>;
+}) {
+  const zone = useTranslations("app.settings.timeZone");
+  const app = useTranslations("app");
+  const common = useTranslations("common");
+  const auth = useAuth();
+  const inFlight = useRef(false);
+  const user = auth.state.status === "ready" ? auth.state.user : null;
+  const current = user?.timeZone ?? "UTC";
+  const options = useMemo(
+    function readZones() {
+      return timeZoneOptions(user?.timeZone ?? null);
+    },
+    [user?.timeZone],
+  );
+
+  async function chooseTimeZone(next: string | null) {
+    if (next === null || next === current || inFlight.current || user === null) return;
+    inFlight.current = true;
+    const result = await changeTimeZone(next);
+    inFlight.current = false;
+
+    if (result.ok) {
+      auth.setUser({ ...user, timeZone: result.timeZone });
+      onToast(zone("saved"), "info");
+      return;
+    }
+    if ("network" in result) {
+      onToast(app("form.network"), "error");
+      return;
+    }
+    if ("invalid" in result) {
+      onToast(common("errors.generic"), "error");
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await onExpired();
+      return;
+    }
+    onToast(zone("error"), "error");
+  }
+
+  return (
+    <YStack gap="$grid-gap" paddingTop="$section-gap" testID="time-zone-section">
+      <Heading level={2}>{zone("title")}</Heading>
+      <OptionField
+        label={zone("label")}
+        value={current}
+        options={options}
+        onChange={function storeTimeZone(next) {
+          void chooseTimeZone(next);
+        }}
+        search={{
+          label: zone("search"),
+          placeholder: zone("searchPlaceholder"),
+          clearLabel: zone("searchClear"),
+          empty: zone("empty"),
+        }}
+        testID="settings-time-zone"
+      />
+    </YStack>
+  );
+}
+
+TimeZoneSection.displayName = "TimeZoneSection";
 
 /**
  * One row of the account block: the whole row is the target (44 px), the label is

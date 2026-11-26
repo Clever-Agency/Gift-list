@@ -77,6 +77,29 @@ export async function updateHideFromSearch(hideFromSearch: boolean): Promise<MeR
 }
 
 /**
+ * Story 7.2 (FR-37): the explicit choice of the IANA zone in «Настройки».
+ * `PATCH` overwrites the stored zone, unlike the device report (`PUT`). The
+ * answer is the stored zone only; the screen merges it into the session user.
+ */
+export type TimeZoneChangeResult =
+  | { ok: true; timeZone: string }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
+export async function changeTimeZone(timeZone: string): Promise<TimeZoneChangeResult> {
+  const result = await apiRequest<unknown>("/api/v1/me/time-zone", {
+    method: "PATCH",
+    body: { timeZone },
+  });
+  if (!result.ok) return result;
+
+  const data = result.data as { timeZone?: unknown } | null;
+  if (data == null || typeof data.timeZone !== "string") return { ok: false, invalid: true };
+
+  return { ok: true, timeZone: data.timeZone };
+}
+
+/**
  * CLE-129/T8.3 (D-58, AD-29): the profile fields of the owner come from
  * `GET /api/v1/me/profile` — `Me` plus the birthday pair, the gender, the ISO
  * country code, «Обо мне» and the friends switch. The answer always carries

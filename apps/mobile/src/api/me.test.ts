@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelEmailChange,
+  changeTimeZone,
   deleteAccount,
   getMyProfile,
   requestEmailChange,
@@ -495,6 +496,53 @@ describe("cancelEmailChange", () => {
     fetchMock.mockResolvedValue(respond({ ok: true, data: { accepted: true } }));
 
     await expect(cancelEmailChange()).resolves.toEqual({ ok: false, invalid: true });
+  });
+});
+
+/** Story 7.2 (FR-37): the explicit zone choice of «Настройки» overwrites the stored one. */
+describe("changeTimeZone", () => {
+  it("PATCHes the IANA zone and returns the stored one", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { timeZone: "Asia/Tokyo" } }));
+
+    await expect(changeTimeZone("Asia/Tokyo")).resolves.toEqual({
+      ok: true,
+      timeZone: "Asia/Tokyo",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://api.test/api/v1/me/time-zone");
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(JSON.stringify({ timeZone: "Asia/Tokyo" }));
+    expect(init.credentials).toBe("include");
+  });
+
+  it("rejects an answer without a string zone", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { timeZone: 3 } }));
+
+    await expect(changeTimeZone("Asia/Tokyo")).resolves.toEqual({
+      ok: false,
+      invalid: true,
+    });
+  });
+
+  it("passes a validation error and a dead session through", async () => {
+    fetchMock.mockResolvedValueOnce(
+      respond({ ok: false, code: "VALIDATION", message: "Invalid input", field: "timeZone" }, 400),
+    );
+    await expect(changeTimeZone("Nowhere/Land")).resolves.toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "timeZone",
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      respond({ ok: false, code: "UNAUTHENTICATED", message: "Authentication required" }, 401),
+    );
+    await expect(changeTimeZone("UTC")).resolves.toMatchObject({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
   });
 });
 

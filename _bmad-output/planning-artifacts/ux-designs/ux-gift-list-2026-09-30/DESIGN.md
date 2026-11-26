@@ -404,7 +404,7 @@ components:
     radius: '{rounded.md}'
     padding: '10px 12px'
     min-height: '{spacing.touch-target}'
-    hover-background: '{colors.background}'
+    hover-background: '{colors.muted}'
     active-background: '{colors.muted}'
     active-foreground: '{colors.primary}'
     active-indicator: '3px {colors.primary}, слева'

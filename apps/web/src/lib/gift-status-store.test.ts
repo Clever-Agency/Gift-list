@@ -547,6 +547,25 @@ describe("CLE-124/S9b-2: «Подарил» and the deadline reminder", () => {
     expect(JSON.stringify(payload)).not.toContain("u2");
   });
 
+  it("marks a bought reservation as given too and never clears or rewrites the mark", async () => {
+    findUnique.mockResolvedValue({ ...snapshot, reservationBought: true });
+    const outcome = await giftStatusTransaction(transactionClient()).markReservationGiven(
+      "g1",
+      "u2",
+      at,
+    );
+
+    expect(outcome).toBe("success");
+    const { data, where } = updateMany.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+      where: Record<string, unknown>;
+    };
+    // «Купил» is the holder's own note: it neither blocks «Подарил» nor changes.
+    expect(where).not.toHaveProperty("reservationBought");
+    expect(data).toEqual({ reservationPhase: "GIVEN", reservationPhaseAt: at });
+    expect(createMany).toHaveBeenCalledTimes(1);
+  });
+
   it("answers a repeated given in GIVEN with success and sends nothing again", async () => {
     findUnique.mockResolvedValue({ ...snapshot, reservationPhase: "GIVEN" });
 

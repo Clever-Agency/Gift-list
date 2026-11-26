@@ -41,18 +41,34 @@ export function PublicGiftCard({
     gift.priceAmount !== null && gift.priceCurrency !== null
       ? formatPrice(gift.priceAmount, gift.priceCurrency, locale)
       : null;
-  const reservation = gift.reservedBy ? (
-    // CLE-129, T4.2 / D-55: the holder's name is a link to `/u/{nick}`. It sits
-    // next to the card button, not inside it, so the link stays reachable by Tab.
-    <XStack gap="$1" alignItems="center" flexWrap="wrap" testID="gift-reserved-by">
-      <Text kind="label" tone="reserved">
-        {t("reservedByPrefix")}
-      </Text>
-      <NavLink href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}>
-        {gift.reservedBy.displayName}
-      </NavLink>
-    </XStack>
-  ) : null;
+  // Story 5.7 / «Подписи брони»: the guest sees the stage «Подарено» (and
+  // «Куплено» since Story 5.5) by `reservationLabel`; the holder's name stays a
+  // separate line and follows the «Показывать другим гостям, что дарю я» toggle.
+  const stage = gift.reservationLabel
+    ? tGift(`detail.reservationLabel.${gift.reservationLabel}` as "detail.reservationLabel.BOUGHT")
+    : null;
+  const reservation =
+    stage !== null || gift.reservedBy !== null ? (
+      <YStack gap="$1">
+        {stage !== null ? (
+          <Text kind="label" tone="reserved" testID="gift-reservation-stage">
+            {stage}
+          </Text>
+        ) : null}
+        {gift.reservedBy ? (
+          // CLE-129, T4.2 / D-55: the holder's name is a link to `/u/{nick}`. It sits
+          // next to the card button, not inside it, so the link stays reachable by Tab.
+          <XStack gap="$1" alignItems="center" flexWrap="wrap" testID="gift-reserved-by">
+            <Text kind="label" tone="reserved">
+              {t("reservedByPrefix")}
+            </Text>
+            <NavLink href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}>
+              {gift.reservedBy.displayName}
+            </NavLink>
+          </XStack>
+        ) : null}
+      </YStack>
+    ) : null;
   const tagLabels = gift.tags.map(function labelOfTag(tag) {
     return tag.label;
   });

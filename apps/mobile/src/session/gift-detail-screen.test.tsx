@@ -431,6 +431,20 @@ describe("деталь желания: действия держателя", () 
     expect(switchNamed("Купил")).toBeDefined();
   });
 
+  /**
+   * Story 5.7 / «Подписи брони»: the guest who is not the holder reads the stage
+   * «Подарено» (or «Куплено»), even when the holder hid their name. The holder's
+   * own phase stays in the reservation block above.
+   */
+  it("гость видит этап «Подарено» без имени, даже когда даритель его скрыл", async () => {
+    respond(gift({ reservation: undefined, reservedBy: null, reservationLabel: "GIVEN" }));
+    await mount();
+
+    expect(text()).toContain("Подарено");
+    expect(text()).not.toContain("Берёт");
+    expect(control("Подарил")).toBeUndefined();
+  });
+
   it("«Купил» шлёт одно действие и берёт карточку из ответа", async () => {
     respond(gift(), undefined, { ok: true, data: reservationCard({ bought: true }) });
     await mount();

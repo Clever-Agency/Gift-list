@@ -85,6 +85,40 @@ export const Reserved: Story = {
   },
 };
 
+/** The holder pressed «Подарил»: the visitor reads the stage «Подарено» (Story 5.7). */
+export const Given: Story = {
+  tags: ["!dev"],
+  args: {
+    gift: publicGift({
+      status: "RESERVED",
+      reservationLabel: "GIVEN",
+      reservedBy: { id: "user-2", nick: "masha", displayName: "Маша" },
+    }),
+  },
+  render: function GivenStory(args) {
+    return (
+      <PublicList>
+        <PublicGiftCard {...args} />
+      </PublicList>
+    );
+  },
+};
+
+/** The holder marked «Купил» and hid the name: the stage «Куплено» stays visible. */
+export const BoughtNameHidden: Story = {
+  tags: ["!dev"],
+  args: {
+    gift: publicGift({ status: "RESERVED", reservationLabel: "BOUGHT", reservedBy: null }),
+  },
+  render: function BoughtNameHiddenStory(args) {
+    return (
+      <PublicList>
+        <PublicGiftCard {...args} />
+      </PublicList>
+    );
+  },
+};
+
 /** A received wish stays visible on a public list, muted. */
 export const Received: Story = {
   tags: ["!dev"],

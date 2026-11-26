@@ -531,6 +531,16 @@ export default function GiftDetailScreen() {
                       opens the holder's profile. The holder already has their own
                       reservation block below, and the owner never gets a holder:
                       the viewer gate is the page's second AD-15 check. */}
+                  {/* Story 5.7 / «Подписи брони»: a guest who is not the holder
+                      reads the stage «Подарено» (or «Куплено»), even when the
+                      holder hid their name. The holder reads the phase below. */}
+                  {isGuest && !current.reservation && current.reservationLabel ? (
+                    <Text kind="label" tone="reserved" testID="gift-reservation-stage">
+                      {tGift(
+                        `detail.reservationLabel.${current.reservationLabel}` as "detail.reservationLabel.BOUGHT",
+                      )}
+                    </Text>
+                  ) : null}
                   {isGuest && current.reservedBy && !current.reservation ? (
                     <XStack
                       gap="$1"

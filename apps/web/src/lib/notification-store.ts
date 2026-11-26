@@ -14,6 +14,7 @@ import { GIVABLE_RESERVATION_PHASES, UNDO_WINDOW_MS } from "@/domain/gift-status
 import { VisibilityPolicy } from "@/domain/visibility";
 import { relationshipReader } from "@/lib/relationships";
 import { canonicalTimeZone } from "@/lib/time-zone";
+import type { UnsubscribeType } from "@/lib/unsubscribe-token";
 
 type Tx = Prisma.TransactionClient;
 type GiftEventKind = Exclude<NotificationKind,
@@ -375,6 +376,18 @@ export function notificationPreferences(userId: string) {
 
 export function updateNotificationPreferences(userId: string, data: Partial<NotificationPreferences>) {
   return prisma.user.update({ where: { id: userId }, data, select: preferenceSelect });
+}
+
+/**
+ * CLE-137 (Story 7.2, FR-36): the only write an unsubscribe token may make.
+ * `updateMany` answers `0` for a deleted account instead of throwing, so the
+ * page can give the same neutral answer as for a bad token.
+ */
+export function setReminderSwitch(userId: string, type: UnsubscribeType, enabled: boolean) {
+  return prisma.user.updateMany({
+    where: { id: userId },
+    data: type === "friendDates" ? { remindFriendDates: enabled } : { remindOwnList: enabled },
+  });
 }
 
 const PAGE_SIZE = 30;

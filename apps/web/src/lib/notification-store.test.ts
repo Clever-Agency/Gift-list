@@ -17,7 +17,12 @@ const db = vi.hoisted(function database() {
     gift: { findUnique: vi.fn(), updateMany: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
-    user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
+    user: {
+      findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
     relationsBetween: vi.fn(),
   };
 });
@@ -42,6 +47,7 @@ import {
   notificationPreferences,
   preferenceSelect,
   projectNotification,
+  setReminderSwitch,
   updateNotificationPreferences,
   wishExpiryEventKey,
 } from "./notification-store";
@@ -298,6 +304,27 @@ describe("notification privacy and availability", function privacyTests() {
       data: { remindFriendDates: false },
       select: preferenceSelect,
     });
+  });
+
+  /**
+   * CLE-137 (Story 7.2): an unsubscribe token may flip only its own type switch.
+   * One update per token type, and no second write path.
+   */
+  it("flips one reminder switch for the unsubscribe token, never the other", async function reminderSwitch() {
+    db.user.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(setReminderSwitch("owner", "friendDates", false)).resolves.toEqual({ count: 1 });
+    expect(db.user.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "owner" },
+      data: { remindFriendDates: false },
+    });
+
+    await setReminderSwitch("owner", "ownList", true);
+    expect(db.user.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "owner" },
+      data: { remindOwnList: true },
+    });
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 
   it("hides closure from both channels until the undo window and cancels that event atomically", async function deferredClose() {

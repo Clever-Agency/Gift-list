@@ -6,6 +6,7 @@ import {
   RESERVATION_GIVER_WINDOW_MS,
   RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
+  UNDO_CLOSE_WITHOUT_HOLDER_DATA,
   UNDO_WINDOW_MS,
   canAskOwner,
   canCloseGift,
@@ -281,6 +282,27 @@ describe("undoCloseData", () => {
       "closedFromStatus",
       "status",
     ]);
+  });
+});
+
+/** CLE-134: a `RESERVED` closure without its holder returns to `OPEN`, never to a ghost reservation. */
+describe("UNDO_CLOSE_WITHOUT_HOLDER_DATA", () => {
+  it("returns the wish to OPEN, clears every reservation column and the closure", () => {
+    expect(UNDO_CLOSE_WITHOUT_HOLDER_DATA).toEqual({
+      status: "OPEN",
+      reservedById: null,
+      reservedAt: null,
+      reservationDueAt: null,
+      reservationTimeZone: null,
+      reservationPhase: null,
+      reservationPhaseAt: null,
+      reservationBought: false,
+      holderVisibleToOwner: false,
+      holderVisibleToOthers: true,
+      titleSnapshotOnReserve: null,
+      closedAt: null,
+      closedFromStatus: null,
+    });
   });
 });
 

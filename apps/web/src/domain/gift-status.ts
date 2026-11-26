@@ -222,6 +222,21 @@ export function undoCloseData(from: ClosedFromStatus): {
 }
 
 /**
+ * CLE-134 (Story 5.3 + 6.3): the undo of a wish closed from `RESERVED` whose
+ * holder's account was deleted inside the undo window. The account-deletion
+ * release clears `reservedById`, so restoring `RESERVED` would leave a "ghost"
+ * reservation no holder could release or see. The wish returns to `OPEN`
+ * instead, with every reservation column cleared; the closure columns go as in
+ * any undo. The owner still sees a successful undo and learns nothing about the
+ * reservation (AD-15/D-49).
+ */
+export const UNDO_CLOSE_WITHOUT_HOLDER_DATA = {
+  ...RESERVATION_RELEASE_DATA,
+  closedAt: null,
+  closedFromStatus: null,
+} as const;
+
+/**
  * The moment the owner's card carries as `undoUntil`: `closedAt + UNDO_WINDOW_MS`
  * for a `CLOSED` wish — even when it is already in the past, so the client can
  * order the closed section — and `null` for every other status.
@@ -448,6 +463,11 @@ export interface GiftStatusTransaction {
    * undo window is open and only on the closure snapshot the use-case read. A
    * closed-again wish (a different `closedAt`) or one closed from a different
    * status is left untouched and answers `lost`.
+   *
+   * CLE-134: when the origin is `RESERVED`, the undo requires the holder to
+   * still exist. If the account-deletion release already cleared `reservedById`,
+   * the wish goes back to `OPEN` with every reservation column cleared instead
+   * of a `RESERVED` row nobody holds (see `UNDO_CLOSE_WITHOUT_HOLDER_DATA`).
    */
   undoClose(
     giftId: string,

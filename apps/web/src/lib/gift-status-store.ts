@@ -12,8 +12,10 @@ import {
   RESERVATION_OWNER_WINDOW_MS,
   RESERVATION_RELEASE_DATA,
   RESERVATION_REMINDER_WINDOW_MS,
+  UNDO_CLOSE_WITHOUT_HOLDER_DATA,
   UNDO_WINDOW_MS,
   closeGiftData,
+  type ClosedFromStatus,
   type GiftStatusEvent,
   type GiftStatusEventKind,
   type GiftStatusTransaction,
@@ -348,29 +350,48 @@ export function giftStatusTransaction(
       if (!gift) return "lost";
       const effectiveAt = new Date(Math.max(at.getTime(), now.getTime()));
       if (effectiveAt.getTime() >= expected.closedAt.getTime() + UNDO_WINDOW_MS) return "lost";
-      const { count } = await tx.gift.updateMany({
-        where: {
-          id: giftId,
-          status: "CLOSED",
-          // Both the snapshot CAS (`equals`) and the undo window (`gt`) ride on
-          // one condition: a wish closed again in the meantime carries another
-          // `closedAt` and is never reopened by a stale request.
-          closedAt: {
-            equals: expected.closedAt,
-            gt: new Date(effectiveAt.getTime() - UNDO_WINDOW_MS),
-          },
-          closedFromStatus: expected.closedFromStatus,
-          list: { ownerId: actorId },
+      const where = {
+        id: giftId,
+        status: "CLOSED" as const,
+        // Both the snapshot CAS (`equals`) and the undo window (`gt`) ride on
+        // one condition: a wish closed again in the meantime carries another
+        // `closedAt` and is never reopened by a stale request.
+        closedAt: {
+          equals: expected.closedAt,
+          gt: new Date(effectiveAt.getTime() - UNDO_WINDOW_MS),
         },
-        data: undoCloseData(expected.closedFromStatus),
-      });
-      if (count !== 1) return "lost";
+        closedFromStatus: expected.closedFromStatus,
+        list: { ownerId: actorId },
+      };
+      // CLE-134: the account-deletion release (Story 6.3) clears `reservedById`
+      // of a closed wish, so an undo can meet a `RESERVED` closure without a
+      // holder. Restoring `RESERVED` then would leave a "ghost" reservation
+      // nobody can release or see; the wish goes back to `OPEN` with every
+      // reservation column cleared, and the owner still sees no error (AD-15).
+      let to: ClosedFromStatus = expected.closedFromStatus;
+      if (expected.closedFromStatus === "RESERVED") {
+        const { count } = await tx.gift.updateMany({
+          where: { ...where, reservedById: { not: null } },
+          data: undoCloseData("RESERVED"),
+        });
+        if (count !== 1) {
+          const { count: reopened } = await tx.gift.updateMany({
+            where: { ...where, reservedById: null },
+            data: UNDO_CLOSE_WITHOUT_HOLDER_DATA,
+          });
+          if (reopened !== 1) return "lost";
+          to = "OPEN";
+        }
+      } else {
+        const { count } = await tx.gift.updateMany({ where, data: undoCloseData("OPEN") });
+        if (count !== 1) return "lost";
+      }
       await cancelCloseNotification(tx, giftId, expected.closedAt);
       emit({
         giftId,
         actorId,
         from: "CLOSED",
-        to: expected.closedFromStatus,
+        to,
         at,
         kind: "WISH_REOPENED",
       });

@@ -7,7 +7,7 @@ const { transaction } = vi.hoisted(() => ({ transaction: vi.fn() }));
 vi.mock("@/db/client", () => ({ prisma: { $transaction: transaction } }));
 
 import type { Prisma, PrismaClient } from "@/db/generated/client";
-import { RESERVATION_RELEASE_DATA } from "@/domain/gift-status";
+import { RESERVATION_RELEASE_DATA, UNDO_CLOSE_WITHOUT_HOLDER_DATA } from "@/domain/gift-status";
 import {
   giftStatusTransaction,
   processReservationTimers,
@@ -391,6 +391,8 @@ describe("the Story 5.3 close and undo", () => {
         closedAt: { equals: closedAt, gt: new Date(at.getTime() - WINDOW_MS) },
         closedFromStatus: "RESERVED",
         list: { ownerId: "u1" },
+        // CLE-134: a ghost `RESERVED` row without its holder is never restored.
+        reservedById: { not: null },
       },
       data: { status: "RESERVED", closedAt: null, closedFromStatus: null },
     });
@@ -407,6 +409,75 @@ describe("the Story 5.3 close and undo", () => {
       to: "RESERVED",
       at: "2026-11-19T12:00:00.000Z",
     });
+    info.mockRestore();
+  });
+
+  it("reopens a wish without its deleted holder as OPEN and clears every reservation column", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const closedAt = new Date("2026-11-19T11:55:00.000Z");
+    updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+
+    const outcome = await giftStatusTransaction(transactionClient()).undoClose(
+      "g1",
+      "u1",
+      { closedAt, closedFromStatus: "RESERVED" },
+      at,
+    );
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: "g1",
+        status: "CLOSED",
+        closedAt: { equals: closedAt, gt: new Date(at.getTime() - WINDOW_MS) },
+        closedFromStatus: "RESERVED",
+        list: { ownerId: "u1" },
+        reservedById: { not: null },
+      },
+      data: { status: "RESERVED", closedAt: null, closedFromStatus: null },
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: "g1",
+        status: "CLOSED",
+        closedAt: { equals: closedAt, gt: new Date(at.getTime() - WINDOW_MS) },
+        closedFromStatus: "RESERVED",
+        list: { ownerId: "u1" },
+        reservedById: null,
+      },
+      data: UNDO_CLOSE_WITHOUT_HOLDER_DATA,
+    });
+    expect(UNDO_CLOSE_WITHOUT_HOLDER_DATA.status).toBe("OPEN");
+    expect(UNDO_CLOSE_WITHOUT_HOLDER_DATA.reservedById).toBeNull();
+    expect(deleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { eventKey: `GIFT_CLOSED:g1:${closedAt.toISOString()}` },
+    });
+    expectOneAuditLine(info.mock.calls, {
+      event: "gift.status",
+      giftId: "g1",
+      actorId: "u1",
+      from: "CLOSED",
+      to: "OPEN",
+      at: "2026-11-19T12:00:00.000Z",
+    });
+    info.mockRestore();
+  });
+
+  it("answers lost and logs nothing when neither undo branch matches", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    updateMany.mockResolvedValue({ count: 0 });
+
+    const outcome = await giftStatusTransaction(transactionClient()).undoClose(
+      "g1",
+      "u1",
+      { closedAt: new Date("2026-11-19T11:55:00.000Z"), closedFromStatus: "RESERVED" },
+      at,
+    );
+
+    expect(outcome).toBe("lost");
+    expect(updateMany).toHaveBeenCalledTimes(2);
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
     info.mockRestore();
   });
 

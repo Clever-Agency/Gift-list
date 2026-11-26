@@ -44,7 +44,7 @@ describe("app/i/[token]/not-found.tsx", () => {
     expect(html.match(/aria-level="1"/g)?.length).toBe(1);
     expect(html).toContain("Приглашение не найдено.");
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
     // No inviter, action or wishlist copy reaches the 404.

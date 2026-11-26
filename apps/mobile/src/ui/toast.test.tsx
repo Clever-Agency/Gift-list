@@ -621,7 +621,7 @@ describe("ToastHost: высота панели вкладок", () => {
     windowMedia.setWidth(360);
     await act(async () => {
       host.render(
-        <AppShell skipLabel="Перейти к содержимому">
+        <AppShell skipLabel="Перейти к содержимому" tabBar={<span />}>
           <ToastHost message="Сохранено" tone="info" onDismiss={onDismiss} />
         </AppShell>,
       );

@@ -19,9 +19,10 @@ const unauthenticated = {
 
 /**
  * Story 5.5 (FR-25, A-14, AD-7/AD-12): exactly the columns a reservation card is
- * made of. No price, description, link, tags, `publicToken`, `visibility` reason
- * or owner name comes back, so the answer cannot turn into a second wishlist
- * read. `visibility` and `archivedAt` are read only to decide `canOpenGift`.
+ * made of. No description, link, tags, `publicToken` or owner name comes back,
+ * so the answer cannot turn into a second wishlist read. `visibility` and
+ * `archivedAt` are read only to decide `canOpenGift`; `priceAmount` and
+ * `priceCurrency` reach the card only while that gate stays open.
  */
 const reservationSelect = {
   id: true,
@@ -36,6 +37,8 @@ const reservationSelect = {
   holderVisibleToOthers: true,
   visibility: true,
   archivedAt: true,
+  priceAmount: true,
+  priceCurrency: true,
   reservedById: true,
   list: { select: { ownerId: true, owner: { select: { nick: true } } } },
 } satisfies Prisma.GiftSelect;
@@ -137,6 +140,8 @@ function mapperRow(row: CompleteReservationRow): ReservationCardRow {
     holderVisibleToOthers: row.holderVisibleToOthers,
     visibility: row.visibility,
     archivedAt: row.archivedAt,
+    priceAmount: row.priceAmount,
+    priceCurrency: row.priceCurrency,
     reservedById: row.reservedById,
     list: {
       ownerId: row.list.ownerId,

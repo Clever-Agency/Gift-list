@@ -22,7 +22,7 @@ import SettingsScreen from "../../app/(app)/settings";
 const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
-const me = vi.hoisted(() => ({ updateNick: vi.fn(), updateHideFromSearch: vi.fn() }));
+const me = vi.hoisted(() => ({ updateHideFromSearch: vi.fn() }));
 const blocks = vi.hoisted(() => ({ listBlocked: vi.fn(), unblockUser: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
@@ -31,8 +31,6 @@ const navigation = vi.hoisted(() => ({
   back: vi.fn(),
   canGoBack: vi.fn(),
 }));
-/** UI5: happy-dom has no layout, so the scroll call is the observable effect. */
-const scrollIntoView = vi.hoisted(() => vi.fn());
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => me);
@@ -140,35 +138,6 @@ function text(): string {
   return container.textContent ?? "";
 }
 
-function field(label: string): HTMLInputElement {
-  const input = Array.from(container.querySelectorAll("input")).find(
-    (node) => node.getAttribute("aria-label") === label,
-  );
-  expect(input, `поле «${label}»`).toBeDefined();
-  return input as HTMLInputElement;
-}
-
-/** The field box: its label, input and the inline message under it. */
-function fieldText(label: string): string {
-  return field(label).parentElement?.textContent ?? "";
-}
-
-/** Controlled input: set the value past React's tracker, then let React see the `input` event. */
-async function type(label: string, value: string) {
-  const input = field(label);
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
-
-/** React listens to focus through the bubbling `focusout`. */
-async function blur(label: string) {
-  await act(async () => {
-    field(label).dispatchEvent(new Event("focusout", { bubbles: true }));
-  });
-}
-
 function button(label: string): HTMLElement | undefined {
   return controls(container).find((node) => (node.textContent ?? "").includes(label));
 }
@@ -226,12 +195,7 @@ async function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  scrollIntoView.mockClear();
   dimensions.calls = 0;
-  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-    configurable: true,
-    value: scrollIntoView,
-  });
   delete probe.auth;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
@@ -285,186 +249,21 @@ describe("настройки: гейт сессии", () => {
     signedIn();
     await press("Повторить");
     expect(api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me").length).toBe(2);
-    expect(field("Ник").value).toBe("anya");
+    expect(hideSwitch()).not.toBeNull();
   });
 });
 
-describe("настройки: ник", () => {
-  it("показывает текущий ник и превью; длина становится ошибкой после blur", async () => {
+describe("настройки: только настройки", () => {
+  it("ника и кнопки сохранения имени здесь больше нет (D-59)", async () => {
     signedIn();
     await mount();
 
-    expect(field("Ник").value).toBe("anya");
-    expect(fieldText("Ник")).toContain("@anya");
-    expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
-
-    await type("Ник", "New_Nick");
-    expect(fieldText("Ник")).toContain("@new_nick");
-
-    await type("Ник", "ab");
-    expect(fieldText("Ник")).not.toContain("не короче");
-    await blur("Ник");
-    expect(fieldText("Ник")).toContain("Ник должен быть не короче 3 символов");
-  });
-
-  it("кириллица во время ввода: причина под полем, превью скрыто", async () => {
-    signedIn();
-    await mount();
-
-    await type("Ник", "аня");
-
-    expect(fieldText("Ник")).toContain("Ник пишется латиницей — без русских букв");
-    expect(fieldText("Ник")).not.toContain("@");
-  });
-
-  it("пробел во время ввода: под полем причина, превью скрыто", async () => {
-    signedIn();
-    await mount();
-
-    await type("Ник", "an na");
-
-    expect(fieldText("Ник")).toContain("В нике не может быть пробелов");
-    expect(fieldText("Ник")).not.toContain("@");
-  });
-
-  it("запрещённый символ во время ввода: назван этот символ", async () => {
-    signedIn();
-    await mount();
-
-    await type("Ник", "an#a");
-
-    expect(fieldText("Ник")).toContain(
-      "Символ «#» нельзя использовать. Подойдут латинские буквы, цифры и _",
-    );
-    expect(fieldText("Ник")).not.toContain("@");
-  });
-
-  it("ник не по правилам: при сохранении показывает причину и не шлёт запрос", async () => {
-    signedIn();
-    await mount();
-
-    await type("Ник", "ab");
-    await press("Сохранить");
-
-    expect(me.updateNick).not.toHaveBeenCalled();
-    expect(fieldText("Ник")).toContain("Ник должен быть не короче 3 символов");
-  });
-
-  it("текущий ник: «Это ваш текущий ник.» и запрос не уходит", async () => {
-    signedIn();
-    await mount();
-
-    await press("Сохранить");
-
-    expect(me.updateNick).not.toHaveBeenCalled();
-    expect(fieldText("Ник")).toContain("Это ваш текущий ник.");
-  });
-
-  it("занятый ник: ошибка под полем", async () => {
-    signedIn();
-    me.updateNick.mockResolvedValue({
-      ok: false,
-      code: "VALIDATION",
-      message: "Nick is taken",
-      field: "nick",
-      reason: "NICK_TAKEN",
-    });
-    await mount();
-
-    await type("Ник", "newnick");
-    await press("Сохранить");
-
-    expect(me.updateNick).toHaveBeenCalledWith("newnick");
-    expect(fieldText("Ник")).toContain("Этот ник уже занят.");
-  });
-
-  it("413: причина показывается тостом, сырой текст сервера не виден", async () => {
-    signedIn();
-    me.updateNick.mockResolvedValue({
-      ok: false,
-      code: "VALIDATION",
-      message: "Payload too large",
-      reason: "PAYLOAD_TOO_LARGE",
-    });
-    await mount();
-
-    await type("Ник", "newnick");
-    await press("Сохранить");
-
-    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
-    expect(text()).not.toContain("Payload too large");
-    expect(field("Ник").value).toBe("newnick");
-  });
-
-  it("невалидный ник: фокус на поле и прокрутка к нему (UI5)", async () => {
-    signedIn();
-    me.updateNick.mockResolvedValue({
-      ok: false,
-      code: "VALIDATION",
-      message: "Nick is taken",
-      field: "nick",
-      reason: "NICK_TAKEN",
-    });
-    await mount();
-
-    await type("Ник", "newnick");
-    await press("Сохранить");
-
-    const nick = field("Ник");
-    expect(document.activeElement).toBe(nick);
-    expect(nick.getAttribute("aria-invalid")).toBe("true");
-    expect(scrollIntoView.mock.instances[0]).toBe(nick);
-  });
-
-  it("успех: тост, сохранённый ник и обновлённый контекст", async () => {
-    signedIn();
-    const changed = { ...user, nick: "newnick" };
-    me.updateNick.mockResolvedValue({ ok: true, data: changed });
-    await mount();
-
-    await type("Ник", "New_Nick");
-    await press("Сохранить");
-
-    expect(me.updateNick).toHaveBeenCalledWith("New_Nick");
-    expect(text()).toContain("Ник изменён.");
-    expect(field("Ник").value).toBe("newnick");
-    expect(field("Ник").readOnly).toBe(false);
-    expect(probe.auth?.state).toEqual({ status: "ready", user: changed });
-  });
-
-  it("пока запрос идёт, кнопка недоступна и второй тап не шлёт второй запрос", async () => {
-    signedIn();
-    me.updateNick.mockReturnValue(new Promise(() => {}));
-    await mount();
-
-    await type("Ник", "newnick");
-    await press("Сохранить");
-
-    const save = button("Сохранить");
-    // Busy keeps the button focusable: `aria-disabled`, not the `disabled` attribute.
-    expect((save as HTMLButtonElement | undefined)?.disabled).toBe(false);
-    expect(save?.getAttribute("aria-disabled")).toBe("true");
-    expect(save?.getAttribute("aria-busy")).toBe("true");
-    expect(field("Ник").readOnly).toBe(true);
-    expect(me.updateNick).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      save?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(me.updateNick).toHaveBeenCalledTimes(1);
-  });
-
-  it("обрыв сети: сообщение о сети и введённый ник на месте", async () => {
-    signedIn();
-    me.updateNick.mockResolvedValue({ ok: false, network: true });
-    await mount();
-
-    await type("Ник", "newnick");
-    await press("Сохранить");
-
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    expect(field("Ник").value).toBe("newnick");
-    expect(probe.auth?.state).toEqual({ status: "ready", user });
+    expect(text()).not.toContain("Ник");
+    expect(container.querySelectorAll("input")).toHaveLength(0);
+    expect(button("Сохранить")).toBeUndefined();
+    // The real settings stay: the search switch and the blocked section.
+    expect(hideSwitch()).not.toBeNull();
+    expect(text()).toContain("Заблокированные");
   });
 });
 
@@ -804,7 +603,7 @@ describe("W12.16: настройки на медиа-пропсах", () => {
     expect(conditions).toContain(breakpoints.medium);
   });
 
-  it("экран настроек отрисован: заголовок, поле ника и сохранение на месте", async () => {
+  it("экран настроек отрисован: заголовок и переключатель на месте", async () => {
     signedIn();
     await mountReady();
 
@@ -812,8 +611,7 @@ describe("W12.16: настройки на медиа-пропсах", () => {
     const heading = container.querySelector("[role='heading']");
     expect(heading?.getAttribute("aria-level")).toBe("1");
     expect(heading?.textContent).toBe("Настройки");
-    expect(field("Ник").value).toBe("anya");
-    expect(button("Сохранить")).toBeDefined();
+    expect(hideSwitch()).not.toBeNull();
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
   });
 

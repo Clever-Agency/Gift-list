@@ -5,7 +5,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
-import { controls, dialogElement, pressScrim, settle } from "@/test/dom";
+import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
@@ -60,12 +60,12 @@ vi.mock("@/platform/clipboard", () => clipboard);
 vi.mock("@/invite/copy-link", () => copier);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
-// The visibility chip draws its icon with `expo-symbols`, which loads a symbol font
-// at runtime; the icon is decorative, so a stub is enough on the wishlist screen.
+// The confirm dialog draws its close cross with `expo-symbols`, which loads a symbol
+// font at runtime; the icon is decorative, so a stub is enough on the wishlist screen.
 vi.mock("expo-symbols", async () => {
   const React = await import("react");
   return {
-    SymbolView: () => React.createElement("span", { "data-testid": "visibility-icon" }),
+    SymbolView: () => React.createElement("span", { "data-testid": "symbol" }),
   };
 });
 vi.mock("use-intl", async () => {
@@ -116,6 +116,28 @@ vi.mock("expo-router", async () => {
     router: navigation,
     Stack: { Screen: () => null },
     useLocalSearchParams: () => search.params,
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child and draws nothing of its own — the wish card itself is the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href: unknown;
+      asChild?: boolean;
+      children: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href: String(href) }, children);
+      return React.cloneElement(children, {
+        href:
+          typeof href === "string"
+            ? href
+            : (href as { pathname?: string } | null | undefined)?.pathname,
+        onPress: function onPress() {
+          navigation.push(href);
+        },
+      });
+    },
     useFocusEffect: (effect: () => void | (() => void)) => {
       const focused = React.useSyncExternalStore(
         focusStore.subscribe,
@@ -294,64 +316,6 @@ async function refocus() {
 /** Every read of the owner list, so a refocus refetch is countable. */
 function listReads(): number {
   return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
-}
-
-/**
- * The visibility chip is a button on an open or a reserved wish (CLE-82/S23.3); its
- * accessible name starts with `app.gift.visibilityChipLabel` and the visible word is
- * the chip value. A closed or archived wish has no such control at all.
- */
-function chip(value: string): HTMLElement | undefined {
-  return controls(document).find(
-    (node) =>
-      (node.getAttribute("aria-label") ?? "").startsWith("Видимость:") &&
-      (node.textContent ?? "").includes(value),
-  );
-}
-
-/** The PATCH calls to the first wish, so an optimistic save is countable. */
-function patchCalls(): unknown[][] {
-  return api.apiRequest.mock.calls.filter(
-    ([path, init]) =>
-      path === "/api/v1/me/gifts/g1" &&
-      typeof init === "object" &&
-      init !== null &&
-      (init as { method?: string }).method === "PATCH",
-  );
-}
-
-async function chooseInDialog(label: string) {
-  const option = document.querySelector<HTMLElement>(`[role="radio"][aria-label="${label}"]`);
-  expect(option).not.toBeNull();
-  await act(async () => {
-    option?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await settle(10);
-}
-
-/** A button of the open layer by its whole visible text. */
-async function pressInDialog(label: string) {
-  const dialog = dialogElement();
-  expect(dialog).not.toBeNull();
-  if (!dialog) throw new Error("нет открытого слоя");
-  const target = controls(dialog).find((node) => (node.textContent ?? "").trim() === label);
-  expect(target, `кнопка «${label}» в слое`).toBeDefined();
-  await act(async () => {
-    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await settle(10);
-}
-
-/**
- * D-49 (CLE-124): the neutral warning of an open non-secret wish. It is the only
- * question of the three paths, and it never mentions a reservation as a fact.
- */
-function expectSurpriseWarning(body: string) {
-  const dialog = dialogElement();
-  expect(dialog).not.toBeNull();
-  expect(dialog?.textContent).toContain("Кто-то мог уже забронировать или купить этот подарок.");
-  expect(dialog?.textContent).toContain(body);
-  return dialog as HTMLElement;
 }
 
 async function mount(extra?: ReactNode) {
@@ -584,13 +548,13 @@ describe("мой вишлист: заголовок и действия в од�
 });
 
 describe("мой вишлист: список", () => {
-  it("шапка, заголовок и «Написать автору» на месте, без smoke", async () => {
+  it("шапка и заголовок на месте, без smoke; ссылки техподдержки в футере нет (D-53)", async () => {
     respond(giftsAnswer([]));
     await mount();
 
     expect(text()).toContain(PRODUCT_NAME);
     expect(text()).toContain("Мой вишлист");
-    expect(text()).toContain("Написать автору");
+    expect(text()).not.toContain("Написать в техподдержку");
     expectNoSmoke();
   });
 
@@ -618,7 +582,7 @@ describe("мой вишлист: список", () => {
     expect(region?.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 
-  it("показывает все свои желания, включая «секрет», с чипом видимости и статусом", async () => {
+  it("показывает все свои желания, включая «секрет», со статусом", async () => {
     respond(
       giftsAnswer([
         gift(),
@@ -651,9 +615,6 @@ describe("мой вишлист: список", () => {
     expect(text()).toContain("Свитер");
     expect(text()).toContain(formatPrice(1050, "BYN", "ru"));
     expect(text()).toContain("Книга");
-    expect(text()).toContain("Всем");
-    expect(text()).toContain("Друзьям");
-    expect(text()).toContain("Секрет");
     expect(text()).toContain("Открыт");
     expect(text()).toContain("Получен");
     expect(text()).not.toContain("Забронирован");
@@ -681,174 +642,49 @@ describe("мой вишлист: список", () => {
   });
 
   /**
-   * CLE-84: the owner card opens details. «Изменить желание» inside the dialog
-   * is the way into the edit form (Story 2.2). The pressable lives
-   * inside the listitem, so the list semantics above stay exactly as they were.
-   * CLE-65: the press zone is the whole card, and the chip is a sibling layer over
-   * the reserved footer, not a nested button.
+   * CLE-129, T4.4 (D-63): the owner card is a real link to the wish page
+   * `/gifts/{id}`, and the detail dialog is gone. The link lives inside the
+   * listitem, so the list semantics above stay exactly as they were.
+   * D-54: the card has no visibility chip next to it.
    */
-  it("нажатие на карточку открывает подробности, listitem остаётся", async () => {
+  it("карточка — ссылка на страницу желания, listitem остаётся, диалога нет", async () => {
     respond(giftsAnswer([gift(), gift({ id: "g2", title: "Свитер" })]));
     await mount();
 
     const items = container.querySelectorAll('[role="list"] [role="listitem"]');
     expect(items).toHaveLength(2);
 
-    // The label is the `DESIGN.md` content phrase; the mock renders Pressable as a button.
-    const card = items[0]?.querySelector('[role="button"]') as HTMLElement | null;
+    // The label is the `DESIGN.md` content phrase; the card itself is the link.
+    const card = items[0]?.querySelector('[role="link"]') as HTMLElement | null;
     expect(card?.getAttribute("aria-label")).toContain("Наушники");
     expect(card?.getAttribute("aria-label")).not.toContain("Изменить");
-    // The chip sits next to the card button, never inside it; its layer is
-    // transparent to presses outside the chip.
-    expect(chip("Всем")).toBeDefined();
-    expect(card?.contains(chip("Всем") ?? null)).toBe(false);
-    // `box-none`: the layer itself lets presses through to the card button underneath.
-    const chipLayer = chip("Всем")?.parentElement as HTMLElement;
-    expect(getComputedStyle(chipLayer).pointerEvents).toBe("none");
+    // The link and its ⋯ menu: two controls, and no visibility chip next to them.
+    expect(items[0]?.querySelectorAll('[role="link"]')).toHaveLength(1);
+    expect(items[0]?.querySelectorAll('[role="button"]')).toHaveLength(1);
+    expect(items[0]?.querySelector("[aria-label^='Видимость:']")).toBeNull();
+
     await act(async () => {
       card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-
     await settle();
-    const dialog = dialogElement();
-    expect(dialog).not.toBeNull();
-    expect(dialog?.textContent).toContain("Наушники");
-    expect(dialog?.textContent).toContain("Изменить желание");
-    expect(navigation.push).not.toHaveBeenCalled();
-    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
-    await act(async () => {
-      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    // D-49 (CLE-124): PUBLIC is an open non-secret wish, so the neutral question is
-    // a step of the same details layer, and the form has not opened yet.
-    expectSurpriseWarning(
-      "Если вы измените желание, даритель получит уведомление.",
-    );
-    expect(text()).toContain("Изменить желание?");
-    expect(navigation.push).not.toHaveBeenCalled();
-
-    await pressInDialog("Изменить");
 
     expect(navigation.push).toHaveBeenCalledWith({
-      pathname: "/gifts/[id]/edit",
+      pathname: "/gifts/[id]",
       params: { id: "g1" },
     });
-  });
-
-  it("«Отмена» в окне «Изменить» оставляет подробности и не открывает форму", async () => {
-    respond(giftsAnswer([gift({ visibility: "FRIENDS" })]));
-    await mount();
-
-    const card = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
-    await act(async () => {
-      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    expectSurpriseWarning(
-      "Если вы измените желание, даритель получит уведомление.",
-    );
-
-    await pressInDialog("Отмена");
-    await settle(300);
-
-    expect(navigation.push).not.toHaveBeenCalled();
-    // One layer: the step is gone and the details are back, not a second window.
-    expect(dialogElement()?.textContent).toContain("Изменить желание");
-    expect(text()).not.toContain("Изменить желание?");
-  });
-
-  it("секретное желание открывает форму сразу, без окна", async () => {
-    respond(giftsAnswer([gift({ visibility: "SECRET" })]));
-    await mount();
-
-    const card = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
-    await act(async () => {
-      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    expect(text()).not.toContain("Изменить желание?");
-    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
-    expect(navigation.push).toHaveBeenCalledWith({
-      pathname: "/gifts/[id]/edit",
-      params: { id: "g1" },
-    });
-  });
-
-  it("подробности берут описание из чтения одного желания и возвращают фокус на карточку", async () => {
-    const card = gift();
-    respond(giftsAnswer([card]));
-    api.apiRequest.mockImplementation((path: string) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path === "/api/v1/me/gifts/g1") {
-        return Promise.resolve({
-          ok: true,
-          data: { ...card, description: "Синие, с шумоподавлением." },
-        });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-    await mount();
-
-    const cardButton = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    expect(dialogElement()?.textContent).toContain("Синие, с шумоподавлением.");
-    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/me/gifts/g1");
-
-    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
-    await act(async () => {
-      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle(300);
     expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(cardButton);
+    expect(text()).not.toContain("Изменить желание");
   });
 
-  /**
-   * CLE-65 reproduction: a click on the empty footer space next to the «Всем» chip
-   * did nothing. That space is the card's reserved footer spacer — the last box of
-   * the card button — so the press now opens the detail dialog, not the editor.
-   */
-  it("нажатие на пустое место рядом с чипом открывает подробности", async () => {
+  it("«Изменить» живёт на странице желания, а не в списке", async () => {
     respond(giftsAnswer([gift()]));
     await mount();
 
-    const card = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement | null;
-    expect(card?.getAttribute("aria-label")).toContain("Наушники");
-    const spacer = card?.lastElementChild as HTMLElement | null;
-    expect(spacer).not.toBeNull();
-    expect(spacer?.getAttribute("aria-label")).toBeNull();
-    await act(async () => {
-      spacer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(button("Изменить")).toBeUndefined();
+    expect(navigation.push).not.toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
     });
-
-    await settle();
-    expect(dialogElement()?.textContent).toContain("Наушники");
-    expect(navigation.push).not.toHaveBeenCalled();
   });
 
   it("пустой вишлист: «Пока пусто» и «Добавить желание» ведёт в форму", async () => {
@@ -994,8 +830,9 @@ describe("мой вишлист: список", () => {
   /**
    * Story 3.5 creates «Поиск» before Story 6.2 gives it a place in the navigation
    * (вкладка «Поиск»), so the wishlist footer carries a temporary entry point.
+   * D-53: the support link left the footers of signed-in screens for `/profile`.
    */
-  it("в подвале «Моего вишлиста» нет временных разделов и «Выйти», «Написать автору» остаётся", async () => {
+  it("в подвале «Моего вишлиста» нет временных разделов и «Выйти», ссылки техподдержки тоже нет", async () => {
     respond(giftsAnswer([]));
     await mount();
 
@@ -1006,7 +843,7 @@ describe("мой вишлист: список", () => {
       expect(footer?.querySelector(`[data-testid="${gone}"]`)).toBeNull();
     }
     expect(footer?.textContent).not.toContain("Выйти");
-    expect(footer?.textContent).toContain("Написать автору");
+    expect(footer?.textContent).not.toContain("Написать в техподдержку");
 
     // Nothing of the footer navigates: the tabs and «Профиль» own the routes now.
     expect(navigation.push).not.toHaveBeenCalled();
@@ -1598,7 +1435,7 @@ describe("мой вишлист: у владельца нет признаков
     expect(container.querySelector("[data-testid='owner-action-label']")).toBeNull();
   });
 
-  it("деталь из старого ответа: ни факта брони, ни «Снять бронь»", async () => {
+  it("карточка из старого ответа: ни факта брони, ни «Снять бронь», ссылка ведёт на страницу", async () => {
     respond(
       giftsAnswer([
         gift({
@@ -1611,543 +1448,13 @@ describe("мой вишлист: у владельца нет признаков
     );
     await mount();
 
-    const cardButton = container.querySelector(
-      '[role="listitem"] [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    const detail = dialogElement()?.textContent ?? "";
-    expect(detail).toContain("Кто видит");
-    expect(detail).toContain("Изменить желание");
-    await expectNoReservation(detail);
-    expect(detail).not.toContain("Снять бронь");
-  });
-});
-
-/**
- * `EXPERIENCE.md` → Visibility chip: on an open wish the choice is saved at once
- * (optimistic), a failure rolls the chip back, and a reserved wish keeps a plain
- * value chip. The dialog returns focus to the chip it was opened from.
- */
-describe("мой вишлист: смена видимости с чипа", () => {
-  it("выбор «Друзьям» спрашивает, затем виден сразу, toast и ответ сервера", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-
-    await press("Всем");
-    expect(dialogElement()).not.toBeNull();
-    expect(text()).toContain("Кто видит «Наушники»");
-    // The chip is a sibling of the card button: it must not open wish details.
-    expect(text()).not.toContain("Изменить желание");
-    expect(text()).not.toContain("Если вы измените желание");
-
-    // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
-    let answer: (value: unknown) => void = function pendingAnswer() {};
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return new Promise((resolve) => {
-          answer = resolve;
-        });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-
-    // PUBLIC→FRIENDS is a narrowing: the neutral question comes first, nothing is
-    // written yet and the chip is still «Всем» (D-49).
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    expect(text()).toContain("Изменить, кто видит «Наушники»?");
-    expect(chip("Всем")).toBeDefined();
-    expect(patchCalls()).toHaveLength(0);
-
-    await pressInDialog("Изменить");
-
-    expect(chip("Друзьям")).toBeDefined();
-    expect(patchCalls()).toHaveLength(1);
-    expect(patchCalls()[0]?.[1]).toEqual({
-      method: "PATCH",
-      body: { visibility: "FRIENDS" },
-    });
-
-    await act(async () => {
-      answer({ ok: true, data: gift({ visibility: "FRIENDS" }) });
-    });
-
-    expect(text()).toContain("Видимость: друзьям");
-    expect(chip("Друзьям")).toBeDefined();
-  });
-
-  it("последнее PUBLIC, ставшее FRIENDS, сразу выключает копирование", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("false");
-
-    await press("Всем");
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: true, data: gift({ visibility: "FRIENDS" }) });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    await pressInDialog("Изменить");
-
-    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("true");
-    expect(container.querySelector("#wishlist-copy-link-reason")?.textContent).toContain(
-      "Нет желаний, открытых для всех",
-    );
-  });
-
-  it("обрыв сети: чип откатывается ко «Всем» и toast о соединении", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    await pressInDialog("Изменить");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    expect(text()).not.toContain("Видимость: друзьям");
-  });
-
-  it("сеть: откат чипа и тост «Нет соединения»", async () => {
-    respond(giftsAnswer([gift({ visibility: "SECRET" })]));
-    await mount();
-    expect(chip("Секрет")?.getAttribute("aria-label")).toBe("Видимость: секрет. Изменить");
-    await press("Секрет");
-    expect(dialogElement()).not.toBeNull();
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
-      return Promise.resolve(giftsAnswer([gift({ visibility: "SECRET" })]));
-    });
-
-    await chooseInDialog("Всем");
-
-    expect(chip("Секрет")).toBeDefined();
-    expect(chip("Всем")).toBeUndefined();
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    // Only the optimistic value changed: a network failure does not refetch the list.
-    expect(listReads()).toBe(reads);
-
-    // The in-flight flag is cleared, so the chip opens the dialog again.
-    await press("Секрет");
-    expect(dialogElement()).not.toBeNull();
-  });
-
-  it("VALIDATION без причины: откат, общий текст проверки и тихая перезагрузка списка", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: false, code: "VALIDATION", message: "" });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    await pressInDialog("Изменить");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(text()).toContain("Проверьте введённые данные.");
-    // The status under the optimistic chip may have changed: the list reloads silently.
-    expect(listReads()).toBe(reads + 1);
-    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
-  });
-
-  /**
-   * CLE-82/S23.3: the wish moved on while its chip was being changed — it was
-   * archived or closed on another device. A known reason has its own sentence, the
-   * chip rolls back and the list re-reads the real card.
-   */
-  it.each(["GIFT_ARCHIVED", "GIFT_CLOSED"] as const)(
-    "VALIDATION %s: архивная подсказка, откат и перезагрузка списка",
-    async (reason) => {
-      respond(giftsAnswer([gift()]));
-      await mount();
-      await press("Всем");
-      const reads = listReads();
-
-      api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-        if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-        if (init?.method === "PATCH") {
-          return Promise.resolve({ ok: false, code: "VALIDATION", message: "", reason });
-        }
-        return Promise.resolve(giftsAnswer([gift()]));
-      });
-
-      await chooseInDialog("Друзьям");
-      expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-      await pressInDialog("Изменить");
-
-      expect(chip("Всем")).toBeDefined();
-      expect(text()).toContain("Архивное желание можно только просматривать.");
-      expect(text()).not.toContain("Проверьте введённые данные.");
-      expect(listReads()).toBe(reads + 1);
-    },
-  );
-
-  /** S23.2b: the reservation raced the write, so the chip must not keep its guess. */
-  it("CONFLICT: откат, toast и перезагрузка списка", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: false, code: "CONFLICT", message: "" });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    await pressInDialog("Изменить");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
-    expect(listReads()).toBe(reads + 1);
-  });
-
-  it("413: откат, причина «слишком большой запрос» и тихая перезагрузка", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({
-          ok: false,
-          code: "VALIDATION",
-          message: "Payload too large",
-          reason: "PAYLOAD_TOO_LARGE",
-        });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    await pressInDialog("Изменить");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
-    expect(text()).not.toContain("Payload too large");
-    expect(text()).not.toContain("Проверьте введённые данные.");
-    expect(listReads()).toBe(reads + 1);
-  });
-
-  it("NOT_FOUND: откат, прежний текст ошибки и тихая перезагрузка списка", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    await pressInDialog("Изменить");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(text()).toContain("Не найдено.");
-    expect(listReads()).toBe(reads + 1);
-    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
-  });
-
-  /**
-   * D-49 (CLE-124): the owner does not know about reservations, so a reserved wish
-   * gets exactly the same neutral question as an open one — no preflight, no word
-   * about a holder, and only the accepted «Изменить» writes.
-   */
-  it("RESERVED: сужение видимости — то же окно, затем PATCH, без слов о брони", async () => {
-    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
-    respond(giftsAnswer([card]));
-    await mount();
-    await press("Друзьям");
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({
-          ok: true,
-          data: gift({ status: "RESERVED", visibility: "SECRET" }),
-        });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-
-    await chooseInDialog("Секрет");
-
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    expect(text()).toContain("Изменить, кто видит «Наушники»?");
-    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
-    expect(
-      api.apiRequest.mock.calls.some(([path]) =>
-        String(path).includes("/g1/visibility"),
-      ),
-    ).toBe(false);
-    expect(patchCalls()).toHaveLength(0);
-
-    await pressInDialog("Изменить");
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(patchCalls()).toHaveLength(1);
-    expect(patchCalls()[0]?.[1]).toEqual({
-      method: "PATCH",
-      body: { visibility: "SECRET" },
-    });
-    expect(text()).toContain("Видимость: секрет");
-    expect(text()).not.toContain("Бронь снята");
-    expect(chip("Секрет")).toBeDefined();
-    expect(chip("Друзьям")).toBeUndefined();
-  });
-
-  it("RESERVED: сеть при смене видимости — откат и общий тост без брони", async () => {
-    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
-    respond(giftsAnswer([card]));
-    await mount();
-    await press("Друзьям");
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
-      return Promise.resolve(giftsAnswer([card]));
-    });
-
-    await chooseInDialog("Секрет");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    await pressInDialog("Изменить");
-    await settle(300);
-
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
-    expect(text()).not.toContain("Бронь снята");
-    expect(chip("Друзьям")).toBeDefined();
-    expect(chip("Секрет")).toBeUndefined();
-  });
-
-  it("у CLOSED и архивного чип не кнопка: выбор не открывается", async () => {
-    respond(
-      giftsAnswer([
-        gift({ id: "g2", status: "CLOSED", visibility: "FRIENDS" }),
-        gift({
-          id: "g3",
-          archivedAt: "2026-10-01T00:00:00.000Z",
-          visibility: "SECRET",
-        }),
-      ]),
-    );
-    await mount();
-    // Story 5.3: the closed wish lives in «Получено (1)»; the archived one stays in the grid.
-    await press("Получено (1)");
-
-    expect(text()).toContain("Друзьям");
-    expect(text()).toContain("Секрет");
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(chip("Секрет")).toBeUndefined();
-    expect(patchCalls()).toHaveLength(0);
-  });
-
-  it("«Отмена» в диалоге не меняет видимость и не зовёт API", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-
-    await press("Отмена");
-
-    expect(dialogElement()).toBeNull();
-    expect(chip("Всем")).toBeDefined();
-    expect(patchCalls()).toHaveLength(0);
-    expect(text()).not.toContain("Видимость: друзьям");
-  });
-
-  /**
-   * D-49 (CLE-124): only a narrowing asks. A wider value, the same value, a secret
-   * or a closed wish and the archive save (or do nothing) without a window.
-   */
-  it("расширение видимости окна не открывает", async () => {
-    const card = gift({ visibility: "FRIENDS" });
-    respond(giftsAnswer([card]));
-    await mount();
-    await press("Друзьям");
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: true, data: gift({ visibility: "PUBLIC" }) });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-
-    await chooseInDialog("Всем");
-
-    expect(dialogElement()).toBeNull();
-    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
-    expect(patchCalls()).toHaveLength(1);
-    expect(text()).toContain("Видимость: всем");
-  });
-
-  it("то же значение: выбор закрывает окно и ничего не пишет", async () => {
-    respond(giftsAnswer([gift({ visibility: "FRIENDS" })]));
-    await mount();
-    await press("Друзьям");
-
-    await chooseInDialog("Друзьям");
-
-    expect(dialogElement()).toBeNull();
-    expect(patchCalls()).toHaveLength(0);
-    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
-  });
-
-  it("«Отмена» в нейтральном окне сужения ничего не сохраняет", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-
-    await chooseInDialog("Друзьям");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-
-    await pressInDialog("Отмена");
-
-    expect(dialogElement()).toBeNull();
-    expect(chip("Всем")).toBeDefined();
-    expect(patchCalls()).toHaveLength(0);
-    expect(text()).not.toContain("Видимость: друзьям");
-  });
-
-  it("окно одно и то же для открытого и для старого RESERVED", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    await chooseInDialog("Друзьям");
-    const openText = dialogElement()?.textContent ?? "";
-    expect(openText).toContain("Кто-то мог уже забронировать или купить этот подарок.");
-
-    await act(async () => {
-      root.unmount();
-    });
-    respond(giftsAnswer([gift({ status: "RESERVED" })]));
-    root = createRoot(container);
-    await mount();
-    await press("Всем");
-    await chooseInDialog("Друзьям");
-    const reservedText = dialogElement()?.textContent ?? "";
-
-    expect(reservedText).toBe(openText);
-  });
-});
-
-/**
- * CLE-51: focus returns to the chip the dialog was opened from, and it does so only
- * after the layer has really left the tree — react-native-web keeps it mounted while
- * it fades out, and its focus trap pulls an early `focus()` back into the dialog.
- */
-describe("мой вишлист: возврат фокуса на чип", () => {
-  /** Opens the picker on the only wish and returns the chip that opened it. */
-  async function openPicker(): Promise<HTMLButtonElement> {
-    respond(giftsAnswer([gift()]));
-    await mount();
-
-    const trigger = chip("Всем");
-    expect(trigger).toBeDefined();
-    await press("Всем");
-    expect(dialogElement()).not.toBeNull();
-    // The dialog opens on the selected radio, not on the trigger behind it.
-    expect(document.activeElement).not.toBe(trigger);
-    return trigger as HTMLButtonElement;
-  }
-
-  it("«Отмена»: фокус на чипе, который открыл диалог", async () => {
-    const trigger = await openPicker();
-
-    await press("Отмена");
-    // Фокус возвращается после exit-fade диалога (160 мс).
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("Esc: фокус на чипе, который открыл диалог", async () => {
-    const trigger = await openPicker();
-
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("тап по подложке: фокус на чипе, который открыл диалог", async () => {
-    const trigger = await openPicker();
-
-    await pressScrim("visibility-picker-scrim");
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("выбор другого значения тоже возвращает фокус на чип", async () => {
-    const trigger = await openPicker();
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: true, data: gift({ visibility: "FRIENDS" }) });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-    expectSurpriseWarning("Если он перестанет видеть желание, бронь снимется.");
-    await pressInDialog("Изменить");
-    // Фокус возвращается после exit-fade диалога (160 мс).
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-    // Never `<body>`: the layer hands focus back instead of dropping it.
-    expect(document.activeElement).not.toBe(document.body);
+    expect(text()).toContain("Открыт");
+    await expectNoReservation(text());
+    expect(text()).not.toContain("Снять бронь");
+    // The card reads as open, and the page it links to has no reservation either:
+    // that is `gift-detail-screen.test` (AD-15 (14)).
+    const card = container.querySelector('[role="listitem"] [role="link"]') as HTMLElement;
+    expect(card.getAttribute("aria-label")).not.toContain("Забронирован");
   });
 });
 
@@ -2784,14 +2091,6 @@ describe("мой вишлист: закрытие желания", () => {
     await settle(10);
   }
 
-  async function openDetailOfFirstCard() {
-    const cardButton = container.querySelector('[role="listitem"] [role="button"]') as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-  }
-
   /** The card of the closed wish: expand «Получено» first. */
   async function openClosedMenu(closedTitle = "Получено (1)") {
     await press(closedTitle);
@@ -2856,7 +2155,7 @@ describe("мой вишлист: закрытие желания", () => {
     expect(confirm).not.toContain("бронировавший");
   });
 
-  it("шаг в подробностях: «Отметить полученным» → «Подтвердить», диалог закрывается", async () => {
+  it("«Отметить полученным» есть в ⋯ карточки после ухода окна подробностей", async () => {
     let cards: GiftCard[] = [gift()];
     respondClose({
       cards: () => cards,
@@ -2866,15 +2165,12 @@ describe("мой вишлист: закрытие желания", () => {
       },
     });
     await mount();
-    await openDetailOfFirstCard();
 
-    expect(dialogElement()?.textContent).toContain("Изменить желание");
-    await pressInDialog("Отметить полученным");
+    // The card itself only goes to the page; the owner's action stays in the ⋯.
+    await pressTestId("wishlist-card-menu-g1");
     await settle();
-
-    expect(dialogElement()?.textContent).toContain("Подарок «Наушники» получен?");
-    expect(dialogElement()?.textContent).not.toContain("Кто видит");
-
+    await pressInDialog("Отметить полученным");
+    await settle(300);
     await pressInDialog("Подтвердить");
     await settle(300);
 

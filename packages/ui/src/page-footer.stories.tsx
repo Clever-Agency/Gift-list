@@ -84,7 +84,7 @@ type Story = StoryObj<typeof meta>;
 /** The ready-made links of the catalog: the app passes its own routes. */
 const FOOTER_LINKS = (
   <>
-    <LinkText onPress={noop}>Написать автору</LinkText>
+    <LinkText onPress={noop}>Написать в техподдержку</LinkText>
     <LinkText onPress={noop}>Политика конфиденциальности</LinkText>
   </>
 );

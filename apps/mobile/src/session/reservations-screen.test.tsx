@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { formatDate, type ReservationCard } from "@gift-list/contracts";
+import { formatDate, formatPrice, type ReservationCard } from "@gift-list/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -102,6 +102,20 @@ vi.mock("expo-router", async () => {
   return {
     router: navigation,
     Stack: { Screen: () => null },
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child and draws nothing of its own — `NavLink` draws the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href: string;
+      asChild?: boolean;
+      children: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href }, children);
+      return React.cloneElement(children, { href });
+    },
     useLocalSearchParams: () => search.params,
     useFocusEffect: (effect: () => void | (() => void)) => {
       const focused = React.useSyncExternalStore(
@@ -153,6 +167,9 @@ function card(overrides: Partial<ReservationCard> = {}): ReservationCard {
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
     ...overrides,
   };
@@ -218,8 +235,10 @@ function dialogControl(label: string): HTMLElement | undefined {
   return dialog ? controlByText(label, dialog) : undefined;
 }
 
+/** The card button of a card: the ⋮, the switches and the footer are siblings, not it. */
 function cardLink(giftId = "g1"): HTMLElement | null {
-  return container.querySelector<HTMLElement>(`[data-testid="reservation-${giftId}-link"]`);
+  const card = container.querySelector<HTMLElement>(`[data-testid="reservation-${giftId}"]`);
+  return card?.querySelector<HTMLElement>(':scope > [role="button"]') ?? null;
 }
 
 async function mount() {
@@ -259,7 +278,10 @@ describe("экран «Мои брони»", () => {
 
     expect(text()).toContain("Мои брони");
     expect(text()).toContain("Плед");
-    expect(text()).toContain("у @anya");
+    // CLE-129, T4.4: «у @ника» — ссылка на профиль владельца.
+    expect(text()).toContain("у");
+    expect(text()).toContain("@anya");
+    expect(container.querySelector('[role="link"][href="/u/anya"]')).not.toBeNull();
     expect(text()).toContain("Вы берёте · до 01.12");
   });
 
@@ -411,9 +433,7 @@ describe("экран «Мои брони»", () => {
 
     expect(text()).not.toContain("Показать владельцу, что это я");
 
-    await click(control("Кто видит, что это я"));
-    await settle(10);
-    await click(byLabel("Показать другим, кто берёт"));
+    await click(byLabel("Показывать другим гостям, что дарю я"));
     await settle(20);
 
     const calls = updateCalls();
@@ -542,6 +562,25 @@ describe("экран «Мои брони»", () => {
       pathname: "/gifts/[id]",
       params: { id: "g1" },
     });
+  });
+
+  /** D-64.7: цена — текущая цена желания; у недоступного желания её нет. */
+  it("цена есть у доступного желания и пропадает при canOpenGift = false", async () => {
+    respond(listAnswer([card({ priceAmount: 250000, priceCurrency: "RUB" })]));
+    await mount();
+
+    expect(text()).toContain(formatPrice(250000, "RUB", "ru"));
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    respond(
+      listAnswer([card({ canOpenGift: false, priceAmount: 250000, priceCurrency: "RUB" })]),
+    );
+    await mount();
+
+    expect(text()).not.toContain(formatPrice(250000, "RUB", "ru"));
+    expect(cardLink()).toBeNull();
+    expect(byLabel("Купил")).toBeDefined();
   });
 
   it("в GIVEN нет продления и «Подарил», но «Купил» и ⋮ на месте", async () => {

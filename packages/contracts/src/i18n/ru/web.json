@@ -8,7 +8,11 @@
     "emptyTitle": "Пока нет открытых желаний",
     "nick": "@{nick}",
     "buyMyself": "Куплю сам",
-    "buyMyselfLabel": "Куплю сам: {title}"
+    "buyMyselfLabel": "Куплю сам: {title}",
+    "backToList": "Назад к списку",
+    "wishPageTitle": "{title} — {brand}",
+    "wishNotFound": "Желание не найдено.",
+    "wishNotFoundTitle": "Желание не найдено — {brand}"
   },
   "invite": {
     "pageTitle": "{name} приглашает в друзья — {brand}",

@@ -33,10 +33,17 @@ export type DateFieldProps = {
   onChange: (value: string) => void;
   /** Inclusive lower bound, `YYYY-MM-DD`. The browser enforces it. */
   min?: string;
+  /** Inclusive upper bound, `YYYY-MM-DD`. The browser enforces it. */
+  max?: string;
   error?: string;
   hint?: string;
   /** Shown when a day is set, so the owner can clear an optional date. */
-  clearLabel: string;
+  clearLabel?: string;
+  /**
+   * `false` hides the clear button of a date that cannot be empty, e.g. a
+   * reservation deadline. Defaults to `true`.
+   */
+  clearable?: boolean;
   /** Phone only: the button text. The browser input has its own empty state. */
   placeholder?: string;
   /** Phone only: the chosen day, already formatted for the button. */
@@ -52,11 +59,12 @@ export type DateFieldProps = {
  */
 export const DateField = forwardRef<ComponentRef<typeof DateInput>, DateFieldProps>(
   function DateField(
-    { label, value, onChange, min, error, hint, clearLabel, testID },
+    { label, value, onChange, min, max, error, hint, clearLabel, clearable, testID },
     ref,
   ) {
     const id = useId();
     const described = error || hint;
+    const showClear = clearable !== false && clearLabel !== undefined && value !== "";
 
     function handleChange(next: string) {
       onChange(next);
@@ -81,9 +89,9 @@ export const DateField = forwardRef<ComponentRef<typeof DateInput>, DateFieldPro
             aria-invalid={error ? true : undefined}
             aria-describedby={described ? `${id}-description` : undefined}
             flex={1}
-            {...({ type: "date", min } as object)}
+            {...({ type: "date", min, max } as object)}
           />
-          {value !== "" ? (
+          {showClear ? (
             <Pressable
               role="button"
               aria-label={clearLabel}

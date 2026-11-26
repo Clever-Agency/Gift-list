@@ -44,7 +44,7 @@ describe("app/l/[token]/not-found.tsx", () => {
     expect(html.match(/aria-level="1"/g)?.length).toBe(1);
     expect(html).toContain("Список не найден.");
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
     // Nothing of a found list or of an invite page reaches the 404.

@@ -11,7 +11,7 @@ import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
-import PublicWishlistScreen from "../../app/wishlist/[token]";
+import PublicWishlistScreen from "../../app/(link)/wishlist/[token]";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -43,11 +43,34 @@ vi.mock("expo-localization", () => ({
 }));
 vi.mock("expo-router", async () => {
   const React = await import("react");
+  /** The target as a string: `asChild` hands it to the anchor the child draws. */
+  function hrefOf(href: unknown): string | undefined {
+    return typeof href === "string"
+      ? href
+      : (href as { pathname?: string } | null | undefined)?.pathname;
+  }
   return {
     router: navigation,
     Stack: { Screen: () => null },
-    Link: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, null, children),
+    // An honest `asChild`: the router's `Link` puts `href` and `onPress` onto its
+    // only child and draws nothing of its own — the card itself is the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href?: unknown;
+      asChild?: boolean;
+      children?: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href: hrefOf(href) }, children);
+      return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        href: hrefOf(href),
+        onPress: function onPress() {
+          navigation.push(href);
+        },
+      });
+    },
     useLocalSearchParams: () => search.params,
   };
 });
@@ -358,7 +381,7 @@ describe("вишлист по ссылке: список", () => {
     expect(text()).not.toContain("Друзьям");
   });
 
-  it("карточка открывает обновлённые подробности, «Куплю сам» ведёт в бронь", async () => {
+  it("карточка — ссылка на страницу желания, «Куплю сам» ведёт в бронь", async () => {
     const card = gift();
     respond(giftsAnswer([card]));
     api.apiRequest.mockImplementation((path: string) => {
@@ -373,26 +396,22 @@ describe("вишлист по ссылке: список", () => {
     });
     await mount();
 
-    const cardButton = container.querySelector(
-      '[role="listitem"] [role="button"]',
+    // CLE-129, T4.4: the card is a real link to the wish page; no dialog, and the
+    // guest keeps the list token, so the page reads the same public list.
+    const cardLink = container.querySelector(
+      '[role="listitem"] [role="link"]',
     ) as HTMLElement;
+    expect(cardLink.getAttribute("aria-label")).toBe("Наушники");
     await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      cardLink.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 
-    const dialog = dialogElement();
-    expect(dialog?.textContent).toContain("Обновлённое описание с сервера.");
-    expect(dialog?.textContent).not.toContain("Всем");
-    expect(navigation.push).not.toHaveBeenCalled();
-
-    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
-    await act(async () => {
-      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]",
+      params: { id: "g1", listToken: "tok_1", title: "Наушники" },
     });
-    await settle(300);
     expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(cardButton);
 
     // This file's translator stub only loads `app` and `common`, so the web
     // catalogue key is what the button renders here.
@@ -402,6 +421,42 @@ describe("вишлист по ссылке: список", () => {
       params: { id: "g1", listToken: "tok_1", title: "Наушники", openReserve: "1" },
     });
     expect(dialogElement()).toBeNull();
+  });
+
+  it("имя дарителя — ссылка на профиль, вне кнопки карточки", async () => {
+    respond(
+      giftsAnswer([
+        gift(),
+        gift({
+          id: "g2",
+          title: "Свитер",
+          status: "RESERVED",
+          reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+        }),
+      ]),
+    );
+    await mount();
+
+    const items = Array.from(
+      container.querySelectorAll<HTMLElement>('[role="list"] [role="listitem"]'),
+    );
+    const reserved = items.find(function withSweater(node) {
+      return (node.textContent ?? "").includes("Свитер");
+    });
+    expect(reserved, "карточка забронированного желания").toBeDefined();
+
+    // The card draws «Берёт Олег»: the name is the link, its target is the profile.
+    expect(reserved?.textContent).toContain("Берёт");
+    const link = reserved?.querySelector<HTMLElement>('[role="link"][href="/u/oleg"]');
+    expect(link?.textContent).toBe("Олег");
+
+    // The line is a sibling of the card link: the profile link is not nested in it.
+    const cardLink = Array.from(
+      reserved?.querySelectorAll<HTMLElement>('[role="link"]') ?? [],
+    ).find(function isCard(node) {
+      return node.getAttribute("href") !== "/u/oleg";
+    });
+    expect(cardLink?.contains(link as Node)).toBe(false);
   });
 
   it("не показывает скрытое желание, которого нет в ответе сервера", async () => {
@@ -703,7 +758,7 @@ describe("W12.21: вишлист по ссылке на медиа-пропса�
 
   it("экран не импортирует pageGutter: отступ приходит из CSS", () => {
     const source = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../app/wishlist/[token].tsx"),
+      join(dirname(fileURLToPath(import.meta.url)), "../../app/(link)/wishlist/[token].tsx"),
       "utf8",
     );
 

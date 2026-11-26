@@ -11,6 +11,12 @@ datasource db {
 }
 
 // Better Auth core tables (AD-3). Field names follow Better Auth defaults.
+/// AD-29: `null` gender is "not specified"; there is no other value.
+enum Gender {
+  MALE
+  FEMALE
+}
+
 model User {
   id             String   @id @default(cuid(2))
   name           String // displayName
@@ -22,6 +28,18 @@ model User {
   nick           String
   nickNormalized String   @unique
   hideFromSearch Boolean  @default(false)
+  /// CLE-129/D-58, AD-29: birthday is a day and a month without a year; the
+  /// pair is set together and 29 February is allowed.
+  birthDay       Int?
+  birthMonth     Int?
+  /// AD-29: `null` is "not specified".
+  gender         Gender?
+  /// ISO 3166-1 alpha-2, upper case; the client renders the name (AD-29).
+  country        String?  @db.Char(2)
+  /// «Обо мне», at most 500 characters (CHECK in the migration, AD-29).
+  about          String?  @db.Text
+  /// Friends see the profile fields only while this is true (AD-29).
+  profileVisibleToFriends Boolean @default(true)
   /// Set once from Accept-Language at registration (AD-27).
   locale         String   @default("ru")
   datesInApp     Boolean  @default(true)

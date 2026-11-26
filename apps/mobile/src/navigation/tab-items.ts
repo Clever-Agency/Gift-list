@@ -85,13 +85,24 @@ export const TAB_ITEMS: readonly TabItem[] = [
 
 /**
  * The same list as the headless `Tabs` sees it: `useTabsWithTriggers` takes the
- * routes explicitly, because the tab bar of `AppShell` does not sit among the
+ * routes explicitly, because the bottom bar of the shell does not live among the
  * children of `Tabs` and the component variant only parses triggers from there.
  * The first entry is the first route, which `backBehavior: "firstRoute"` needs.
  */
 export const TAB_TRIGGERS = TAB_ITEMS.map(function toTrigger(item) {
   return { type: "internal" as const, name: item.name, href: item.href };
 });
+
+/**
+ * The one configuration of the tabs navigator (`(tabs)/_layout.tsx`). `firstRoute`
+ * is the Android rule of `EXPERIENCE.md` → Навигация: «назад» on the root of any
+ * tab first goes to «Вишлист» (the first entry, `/`), and «Вишлист» itself then
+ * collapses the app.
+ */
+export const TABS_NAVIGATOR_OPTIONS = {
+  triggers: TAB_TRIGGERS,
+  backBehavior: "firstRoute" as const,
+};
 
 /** The section a path belongs to; only the exact root counts, as in the side menu. */
 export function sectionOf(pathname: string): TabItem | undefined {

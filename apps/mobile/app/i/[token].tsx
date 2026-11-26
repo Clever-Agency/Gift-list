@@ -7,4 +7,4 @@
  * On the web `/i/*` stays a Next page (`spa-paths.ts`), so this double only runs
  * inside the app.
  */
-export { default } from "../invite/[token]";
+export { default } from "../(app)/invite/[token]";

@@ -175,6 +175,10 @@ function FriendsContent({
   const [query, setQuery] = useState("");
   const [friendsList, setFriendsList] = useState<PageState>({ status: "loading" });
   const friendsRequest = useRef(0);
+  // D-52: the field shows for three friends or more, and `PageState.total` answers
+  // the current query. The unfiltered count is remembered here, so a query with one
+  // hit does not hide the field that found it.
+  const allFriendsTotal = useRef<number | null>(null);
 
   // Subscriptions: two lists, each with its own count and cursor.
   const [subscriptionView, setSubscriptionView] =
@@ -248,6 +252,8 @@ function FriendsContent({
     if (id !== friendsRequest.current) return;
 
     if (result.ok) {
+      // D-52: the count without a query decides whether the field exists.
+      if (value === "") allFriendsTotal.current = result.page.total;
       setFriendsList({
         status: "ready",
         items: result.page.items,
@@ -978,8 +984,8 @@ function FriendsContent({
 
   function openFindContacts() {
     // NOTE FOR UX: «Найти знакомых» (`/friends/contacts`) is outside Story 4.3
-    // and awaits its own story; until it exists both the top row and the empty
-    // CTA open `/search`, like the temporary «Поиск» entry of Story 3.5.
+    // and awaits its own story; until it exists the empty friends list opens
+    // `/search`, like the temporary «Поиск» entry of Story 3.5.
     openSearch();
   }
 
@@ -1098,7 +1104,7 @@ function FriendsContent({
   return (
     <Screen>
       {/* A tab root: the bottom bar holds the home indicator (spec 6.2). */}
-      <SafeArea bottom={false}>
+      <SafeArea>
         <Stack.Screen options={{ title: friends("pageTitle", { brand }) }} />
         <PageScroll
           testID="friends-page"
@@ -1117,24 +1123,27 @@ function FriendsContent({
               <Text kind="display-sm" tone="primary" textAlign="center">
                 {common("brandName", { brand })}
               </Text>
-              <XStack justifyContent="space-between" alignItems="center">
-                <View ref={headingNode as never} tabIndex={-1} alignSelf="flex-start" outlineWidth={0}>
-                  <Heading level={1}>{friends("title")}</Heading>
-                </View>
+              {/*
+                D-51: no visible page title over the tabs. The `h1` stays for the
+                screen reader only and keeps the focus target of «Куда уходит фокус».
+              */}
+              <View
+                ref={headingNode as never}
+                tabIndex={-1}
+                alignSelf="flex-start"
+                outlineWidth={0}
+                position="absolute"
+                width={1}
+                height={1}
+                overflow="hidden"
+                opacity={0}
+                pointerEvents="none"
+              >
+                <Heading level={1}>{friends("title")}</Heading>
+              </View>
+              <XStack justifyContent="flex-end" alignItems="center">
                 <NotificationBell />
               </XStack>
-              <Pressable
-                role="button"
-                testID="friends-find-contacts"
-                onPress={openFindContacts}
-                minHeight="$touch-target"
-                justifyContent="center"
-                alignSelf="flex-start"
-              >
-                <Text kind="button" tone="primary">
-                  {friends("findContacts")}
-                </Text>
-              </Pressable>
               <SegmentTabs
                 label={friends("tabs.label")}
                 value={tab}
@@ -1154,6 +1163,11 @@ function FriendsContent({
                 {tab === "friends" ? (
                   <FriendsPanel
                     list={friendsList}
+                    totalFriends={
+                      prepared === "" && friendsList.status === "ready"
+                        ? friendsList.total
+                        : allFriendsTotal.current
+                    }
                     query={query}
                     prepared={prepared}
                     onQueryChange={changeQuery}
@@ -1330,6 +1344,8 @@ RetryView.displayName = "RetryView";
 
 type FriendsPanelProps = {
   list: PageState;
+  /** D-52: friends without the query; `null` until the first answer arrives. */
+  totalFriends: number | null;
   query: string;
   prepared: string;
   onQueryChange: (value: string) => void;
@@ -1343,6 +1359,7 @@ type FriendsPanelProps = {
 /** `EXPERIENCE.md` → Friends search и Friends infinite list, with the pinned field. */
 function FriendsPanel({
   list,
+  totalFriends,
   query,
   prepared,
   onQueryChange,
@@ -1353,19 +1370,23 @@ function FriendsPanel({
   onMenuNode,
 }: FriendsPanelProps) {
   const friends = useTranslations("app.friends");
+  // D-52: the field appears with the third friend and stays while a query exists.
+  const searchVisible = (totalFriends ?? 0) >= 3 || prepared !== "";
 
   return (
     <YStack testID="friends-panel" flexGrow={1} gap="$grid-gap">
-      <SearchField
-        label={friends("friendsSearch.label")}
-        placeholder={friends("friendsSearch.label")}
-        value={query}
-        onChangeText={onQueryChange}
-        clearLabel={friends("friendsSearch.clear")}
-        testID="friends-search-input"
-        input={{ autoCapitalize: "none", autoCorrect: false, returnKeyType: "search" }}
-      />
-      {list.status === "ready" && list.total > 0 ? (
+      {searchVisible ? (
+        <SearchField
+          label={friends("friendsSearch.label")}
+          placeholder={friends("friendsSearch.label")}
+          value={query}
+          onChangeText={onQueryChange}
+          clearLabel={friends("friendsSearch.clear")}
+          testID="friends-search-input"
+          input={{ autoCapitalize: "none", autoCorrect: false, returnKeyType: "search" }}
+        />
+      ) : null}
+      {searchVisible && list.status === "ready" && list.total > 0 ? (
         <Text kind="caption" tone="muted" testID="friends-counter">
           {friends("friendsSearch.counter", { shown: list.items.length, total: list.total })}
         </Text>

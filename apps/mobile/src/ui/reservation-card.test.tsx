@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import type { ReservationCard as ReservationCardData } from "@gift-list/contracts";
+import { formatPrice } from "@gift-list/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,6 +48,26 @@ vi.mock("use-intl", async () => {
   };
 });
 
+vi.mock("expo-router", async () => {
+  const React = await import("react");
+  return {
+    // An honest `asChild`: the router's `Link` puts `href` and `onPress` onto its
+    // only child and draws nothing of its own (`NavLink` draws the anchor).
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href: string;
+      asChild?: boolean;
+      children: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href }, children);
+      return React.cloneElement(children, { href });
+    },
+  };
+});
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: Root;
@@ -74,6 +95,9 @@ function card(overrides: Partial<ReservationCardData> = {}): ReservationCardData
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
     ...overrides,
   };
@@ -110,15 +134,16 @@ function byLabel(label: string): HTMLElement | null {
 /**
  * Story 5.5 (`DESIGN.md` → ReservationCard, `EXPERIENCE.md` → «Подписи брони»):
  * одна карточка брони держателя — снимок названия, @ник, срок, фаза, «Купил»,
- * «Продлить до…», свёрнутые переключатели и ссылка на деталь только при
- * `canOpenGift`.
+ * «Продлить до…», переключатель «Показывать другим гостям, что дарю я» и ссылка на
+ * деталь только при `canOpenGift`.
  */
 describe("ReservationCard", () => {
   it("показывает снимок названия, ник владельца и срок фазы ACTIVE", async () => {
-    await render(<ReservationCard card={card()} visibilityExpanded={false} onToggleVisibility={noop} onBoughtChange={noop} onVisibilityChange={noop} />);
+    await render(<ReservationCard card={card()} onBoughtChange={noop} onVisibilityChange={noop} />);
 
     expect(text()).toContain("Плед из шерсти мериноса");
-    expect(text()).toContain("у @anya");
+    expect(text()).toContain("у");
+    expect(text()).toContain("@anya");
     // «Вы берёте · до DD.MM» — срок без года, отдельной строки «до …» нет (Story 5.5).
     expect(text()).toContain("Вы берёте · до 01.12");
   });
@@ -127,8 +152,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ phase: "AWAITING_GIVER" })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onBoughtChange={noop}
         onVisibilityChange={noop}
       />,
@@ -140,8 +163,6 @@ describe("ReservationCard", () => {
       host.render(
         <ReservationCard
           card={card({ phase: "AWAITING_OWNER" })}
-          visibilityExpanded={false}
-          onToggleVisibility={noop}
           onBoughtChange={noop}
           onVisibilityChange={noop}
         />,
@@ -157,8 +178,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ bought: true })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onBoughtChange={onBoughtChange}
         onVisibilityChange={noop}
       />,
@@ -179,8 +198,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ phase: "GIVEN" })}
-        visibilityExpanded
-        onToggleVisibility={noop}
         onExtend={onExtend}
         onGiven={onGiven}
         onMenu={noop}
@@ -193,7 +210,7 @@ describe("ReservationCard", () => {
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeUndefined();
     expect(byLabel("Купил")).not.toBeNull();
-    expect(byLabel("Показать другим, кто берёт")).not.toBeNull();
+    expect(byLabel("Показывать другим гостям, что дарю я")).not.toBeNull();
     expect(byLabel("Меню")).not.toBeNull();
   });
 
@@ -202,8 +219,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ dueAt: dueSoon() })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onExtend={onExtend}
         onBoughtChange={noop}
         onVisibilityChange={noop}
@@ -224,8 +239,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ dueAt: "2020-01-01" })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onExtend={onExtend}
         onGiven={onGiven}
         onBoughtChange={noop}
@@ -245,8 +258,6 @@ describe("ReservationCard", () => {
     await render(
       <ReservationCard
         card={card({ dueAt: dueSoon() })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onGiven={onGiven}
         onBoughtChange={noop}
         onVisibilityChange={noop}
@@ -260,8 +271,6 @@ describe("ReservationCard", () => {
       host.render(
         <ReservationCard
           card={card({ phase: "GIVEN" })}
-          visibilityExpanded={false}
-          onToggleVisibility={noop}
           onGiven={onGiven}
           onBoughtChange={noop}
           onVisibilityChange={noop}
@@ -272,52 +281,131 @@ describe("ReservationCard", () => {
     expect(control("Подарил")).toBeUndefined();
   });
 
-  it("при canOpenGift основная зона — ссылка с названием желания", async () => {
+  it("при canOpenGift основная зона — кнопка карточки, она открывает желание", async () => {
     const onOpenGift = vi.fn();
     await render(
       <ReservationCard
         card={card()}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onOpenGift={onOpenGift}
         onBoughtChange={noop}
         onVisibilityChange={noop}
       />,
     );
 
-    const link = byLabel("Открыть желание «Плед из шерсти мериноса»");
-    expect(link?.getAttribute("role")).toBe("link");
-    await click(link);
+    // `DESIGN.md` → Доступность: имя карточки — фраза из содержимого, а не действие.
+    const button = container.querySelector<HTMLElement>('[role="button"]:not([aria-haspopup])');
+    expect(button?.getAttribute("aria-label")).toBe(
+      "Плед из шерсти мериноса, у @anya, Вы берёте · до 01.12",
+    );
+    await click(button);
     expect(onOpenGift).toHaveBeenCalledTimes(1);
   });
 
-  it("без canOpenGift карточка не ссылается на деталь", async () => {
+  it("без canOpenGift карточка не нажимается и не ссылается на деталь", async () => {
     const onOpenGift = vi.fn();
     await render(
       <ReservationCard
         card={card({ canOpenGift: false })}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onOpenGift={onOpenGift}
+        onMenu={noop}
         onBoughtChange={noop}
         onVisibilityChange={noop}
       />,
     );
 
-    expect(container.querySelector('[role="link"]')).toBeNull();
-    expect(container.querySelector('[aria-label^="Открыть желание"]')).toBeNull();
+    // Единственная кнопка — ⋮ меню: самой карточки-кнопки нет, hover ей не нужен.
+    const buttons = Array.from(container.querySelectorAll<HTMLElement>('[role="button"]'));
+    expect(buttons.map((node) => node.getAttribute("aria-haspopup"))).toEqual(["dialog"]);
+    expect(container.querySelector('[aria-label^="Плед из шерсти мериноса"]')).toBeNull();
     expect(onOpenGift).not.toHaveBeenCalled();
     // Действия остаются: карточка самодостаточна после unfriend/Block (A-14).
     expect(byLabel("Купил")).not.toBeNull();
   });
 
-  it("⋯ открывает меню и имеет доступное имя", async () => {
-    const onMenu = vi.fn();
+  /**
+   * D-64.7: цена карточки — текущая цена желания; у недоступного желания цены нет,
+   * даже если в данных она почему-то осталась.
+   */
+  it("показывает цену желания тем же форматтером, что карточка желания", async () => {
+    await render(
+      <ReservationCard
+        card={card({ priceAmount: 250000, priceCurrency: "RUB" })}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    expect(text()).toContain(formatPrice(250000, "RUB", "ru"));
+    expect(text()).toContain("@anya");
+  });
+
+  it("при canOpenGift = false цены нет", async () => {
+    await render(
+      <ReservationCard
+        card={card({ canOpenGift: false, priceAmount: 250000, priceCurrency: "RUB" })}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    expect(text()).not.toContain(formatPrice(250000, "RUB", "ru"));
+  });
+
+  it("карточка на основе WishCard: фото-заглушка и действия соседом кнопки карточки", async () => {
+    await render(
+      <ReservationCard
+        testID="reservation-g1"
+        card={card({ priceAmount: 250000, priceCurrency: "RUB" })}
+        onOpenGift={noop}
+        onMenu={noop}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    // Та же плитка-заглушка 4:5 и та же подпись названия, что у карточки желания.
+    expect(container.querySelector('[data-testid="reservation-g1-photo"] svg')).not.toBeNull();
+    expect(container.querySelector('[data-testid="reservation-g1-title"]')?.textContent).toBe(
+      "Плед из шерсти мериноса",
+    );
+    // Действия живут в footer — соседом кнопки, а не внутри неё.
+    const button = container.querySelector<HTMLElement>('[role="button"]:not([aria-haspopup])');
+    const footer = container.querySelector<HTMLElement>('[data-testid="reservation-g1-footer"]');
+    expect(footer).not.toBeNull();
+    expect(button?.contains(footer as Node)).toBe(false);
+    expect(button?.contains(byLabel("Купил") as Node)).toBe(false);
+  });
+
+  /**
+   * CLE-129, T4.4 (`DESIGN.md` → ReservationCard): «у @ника» — ссылка на профиль
+   * владельца, и живёт она в `footer`, соседом кнопки карточки, а не внутри неё.
+   */
+  it("«у @ника» — ссылка на профиль, вне кнопки карточки", async () => {
+    await render(
+      <ReservationCard
+        testID="reservation-g1"
+        card={card()}
+        onOpenGift={noop}
+        onMenu={noop}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    const link = container.querySelector<HTMLElement>('[role="link"]');
+    expect(link?.textContent).toBe("@anya");
+    expect(link?.getAttribute("href")).toBe("/u/anya");
+
+    const button = container.querySelector<HTMLElement>('[role="button"]:not([aria-haspopup])');
+    const footer = container.querySelector<HTMLElement>('[data-testid="reservation-g1-footer"]');
+    expect(footer?.contains(link as Node)).toBe(true);
+    expect(button?.contains(link as Node)).toBe(false);
+  });
+
+  it("⋯ открывает меню и имеет доступное имя", async () => {    const onMenu = vi.fn();
     await render(
       <ReservationCard
         card={card()}
-        visibilityExpanded={false}
-        onToggleVisibility={noop}
         onMenu={onMenu}
         onBoughtChange={noop}
         onVisibilityChange={noop}
@@ -330,21 +418,25 @@ describe("ReservationCard", () => {
     expect(onMenu).toHaveBeenCalledTimes(1);
   });
 
-  it("переключатели видимости свёрнуты и раскрываются через экран", async () => {
-    const onToggleVisibility = vi.fn();
+  it("переключатель «Показывать другим гостям, что дарю я» стоит прямо в карточке", async () => {
+    const onVisibilityChange = vi.fn();
     await render(
       <ReservationCard
         card={card()}
-        visibilityExpanded={false}
-        onToggleVisibility={onToggleVisibility}
         onBoughtChange={noop}
-        onVisibilityChange={noop}
+        onVisibilityChange={onVisibilityChange}
       />,
     );
 
-    expect(container.querySelectorAll('[role="switch"]')).toHaveLength(1);
-    await click(control("Кто видит, что это я"));
-    expect(onToggleVisibility).toHaveBeenCalledTimes(1);
+    // «Купил» и видимость — без раскрывашки и без заголовка «Кто видит, что это я».
+    expect(container.querySelectorAll('[role="switch"]')).toHaveLength(2);
+    expect(container.querySelector("[aria-expanded]")).toBeNull();
+    expect(text()).not.toContain("Кто видит, что это я");
+    const others = byLabel("Показывать другим гостям, что дарю я");
+    expect(others?.getAttribute("aria-checked")).toBe("true");
+
+    await click(others);
+    expect(onVisibilityChange).toHaveBeenLastCalledWith({ holderVisibleToOthers: false });
   });
 
   it("пока карточка занята, её действия не отправляют второй запрос", async () => {
@@ -355,8 +447,6 @@ describe("ReservationCard", () => {
       <ReservationCard
         card={card()}
         busy
-        visibilityExpanded
-        onToggleVisibility={noop}
         onMenu={onMenu}
         onExtend={onExtend}
         onBoughtChange={onBoughtChange}

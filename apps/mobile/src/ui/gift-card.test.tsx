@@ -21,17 +21,9 @@ const app = JSON.parse(
   ),
 ) as {
   gift: {
-    visibilityLower: Record<string, string>;
-    visibilityChipLabel: string;
-    visibilityInCardName: string;
     status: Record<string, string>;
   };
 };
-
-/** `app.gift.visibilityChipLabel` with the lower-case visibility word. */
-function chipLabel(visibility: GiftCardData["visibility"]): string {
-  return app.gift.visibilityChipLabel.replace("{value}", app.gift.visibilityLower[visibility]);
-}
 
 /** The card's `DESIGN.md` phrase, from the same catalogue the app ships. */
 function cardLabel(card: GiftCardData): string {
@@ -52,7 +44,6 @@ function cardLabel(card: GiftCardData): string {
           })
           .join(", ")
       : null,
-    app.gift.visibilityInCardName.replace("{value}", app.gift.visibilityLower[card.visibility]),
   ]
     .filter(function hasText(part): part is string {
       return part !== null && part.trim() !== "";
@@ -60,12 +51,6 @@ function cardLabel(card: GiftCardData): string {
     .join(", ");
 }
 
-vi.mock("expo-symbols", async () => {
-  const React = await import("react");
-  return {
-    SymbolView: () => React.createElement("span", { "data-testid": "visibility-icon" }),
-  };
-});
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
   const { dirname, join } = await import("node:path");
@@ -150,18 +135,13 @@ function textOf(): string {
   return container.textContent ?? "";
 }
 
-async function render(
-  card: GiftCardData,
-  onPress?: () => void,
-  onVisibilityPress?: () => void,
-) {
+async function render(card: GiftCardData, onPress?: () => void) {
   await act(async () => {
     host.render(
       <WishCard
         gift={card}
         width={343}
         onPress={onPress}
-        onVisibilityPress={onVisibilityPress}
       />,
     );
   });
@@ -233,12 +213,12 @@ describe("WishCard: цена", () => {
   });
 });
 
-/** The card button is the first button of the list item; the clickable chip is its sibling. */
+/** The card button is the first button of the list item. */
 const CARD = '[role="listitem"] > [role="button"]';
 
 /** `DESIGN.md` → Доступность: one phrase for the pressable main zone. */
 describe("WishCard: доступное имя", () => {
-  it("название, цена, статус, все теги и видимость — в этом порядке", async () => {
+  it("название, цена, статус и все теги — в этом порядке", async () => {
     const cardData = gift({
       title: "Наушники",
       priceAmount: 250000,
@@ -262,7 +242,6 @@ describe("WishCard: доступное имя", () => {
         formatPrice(250000, "RUB", "ru"),
         "Открыт",
         "мечта, нужно сейчас, когда-нибудь, своё, ещё одно",
-        "видимость всем",
       ].join(", "),
     );
   });
@@ -277,7 +256,7 @@ describe("WishCard: доступное имя", () => {
 
     const label = container.querySelector(CARD)?.getAttribute("aria-label") ?? "";
     expect(label).toBe(
-      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт, видимость всем`,
+      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт`,
     );
     expect(label).not.toContain("Забронирован");
     expect(label).not.toContain("Берёт Олег");
@@ -297,7 +276,7 @@ describe("WishCard: доступное имя", () => {
 
     const card = container.querySelector(CARD);
     expect(card?.getAttribute("aria-label")).toBe(
-      "Наушники, Открыт, видимость секрет",
+      "Наушники, Открыт",
     );
   });
 
@@ -306,7 +285,7 @@ describe("WishCard: доступное имя", () => {
     const first = gift({ title: "Наушники", status: "OPEN", tags: [] });
     await render(first, onPress);
     expect(container.querySelector(CARD)?.getAttribute("aria-label")).toBe(
-      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт, видимость всем`,
+      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт`,
     );
 
     const second = gift({
@@ -318,7 +297,7 @@ describe("WishCard: доступное имя", () => {
     await render(second, onPress);
     const card = container.querySelector(CARD);
     expect(card?.getAttribute("aria-label")).toBe(
-      `Свитер, ${formatPrice(250000, "RUB", "ru")}, Получен, тёплое, видимость друзьям`,
+      `Свитер, ${formatPrice(250000, "RUB", "ru")}, Получен, тёплое`,
     );
     expect(card?.getAttribute("aria-label")).toBe(cardLabel(second));
     expect(card?.getAttribute("aria-label")).not.toContain("Наушники");
@@ -350,30 +329,12 @@ describe("WishCard: нажатие", () => {
     const card = item?.querySelector(CARD);
     expect(card).not.toBeNull();
     expect(card?.getAttribute("aria-label")).toBe(
-      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт, видимость всем`,
+      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт`,
     );
     // The press zone is the whole card: the button is the first thing in the item.
     expect(item?.firstElementChild).toBe(card);
 
     await click(card);
-    expect(onPress).toHaveBeenCalledTimes(1);
-  });
-
-  /**
-   * CLE-65 reproduction: a press on the empty footer space next to the chip did
-   * nothing. That space is the reserved spacer inside the card button now.
-   */
-  it("зарезервированный спейсер футера лежит в кнопке и ведёт в редактирование", async () => {
-    const onPress = vi.fn();
-    await render(gift({ title: "Наушники" }), onPress);
-
-    const card = container.querySelector(CARD);
-    // The spacer is the last box of the card button, with no text of its own.
-    const spacer = card?.lastElementChild;
-    expect(spacer).not.toBeNull();
-    expect(spacer?.textContent).toBe("");
-
-    await click(spacer);
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
@@ -400,135 +361,48 @@ describe("WishCard: нажатие", () => {
 });
 
 /**
- * Story 2.3 (`DESIGN.md` -> VisibilityChip, `EXPERIENCE.md` -> Visibility chip):
- * the chip is a button of its own on an `OPEN` or `RESERVED` wish, and a plain value
- * on a `CLOSED` or archived one (CLE-82/S23.3). CLE-65 draws it over the card's
- * reserved footer from a sibling layer, never from inside the card button.
+ * D-54 (CLE-129): the visibility chip is gone from the card — visibility changes
+ * only in the wish form, so the card never shows a «who sees» control or value.
  */
-describe("WishCard: чип видимости", () => {
-  it("OPEN + onVisibilityPress: чип — соседняя кнопка, зовёт обработчик и не открывает правку", async () => {
+describe("WishCard: чипа видимости нет (D-54)", () => {
+  it("на карточке одна кнопка — сама карточка, без чипа и слова видимости", async () => {
     const onPress = vi.fn();
-    const onVisibilityPress = vi.fn();
     await render(
       gift({ title: "Наушники", status: "OPEN", visibility: "PUBLIC" }),
       onPress,
-      onVisibilityPress,
     );
-
-    const item = container.querySelector('[role="listitem"]');
-    const edit = item?.querySelector(CARD);
-    const chip = item?.querySelector(`[role="button"][aria-label="${chipLabel("PUBLIC")}"]`);
-    expect(edit).not.toBeNull();
-    expect(chip).not.toBeNull();
-    // Two separate siblings: the chip lives outside the edit button.
-    expect(chip).not.toBe(edit);
-    expect(edit?.contains(chip ?? null)).toBe(false);
-    expect(chip?.getAttribute("aria-haspopup")).toBe("dialog");
-
-    await click(chip);
-    expect(onVisibilityPress).toHaveBeenCalledTimes(1);
-    expect(onPress).not.toHaveBeenCalled();
-  });
-
-  it("в DOM кнопка карточки идёт раньше чипа: Tab сначала на карточку", async () => {
-    const onPress = vi.fn();
-    const onVisibilityPress = vi.fn();
-    await render(gift({ title: "Наушники" }), onPress, onVisibilityPress);
 
     const item = container.querySelector('[role="listitem"]');
     const buttons = Array.from(item?.querySelectorAll('[role="button"]') ?? []);
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]?.getAttribute("aria-label")).toBe(
-      cardLabel(gift({ title: "Наушники", visibility: "PUBLIC" })),
-    );
-    expect(buttons[1]?.getAttribute("aria-label")).toBe(chipLabel("PUBLIC"));
-    // Both are reachable by Tab, in that order.
-    expect(buttons.every((node) => node.getAttribute("tabindex") === "0")).toBe(true);
+    expect(buttons).toHaveLength(1);
+    expect(item?.querySelector('[aria-haspopup="dialog"]')).toBeNull();
+    expect(item?.querySelector("[aria-label^='Видимость:']")).toBeNull();
+    expect(textOf()).not.toContain("Видимость");
+    expect(textOf()).not.toContain("Всем");
+    expect(textOf()).not.toContain("Друзьям");
+    expect(textOf()).not.toContain("Секрет");
+
+    await click(buttons[0]);
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it("слой чипа лежит соседом кнопки карточки, а не внутри неё", async () => {
-    const onPress = vi.fn();
-    const onVisibilityPress = vi.fn();
-    await render(gift({ title: "Наушники" }), onPress, onVisibilityPress);
+  it.each(["CLOSED", "OPEN"] as const)(
+    "%s: ни чипа, ни слова видимости",
+    async (status) => {
+      await render(
+        gift({
+          status,
+          visibility: "FRIENDS",
+          archivedAt: status === "OPEN" ? "2026-10-01T00:00:00.000Z" : null,
+        }),
+      );
 
-    const item = container.querySelector('[role="listitem"]');
-    const chip = container.querySelector(`[role="button"][aria-label="${chipLabel("PUBLIC")}"]`);
-    const layer = chip?.parentElement ?? null;
-    expect(layer).not.toBeNull();
-    // The layer is the last child of the listitem, outside the card button.
-    expect(layer?.parentElement).toBe(item);
-    expect(layer?.previousElementSibling).toBe(item?.querySelector(CARD));
-    // It takes no presses itself: the ones around the chip reach the card button.
-    expect(getComputedStyle(layer as Element).pointerEvents).toBe("none");
-  });
-
-  it("Enter и Space на чипе вызывают только onVisibilityPress", async () => {
-    const onPress = vi.fn();
-    const onVisibilityPress = vi.fn();
-    await render(gift({ title: "Наушники" }), onPress, onVisibilityPress);
-
-    const chip = container.querySelector(`[role="button"][aria-label="${chipLabel("PUBLIC")}"]`);
-    for (const key of ["Enter", " "]) {
-      await act(async () => {
-        chip?.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-      });
-    }
-    expect(onVisibilityPress).toHaveBeenCalledTimes(2);
-    expect(onPress).not.toHaveBeenCalled();
-  });
-
-  /**
-   * D-49: a legacy `RESERVED` payload is still not a closed wish, so its chip stays
-   * a button; the card itself reads as open, with no reservation label.
-   */
-  it("RESERVED из старого ответа + onVisibilityPress: чип — кнопка, карточка как открытая", async () => {
-    const onPress = vi.fn();
-    const onVisibilityPress = vi.fn();
-    await render(
-      gift({
-        status: "RESERVED",
-        visibility: "FRIENDS",
-        reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
-      }),
-      onPress,
-      onVisibilityPress,
-    );
-
-    const item = container.querySelector('[role="listitem"]');
-    const chip = item?.querySelector(`[role="button"][aria-label="${chipLabel("FRIENDS")}"]`);
-    expect(chip).not.toBeNull();
-    expect(chip?.getAttribute("aria-haspopup")).toBe("dialog");
-
-    await click(chip);
-    expect(onVisibilityPress).toHaveBeenCalledTimes(1);
-    expect(onPress).not.toHaveBeenCalled();
-    expect(textOf()).toContain("Открыт");
-    expect(textOf()).not.toContain("Забронирован");
-  });
-
-  /**
-   * A closed wish and an archived one are read-only as a whole (product
-   * clarification t351u), so the handler passed by the list changes nothing: the
-   * chip only shows the stored value.
-   */
-  it.each([
-    { surface: "CLOSED", card: { status: "CLOSED" as const }, pill: "Получен" },
-    {
-      surface: "архив",
-      card: { status: "OPEN" as const, archivedAt: "2026-10-01T00:00:00.000Z" },
-      pill: "Открыт",
+      expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
+      expect(container.querySelector("[aria-label^='Видимость:']")).toBeNull();
+      expect(textOf()).not.toContain("Видимость");
+      expect(textOf()).not.toContain("Друзьям");
     },
-  ])("$surface: чип не кнопка, статус и видимость на месте", async ({ card, pill }) => {
-    const onVisibilityPress = vi.fn();
-    await render(gift({ ...card, visibility: "FRIENDS" }), undefined, onVisibilityPress);
-
-    // No button at all: neither the card (no onPress) nor the chip.
-    expect(container.querySelectorAll('[role="button"]')).toHaveLength(0);
-    expect(container.querySelector(`[aria-label="${chipLabel("FRIENDS")}"]`)).toBeNull();
-    expect(textOf()).toContain(pill);
-    expect(textOf()).toContain("Друзьям");
-    expect(onVisibilityPress).not.toHaveBeenCalled();
-  });
+  );
 });
 
 /**
@@ -719,8 +593,7 @@ describe("WishCard: у владельца нет признаков брони (
 
   it("старый ответ с бронью: без полосы, без имени и без лишних кнопок", async () => {
     const onPress = vi.fn();
-    const onVisibilityPress = vi.fn();
-    await render(legacyCard(), onPress, onVisibilityPress);
+    await render(legacyCard(), onPress);
 
     expect(container.querySelector("[data-testid='owner-action-label']")).toBeNull();
     expect(container.querySelector("[data-testid='owner-action-received']")).toBeNull();
@@ -740,8 +613,8 @@ describe("WishCard: у владельца нет признаков брони (
 
     const items = container.querySelectorAll('[role="listitem"]');
     expect(items).toHaveLength(1);
-    // The card button and its visibility chip, nothing else.
-    expect(items[0]?.querySelectorAll('[role="button"]')).toHaveLength(2);
+    // The card button is the only control, with no visibility chip next to it.
+    expect(items[0]?.querySelectorAll('[role="button"]')).toHaveLength(1);
   });
 
   it("«Отметить полученным» остаётся обычным действием меню, а не полосой", async () => {

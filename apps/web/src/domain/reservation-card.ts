@@ -19,10 +19,13 @@ export type ReservationRelations = Omit<ViewerRelations, "viaListToken">;
 /**
  * Plain row the reservation-card mapper reads. Every field is part of the closed
  * card set or decides `canOpenGift`; the query behind it selects exactly these
- * columns, so no price, tag, description, link or `visibility` travels.
+ * columns, so no tag, description, link or `visibility` travels beyond the card.
  *
- * `reservationPhase` and `reservationDueAt` are non-null here on purpose: an
- * incomplete `RESERVED` row is a data anomaly the read skips before mapping.
+ * `priceAmount` / `priceCurrency` reach the card only while `canOpenGift` is
+ * `true` (AD-12, A-14): after an unfriend or a block the card must not become a
+ * second read of the wish. `reservationPhase` and `reservationDueAt` are
+ * non-null here on purpose: an incomplete `RESERVED` row is a data anomaly the
+ * read skips before mapping.
  */
 export type ReservationCardRow = {
   readonly id: string;
@@ -39,6 +42,9 @@ export type ReservationCardRow = {
   readonly holderVisibleToOthers: boolean;
   readonly visibility: GiftVisibility;
   readonly archivedAt: Date | null;
+  /** The current price of the wish (not a snapshot); `null` when it has none. */
+  readonly priceAmount: number | null;
+  readonly priceCurrency: ReservationCard["priceCurrency"];
   /** The holder asking; the card is only read for rows they reserved. */
   readonly reservedById: string;
   readonly list: {
@@ -78,11 +84,17 @@ export function canOpenGift(
  * moment-of-reserving title, so an owner's rename never rewrites the card; a
  * missing snapshot (an anomaly) falls back to the current title rather than
  * showing an empty heading.
+ *
+ * The current price follows `canOpenGift`: while the detail is closed (an
+ * unfriend, a block, a narrowed `visibility`) both price fields are `null`, so
+ * the card stays a closed set and never becomes a second read (A-14).
  */
 export function toReservationCard(
   row: ReservationCardRow,
   relations: ReservationRelations,
 ): ReservationCard {
+  const open = canOpenGift(row, relations);
+  const price = open ? cardPrice(row) : null;
   return {
     giftId: row.id,
     titleSnapshot: titleSnapshot(row),
@@ -94,8 +106,23 @@ export function toReservationCard(
     // CLE-124/D-49: the owner never sees the holder, so the flag is always false.
     holderVisibleToOwner: false,
     holderVisibleToOthers: row.holderVisibleToOthers,
-    canOpenGift: canOpenGift(row, relations),
+    priceAmount: price?.amount ?? null,
+    priceCurrency: price?.currency ?? null,
+    // ARCH-A18: wishes have no photos yet; the field is here for the day they do.
+    photoUrl: null,
+    canOpenGift: open,
   };
+}
+
+/**
+ * The current price of an open wish. A stored currency without an amount is
+ * dropped: AD-25 keeps an empty price as `null`/`null`.
+ */
+function cardPrice(
+  row: ReservationCardRow,
+): { readonly amount: number; readonly currency: ReservationCard["priceCurrency"] } | null {
+  if (row.priceAmount === null) return null;
+  return { amount: row.priceAmount, currency: row.priceCurrency };
 }
 
 function titleSnapshot(row: ReservationCardRow): string {

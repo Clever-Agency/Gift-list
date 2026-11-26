@@ -28,10 +28,19 @@ function card(overrides: Partial<GiftCard> & Pick<GiftCard, "id" | "title">): Gi
   };
 }
 
-function render(view: PublicWishlistData, wishlistPath: string | null = "/wishlist/tok-1") {
+function render(
+  view: PublicWishlistData,
+  listPath: string | null = "/l/tok-1",
+  wishlistPath: string | null = "/wishlist/tok-1",
+) {
   return renderToString(
     <GiftListProvider config={config}>
-      <PublicWishlistView view={view} locale="ru" wishlistPath={wishlistPath} />
+      <PublicWishlistView
+        view={view}
+        locale="ru"
+        listPath={listPath}
+        wishlistPath={wishlistPath}
+      />
     </GiftListProvider>,
   );
 }
@@ -64,7 +73,7 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("@anna");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain('role="contentinfo"');
     expect(html).toContain("Плед");
     expect(html).toContain("мечта");
@@ -81,6 +90,63 @@ describe("PublicWishlistView: link page HTML", () => {
     // Tamagui CSS is part of this server render, not a client-only shell.
     expect(html).toContain("<style");
     expect(html).toContain("--primary");
+  });
+
+  it("делает имя дарителя ссылкой на его профиль и не вкладывает её в кнопку", () => {
+    const html = render({
+      kind: "gifts",
+      owner,
+      gifts: [
+        card({
+          id: "g-reserved",
+          title: "Свитер",
+          status: "RESERVED",
+          reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+          reservationLabel: "BOUGHT",
+        }),
+      ],
+    });
+
+    expect(html).toContain("Берёт");
+    expect(html).toContain('href="/u/oleg"');
+    expect(html).toContain("Олег");
+    // The name link is a sibling of the card link, never its content: the card
+    // anchor closes before the profile link starts.
+    const cardStart = html.indexOf('href="/l/tok-1/g-reserved"');
+    const cardEnd = html.indexOf("</a>", cardStart);
+    expect(cardStart).toBeGreaterThan(-1);
+    expect(cardEnd).toBeGreaterThan(cardStart);
+    expect(html.slice(cardStart, cardEnd)).not.toContain('href="/u/oleg"');
+    expect(html.indexOf('href="/u/oleg"')).toBeGreaterThan(cardEnd);
+  });
+
+  it("карточка — ссылка на страницу одного желания, а не на диалог", () => {
+    const html = render({
+      kind: "gifts",
+      owner,
+      gifts: [
+        card({ id: "g-open", title: "Плед" }),
+        card({ id: "g-two", title: "Свитер" }),
+      ],
+    });
+
+    expect(html).toContain('href="/l/tok-1/g-open"');
+    expect(html).toContain('href="/l/tok-1/g-two"');
+    expect(html).toContain('aria-label="Плед"');
+    // T4.5 / D-63: no detail dialog button stays on the link page.
+    expect(html).not.toContain('role="button"');
+    expect(html).not.toContain("public-wish-detail");
+  });
+
+  it("не показывает имени дарителя, когда сервер его не прислал", () => {
+    const html = render({
+      kind: "gifts",
+      owner,
+      gifts: [card({ id: "g-reserved", title: "Свитер", status: "RESERVED" })],
+    });
+
+    expect(html).not.toContain("Берёт");
+    expect(html).not.toContain('href="/u/');
   });
 
   it("links «Куплю сам» only for a SINGLE and OPEN wish, relative to the SPA", () => {
@@ -112,6 +178,6 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).not.toContain("не найден");
     // The footer is the same full one in the empty state.
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
   });
 });

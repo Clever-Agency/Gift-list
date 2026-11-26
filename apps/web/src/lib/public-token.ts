@@ -41,6 +41,16 @@ export function wishlistPathForToken(token: string): string | null {
 }
 
 /**
+ * The public address of the list itself (`/l/:token`) — the way back from
+ * `/l/:token/:giftId` and the base of a wish card there. It takes the same gate
+ * as {@link wishlistPathForToken}, so a forged segment never reaches an `href`.
+ */
+export function publicListPathForToken(token: string): string | null {
+  if (wishlistPathForToken(token) === null) return null;
+  return `/l/${token}`;
+}
+
+/**
  * Redirect target and return path of an invite (`/i/:token` → `/invite/:token`,
  * Story 4.7). Built from the validated segment only, with the same gate as
  * {@link wishlistPathForToken}: `/i` is served by Next.js, so the app screen has

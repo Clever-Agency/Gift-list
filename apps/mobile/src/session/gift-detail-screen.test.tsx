@@ -71,8 +71,10 @@ vi.mock("expo-router", async () => {
   const React = await import("react");
   return {
     router: navigation,
-    Link: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, null, children),
+    // The real `Link asChild` hands its `href` to the child; the stub keeps the
+    // target visible as `data-href` so a test can assert where a link leads.
+    Link: ({ href, children }: { href?: string; children?: React.ReactNode }) =>
+      React.createElement("span", { "data-href": String(href) }, children),
     Stack: { Screen: () => null },
     useLocalSearchParams: () => search.params,
   };
@@ -206,6 +208,9 @@ function reservationCard(overrides: Partial<ReservationCardData> = {}): Reservat
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
     ...overrides,
   };
@@ -222,6 +227,11 @@ function respond(
 ) {
   api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
     if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+    // D-63: the owner route comes first; a foreign wish is NOT_FOUND there, so
+    // the page then asks the viewer route exactly as before.
+    if (path === "/api/v1/me/gifts/g1") {
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+    }
     if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
       return Promise.resolve({ ok: true, data: card });
     }
@@ -352,7 +362,8 @@ describe("деталь желания: снятие своей брони", () =
 /**
  * Story 5.5 (`EXPERIENCE.md` → «Подписи брони», `DESIGN.md` → ReservationCard):
  * у держателя в детали те же действия, что в «Моих бронях», — подпись фазы,
- * «Продлить до…», «Купил» и «Кто видит, что это я». Снятие — из 5.2, одно.
+ * «Продлить до…», «Купил» и переключатель «Показывать другим гостям, что дарю я».
+ * Снятие — из 5.2, одно.
  */
 describe("деталь желания: действия держателя", () => {
   it("держатель видит фазу, продление, «Купил» и переключатели", async () => {
@@ -364,7 +375,9 @@ describe("деталь желания: действия держателя", () 
     expect(control("Продлить до…")).toBeDefined();
     expect(control("Подарил")).toBeDefined();
     expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("false");
-    expect(control("Кто видит, что это я")).toBeDefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeDefined();
+    // The holder has their own reservation block and gets no «Берёт …» line.
+    expect(text()).not.toContain("Берёт");
     // Снятие из 5.2 не продублировано рядом с новыми действиями.
     const releases = Array.from(
       document.querySelectorAll<HTMLElement>('button, [role="button"]'),
@@ -382,9 +395,19 @@ describe("деталь желания: действия держателя", () 
     await mount();
 
     expect(text()).toContain("Уже забронирован");
+    // CLE-129, T4.2 / D-55: the guest sees «Берёт Петя», and the name is a link
+    // to the holder's profile `/u/petya`.
+    expect(text()).toContain("Берёт");
+    const holderLink = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="link"]'),
+    ).find(function namedPeter(node) {
+      return node.textContent === "Петя";
+    });
+    expect(holderLink).toBeDefined();
+    expect(holderLink?.closest('[data-href="/u/petya"]')).not.toBeNull();
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeUndefined();
-    expect(control("Кто видит, что это я")).toBeUndefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeUndefined();
     expect(switchNamed("Купил")).toBeUndefined();
   });
 
@@ -429,6 +452,9 @@ describe("деталь желания: действия держателя", () 
     let answer: (value: unknown) => void = function noop() {};
     api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
       if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
         return Promise.resolve({ ok: true, data: gift() });
       }
@@ -533,9 +559,7 @@ describe("деталь желания: действия держателя", () 
 
     expect(text()).not.toContain("Показать владельцу, что это я");
 
-    await click(control("Кто видит, что это я"));
-    await settle();
-    await click(switchNamed("Показать другим, кто берёт"));
+    await click(switchNamed("Показывать другим гостям, что дарю я"));
     await settle();
 
     const calls = actionCalls();
@@ -547,7 +571,7 @@ describe("деталь желания: действия держателя", () 
         holderVisibleToOthers: false,
       },
     });
-    expect(switchNamed("Показать другим, кто берёт")?.getAttribute("aria-checked")).toBe(
+    expect(switchNamed("Показывать другим гостям, что дарю я")?.getAttribute("aria-checked")).toBe(
       "false",
     );
   });
@@ -571,7 +595,7 @@ describe("деталь желания: действия держателя", () 
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeUndefined();
     expect(switchNamed("Купил")).toBeDefined();
-    expect(control("Кто видит, что это я")).toBeDefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeDefined();
     expect(control("Снять бронь")).toBeDefined();
   });
 
@@ -605,6 +629,9 @@ describe("деталь желания: действия держателя", () 
     let reads = 0;
     api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
       if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
         reads += 1;
         if (reads === 1) return Promise.resolve({ ok: true, data: gift() });
@@ -654,6 +681,9 @@ describe("деталь желания: одно действие за раз", (
     let answer: (value: unknown) => void = function noop() {};
     api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
       if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
         return Promise.resolve({ ok: true, data: gift() });
       }
@@ -709,5 +739,201 @@ describe("деталь желания: одно действие за раз", (
     });
     await settle();
     expect(control("Снять бронь")).toBeUndefined();
+  });
+});
+
+/**
+ * AD-15 (14) / D-63: the owner opens `/gifts/{id}` and reads the page from
+ * `GET /api/v1/me/gifts/:id` only. There is no redirect to the form any more, the
+ * guest route is never asked, and not one word about a reservation appears —
+ * even if a broken payload carries a holder. «Изменить» asks the neutral question
+ * (T4.4a) and then leads to the edit screen.
+ */
+describe("страница владельца: своё желание", () => {
+  function ownerCard(overrides: Partial<GiftCard> = {}): GiftCard {
+    return gift({
+      status: "OPEN",
+      reservedBy: null,
+      reservation: undefined,
+      visibility: "FRIENDS",
+      linkUrl: "https://shop.example/pled",
+      ...overrides,
+    });
+  }
+
+  function respondOwner(card: GiftCard = ownerCard()) {
+    api.apiRequest.mockImplementation(function answer(path: string) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") return Promise.resolve({ ok: true, data: card });
+      // The guest route answers a reserved card: the page must never ask it.
+      if (path === "/api/v1/gifts/g1") return Promise.resolve({ ok: true, data: gift() });
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+    });
+  }
+
+  function ownerReads(): number {
+    return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts/g1").length;
+  }
+
+  it("видит поля, видимость и «Изменить», без «Куплю сам» и брони", async () => {
+    respondOwner();
+    await mount();
+
+    expect(text()).toContain("Наушники");
+    expect(text()).toContain("https://shop.example/pled");
+    expect(text()).toContain("Кто видит");
+    expect(text()).toContain("Друзьям");
+    expect(control("Изменить")).toBeDefined();
+    expect(control("Куплю сам")).toBeUndefined();
+    expect(control("Снять бронь")).toBeUndefined();
+    expect(text()).not.toContain("Бронь");
+    expect(text()).not.toContain("Берёт");
+    expect(text()).not.toContain("Забронирован");
+    // AD-15 (14): only the owner route was read, and nothing redirected.
+    expect(ownerReads()).toBe(1);
+    expect(giftReads()).toBe(0);
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  /**
+   * D-49 / T4.4a: «Изменить» of an open non-secret wish asks the neutral question
+   * first — the same `ConfirmDialog` the details layer used to show — and only its
+   * «Изменить» opens the form (`EXPERIENCE.md` → «Правка желания»).
+   */
+  it("«Изменить» сначала спрашивает, и «Изменить» в вопросе открывает форму с его id", async () => {
+    respondOwner();
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(dialogElement()?.textContent).toContain("Изменить желание?");
+    expect(dialogElement()?.textContent).toContain(
+      "Кто-то мог уже забронировать или купить этот подарок. Если вы измените желание, даритель получит уведомление.",
+    );
+
+    await click(dialogControl("Изменить"));
+    await settle();
+
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
+    expect(dialogElement()).toBeNull();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("«Отмена» вопроса оставляет на странице, форма не открывается", async () => {
+    respondOwner();
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+    await click(dialogControl("Отмена"));
+    await settle();
+
+    expect(dialogElement()).toBeNull();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(text()).toContain("Наушники");
+    expect(control("Изменить")).toBeDefined();
+  });
+
+  /**
+   * AD-15 (14): the page is built from the owner's card, so the question is the same
+   * for a booked wish and for an open one — the broken payload below carries a holder
+   * that never reaches a single word of the layer.
+   */
+  it("вопрос одинаков для подложенного забронированного желания и без брони", async () => {
+    respondOwner();
+    await mount();
+    await click(control("Изменить"));
+    await settle();
+    const openQuestion = dialogElement()?.textContent ?? "";
+    await click(dialogControl("Отмена"));
+    await settle();
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    respondOwner(
+      ownerCard({
+        status: "RESERVED",
+        reservedBy: { id: "u3", nick: "daria", displayName: "Дарья" },
+        reservation: {
+          dueAt: DUE_ON,
+          phase: "ACTIVE",
+          bought: true,
+          holderVisibleToOwner: true,
+          holderVisibleToOthers: true,
+        },
+      }),
+    );
+    await mount();
+    await click(control("Изменить"));
+    await settle();
+
+    expect(dialogElement()?.textContent).toBe(openQuestion);
+    expect(openQuestion).toContain("Изменить желание?");
+    expect(openQuestion).not.toContain("Дарья");
+    expect(openQuestion).not.toContain("Берёт");
+    expect(openQuestion).not.toContain("Куплено");
+  });
+
+  /** D-49: a secret wish cannot have been reserved, so it goes straight to the form. */
+  it("у секретного желания вопроса нет — сразу форма", async () => {
+    respondOwner(ownerCard({ visibility: "SECRET" }));
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+
+    expect(dialogElement()).toBeNull();
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
+  });
+
+  /**
+   * Story 5.3: a closed wish has no edit. The dialog that served the list gated the
+   * button the same way; the page keeps the rule now that the dialog is gone
+   * (CLE-129, T4.4).
+   */
+  it("у закрытого желания «Изменить» нет", async () => {
+    respondOwner(ownerCard({ status: "CLOSED" }));
+    await mount();
+
+    expect(text()).toContain("Наушники");
+    expect(control("Изменить")).toBeUndefined();
+  });
+
+  it("AD-15: подброшенная бронь в ответе не появляется на странице владельца", async () => {
+    // A broken payload: the owner route answers a reserved card with a live
+    // holder. The page still reads as an open wish — no pill, no name, no
+    // holder's actions (the same second gate the page card keeps).
+    respondOwner(
+      ownerCard({
+        status: "RESERVED",
+        reservedBy: { id: "u3", nick: "daria", displayName: "Дарья" },
+        reservation: {
+          dueAt: DUE_ON,
+          phase: "ACTIVE",
+          bought: true,
+          holderVisibleToOwner: true,
+          holderVisibleToOthers: true,
+        },
+      }),
+    );
+    await mount();
+
+    expect(text()).toContain("Открыт");
+    expect(text()).not.toContain("Забронирован");
+    expect(text()).not.toContain("Дарья");
+    expect(text()).not.toContain("Берёт");
+    expect(text()).not.toContain("Куплено");
+    expect(control("Снять бронь")).toBeUndefined();
+    expect(switchNamed("Купил")).toBeUndefined();
+    expect(control("Куплю сам")).toBeUndefined();
+    expect(control("Изменить")).toBeDefined();
   });
 });

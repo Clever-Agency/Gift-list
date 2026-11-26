@@ -3,8 +3,7 @@ import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { StatusPill } from "./status-pill";
 import { TagChipList } from "./tag-chip";
-import { createMount, declarationsFor } from "./test-utils";
-import { VisibilityChip } from "./visibility-chip";
+import { createMount, declarationsFor, stateValues } from "./test-utils";
 import { WishCard } from "./wish-card";
 
 const mounted = createMount();
@@ -49,8 +48,31 @@ describe("WishCard", () => {
     expect(container.textContent).toContain("Плед");
   });
 
-  it("с onPress вся карточка — кнопка с именем, Enter и Space тоже нажимают", async () => {
-    const onPress = vi.fn();
+  /**
+   * CLE-129, T4.4: with `href` the press zone is a real `<a>`, so a browser can
+   * open the wish page in a new tab; the card stays the `listitem` around it.
+   */
+  it("с href основная зона — настоящая ссылка на страницу желания", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        title="Плед"
+        status={<StatusPill status="open" label="Открыт" />}
+        href="/gifts/g1"
+        pressLabel="Плед, Открыт"
+      />,
+    );
+
+    const link = container.querySelector("[role='link']") as HTMLElement;
+    expect(link).not.toBeNull();
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("href")).toBe("/gifts/g1");
+    expect(link.getAttribute("aria-label")).toBe("Плед, Открыт");
+    // The list item stays the outer element of the cell.
+    expect(container.querySelector("[role='listitem']")?.contains(link)).toBe(true);
+  });
+
+  it("с onPress вся карточка — кнопка с именем, Enter и Space тоже нажимают", async () => {    const onPress = vi.fn();
     const { container, render } = mounted();
     await render(
       <WishCard
@@ -91,49 +113,28 @@ describe("WishCard", () => {
     expect(button.textContent).toContain("Свободно");
   });
 
-  it("чип соседний элемент, а не внутри кнопки карточки; Tab: карточка, затем чип", async () => {
-    const onChip = vi.fn();
-    const onCard = vi.fn();
+  /**
+   * D-54: the card has no visibility chip and no «who sees» control — visibility
+   * changes only in the wish form. The card button is the only control of the card.
+   */
+  it("D-54: на карточке нет чипа видимости и второй кнопки", async () => {
     const { container, render } = mounted();
     await render(
       <WishCard
         title="Плед"
         status={<StatusPill status="open" label="Свободно" />}
-        onPress={onCard}
-        pressLabel="Плед, 2 500 ₽, Свободно"
-        chipInteractive
-        chip={
-          <VisibilityChip
-            tone="public"
-            label="Всем"
-            accessibilityLabel="Видимость: всем. Изменить"
-            onPress={onChip}
-          />
-        }
+        reservation="Забронировал Аня"
+        onPress={vi.fn()}
+        pressLabel="Плед, Свободно"
       />,
     );
 
     const buttons = Array.from(container.querySelectorAll("[role='button']"));
-    expect(buttons.map((node) => node.getAttribute("aria-label"))).toEqual([
-      "Плед, 2 500 ₽, Свободно",
-      "Видимость: всем. Изменить",
-    ]);
-    expect(buttons[0]?.contains(buttons[1] as Node)).toBe(false);
-    expect(buttons[1]?.getAttribute("aria-haspopup")).toBe("dialog");
-
-    await act(async () => {
-      (buttons[1] as HTMLElement).click();
-    });
-    expect(onChip).toHaveBeenCalledTimes(1);
-    expect(onCard).not.toHaveBeenCalled();
-  });
-
-  it("чип без onPress не кнопка", async () => {
-    const { container, render } = mounted();
-    await render(<VisibilityChip tone="secret" label="Секрет" />);
-
-    expect(container.querySelector("[role='button']")).toBeNull();
-    expect(container.textContent).toBe("Секрет");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.getAttribute("aria-label")).toBe("Плед, Свободно");
+    expect(container.textContent).not.toContain("Всем");
+    expect(container.textContent).not.toContain("Друзьям");
+    expect(container.textContent).not.toContain("Секрет");
   });
 
   it("v8: фото-плитка 4:5 с радиусом 16 и тенью карточки, текст под фото", async () => {
@@ -173,6 +174,59 @@ describe("WishCard", () => {
     expect(hoverShadows).toEqual([]);
   });
 
+  /**
+   * CLE-129, T2.2: the hover belongs to the whole card, not only to the photo.
+   * The card button is the Tamagui group, so the plate lifts its shadow and the
+   * title is underlined when the pointer is anywhere over the card. The general
+   * `$muted` fill of `Pressable` is off — the card paints its own hover.
+   */
+  it("hover на всей карточке: группа кнопки поднимает тень плитки и подчёркивает название", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        testID="card"
+        title="Плед"
+        status={<StatusPill status="open" label="Открыт" />}
+        onPress={vi.fn()}
+        pressLabel="Плед, Открыт"
+      />,
+    );
+
+    const button = container.querySelector<HTMLElement>("[role='button']") as HTMLElement;
+    expect(button.classList.contains("t_group_true")).toBe(true);
+    // No muted fill on the whole card: the plate and the title carry the hover.
+    expect(stateValues(button, "hover", "background-color")).toEqual([]);
+
+    const photo = container.querySelector<HTMLElement>("[data-testid='card-photo']") as HTMLElement;
+    const hoverShadow = declarationsFor(photo, "box-shadow", true);
+    expect(hoverShadow.length).toBeGreaterThan(0);
+    // Only a hover of the group paints the shadow — not a hover of the plate itself.
+    for (const declaration of hoverShadow) {
+      expect(declaration.selector).toContain(".t_group_true");
+    }
+    expect(hoverShadow.map((declaration) => declaration.value).join(" ")).toContain(
+      "var(--shadow-card-hover)",
+    );
+    // The shadow glides with the shared `quick` preset; the card does not scale.
+    expect(photo.style.transition).toContain("160ms");
+    expect(stateValues(photo, "hover", "transform")).toEqual([]);
+
+    const title = container.querySelector<HTMLElement>("[data-testid='card-title']") as HTMLElement;
+    const hoverDecoration = declarationsFor(title, "text-decoration-line", true);
+    expect(hoverDecoration.map((declaration) => declaration.value)).toEqual(["underline"]);
+    for (const declaration of hoverDecoration) {
+      expect(declaration.selector).toContain(".t_group_true");
+    }
+  });
+
+  it("v8: без onPress у названия нет hover-подчёркивания", async () => {
+    const { container, render } = mounted();
+    await render(<WishCard testID="card" title="Плед" status={<StatusPill status="open" label="Открыт" />} />);
+
+    const title = container.querySelector<HTMLElement>("[data-testid='card-title']") as HTMLElement;
+    expect(declarationsFor(title, "text-decoration-line", true)).toEqual([]);
+  });
+
   it("StatusPill — подпись словом, не кнопка", async () => {
     const { container, render } = mounted();
     await render(<StatusPill status="closed" label="Закрыто" />);
@@ -181,8 +235,61 @@ describe("WishCard", () => {
     expect(container.querySelector("[role='button']")).toBeNull();
   });
 
-  it("теги идут между статусом и бронью — до трёх и «+N», без лишних кнопок", async () => {
+  /**
+   * `ReservationCard` puts its actions in the `footer` slot: they are a sibling of
+   * the card button, so no control is nested inside another and Tab goes card
+   * first, actions next.
+   */
+  it("footer — сосед кнопки карточки, а не её содержимое", async () => {
     const { container, render } = mounted();
+    await render(
+      <WishCard
+        testID="card"
+        title="Плед"
+        status={<StatusPill status="reserved" label="Забронирован" />}
+        onPress={vi.fn()}
+        pressLabel="Плед, Забронирован"
+        footer={<button type="button">Подарил</button>}
+      />,
+    );
+
+    const footer = container.querySelector<HTMLElement>("[data-testid='card-footer']");
+    const cardButton = container.querySelector<HTMLElement>("[role='button']") as HTMLElement;
+    expect(footer).not.toBeNull();
+    expect(cardButton.contains(footer as Node)).toBe(false);
+    expect(footer?.textContent).toBe("Подарил");
+  });
+
+  /**
+   * CLE-129, T4.2: the reservation line is a sibling of the card button, so the
+   * holder's name can be a link — a control is never nested in the card button.
+   */
+  it("строка брони — сосед кнопки карточки, имя-ссылка не вложена в кнопку", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        testID="card"
+        title="Плед"
+        status={<StatusPill status="reserved" label="Забронирован" />}
+        onPress={vi.fn()}
+        pressLabel="Плед, Забронирован"
+        reservation={
+          <span>
+            Берёт <a href="/u/anna">Анна</a>
+          </span>
+        }
+      />,
+    );
+
+    const line = container.querySelector<HTMLElement>("[data-testid='card-reservation']");
+    const cardButton = container.querySelector<HTMLElement>("[role='button']");
+    expect(line).not.toBeNull();
+    expect(cardButton?.contains(line as Node)).toBe(false);
+    expect(line?.querySelector("a")?.getAttribute("href")).toBe("/u/anna");
+    expect(line?.textContent).toBe("Берёт Анна");
+  });
+
+  it("теги идут между статусом и бронью — до трёх и «+N», без лишних кнопок", async () => {    const { container, render } = mounted();
     await render(
       <WishCard
         title="Плед"

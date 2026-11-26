@@ -15,12 +15,13 @@ const cardSkin = {
   boxShadow: "$shadow-card",
 } as const;
 
+/** The same skin for a card that is a button: the frame and the shadow answer the pointer. */
+const cardHover = {
+  borderColor: "$border hover:$border-strong",
+  boxShadow: "$shadow-card hover:$shadow-card-hover",
+} as const;
+
 const CardView = styled(YStack, { name: "GLPartnerStoreCard", ...cardSkin });
-const CardButton = styled(Pressable, {
-  name: "GLPartnerStoreCardButton",
-  ...cardSkin,
-  cursor: "pointer",
-});
 
 export type PartnerStoreCardProps = {
   /** The store name, one line with an ellipsis. */
@@ -143,15 +144,21 @@ export function PartnerStoreCard({
   }
 
   return (
-    <CardButton
+    <Pressable
+      {...cardSkin}
+      {...cardHover}
       width={width}
       aria-label={pressLabel}
       onPress={onPress}
       testID={testID}
       role="button"
+      cursor="pointer"
+      // The card lifts its own shadow; the shared muted fill would paint over the
+      // `$surface` of the card.
+      hoverFill={false}
     >
       {content}
-    </CardButton>
+    </Pressable>
   );
 }
 

@@ -1,11 +1,10 @@
 import type { NotificationAction, NotificationItem } from "@gift-list/contracts";
-import { AppShell, Button, Column, Heading, PageContainer, PageScroll, SafeArea, Screen, Text, XStack, YStack } from "@gift-list/ui";
+import { Button, Column, Heading, PageContainer, PageScroll, SafeArea, Screen, Text, XStack, YStack } from "@gift-list/ui";
 import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { fetchNotification, fetchNotifications, markNotificationRead, submitNotificationAction } from "@/api/notifications";
 import { useNotificationBadge } from "@/navigation/notification-badge";
-import { SidebarNav } from "@/navigation/sidebar-nav";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
@@ -37,7 +36,6 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
   const t = useTranslations("notifications");
   const common = useTranslations("common");
   const gift = useTranslations("app.gift");
-  const web = useTranslations("web");
   const auth = useAuth();
   const refreshBadge = useNotificationBadge()?.refresh;
   const [items, setItems] = useState<NotificationItem[] | null>(null);
@@ -222,7 +220,7 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
     : items;
 
   return (
-    <AppShell sidebar={<SidebarNav />} skipLabel={web("skipToContent")}>
+    <>
       <Stack.Screen options={{ title: t("title") }} />
       <Screen>
         <SafeArea>
@@ -269,7 +267,7 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
           />
         </SafeArea>
       </Screen>
-    </AppShell>
+    </>
   );
 }
 

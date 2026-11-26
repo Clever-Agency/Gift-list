@@ -390,6 +390,9 @@ describe("reservation contract", () => {
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: false,
   };
 

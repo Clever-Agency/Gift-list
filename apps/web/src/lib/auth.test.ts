@@ -64,6 +64,8 @@ describe("auth proxy", () => {
       "/sign-up/email",
       "/request-password-reset",
       "/update-user",
+      "/change-email",
+      "/send-verification-email",
     ]);
     expect(auth.options.emailAndPassword?.resetPasswordTokenExpiresIn).toBe(3600);
     expect(auth.options.emailAndPassword?.revokeSessionsOnPasswordReset).toBe(true);
@@ -140,6 +142,38 @@ describe("auth proxy", () => {
     expect(spy).toHaveBeenCalled();
   });
 
+  /**
+   * CLE-129/T9.1 (FR-56, AD-3): смена email идёт одним переходом по ссылке на
+   * новый адрес. `sendChangeEmailConfirmation` намеренно не задан: он включает
+   * двухшаговое подтверждение со старого адреса, а старый получает только
+   * уведомление после применения.
+   */
+  it("enables email change with a one-time link and the old-address hook", async () => {
+    setAuthEnv();
+    delete globalForAuth.auth;
+    vi.resetModules();
+    send.mockClear();
+    send.mockResolvedValue({ data: { id: "e1" }, error: null });
+    const { auth } = await import("@/lib/auth");
+
+    expect(auth.options.user?.changeEmail?.enabled).toBe(true);
+    expect("sendChangeEmailConfirmation" in (auth.options.user?.changeEmail ?? {})).toBe(false);
+    expect(auth.options.emailVerification?.expiresIn).toBe(3600);
+    expect(auth.options.databaseHooks?.user?.update?.after).toEqual(expect.any(Function));
+
+    const sendVerification = auth.options.emailVerification?.sendVerificationEmail;
+    expect(sendVerification).toEqual(expect.any(Function));
+    const url = "http://127.0.0.1:3000/api/auth/verify-email?token=tok&callbackURL=%2Fprofile";
+    await sendVerification?.(
+      { user: { id: "u", email: "new@example.com", locale: "ru" } as never, url, token: "tok" },
+    );
+
+    const payload = send.mock.calls[0]?.[0] as { to: string; subject: string; html: string };
+    expect(payload.to).toBe("new@example.com");
+    expect(payload.subject).toBe("Подтвердите новый email — WishMoon");
+    expect(payload.html).toContain("/api/auth/verify-email?token=tok");
+  });
+
   it("trusts only the app scheme without AUTH_DEV_TRUSTED_ORIGINS", async () => {
     process.env.DATABASE_URL = "postgresql://user:pass@127.0.0.1:5432/gift";
     process.env.BETTER_AUTH_SECRET = secret;
@@ -187,6 +221,18 @@ describe("closed Better Auth HTTP routes", () => {
       path: "/api/auth/update-user",
       body: { name: "я".repeat(DISPLAY_NAME_MAX + 1) },
     },
+    // FR-56: смена email ходит только через `/api/v1/me/email`, где стоит
+    // лимит на пользователя и остаётся адрес для уведомления старому.
+    {
+      path: "/api/auth/change-email",
+      body: { newEmail: "new@example.com" },
+    },
+    // Любой может попросить письмо по открытому маршруту — письма шлёт только
+    // внутренний вызов Better Auth из смены email.
+    {
+      path: "/api/auth/send-verification-email",
+      body: { email: "a@example.com" },
+    },
   ] as const;
 
   async function handler() {
@@ -209,7 +255,7 @@ describe("closed Better Auth HTTP routes", () => {
     });
   }
 
-  it("returns 404 for sign-in, sign-up, password reset and update-user before any mail or session", async () => {
+  it("returns 404 for sign-in, sign-up, password reset, update-user and email change before any mail or session", async () => {
     const { POST } = await handler();
     for (const { path, body } of closed) {
       for (let attempt = 0; attempt < 4; attempt += 1) {

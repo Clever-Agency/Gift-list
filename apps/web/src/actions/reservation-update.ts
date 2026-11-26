@@ -94,8 +94,9 @@ const reservationUpdateSelect = {
 
 /**
  * The closed card set plus the four fields `canOpenGift` decides on. Selecting
- * exactly these columns keeps price, tags, description, link, `listToken` and the
- * holder's own name out of the response (AD-7, AD-12).
+ * exactly these columns keeps tags, description, link, `listToken` and the
+ * holder's own name out of the response (AD-7, AD-12); the price reaches the
+ * card only while `canOpenGift` is `true`.
  */
 const reservationCardSelect = {
   id: true,
@@ -110,6 +111,8 @@ const reservationCardSelect = {
   holderVisibleToOthers: true,
   visibility: true,
   archivedAt: true,
+  priceAmount: true,
+  priceCurrency: true,
   reservedById: true,
   list: { select: { ownerId: true, owner: { select: { nick: true } } } },
 } satisfies Prisma.GiftSelect;

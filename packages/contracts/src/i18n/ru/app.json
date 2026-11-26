@@ -99,6 +99,7 @@
     "listNotFound": "Список не найден.",
     "loading": "Загружаем вишлист",
     "reservedBy": "Берёт {name}",
+    "reservedByPrefix": "Берёт",
     "settings": "Настройки",
     "archiveSection": "Архив ({count})",
     "archiveMenu": "Меню",
@@ -112,11 +113,7 @@
   "settings": {
     "title": "Настройки",
     "pageTitle": "Настройки — {brand}",
-    "nickSection": "Ник",
-    "save": "Сохранить",
     "back": "Назад",
-    "nickSaved": "Ник изменён.",
-    "nickUnchanged": "Это ваш текущий ник.",
     "hideFromSearch": "Не показывать в поиске",
     "hideFromSearchHint": "Прямые ссылки на профиль и вишлист по-прежнему работают.",
     "hideFromSearchSaved": "Настройка сохранена.",
@@ -252,17 +249,6 @@
       "FRIENDS": "Друзьям",
       "SECRET": "Секрет"
     },
-    "visibilityLower": {
-      "PUBLIC": "всем",
-      "FRIENDS": "друзьям",
-      "SECRET": "секрет"
-    },
-    "visibilityChipLabel": "Видимость: {value}. Изменить",
-    "visibilityInCardName": "видимость {value}",
-    "visibilityPicker": {
-      "title": "Кто видит «{title}»",
-      "cancel": "Отмена"
-    },
     "quantity": {
       "SINGLE": "Один раз",
       "UNLIMITED": "Можно дарить снова"
@@ -270,7 +256,6 @@
     "tagsMore": "+{count}",
     "tagsMoreLabel": "Ещё теги ({count}): {tags}",
     "toast": {
-      "visibility": "Видимость: {value}",
       "closed": "Отмечено полученным",
       "undo": "Отменить"
     },
@@ -285,7 +270,7 @@
       "dueLabel": "Подарю до, {date}",
       "dueHint": "Выбрать дату",
       "dueCaption": "Не позже {max}",
-      "showOthers": "Показать другим, кто берёт",
+      "showOthers": "Показывать другим гостям, что дарю я",
       "confirm": "Подтвердить",
       "cancel": "Отмена"
     },
@@ -337,7 +322,8 @@
         "GIVEN": "Подарено"
       },
       "close": "Закрыть",
-      "edit": "Изменить желание"
+      "edit": "Изменить желание",
+      "editShort": "Изменить"
     },
     "loadError": "Не получилось загрузить. Проверьте сеть.",
     "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз.",
@@ -356,14 +342,14 @@
     "emptyText": "Нажмите «Куплю сам» у желания друга — бронь появится здесь.",
     "openGift": "Открыть желание «{title}»",
     "owner": "у @{nick}",
+    "ownerPrefix": "у",
     "due": "до {date}",
     "bought": "Купил",
     "boughtChip": "Куплено",
     "given": "Подарил",
     "dueNote": "Если не продлить, бронь снимется через 7 дней после этой даты",
     "visibility": {
-      "title": "Кто видит, что это я",
-      "others": "Показать другим, кто берёт"
+      "others": "Показывать другим гостям, что дарю я"
     },
     "extend": "Продлить до…",
     "extendCaption": "Не позже {max}",
@@ -387,6 +373,69 @@
     "pageTitle": "Профиль — {brand}",
     "notFound": "Пользователь не найден.",
     "loading": "Загружаем профиль",
+    "myProfileHint": "Как меня видят другие",
+    "save": "Сохранить",
+    "saveName": "Сохранить имя",
+    "saveNick": "Сохранить ник",
+    "nameSaved": "Имя изменено.",
+    "nameUnchanged": "Это ваше текущее имя.",
+    "nameRequired": "Имя не может быть пустым.",
+    "nameTooLong": "Имя — до {max} символов.",
+    "nickSaved": "Ник изменён.",
+    "nickUnchanged": "Это ваш текущий ник.",
+    "aboutYou": "О себе",
+    "fieldsLoading": "Загружаем данные профиля…",
+    "fieldsLoadError": "Не получилось загрузить данные профиля. Проверьте сеть.",
+    "fieldsSaved": "Данные сохранены.",
+    "retry": "Повторить",
+    "none": "Не указано",
+    "birthday": "День рождения",
+    "birthDay": "День",
+    "birthMonth": "Месяц",
+    "birthDayLabel": "День рождения, день",
+    "birthMonthLabel": "День рождения, месяц",
+    "birthdayPair": "Выберите день и месяц вместе.",
+    "birthdayInvalid": "Такой даты нет. Проверьте день и месяц.",
+    "gender": "Пол",
+    "genderMale": "Мужской",
+    "genderFemale": "Женский",
+    "genderNone": "Не указан",
+    "genderInvalid": "Выберите пол из списка.",
+    "country": "Страна",
+    "countryNone": "Не указана",
+    "countryInvalid": "Выберите страну из списка.",
+    "countrySearch": "Найти страну",
+    "countrySearchPlaceholder": "Название страны",
+    "countrySearchClear": "Очистить",
+    "countryEmpty": "Ничего не нашли",
+    "about": "Обо мне",
+    "aboutPlaceholder": "Пара слов о себе",
+    "aboutCounter": "{count} из {max}",
+    "aboutTooLong": "«Обо мне» — до {max} знаков.",
+    "visibleToFriends": "Показывать мои данные друзьям",
+    "visibleToFriendsHint": "Видят только друзья",
+    "saveAbout": "Сохранить «О себе»",
+    "emailChange": {
+      "change": "Изменить",
+      "changeLabel": "Изменить email",
+      "newEmail": "Новый email",
+      "same": "Это ваш текущий email.",
+      "send": "Отправить письмо",
+      "cancel": "Отмена",
+      "sent": "Мы отправили письмо на {email}. Перейдите по ссылке, чтобы подтвердить.",
+      "resend": "Отправить ещё раз",
+      "waitingCancel": "Отменить",
+      "changed": "Адрес изменён.",
+      "cancelled": "Запрос на смену email отменён.",
+      "linkError": {
+        "TOKEN_EXPIRED": "Ссылка устарела. Запросите новое письмо.",
+        "INVALID_TOKEN": "Ссылка недействительна: запрос отменён или ссылка устарела. Запросите новое письмо.",
+        "USER_NOT_FOUND": "Аккаунт не найден. Запросите новое письмо.",
+        "other": "Не получилось подтвердить адрес. Запросите новое письмо."
+      }
+    },
+    "edit": "Изменить",
+    "editLabel": "Изменить профиль",
     "relationship": {
       "addFriend": "Добавить в друзья",
       "acceptInvite": "Принять приглашение",

@@ -16,10 +16,9 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Link, router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
-import type { ClientResult } from "@/api/client";
 import {
   closeGift,
   createGift,
@@ -27,17 +26,14 @@ import {
   fetchMyGifts,
   restoreGift,
   undoGiftClose,
-  updateGift,
 } from "@/api/my-gifts";
-import { loadOwnerDetail } from "@/ui/wish-detail-load";
-import { WishDetailDialog, type WishDetailStep } from "@/ui/wish-detail-dialog";
 import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
-import { needsSurpriseWarning, needsVisibilityWarning } from "@/domain/surprise-warning";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
+import { CardGridList } from "@/ui/card-grid-list";
 import { ClosedSection } from "@/ui/closed-section";
 import { CloseGiftConfirm } from "@/ui/close-gift-confirm";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
@@ -49,11 +45,9 @@ import { WishCard } from "@/ui/gift-card";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
-import { SurpriseWarningDialog, useSurpriseWarningCopy } from "@/ui/surprise-warning";
 import { ToastHost } from "@/ui/toast";
 import { useCardGrid } from "@/ui/use-card-grid";
 import { useUndoWindow } from "@/ui/use-undo-window";
-import { VisibilityPicker } from "@/ui/visibility-picker";
 import { copyWishlistShareLink } from "@/wishlist/copy-link";
 import { hasWishVisibleToEveryone } from "@/wishlist/share-availability";
 
@@ -77,15 +71,6 @@ type ScreenState =
   // Only a broken connection claims a network problem; other failed reads get the
   // generic body (EXPERIENCE → State Patterns → «Нет сети при загрузке / ошибка загрузки»).
   | { status: "error"; kind: "network" | "generic" };
-
-/**
- * A failed request of this screen: the transport, the envelope, or a body that broke
- * the shared contract. `invalid` is the client's own outcome, so it is not part of
- * `ClientResult`.
- */
-type FailedRequest =
-  | { ok: false; invalid: true }
-  | Exclude<ClientResult<unknown>, { ok: true }>;
 
 /**
  * One toast at a time: a failed read is destructive, the composer's «Добавлено в
@@ -120,7 +105,8 @@ const COPY_LINK_REASON_ID = "wishlist-copy-link-reason";
 /**
  * «Мой вишлист» (Story 2.1): AD-7 owner branch through `api/v1`, so every own wish
  * comes back, including `SECRET`. The gift card is the shared AD-12 contract; the
- * screen only adds the owner chip, status pill and the empty/loading/error states.
+ * screen only adds the status pill and the empty/loading/error states, and makes
+ * every card a link to the wish page `/gifts/{id}` (CLE-129, T4.4).
  */
 export default function MyWishlistScreen() {
   const t = useTranslations("app");
@@ -129,7 +115,6 @@ export default function MyWishlistScreen() {
   const invite = useTranslations("app.invite");
   const giftForm = useTranslations("app.giftForm");
   const common = useTranslations("common");
-  const tLower = useTranslations("app.gift.visibilityLower");
   const brand = getBrandName();
   const auth = useAuth();
   // W12.19: the page gutter is the Tamagui media clause
@@ -148,14 +133,6 @@ export default function MyWishlistScreen() {
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
-  // Story 2.3: the chip of an open wish opens the visibility dialog over the list.
-  const [picker, setPicker] = useState<{ gift: GiftCard } | null>(null);
-  // D-49 (CLE-124): a narrowing of an open non-secret wish asks one neutral
-  // question; the chip stays as it was until the person answers.
-  const [visibilitySurprise, setVisibilitySurprise] = useState<{
-    gift: GiftCard;
-    next: GiftCard["visibility"];
-  } | null>(null);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [archiveMenu, setArchiveMenu] = useState<GiftCard | null>(null);
   // Story 5.3: «Получено (N)» is closed until the owner opens it.
@@ -167,10 +144,8 @@ export default function MyWishlistScreen() {
   const pendingMenuAction = useRef<(() => void) | null>(null);
   const menuReturn = useRef<string | null>(null);
   const menuNodes = useRef(new Map<string, ChipNode | null>());
-  // Story 5.3: closing a wish from the card asks first; the details layer uses a
-  // step instead (`closeStep`).
+  // Story 5.3: closing a wish from the card asks first.
   const [closeConfirm, setCloseConfirm] = useState<GiftCard | null>(null);
-  const [closeStep, setCloseStep] = useState<GiftCard | null>(null);
   const [closeBusy, setCloseBusy] = useState(false);
   // Story 5.3: deleting a closed wish is the existing DELETE behind a confirm.
   const [deleteConfirm, setDeleteConfirm] = useState<GiftCard | null>(null);
@@ -182,25 +157,6 @@ export default function MyWishlistScreen() {
   const [restoreDate, setRestoreDate] = useState("");
   const [restoreError, setRestoreError] = useState<string | undefined>();
   const [archiveBusy, setArchiveBusy] = useState(false);
-  // A second tap on the same chip while its PATCH is in flight is ignored.
-  const saving = useRef(new Set<string>());
-  // The chip node of every wish, so focus can return there after the dialog closes.
-  const chipNodes = useRef(new Map<string, ChipNode | null>());
-  const cardNodes = useRef(new Map<string, ChipNode | null>());
-  const [detail, setDetail] = useState<GiftCard | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  // D-49 (CLE-124): «Изменить» of an open non-secret wish asks the neutral
-  // question as a step of the details layer, never as a second window over it.
-  const [editStep, setEditStep] = useState(false);
-  const detailReturn = useRef<string | null>(null);
-  // A close from the details hands focus to «Отменить» in the toast, so the closing
-  // layer must not put it back on the card.
-  const [skipDetailFocus, setSkipDetailFocus] = useState(false);
-  // The chip that should get focus once the closed dialog has left the tree.
-  const pendingFocus = useRef<string | null>(null);
-  // The chip behind the neutral warning: while the warning is on screen it owns the
-  // focus return, so the closing picker must not pull focus behind the layer.
-  const surpriseChip = useRef<string | null>(null);
   // Review m9: coming back to the screen (e.g. from the composer) refetches the list.
   // The mount effect owns the very first load, so the first focus right after mount is
   // not a reason to fetch again; a refocus refresh is silent (only `retry` shows the
@@ -217,9 +173,6 @@ export default function MyWishlistScreen() {
   const closedMenuWindow = useUndoWindow(
     cardMenu?.status === "CLOSED" ? cardMenu.undoUntil : null,
   );
-  // The neutral question of «Изменить»: the details layer shows it as its own step,
-  // so it reads exactly the stand-alone window's texts (D-49).
-  const editWarning = useSurpriseWarningCopy("edit", detail?.title ?? "");
 
   // The closing toast lands focus on «Отменить» (`DESIGN.md` → «Куда уходит
   // фокус», пункт «а»). The toast is on screen by the time the effect runs.
@@ -243,15 +196,23 @@ export default function MyWishlistScreen() {
     }, []),
   );
 
-  useEffect(function redirectAnonymous() {
-    if (auth.state.status === "anonymous") {
-      // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
-      router.replace({
-        pathname: "/login",
-        params: sessionExpired ? { next: "/", reason: "session_expired" } : { next: "/" },
-      });
-    }
-  }, [auth.state.status, sessionExpired]);
+  // AD-30: `(tabs)` is the anchor under a deep link. While a public screen, such
+  // as the wishlist of a link, sits above it, this screen is mounted but not
+  // focused, and a guest must not be sent from that screen to login.
+  useFocusEffect(
+    useCallback(
+      function redirectAnonymous() {
+        if (auth.state.status === "anonymous") {
+          // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
+          router.replace({
+            pathname: "/login",
+            params: sessionExpired ? { next: "/", reason: "session_expired" } : { next: "/" },
+          });
+        }
+      },
+      [auth.state.status, sessionExpired],
+    ),
+  );
 
   // The create and edit screens set their confirmation here instead of on themselves:
   // they unmount on the way back, so a toast of their own would never be seen (the same
@@ -299,7 +260,9 @@ export default function MyWishlistScreen() {
   }
 
   useEffect(function loadGifts() {
-    if (!ownerId) return;
+    // The tabs are the anchor under a deep link (AD-30): mounted, but not
+    // focused, and they must not read the owner's wishlist behind another screen.
+    if (!ownerId || !focused.current) return;
     let cancelled = false;
 
     async function requestGifts() {
@@ -422,109 +385,11 @@ export default function MyWishlistScreen() {
     router.push("/gifts/new");
   }
 
-  function openDetail(gift: GiftCard) {
-    detailReturn.current = gift.id;
-    setDetail(gift);
-    setCloseStep(null);
-    setEditStep(false);
-    setDetailOpen(true);
-  }
-
-  function closeDetail() {
-    setDetailOpen(false);
-  }
-
-  function detailClosed() {
-    const id = detailReturn.current;
-    detailReturn.current = null;
-    setCloseStep(null);
-    setEditStep(false);
-    setCloseBusy(false);
-    setDetail(null);
-    const skip = skipDetailFocus;
-    setSkipDetailFocus(false);
-    if (skip) return;
-    restoreFocus(id ? cardNodes.current.get(id) : null);
-  }
-
   /**
-   * «Изменить желание» in the details (Story 2.2). D-49 (CLE-124): an open
-   * non-secret wish gets the neutral question first, as a step of the same
-   * details layer; any other wish goes straight to the form.
-   */
-  function editDetail() {
-    if (!detail) return;
-    if (needsSurpriseWarning(detail)) {
-      setEditStep(true);
-      return;
-    }
-    openEditForm();
-  }
-
-  /** The accepted «Изменить»: the details leave and the existing form route opens. */
-  function openEditForm() {
-    if (!detail) return;
-    const id = detail.id;
-    setEditStep(false);
-    setDetailOpen(false);
-    setDetail(null);
-    router.push({ pathname: "/gifts/[id]/edit", params: { id } });
-  }
-
-  /** «Отмена» of the neutral question: back to the details, the form never opened. */
-  function cancelEditStep() {
-    setEditStep(false);
-  }
-
-  function loadDetail() {
-    if (!detail) return Promise.resolve({ ok: false as const, reason: "unavailable" as const });
-    return loadOwnerDetail(detail.id);
-  }
-
-  /**
-   * The step is a plain object (`WishDetailStep`): the close step lives in the same
-   * details layer instead of a second dialog.
-   */
-  /** «Подтвердить» of the step: the same one transition as the card's confirm. */
-  async function confirmStepClose() {
-    if (!closeStep || closeBusy) return;
-    await runClose(closeStep);
-  }
-
-  /** «Подарок «Y» получен?»: the step of the details layer (Story 5.3). */
-  const closeStepView: WishDetailStep | null = closeStep
-    ? {
-        key: "close",
-        title: t("gift.close.title", { title: closeStep.title }),
-        cancelLabel: t("gift.close.cancel"),
-        confirmLabel: t("gift.close.confirm"),
-        busy: closeBusy,
-        onConfirm: confirmStepClose,
-        onCancel: cancelCloseStep,
-      }
-    : null;
-
-  /** The «Изменить» question of the details layer (`WishDetailStep`, one layer). */
-  const editStepView: WishDetailStep | null =
-    editStep && detail
-      ? {
-          key: "surprise-edit",
-          title: editWarning.title,
-          body: editWarning.body,
-          cancelLabel: editWarning.cancel,
-          confirmLabel: editWarning.confirm,
-          returnTo: "edit",
-          onConfirm: openEditForm,
-          onCancel: cancelEditStep,
-        }
-      : null;
-
-  /**
-   * Story 5.3: one transition `OPEN | RESERVED → CLOSED`, whoever asked — the ⋯
-   * confirm of the card or the step of the details layer. The answer is the
-   * owner's card with `undoUntil`; the list is reread and the undo toast opens
-   * with focus on «Отменить». A broken connection keeps the layer open, so the
-   * person can try again or cancel.
+   * Story 5.3: one transition `OPEN | RESERVED → CLOSED` of the card's ⋯ menu.
+   * The answer is the owner's card with `undoUntil`; the list is reread and the
+   * undo toast opens with focus on «Отменить». A broken connection keeps the
+   * confirm open, so the person can try again or cancel.
    */
   async function runClose(gift: GiftCard) {
     setCloseBusy(true);
@@ -532,16 +397,6 @@ export default function MyWishlistScreen() {
     setCloseBusy(false);
     if (result.ok) {
       setCloseConfirm(null);
-      if (detail?.id === gift.id) {
-        // The step stays on screen while the layer fades out; `detailClosed`
-        // clears it, so the details do not flash under the closing step. The card
-        // under the dialog gets its focus back only when the dialog is closed by
-        // the person: here focus belongs to «Отменить» in the toast.
-        setSkipDetailFocus(true);
-        setDetailOpen(false);
-      } else {
-        setCloseStep(null);
-      }
       setAttempt((value) => value + 1);
       showClosedToast(gift.id);
       return;
@@ -551,7 +406,6 @@ export default function MyWishlistScreen() {
       return;
     }
     setCloseConfirm(null);
-    setCloseStep(null);
     if ("invalid" in result) {
       setToast({ message: common("errors.generic"), tone: "error" });
       return;
@@ -583,16 +437,15 @@ export default function MyWishlistScreen() {
   }
 
   /**
-   * «Вернуть в открытые» из тоста, ⋯ карточки или подробностей. The server owns
-   * the window: a late undo answers `CONFLICT` with `UNDO_WINDOW_EXPIRED`, so the
-   * person reads «Время на отмену вышло» and the list is reread. A success shows
-   * no second toast: the card simply returns to the active grid.
+   * «Вернуть в открытые» из тоста или ⋯ карточки. The server owns the window: a
+   * late undo answers `CONFLICT` with `UNDO_WINDOW_EXPIRED`, so the person reads
+   * «Время на отмену вышло» and the list is reread. A success shows no second
+   * toast: the card simply returns to the active grid.
    */
   async function undoClosed(id: string) {
     const result = await undoGiftClose(id);
     if (result.ok) {
       setToast(null);
-      if (detail?.id === id) setDetailOpen(false);
       setAttempt((value) => value + 1);
       return;
     }
@@ -665,23 +518,6 @@ export default function MyWishlistScreen() {
   function confirmCloseFromCard() {
     if (!closeConfirm || closeBusy) return;
     void runClose(closeConfirm);
-  }
-
-  /** «Отметить полученным» in the details: the step asks, in the same layer. */
-  function requestMarkReceived() {
-    if (!detail) return;
-    setCloseStep(detail);
-  }
-
-  function cancelCloseStep() {
-    if (closeBusy) return;
-    setCloseStep(null);
-  }
-
-  /** The undo button of the details layer. */
-  function undoDetailClose() {
-    if (!detail) return;
-    void undoClosed(detail.id);
   }
 
   /**
@@ -803,170 +639,6 @@ export default function MyWishlistScreen() {
     return actions;
   }
 
-  function openVisibilityPicker(gift: GiftCard) {
-    // A second tap while the save is in flight must not open the dialog again over
-    // the optimistic value.
-    if (saving.current.has(gift.id)) return;
-    setPicker({ gift });
-  }
-
-  function closePicker(id: string) {
-    // The focus call itself waits for the dialog's own `onClosed`: the layer is still
-    // in the tree while it fades out.
-    pendingFocus.current = id;
-    setPicker(null);
-  }
-
-  /**
-   * `DESIGN.md` → VisibilityChip: the dialog reports its closing, and the chip that
-   * opened it gets focus back. Every close goes through `closePicker`, so the target is
-   * always known; a repeated report finds nothing pending and changes nothing.
-   */
-  function returnFocusToChip() {
-    const id = pendingFocus.current;
-    if (id === null) return;
-    pendingFocus.current = null;
-    // The neutral warning took the picker's place: it returns focus when it closes.
-    if (surpriseChip.current !== null) return;
-    restoreFocus(chipNodes.current.get(id));
-  }
-
-  /** The neutral warning has left the tree: its chip gets focus back. */
-  function returnFocusAfterSurprise() {
-    const id = surpriseChip.current;
-    surpriseChip.current = null;
-    if (id === null) return;
-    restoreFocus(chipNodes.current.get(id));
-  }
-
-  function cancelPicker() {
-    if (picker) closePicker(picker.gift.id);
-  }
-
-  /** Touches only this card, so a focus refetch that landed meanwhile keeps the list. */
-  function setGiftVisibility(id: string, visibility: GiftCard["visibility"]) {
-    setState((current) =>
-      current.status === "ready"
-        ? {
-            ...current,
-            gifts: current.gifts.map((item) =>
-              item.id === id ? { ...item, visibility } : item,
-            ),
-          }
-        : current,
-    );
-  }
-
-  function replaceGift(gift: GiftCard) {
-    setState((current) =>
-      current.status === "ready"
-        ? {
-            ...current,
-            gifts: current.gifts.map((item) => (item.id === gift.id ? gift : item)),
-          }
-        : current,
-    );
-  }
-
-  /**
-   * `EXPERIENCE.md` → Visibility chip: the choice is saved at once (optimistic), the
-   * success toast names the new value, and a failure rolls the chip back.
-   *
-   * D-49 (CLE-124): an open non-secret wish asks one neutral question before any
-   * narrowing (`PUBLIC→FRIENDS`, `PUBLIC→SECRET`, `FRIENDS→SECRET`) — the same with
-   * a reservation and without one. Widening, the same value, a `SECRET`, a closed
-   * or an archived wish save (or do nothing) without a window.
-   */
-  async function changeVisibility(gift: GiftCard, next: GiftCard["visibility"]) {
-    if (saving.current.has(gift.id)) return;
-    const previous = gift.visibility;
-    closePicker(gift.id);
-    // The picker itself treats the current value as a no-op; nothing to save either.
-    if (next === previous) return;
-    if (needsVisibilityWarning(gift, next)) {
-      surpriseChip.current = gift.id;
-      setVisibilitySurprise({ gift, next });
-      return;
-    }
-    await saveVisibility(gift, next, previous);
-  }
-
-  /** «Изменить» of the neutral warning: the one PATCH runs now. */
-  async function confirmVisibilitySurprise() {
-    const pending = visibilitySurprise;
-    if (!pending) return;
-    setVisibilitySurprise(null);
-    await saveVisibility(pending.gift, pending.next, pending.gift.visibility);
-  }
-
-  /** «Отмена» of the neutral warning: the chip and the list stay as they were. */
-  function cancelVisibilitySurprise() {
-    setVisibilitySurprise(null);
-  }
-
-  /** The optimistic write of a visibility change. */
-  async function saveVisibility(
-    gift: GiftCard,
-    next: GiftCard["visibility"],
-    previous: GiftCard["visibility"],
-  ) {
-    if (saving.current.has(gift.id)) return;
-    saving.current.add(gift.id);
-    setGiftVisibility(gift.id, next);
-    try {
-      const result = await updateGift(gift.id, { visibility: next });
-      if (result.ok) {
-        replaceGift(result.gift);
-        setToast({
-          message: t("gift.toast.visibility", { value: tLower(next) }),
-          tone: "info",
-        });
-        return;
-      }
-      await reportVisibilityIssue(gift, result, previous);
-    } finally {
-      saving.current.delete(gift.id);
-    }
-  }
-
-  /**
-   * The shared tail of a failed visibility write. `previous` rolls the optimistic
-   * chip back. A known reason — the archive, a closed wish, an oversized body — has
-   * its own sentence; the card behind the chip may have moved on, so the list
-   * reloads. A plain CONFLICT is neutral: roll back, say the data changed and reload.
-   */
-  async function reportVisibilityIssue(
-    gift: GiftCard,
-    result: FailedRequest,
-    previous: GiftCard["visibility"],
-  ): Promise<void> {
-    setGiftVisibility(gift.id, previous);
-    if ("network" in result) {
-      setToast({ message: t("form.network"), tone: "error" });
-      return;
-    }
-    if ("invalid" in result) {
-      setToast({ message: common("errors.generic"), tone: "error" });
-      return;
-    }
-    if (result.code === "UNAUTHENTICATED") {
-      const signedOut = await expireSession();
-      if (!signedOut) setToast({ message: t("form.network"), tone: "error" });
-      return;
-    }
-    if (result.code === "VALIDATION" || result.code === "NOT_FOUND") {
-      setToast({ message: mutationErrorMessage(result, common), tone: "error" });
-      setAttempt((value) => value + 1);
-      return;
-    }
-    if (result.code === "CONFLICT") {
-      setToast({ message: common("errors.code.CONFLICT"), tone: "error" });
-      setAttempt((value) => value + 1);
-      return;
-    }
-    setToast({ message: common(`errors.code.${result.code}`), tone: "error" });
-  }
-
   function closeArchiveMenu() {
     setArchiveMenu(null);
     setRestoreStep(false);
@@ -1071,10 +743,6 @@ export default function MyWishlistScreen() {
     setToast({ message: giftForm("error.form"), tone: "error" });
   }
 
-  function handleVisibilitySelect(next: GiftCard["visibility"]) {
-    if (picker) void changeVisibility(picker.gift, next);
-  }
-
   /** The owner's ⋯: a sibling of the card button, so a press never opens the details. */
   function cardMenuTrigger(gift: GiftCard) {
     function handlePress() {
@@ -1099,35 +767,25 @@ export default function MyWishlistScreen() {
     );
   }
 
-  /** One card of the active grid or of «Получено (N)»: both open the details. */
+  /**
+   * One card of the active grid or of «Получено (N)»: both open the wish page
+   * `/gifts/{id}` (CLE-129, T4.4). The router's `Link` hands `href` and `onPress`
+   * to the card, so the web gets a real `<a href>` — a new tab works — while a
+   * plain click stays in the app.
+   */
   function renderGiftCard(gift: GiftCard) {
-    function handlePress() {
-      openDetail(gift);
-    }
-
-    function setCardNode(node: ChipNode | null) {
-      cardNodes.current.set(gift.id, node);
-    }
-
-    function handleVisibilityPress() {
-      openVisibilityPicker(gift);
-    }
-
-    function setChipNode(node: ChipNode | null) {
-      chipNodes.current.set(gift.id, node);
-    }
-
     return (
-      <WishCard
+      <Link
         key={gift.id}
-        gift={gift}
-        width={cardWidth}
-        onPress={handlePress}
-        pressRef={setCardNode}
-        onVisibilityPress={handleVisibilityPress}
-        visibilityChipRef={setChipNode}
-        menu={cardMenuTrigger(gift)}
-      />
+        href={{ pathname: "/gifts/[id]", params: { id: gift.id } }}
+        asChild
+      >
+        <WishCard
+          gift={gift}
+          width={cardWidth}
+          menu={cardMenuTrigger(gift)}
+        />
+      </Link>
     );
   }
 
@@ -1149,9 +807,9 @@ export default function MyWishlistScreen() {
 
   return (
     <Screen>
-      {/* Inside a tab: the bottom bar holds the home indicator, so this screen
-          takes the other three edges only (spec 6.2 → SafeArea bottom={false}). */}
-      <SafeArea bottom={false}>
+      {/* The shell decides the bottom edge (AD-30): inside the bar it holds the
+          home indicator, on an expanded screen without the bar the frame does. */}
+      <SafeArea>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
         <PageScroll testID="wishlist-page">
           <PageContainer>
@@ -1272,9 +930,9 @@ export default function MyWishlistScreen() {
                     ) : null}
                     {activeGifts.length > 0 ? (
                       // Review m5: the grid is a list for assistive tech.
-                      <XStack role="list" flexWrap="wrap" gap="$grid-gap">
+                      <CardGridList>
                         {activeGifts.map(renderGiftCard)}
-                      </XStack>
+                      </CardGridList>
                     ) : null}
                     {closedGifts.length > 0 ? (
                       <ClosedSection
@@ -1374,38 +1032,6 @@ export default function MyWishlistScreen() {
             </YStack>
           )}
         </Dialog>
-        <VisibilityPicker
-          visible={picker !== null}
-          title={picker?.gift.title ?? ""}
-          value={picker?.gift.visibility ?? "PUBLIC"}
-          onSelect={handleVisibilitySelect}
-          onClose={cancelPicker}
-          onClosed={returnFocusToChip}
-        />
-        {/* D-49 (CLE-124): the neutral question before a visibility narrowing. */}
-        <SurpriseWarningDialog
-          visible={visibilitySurprise !== null}
-          kind="visibility"
-          title={visibilitySurprise?.gift.title ?? ""}
-          onConfirm={confirmVisibilitySurprise}
-          onCancel={cancelVisibilitySurprise}
-          onClosed={returnFocusAfterSurprise}
-        />
-        {detail ? (
-          <WishDetailDialog
-            open={detailOpen}
-            viewer="owner"
-            snapshot={detail}
-            load={loadDetail}
-            onClose={closeDetail}
-            onClosed={detailClosed}
-            onEdit={editDetail}
-            onMarkReceived={requestMarkReceived}
-            onUndoClose={undoDetailClose}
-            undoUntil={detail.undoUntil ?? null}
-            step={closeStepView ?? editStepView}
-          />
-        ) : null}
         {/* Story 5.3: the ⋯ of one card — received, undo, copy or delete. */}
         <GiftCardMenu
           open={cardMenu !== null}

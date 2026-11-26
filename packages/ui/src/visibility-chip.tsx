@@ -24,6 +24,11 @@ const Chip = styled(View, {
       friends: { backgroundColor: "$muted", borderStyle: "solid" },
       secret: { backgroundColor: "transparent", borderStyle: "dashed" },
     },
+    /** A chip with `onPress` is a button: its frame darkens on hover (CLE-129). */
+    interactive: {
+      true: { borderColor: "$border-strong hover:$foreground" },
+      false: {},
+    },
   } as const,
 });
 
@@ -78,7 +83,7 @@ export type VisibilityChipProps = {
 export const VisibilityChip = forwardRef<ComponentRef<typeof Pressable>, VisibilityChipProps>(
   function VisibilityChip({ tone, label, icon, onPress, accessibilityLabel }, ref) {
     const content = (
-      <Chip tone={tone}>
+      <Chip tone={tone} interactive={Boolean(onPress)}>
         {icon ? (
           <View aria-hidden importantForAccessibility="no-hide-descendants">
             {icon}
@@ -100,6 +105,8 @@ export const VisibilityChip = forwardRef<ComponentRef<typeof Pressable>, Visibil
         aria-label={accessibilityLabel ?? label}
         aria-haspopup="dialog"
         onPress={onPress}
+        // The drawn chip changes, not the 44 px transparent wrapper around it.
+        hoverFill={false}
         alignSelf="flex-start"
         justifyContent="center"
         minHeight="$touch-target"

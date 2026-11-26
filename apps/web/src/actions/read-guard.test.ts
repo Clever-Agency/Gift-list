@@ -17,7 +17,8 @@ import { describe, expect, it } from "vitest";
  * Story 5.5 adds the one sanctioned A-14 read: «Мои брони» is read by
  * `reservedById` and must keep working after an unfriend or a block, so it does
  * not pass the gate. The exemption is exactly one `.gift.findMany` whose
- * `select` is the closed reservation card — no price, link, token or owner name.
+ * `select` is the closed reservation card — no link, token or owner name, and a
+ * price that the mapper drops again while the card is closed.
  */
 const WISHLIST_READ = path.resolve(fileURLToPath(new URL("./wishlist-read.ts", import.meta.url)));
 const STATUS_SERVICE = path.resolve(
@@ -48,6 +49,7 @@ const RESERVATION_CARD_SELECT =
   "{id:true,status:true,title:true,titleSnapshotOnReserve:true,reservationDueAt:true," +
   "reservationTimeZone:true,reservationPhase:true,reservationBought:true," +
   "holderVisibleToOwner:true,holderVisibleToOthers:true,visibility:true,archivedAt:true," +
+  "priceAmount:true,priceCurrency:true," +
   "reservedById:true,list:{select:{ownerId:true,owner:{select:{nick:true}}}}}";
 
 type Violation = { readonly file: string; readonly call: string };

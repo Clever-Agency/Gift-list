@@ -18,6 +18,9 @@ type FieldProps = {
     /** React Native's name for a read-only field; the package spells it `readOnly`. */
     editable?: boolean;
   };
+  /** Multi-line (`<textarea>` on the web), `rows` lines tall. */
+  multiline?: boolean;
+  rows?: number;
   /** Lets the screen move focus back to the field, e.g. after a server-side error. */
   inputRef?: Ref<TextInputInstance>;
 };

@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { Users } from "./icons";
+import { Bell, Users } from "./icons";
 import { NavItem } from "./nav-item";
 import navItemNativeSource from "./nav-item.native.tsx?raw";
-import { spacing } from "./tokens";
-import { createMount, declarationsFor } from "./test-utils";
+import { colors, spacing } from "./tokens";
+import { createMount, declarationsFor, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -55,6 +55,41 @@ describe("NavItem (tab, web)", () => {
     expect(declarationsFor(item, "border-color").map((one) => one.value)).toContain(
       "var(--primary)",
     );
+  });
+
+  it("иконка Bell берёт цвет активной вкладки — primary, как другие иконки", async () => {
+    const { container, render } = mounted();
+    await render(
+      <NavItem label="Уведомления" icon={<Bell testID="bell" />} selected href="/notifications" />,
+    );
+
+    const icon = container.querySelector<SVGElement>("[data-testid='bell']");
+    expect(icon?.getAttribute("stroke")).toBe(colors.primary);
+  });
+
+  it("иконка Bell у невыбранной вкладки — muted-foreground, а не цвет ссылки", async () => {
+    const { container, render } = mounted();
+    await render(
+      <NavItem
+        label="Уведомления"
+        icon={<Bell testID="bell" />}
+        selected={false}
+        href="/notifications"
+      />,
+    );
+
+    const icon = container.querySelector<SVGElement>("[data-testid='bell']");
+    expect(icon?.getAttribute("stroke")).toBe(colors["muted-foreground"]);
+  });
+
+  it("ссылка не отдаёт браузерные цвета :link/:visited/:active — color: inherit", async () => {
+    const { container, render } = mounted();
+    await render(
+      <NavItem label="Поиск" icon={<Users />} selected={false} href="/search" testID="search" />,
+    );
+
+    const item = container.querySelector<HTMLElement>("[data-testid='search']") as HTMLElement;
+    expect(declarationsFor(item, "color").map((one) => one.value)).toContain("inherit");
   });
 
   it("неактивная вкладка: полоса прозрачная, без aria-current", async () => {
@@ -133,6 +168,22 @@ describe("NavItem (side, web)", () => {
     );
   });
 
+  it("иконка Bell у строки без выбора получает foreground пункта", async () => {
+    const { container, render } = mounted();
+    await render(
+      <NavItem
+        variant="side"
+        label="Уведомления"
+        icon={<Bell testID="bell" />}
+        selected={false}
+        href="/notifications"
+      />,
+    );
+
+    const icon = container.querySelector<SVGElement>("[data-testid='bell']");
+    expect(icon?.getAttribute("stroke")).toBe(colors.foreground);
+  });
+
   it("длинная кириллица не ломает строку: текст и ссылка на месте", async () => {
     const { container, render } = mounted();
     await render(
@@ -151,6 +202,24 @@ describe("NavItem (side, web)", () => {
 
   it("displayName совпадает с именем компонента", () => {
     expect(NavItem.displayName).toBe("NavItem");
+  });
+});
+
+/**
+ * CLE-129: the side item used to fill the page `$background` on hover, which is
+ * invisible on the page. It now fills `$muted`; the change rides the `quick`
+ * preset on the web.
+ */
+describe("NavItem (side, web): hover", () => {
+  it("невыбранная строка заливается muted на hover, переход 160 мс", async () => {
+    const { container, render } = mounted();
+    await render(
+      <NavItem variant="side" label="Мои брони" icon={<Users />} selected={false} href="/reservations" testID="res" />,
+    );
+    const item = container.querySelector<HTMLElement>("[data-testid='res']") as HTMLElement;
+
+    expect(stateValues(item, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(item.style.transition).toContain("160ms");
   });
 });
 

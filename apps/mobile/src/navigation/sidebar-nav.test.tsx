@@ -197,7 +197,7 @@ describe("SidebarNav", () => {
     expect(link("/notifications")?.getAttribute("aria-current")).toBe("page");
   });
 
-  it("активный пункт — только точное совпадение корня", async () => {
+  it("активный пункт — корень, а у вложенного экрана — раздел по маршруту", async () => {
     await mount();
     expect(link("/")?.getAttribute("aria-current")).toBe("page");
     expect(link("/search")?.getAttribute("aria-current")).toBeNull();
@@ -209,12 +209,34 @@ describe("SidebarNav", () => {
     expect(link("/friends")?.getAttribute("aria-current")).toBe("page");
     expect(link("/")?.getAttribute("aria-current")).toBeNull();
 
-    // A nested screen lives above the tabs: no section is the current one.
+    // AD-30: a direct entry on a nested screen marks the section of its route
+    // (there is no remembered root in this standalone mount).
     path.pathname = "/settings";
     await act(async () => {
       root.render(<SidebarNav testID="sidebar-nav" />);
     });
-    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(0);
+    expect(link("/profile")?.getAttribute("aria-current")).toBe("page");
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+
+    path.pathname = "/gifts/new";
+    await act(async () => {
+      root.render(<SidebarNav testID="sidebar-nav" />);
+    });
+    expect(link("/")?.getAttribute("aria-current")).toBe("page");
+
+    path.pathname = "/u/anya";
+    await act(async () => {
+      root.render(<SidebarNav testID="sidebar-nav" />);
+    });
+    expect(link("/friends")?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("«Уведомления» — пункт меню, и ни один раздел не подсвечен", async () => {
+    path.pathname = "/notifications";
+    await mount();
+
+    expect(link("/notifications")?.getAttribute("aria-current")).toBe("page");
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
   it("badge «Друзья»: число, 99+, подпись с числом", async () => {

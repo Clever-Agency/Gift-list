@@ -21,6 +21,7 @@ vi.mock("@/lib/relationships", () => ({ relationshipReader: { relationsBetween }
 
 import { getWishlistByToken } from "@/actions/public-wishlist";
 import { loadLinkPage } from "@/app/l/[token]/link-page";
+import { loadWishPage } from "@/app/l/[token]/[giftId]/wish-page";
 
 type Row = {
   id: string;
@@ -181,5 +182,72 @@ describe("AD-15 (2) — аноним по /l/:token видит только PUBL
       expect(where.visibility).toEqual({ in: ["PUBLIC"] });
       expect(where.archivedAt).toBeNull();
     }
+  });
+});
+
+/**
+ * AD-15 (14), D-63: the anonymous wish page is the list read narrowed to one
+ * id, so it can never hand out a field, a title or a wish that `/l/:token` did
+ * not already hand out. A foreign, hidden, archived or unknown id and a block
+ * are the one closed answer.
+ */
+describe("AD-15 (14) — анонимная /l/:token/:giftId", () => {
+  it("отдаёт то же желание и те же поля, что /l: ничего сверх разрешённого", async () => {
+    const list = await loadLinkPage("tok-1");
+    const page = await loadWishPage("tok-1", "g-public");
+
+    expect(list.view.kind).toBe("gifts");
+    if (list.view.kind !== "gifts") throw new Error("expected a gifts view");
+    expect(page.view.kind).toBe("wish");
+    if (page.view.kind !== "wish") throw new Error("expected a wish view");
+
+    const allowed = list.view.gifts[0];
+    expect(allowed).toBeDefined();
+    expect(page.view.gift).toEqual(allowed);
+    expect(Object.keys(page.view.gift).sort()).toEqual(Object.keys(allowed).sort());
+    expect(page.view.owner).toEqual({ displayName: "Анна", nick: "anna" });
+
+    const body = JSON.stringify(page.view);
+    expect(body).not.toContain("Только друзьям");
+    expect(body).not.toContain("Секретное");
+    expect(body).not.toContain("Архивное");
+    expect(body).not.toMatch(/"(publicToken|archived|archivedTotal|count|hidden|filtered|total)":/);
+  });
+
+  it("отвечает одним not_found на чужой, скрытый, архивный и неизвестный id", async () => {
+    for (const giftId of ["g-friends", "g-secret", "g-archived", "g-other-list", "g-unknown"]) {
+      const page = await loadWishPage("tok-1", giftId);
+
+      expect(page.view).toEqual({ kind: "not_found" });
+    }
+  });
+
+  it("отвечает тем же not_found на block, даже с видимым по ссылке id", async () => {
+    relationsBetween.mockResolvedValueOnce({
+      blocked: true,
+      friend: false,
+      subscriber: false,
+      contactMatch: false,
+    });
+
+    const page = await loadWishPage("tok-1", "g-public");
+
+    expect(page.view).toEqual({ kind: "not_found" });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("читает тем же узким запросом списка, а не по id желания", async () => {
+    await loadWishPage("tok-1", "g-public");
+
+    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { publicToken: "tok-1" } }),
+    );
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0]?.[0].where).toEqual({
+      listId: "l1",
+      archivedAt: null,
+      visibility: { in: ["PUBLIC"] },
+    });
   });
 });

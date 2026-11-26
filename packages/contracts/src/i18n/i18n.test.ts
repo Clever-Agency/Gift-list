@@ -130,6 +130,7 @@ describe("not-found copy", () => {
     const { web, app } = getMessages("ru");
     const pairs: ReadonlyArray<readonly [string, string]> = [
       [web.wishlist.notFound, app.myWishlist.listNotFound],
+      [web.wishlist.wishNotFound, app.gift.giftNotFound],
       [web.invite.notFound, app.invite.notFound],
     ];
 
@@ -144,6 +145,9 @@ describe("not-found copy", () => {
     const { web } = getMessages("ru");
 
     expect(web.wishlist.notFoundTitle).toBe(`${web.wishlist.notFound.slice(0, -1)} — {brand}`);
+    expect(web.wishlist.wishNotFoundTitle).toBe(
+      `${web.wishlist.wishNotFound.slice(0, -1)} — {brand}`,
+    );
     expect(web.invite.notFoundTitle).toBe(`${web.invite.notFound.slice(0, -1)} — {brand}`);
   });
 });
@@ -159,6 +163,19 @@ describe("public shell copy", () => {
 
     expect(skipToContent).toBe("Перейти к содержимому");
     expect(skipToContent.endsWith(".")).toBe(false);
+  });
+});
+
+/**
+ * D-53 (CLE-129): the contact link goes to support, not to the author. One label
+ * for the app footer, `/profile`, the Next pages and the catalog of the letters.
+ */
+describe("support link copy", () => {
+  it("is «Написать в техподдержку» in the common and email catalogs", () => {
+    const messages = getMessages("ru");
+
+    expect(messages.common.writeToSupport).toBe("Написать в техподдержку");
+    expect(messages.email.writeToSupport).toBe(messages.common.writeToSupport);
   });
 });
 
@@ -359,10 +376,10 @@ describe("reservation copy", () => {
     expect(reservations.bought).toBe("Купил");
     expect(reservations.boughtChip).toBe("Куплено");
 
-    expect(reservations.visibility.title).toBe("Кто видит, что это я");
-    expect(reservations.visibility.others).toBe("Показать другим, кто берёт");
+    // D-57: one switch, no disclosure — «Кто видит, что это я» is gone.
+    expect(reservations.visibility.others).toBe("Показывать другим гостям, что дарю я");
     // CLE-124/D-49: the owner switch and its hint are gone.
-    expect(Object.keys(reservations.visibility).sort()).toEqual(["others", "title"]);
+    expect(Object.keys(reservations.visibility)).toEqual(["others"]);
 
     expect(reservations.extend).toBe("Продлить до…");
     expect(reservations.extendCaption).toBe("Не позже {max}");
@@ -523,6 +540,26 @@ describe("owner change warning copy", () => {
       expect(warning[kind].body.startsWith("Кто-то мог уже забронировать или купить этот подарок.")).toBe(
         true,
       );
+    }
+  });
+});
+
+/**
+ * CLE-129/T9.1 (FR-56): два письма смены email. Ссылка и адрес подставляются
+ * кодом, поэтому в каталоге только тексты с `{brand}`, `{email}` и `{support}`.
+ */
+describe("email change copy", () => {
+  it("names the confirmation and the notice in the letter catalog", () => {
+    const { email } = getMessages("ru");
+
+    expect(email.emailChange.subject.endsWith("— {brand}")).toBe(true);
+    expect(email.emailChanged.subject.endsWith("— {brand}")).toBe(true);
+    expect(email.emailChange.text).toContain("только после перехода");
+    expect(email.emailChanged.text).toContain("{email}");
+    expect(email.emailChanged.text).toContain("{support}");
+    expect(email.emailChange.action.length).toBeGreaterThan(0);
+    for (const text of [email.emailChange.text, email.emailChanged.text]) {
+      expect(text.length).toBeGreaterThan(0);
     }
   });
 });

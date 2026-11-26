@@ -11,6 +11,7 @@ import {
   VISIBILITIES,
 } from "./enums";
 import { PROFILE_RELATIONSHIPS, profileInviteCooldownSchema } from "./friendship";
+import { profileDetailsSchema, profileFieldsSchema } from "./profile";
 
 export const ERROR_CODES = [
   "UNAUTHENTICATED",
@@ -177,6 +178,36 @@ export const meSchema = z.strictObject({
 
 export type Me = z.infer<typeof meSchema>;
 
+/**
+ * CLE-129/T8.1 (D-58, AD-29): `GET /api/v1/me/profile` answers the current user
+ * with the profile fields on top of {@link meSchema}. The fields are always
+ * present for the owner — unlike `/u/:nick`, where a non-friend gets none.
+ */
+export const myProfileSchema = z.strictObject({
+  ...meSchema.shape,
+  ...profileFieldsSchema.shape,
+});
+
+export type MyProfile = z.infer<typeof myProfileSchema>;
+
+export {
+  ABOUT_MAX,
+  COUNTRY_CODES,
+  GENDERS,
+  genderSchema,
+  isCountryCode,
+  isValidBirthDate,
+  profileDetailsSchema,
+  profileFieldsSchema,
+  profileUpdateBodySchema,
+  visibleProfileDetailsSchema,
+  type Gender,
+  type ProfileDetails,
+  type ProfileFields,
+  type ProfileUpdateBody,
+  type VisibleProfileDetails,
+} from "./profile";
+
 export {
   CURRENCIES,
   GIFT_STATUSES,
@@ -302,6 +333,15 @@ export const listDataSchema = z.strictObject({
    * email or wish field rides along.
    */
   subscribed: z.boolean().optional(),
+  /**
+   * AD-7 ред. 2026-11-26 / AD-29: the owner's profile fields — a birthday pair
+   * without a year, gender, country and «Обо мне». Only `/u/:nick` adds the
+   * block, and only for the owner (with the switch) or an accepted friend of an
+   * owner who opened `profileVisibleToFriends`. Every other viewer gets no key
+   * at all, so neither `/l/:token`, search, notifications nor a stranger's
+   * answer can tell that the fields even exist.
+   */
+  details: profileDetailsSchema.optional(),
 });
 
 export type ListData = z.infer<typeof listDataSchema>;
@@ -315,8 +355,12 @@ export {
   NICK_PATTERN,
   PASSWORD_MAX,
   PASSWORD_MIN,
+  emailChangeAcceptedSchema,
+  emailChangeBodySchema,
+  emailChangeCancelledSchema,
   hideFromSearchUpdateBodySchema,
   loginBodySchema,
+  nameUpdateBodySchema,
   newPasswordLengthReason,
   nickIssue,
   nickUpdateBodySchema,
@@ -325,8 +369,12 @@ export {
   registerBodySchema,
   safeNextPath,
   timeZoneBodySchema,
+  type EmailChangeAccepted,
+  type EmailChangeBody,
+  type EmailChangeCancelled,
   type HideFromSearchUpdateBody,
   type LoginBody,
+  type NameUpdateBody,
   type NewPasswordLengthReason,
   type NickIssue,
   type NickUpdateBody,
@@ -510,13 +558,7 @@ export {
   type TagCatalogItem,
 } from "./tag";
 
-export {
-  detailCopy,
-  toDetailFacts,
-  type DetailCopy,
-  type DetailFact,
-  type DetailViewer,
-} from "./detail-fields";
+export { type DetailViewer } from "./detail-viewer";
 
 export {
   DEFAULT_LOCALE,

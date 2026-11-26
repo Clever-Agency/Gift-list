@@ -2,7 +2,7 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Switch } from "./switch";
-import { createMount } from "./test-utils";
+import { createMount, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -147,5 +147,29 @@ describe("Switch: подсказка", () => {
     await render(<Switch label="Скрыть из поиска" checked={false} onChange={noop} />);
 
     expect(control(container).getAttribute("aria-describedby")).toBeNull();
+  });
+});
+
+/**
+ * CLE-129: the whole row is the switch, so the row fills `$muted` on hover and
+ * changes it smoothly. A disabled switch keeps the stored value and has neither.
+ */
+describe("Switch: hover и плавность", () => {
+  it("ряд заливается muted на hover, переход 160 мс", async () => {
+    const { container, render } = mounted();
+    await render(<Switch label="Скрыть из поиска" checked={false} onChange={noop} />);
+    const node = control(container);
+
+    expect(stateValues(node, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(node.style.transition).toContain("160ms");
+  });
+
+  it("disabled без hover и без перехода", async () => {
+    const { container, render } = mounted();
+    await render(<Switch label="Скрыть из поиска" checked={false} disabled onChange={noop} />);
+    const node = control(container);
+
+    expect(stateValues(node, "hover", "background-color")).toEqual([]);
+    expect(node.style.transition).toBe("");
   });
 });

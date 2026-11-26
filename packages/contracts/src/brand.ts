@@ -10,7 +10,7 @@
  */
 export const PRODUCT_NAME = "WishMoon";
 
-/** Product support mailbox behind «Написать автору»; owner's decision 2026-11-18 (D-35, D-48), not a secret. */
+/** Product support mailbox behind «Написать в техподдержку»; owner's decision 2026-11-18 (D-35, D-48), not a secret. */
 export const AUTHOR_EMAIL = "support@wishmoon.clever-agency.dev";
 
 /** `mailto:` link without a subject; derived, so the address is edited once. */

@@ -1088,19 +1088,17 @@ type ChoiceOption<T extends string> = {
  * `SINGLE`/`UNLIMITED` quantity (`DESIGN.md` → Форма: five codes; radio rows with
  * an explanation, «Всем» and «Один раз» by default), built from `ChoiceList` and
  * `Choice` of `@gift-list/ui`. `DESIGN.md` asks for a bottom sheet with radios on
- * a phone; the same rows are reused by `VisibilityPicker` (Story 2.3). Each
- * variant keeps the same `radio` semantics: one choice, the selected one is
- * marked, and the option label is the accessible name.
+ * a phone. Each variant keeps the same `radio` semantics: one choice, the selected
+ * one is marked, and the option label is the accessible name.
  *
  * `labelHidden` keeps the accessible name of the group while the visible heading
- * comes from the surrounding layer (the picker title is a header of its own).
+ * comes from the surrounding layer.
  *
  * `disabled` shows the stored value without letting it change (a read-only closed
  * or archived wish).
  *
- * `autoFocusRef` is only set by `VisibilityPicker`: it receives the node of the option
- * holding `autoFocusValue`, so the dialog can put focus there when it opens instead of
- * leaving it on the control the layer was opened from.
+ * `autoFocusRef` receives the node of the option holding `autoFocusValue`, so the
+ * caller can put focus there instead of leaving it on the control it came from.
  */
 export function ChoiceGroup<T extends string>({
   label,

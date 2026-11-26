@@ -2,7 +2,7 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { PartnerStoreCard } from "./partner-store-card";
-import { createMount } from "./test-utils";
+import { createMount, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -90,5 +90,19 @@ describe("PartnerStoreCard: вариант C", () => {
     await render(<PartnerStoreCard name="Пиксель" category="техника" monogram="ПК" />);
 
     expect(container.querySelector("[role='button']")).toBeNull();
+  });
+
+  /**
+   * CLE-129: a store card is a button, so the card lifts its shadow and darkens its
+   * frame on hover, with the `quick` preset.
+   */
+  it("с onPress карточка отвечает на hover тенью и рамкой", async () => {
+    const { container, render } = mounted();
+    await render(<PartnerStoreCard name="Пиксель" category="техника" monogram="ПК" onPress={vi.fn()} />);
+
+    const card = container.querySelector<HTMLElement>("[role='button']") as HTMLElement;
+    expect(stateValues(card, "hover", "border-color")).toEqual(["var(--border-strong)"]);
+    expect(stateValues(card, "hover", "box-shadow").length).toBeGreaterThan(0);
+    expect(card.style.transition).toContain("160ms");
   });
 });

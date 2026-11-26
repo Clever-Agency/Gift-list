@@ -5,7 +5,6 @@ import { Button } from "./button";
 import { GiftListProvider } from "./provider";
 import { StatusPill } from "./status-pill";
 import { testConfig } from "./test-utils";
-import { VisibilityChip } from "./visibility-chip";
 import { WishCard } from "./wish-card";
 
 function page() {
@@ -15,7 +14,6 @@ function page() {
         title="Плед"
         price="2 500 ₽"
         status={<StatusPill status="open" label="Свободно" />}
-        chip={<VisibilityChip tone="public" label="Всем" />}
       />
       <Button label="Забронировать" variant="reserve" onPress={() => {}} />
     </GiftListProvider>

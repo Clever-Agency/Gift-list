@@ -1,32 +1,30 @@
-import { NICK_MAX, nickIssue, type BlockedCard, type Me } from "@gift-list/contracts";
-import { Button, Column, EmptyState, focusField, Heading, PageContainer, PageScroll, PersonRow, PersonRowSkeleton, Pressable, SafeArea, Screen, Switch, Text, YStack } from "@gift-list/ui";
+import { type BlockedCard, type Me } from "@gift-list/contracts";
+import { Button, Column, EmptyState, Heading, PageContainer, PageScroll, PersonRow, PersonRowSkeleton, Pressable, SafeArea, Screen, Switch, Text, YStack } from "@gift-list/ui";
 import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import type { TextInputInstance } from "react-native";
 import { useTranslations } from "use-intl";
 import { listBlocked, unblockUser } from "@/api/block";
-import { updateHideFromSearch, updateNick } from "@/api/me";
+import { updateHideFromSearch } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
-import { formIssue, mutationErrorMessage, nickErrorText, nickFieldText } from "@/session/form-issue";
+import { formIssue, mutationErrorMessage } from "@/session/form-issue";
 import { NotificationSettings } from "@/ui/notification-settings";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
-import { TextField } from "@/ui/text-field";
 import { ToastHost } from "@/ui/toast";
 
 /** One toast at a time; the saved notice is neutral, a failed save is destructive. */
 type ToastState = { message: string; tone: "info" | "error" };
 
 /**
- * «Настройки» (Story 3.1): the nick block only. The full set of settings arrives
- * with Story 6.3 and the navigation with Story 6.2.
+ * «Настройки» (CLE-129, D-59): only the real settings — search visibility,
+ * notification channels and the blocked list. Personal data (name, nick,
+ * email) lives in «Профиль»; this screen no longer edits it.
  *
  * The screen guards the session like the other `(app)` screens: an anonymous
- * visitor leaves for login with a return to these settings. The form itself is a
- * child so its field starts from the loaded user; it mounts only once `/me` has
- * answered.
+ * visitor leaves for login with a return to these settings. The read-only
+ * profile fields moved away, so the form still mounts only once `/me` answered.
  */
 export default function SettingsScreen() {
   const auth = useAuth();
@@ -60,9 +58,10 @@ export default function SettingsScreen() {
 SettingsScreen.displayName = "SettingsScreen";
 
 /**
- * AD-13: the client checks the same 3–24 `[a-z0-9_]` rule as the server, so an
- * invalid nick never reaches the API. A nick equal to the current one is not a
- * change either: the screen says so inline and sends nothing.
+ * «Настройки» (CLE-129, D-59): only the real settings — the search-visibility
+ * switch, the blocked list and the notification channels. The nick and every
+ * other personal field moved to «Профиль», so this screen never reads or writes
+ * the display name again.
  */
 function SettingsForm({
   user,
@@ -75,123 +74,18 @@ function SettingsForm({
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
-  const nickInput = useRef<TextInputInstance | null>(null);
 
-  const [nick, setNick] = useState(user.nick);
-  const [nickSettled, setNickSettled] = useState(false);
-  const [fieldError, setFieldError] = useState<string | null>(null);
-  const [unchanged, setUnchanged] = useState(false);
-  const [pending, setPending] = useState(false);
   const [hideFromSearch, setHideFromSearch] = useState(user.hideFromSearch);
   const [hidePending, setHidePending] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
-  // The disabled button follows a state update, which flushes after the handler:
-  // a second tap in the same frame must not send a second PUT.
-  const inFlight = useRef(false);
-  // The switch is disabled while its PATCH runs for the same reason: one toggle,
-  // one request, and the row never flips twice before the answer arrives.
+  // The switch is disabled while its PATCH runs: one toggle, one request, and
+  // the row never flips twice before the answer arrives.
   const hideInFlight = useRef(false);
-
-  const normalized = nick.trim().toLowerCase();
-  const liveNick = nickIssue(nick);
-  const valid = liveNick === null;
-  const hint = unchanged
-    ? t("settings.nickUnchanged")
-    : valid
-      ? t("form.nickPreview", { nick: nick.toLowerCase() })
-      : undefined;
-  const error = fieldError ?? nickFieldText(liveNick, nickSettled, t);
-
-  function focusNick() {
-    // UI5: the invalid nick is focused and scrolled to the middle of the screen.
-    focusField(nickInput.current);
-  }
-
-  function changeNick(value: string) {
-    setNick(value);
-    setFieldError(null);
-    setUnchanged(false);
-  }
-
-  function settleNick() {
-    setNickSettled(true);
-  }
 
   function goBack() {
     // A direct link has no history behind it: fall back to the wishlist.
     if (router.canGoBack()) router.back();
     else router.replace("/");
-  }
-
-  function save() {
-    if (inFlight.current) return;
-    if (!valid) {
-      // The reason sits under the field, like on register; length waits for this press.
-      setNickSettled(true);
-      setFieldError(null);
-      setUnchanged(false);
-      focusNick();
-      return;
-    }
-    if (normalized === user.nick.trim().toLowerCase()) {
-      setFieldError(null);
-      setUnchanged(true);
-      focusNick();
-      return;
-    }
-    void submit();
-  }
-
-  async function submit() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setPending(true);
-    setFieldError(null);
-    setUnchanged(false);
-
-    const result = await updateNick(nick);
-
-    inFlight.current = false;
-    setPending(false);
-
-    if (result.ok) {
-      // The saved nick is what the server normalized it to, not what was typed.
-      setNick(result.data.nick);
-      auth.setUser(result.data);
-      setToast({ message: t("settings.nickSaved"), tone: "info" });
-      return;
-    }
-    if ("network" in result) {
-      setToast({ message: t("form.network"), tone: "error" });
-      return;
-    }
-    if ("invalid" in result) {
-      setToast({ message: common("errors.generic"), tone: "error" });
-      return;
-    }
-    if (result.code === "UNAUTHENTICATED") {
-      await expireSession();
-      return;
-    }
-    const issue = formIssue(result, t, common, "register");
-    if (issue.reason === "NICK_TAKEN") {
-      setFieldError(issue.text);
-      focusNick();
-      return;
-    }
-    if (issue.field === "nick") {
-      // A server-side nick validation names the reason of the value, not the rules.
-      setNickSettled(true);
-      setFieldError(nickErrorText(nick, t, common("errors.code.VALIDATION")));
-      focusNick();
-      return;
-    }
-    if (issue.field) {
-      setFieldError(issue.text);
-      focusNick();
-      return;
-    }
-    setToast({ message: issue.text, tone: "error" });
   }
 
   /**
@@ -254,7 +148,7 @@ function SettingsForm({
       return;
     }
     if (result.code === "UNAUTHENTICATED") {
-      // The same session-expired path as the nick form above.
+      // The one session-expired path of the screen; «Профиль» has the same one.
       await expireSession();
       return;
     }
@@ -300,30 +194,9 @@ function SettingsForm({
                 paddingTop="$2"
                 paddingBottom="$section-gap"
               >
-                <YStack gap="$grid-gap">
-                  <TextField
-                    label={t("form.nick")}
-                    value={nick}
-                    onChangeText={changeNick}
-                    error={error}
-                    hint={hint}
-                    inputRef={nickInput}
-                    input={{
-                      autoCapitalize: "none",
-                      autoComplete: "nickname",
-                      autoCorrect: false,
-                      editable: !pending,
-                      maxLength: NICK_MAX,
-                      textContentType: "nickname",
-                      onBlur: settleNick,
-                      onSubmitEditing: save,
-                    }}
-                  />
-                  <Button label={t("settings.save")} onPress={save} busy={pending} />
-                </YStack>
-                {/* Story 3.5: the search visibility switch lives under the nick block
-                    and saves at once; the hint stays in the catalog. */}
-                <YStack gap="$2" paddingTop="$grid-gap">
+                {/* Story 3.5: the search visibility switch saves at once; the
+                    hint stays in the catalog. */}
+                <YStack gap="$2">
                   <Switch
                     label={t("settings.hideFromSearch")}
                     hint={t("settings.hideFromSearchHint")}

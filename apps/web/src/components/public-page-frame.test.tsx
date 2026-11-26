@@ -44,7 +44,7 @@ describe("PublicPageFrame: общий каркас /l и /i", () => {
     expect(beforeSkip).not.toContain("<button");
     expect(beforeSkip).not.toContain('tabindex="0"');
     expect(skipAt).toBeLessThan(at(html, "<main"));
-    expect(skipAt).toBeLessThan(at(html, "Написать автору"));
+    expect(skipAt).toBeLessThan(at(html, "Написать в техподдержку"));
   });
 
   it("puts the header after the skip link and before the one main landmark", () => {
@@ -66,7 +66,7 @@ describe("PublicPageFrame: общий каркас /l и /i", () => {
   it("keeps the shared footer and the Tamagui CSS of the server render", () => {
     const html = render();
 
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
     expect(html).toContain("<style");

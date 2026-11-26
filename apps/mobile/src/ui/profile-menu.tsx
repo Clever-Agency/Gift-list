@@ -1,6 +1,6 @@
 import { Pressable, Text, YStack } from "@gift-list/ui";
 import { useTranslations } from "use-intl";
-import { AuthorLink } from "@/ui/author-link";
+import { SupportLink } from "@/ui/support-link";
 
 export type ProfileMenuProps = {
   /**
@@ -17,6 +17,8 @@ export type ProfileMenuProps = {
 
 type ProfileRowProps = {
   label: string;
+  /** A second line under the label, e.g. «Как меня видят другие». */
+  hint?: string;
   onPress: () => void;
   destructive?: boolean;
   disabled?: boolean;
@@ -27,7 +29,14 @@ type ProfileRowProps = {
  * One row of «Профиль»: the whole row is the target (44 px), the text is `button`
  * and the destructive «Выйти» is coral (`DESIGN.md` → Colors → Destructive).
  */
-function ProfileRow({ label, onPress, destructive = false, disabled = false, testID }: ProfileRowProps) {
+function ProfileRow({
+  label,
+  hint,
+  onPress,
+  destructive = false,
+  disabled = false,
+  testID,
+}: ProfileRowProps) {
   return (
     <Pressable
       role="button"
@@ -41,12 +50,16 @@ function ProfileRow({ label, onPress, destructive = false, disabled = false, tes
       paddingVertical={12}
       borderBottomWidth={1}
       borderColor="$border"
-      backgroundColor="transparent hover:$background"
       cursor="pointer"
     >
       <Text kind="button" tone={destructive ? "destructive" : "primary"}>
         {label}
       </Text>
+      {hint ? (
+        <Text kind="caption" tone="muted">
+          {hint}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -54,15 +67,15 @@ function ProfileRow({ label, onPress, destructive = false, disabled = false, tes
 ProfileRow.displayName = "ProfileRow";
 
 /**
- * «Профиль» (Story 6.2, `DESIGN.md` → Навигация приложения): the sections of the
- * signed-in person in one place — «Мой профиль», «Настройки», «Написать автору»
- * and «Выйти». «Подборки» appear with Story 10.1 and are not listed yet; the full
- * user menu of the side bar is Story 6.3.
+ * «Профиль» (Story 6.2, CLE-129): the sections of the signed-in person in one
+ * place — «Мой профиль» with the «Как меня видят другие» line, «Настройки»,
+ * «Написать в техподдержку» and «Выйти». «Подборки» appear with Story 10.1 and
+ * are not listed yet; the full user menu of the side bar is Story 6.3.
  *
  * The rows are the same actions the old temporary footer of «Мой вишлист» carried
- * (`EXPERIENCE.md` → Доступность: «Написать автору» у вошедшего — в «Профиле»).
- * The menu reads no data and sends nothing: the screen owns the session and the
- * routes.
+ * (`EXPERIENCE.md` → Доступность: «Написать в техподдержку» у вошедшего — в
+ * «Профиле»). The menu reads no data and sends nothing: the screen owns the
+ * session and the routes.
  */
 export function ProfileMenu({
   onOpenProfile,
@@ -73,6 +86,7 @@ export function ProfileMenu({
 }: ProfileMenuProps) {
   const nav = useTranslations("app.nav");
   const settings = useTranslations("app.settings");
+  const profile = useTranslations("app.profile");
   const wishlist = useTranslations("app.myWishlist");
 
   return (
@@ -89,6 +103,7 @@ export function ProfileMenu({
     >
       <ProfileRow
         label={nav("myProfile")}
+        hint={profile("myProfileHint")}
         onPress={onOpenProfile}
         testID={`${testID}-my-profile`}
       />
@@ -97,17 +112,17 @@ export function ProfileMenu({
         onPress={onOpenSettings}
         testID={`${testID}-settings`}
       />
-      {/* «Написать автору» stays the shared `AuthorLink` (AD-24): one address and
-          one press behaviour across the footer and the profile. */}
+      {/* «Написать в техподдержку» stays the shared `SupportLink` (AD-24): one
+          address and one press behaviour across the footer and the profile. */}
       <YStack
-        testID={`${testID}-author`}
+        testID={`${testID}-support`}
         minHeight="$row-height"
         justifyContent="center"
         paddingHorizontal="$3"
         borderBottomWidth={1}
         borderColor="$border"
       >
-        <AuthorLink />
+        <SupportLink />
       </YStack>
       <ProfileRow
         label={wishlist("logout")}

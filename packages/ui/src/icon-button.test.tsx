@@ -3,7 +3,7 @@ import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { IconButton } from "./icon-button";
 import { Star } from "./icons";
-import { createMount, declarationsFor } from "./test-utils";
+import { createMount, declarationsFor, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -77,7 +77,6 @@ describe("IconButton: иконка без текста", () => {
     await render(
       <IconButton label="Поделиться" icon={<Star size={16} />} size="sm" shape="round" variant="primary" />,
     );
-
     const target = button(container);
     expect(declarationsFor(target, "min-width").map((one) => one.value)).toContain(
       "var(--t-size-touch-target)",
@@ -93,5 +92,26 @@ describe("IconButton: иконка без текста", () => {
     expect(declarationsFor(visual(container), "color").map((one) => one.value)).toContain(
       "var(--primary-foreground)",
     );
+  });
+
+  /**
+   * CLE-129: the icon box is the drawn control (`outline` fills `$muted` on hover);
+   * the change rides the `quick` preset, and a disabled button keeps the resting
+   * look with no transition.
+   */
+  it("иконка: hover и переход 160 мс у живой, у disabled — без перехода", async () => {
+    const { container, render } = mounted();
+    await render(<IconButton label="Поделиться" icon={<Star size={20} />} onPress={noop} />);
+
+    const box = visual(container);
+    expect(stateValues(box, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(box.style.transition).toContain("160ms");
+
+    await render(<IconButton label="Поделиться" icon={<Star size={20} />} onPress={noop} disabled />);
+    const off = visual(container);
+    // The box is out of the pointer's way: the resting look of a blocked control
+    // holds (the frame is dimmed to 40% and has no hover of its own).
+    expect(stateValues(off, "base", "pointer-events")).toContain("none");
+    expect(off.style.transition).toBe("");
   });
 });

@@ -389,9 +389,15 @@ const calendarDayFieldSchema = z
  * Story 5.5 (FR-25, A-14, AD-7/AD-12): one card of «Мои брони». This is the
  * whole closed set a holder learns about a reservation they made, and it does
  * not depend on the wish still being visible: after an unfriend or a block the
- * card stays and the other wishes of the owner never join it. No price, tags,
+ * card stays and the other wishes of the owner never join it. No tags,
  * description, link, owner name, `visibility`, `reservationTimeZone` or list
  * token, so the card cannot become a second read of the wishlist.
+ *
+ * `priceAmount` and `priceCurrency` are the **current** price of the wish, not a
+ * snapshot taken while reserving. Both are `null` while `canOpenGift` is `false`
+ * (an unfriend or a block must not turn the card into a second read, A-14) and
+ * when the wish has no price. `photoUrl` is `null` until gifts have photos
+ * (ARCH-A18); then it follows the same AD-7 rules as the detail.
  *
  * `status` is the literal `"RESERVED"` on purpose: a future `CLOSED` row in this
  * list has to widen the contract explicitly instead of slipping through.
@@ -411,6 +417,11 @@ export const reservationCardSchema = z.strictObject({
   bought: z.boolean(),
   holderVisibleToOwner: z.boolean(),
   holderVisibleToOthers: z.boolean(),
+  /** The current price of the wish; both `null` when `canOpenGift` is `false` or there is no price. */
+  priceAmount: z.number().nullable(),
+  priceCurrency: z.enum(CURRENCIES).nullable(),
+  /** `null` until gifts have photos (ARCH-A18); then the AD-7-gated URL of the holder. */
+  photoUrl: z.string().nullable(),
   canOpenGift: z.boolean(),
 });
 

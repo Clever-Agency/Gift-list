@@ -54,7 +54,19 @@ type Row = {
 };
 
 type List = { id: string; ownerId: string; publicToken: string; owner: { name: string; nick: string } };
-type UserRow = { id: string; name: string; nick: string; nickNormalized: string; timeZone: string };
+type UserRow = {
+  id: string;
+  name: string;
+  nick: string;
+  nickNormalized: string;
+  timeZone: string;
+  birthDay: number | null;
+  birthMonth: number | null;
+  gender: "MALE" | "FEMALE" | null;
+  country: string | null;
+  about: string | null;
+  profileVisibleToFriends: boolean;
+};
 type Where = Record<string, unknown>;
 type Args = { where?: Where; data?: Record<string, unknown> | Record<string, unknown>[] };
 
@@ -91,6 +103,13 @@ const {
     nick: "anna",
     nickNormalized: "anna",
     timeZone: "UTC",
+    // CLE-129/T8.2: `/u/:nick` reads the profile fields with the owner row.
+    birthDay: null,
+    birthMonth: null,
+    gender: null,
+    country: null,
+    about: null,
+    profileVisibleToFriends: true,
   };
 
   const state = {

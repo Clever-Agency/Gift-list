@@ -13,6 +13,7 @@ import { apiRequest } from "@/api/client";
 import { clearSessionToken } from "@/platform/session-token";
 import { forgetAuthEmail } from "@/session/auth-navigation";
 import { deviceTimeZone } from "@/session/device-time-zone";
+import { SessionStatusContext } from "@/session/session-status";
 
 /**
  * The session read has four outcomes. `anonymous` means the server answered
@@ -118,7 +119,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { state, setUser, signOut, retry };
   }, [state, retry]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      <SessionStatusContext.Provider value={state.status}>{children}</SessionStatusContext.Provider>
+    </AuthContext.Provider>
+  );
 }
 
 AuthProvider.displayName = "AuthProvider";

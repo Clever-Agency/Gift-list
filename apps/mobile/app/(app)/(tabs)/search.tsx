@@ -491,8 +491,9 @@ function SearchScreenContent({
 
   return (
     <Screen>
-      {/* A tab root: the bottom bar holds the home indicator (spec 6.2). */}
-      <SafeArea bottom={false}>
+      {/* The shell decides the bottom edge: the bar holds it, or the frame does
+          on an expanded screen without the bar (AD-30). */}
+      <SafeArea>
         <Stack.Screen options={{ title: search("pageTitle", { brand }) }} />
         <PageScroll testID="search-page" keyboardShouldPersistTaps="handled">
           <PageContainer>

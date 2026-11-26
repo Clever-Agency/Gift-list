@@ -13,9 +13,10 @@ import { Platform } from "react-native";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { isNotificationsPath, useActiveSection } from "@/navigation/active-section";
 import { pressLink } from "@/navigation/link-press";
 import { useNotificationBadge } from "@/navigation/notification-badge";
-import { TAB_ITEMS, sectionOf } from "@/navigation/tab-items";
+import { TAB_ITEMS } from "@/navigation/tab-items";
 
 type SidebarUserCardProps = {
   name: string;
@@ -115,6 +116,7 @@ export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
   const notificationCount = useNotificationBadge()?.count ?? 0;
   const pathname = usePathname();
   const auth = useAuth();
+  const active = useActiveSection();
 
   const count =
     typeof friendsCount === "number" && friendsCount > 0 ? friendsCount : undefined;
@@ -136,9 +138,9 @@ export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
   return (
     <Sidebar brand={getBrandName()} label={t("sections")} footer={footer} testID={testID}>
       {TAB_ITEMS.map(function renderSection(section) {
-        // Nested screens (`/settings`, `/gifts/:id`) live above the tabs and show
-        // no active item, as the side menu is hidden there anyway.
-        const current = sectionOf(pathname)?.key === section.key;
+        // AD-30: a nested screen marks the section it was opened from; a cold
+        // start on such a screen falls back to the route (`useActiveSection`).
+        const current = active === section.key;
 
         function openSection() {
           router.navigate(section.href);
@@ -160,7 +162,7 @@ export function SidebarNav({ friendsCount, testID }: SidebarNavProps) {
         );
       })}
       {auth.state.status === "ready" ? (
-        <NavItem label={notices("title")} icon={<Bell />} selected={pathname === "/notifications"}
+        <NavItem label={notices("title")} icon={<Bell />} selected={isNotificationsPath(pathname)}
           secondary={notificationCount ? notices("unread", { count: notificationCount }) : undefined}
           badge={notificationCount} variant="side" href="/notifications"
           onPress={Platform.OS === "web" ? pressLink("/notifications") : openNotifications}

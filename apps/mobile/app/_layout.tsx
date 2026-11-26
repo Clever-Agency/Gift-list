@@ -15,6 +15,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { IntlProvider } from "use-intl";
 import { getMessages, negotiateLocale } from "@gift-list/contracts";
 import { AppVersionGate } from "@/app-version/app-version-gate";
+import { ActiveSectionProvider } from "@/navigation/active-section";
+import { InviteBadgeProvider } from "@/navigation/invite-badge";
+import { NotificationBadgeProvider } from "@/navigation/notification-badge-provider";
 import { contactsAvailable } from "@/platform/contacts";
 import { secureStoreAvailable } from "@/platform/secure-store";
 import { AuthProvider } from "@/session/auth-context";
@@ -81,8 +84,18 @@ export default function RootLayout() {
               decided before any route runs, and the check never asks the user. */}
           <AppVersionGate>
             <AuthProvider>
-              <StatusBar style="dark" />
-              <RootStack />
+              {/* The badge counts feed every shell — `(app)`, `(link)` and the
+                  root «не найдено» — so they live once above the stack. */}
+              <NotificationBadgeProvider>
+                <InviteBadgeProvider>
+                  {/* Above the root stack, so the section a visitor came from is
+                      remembered across `(app)` and the wrapped link screen. */}
+                  <ActiveSectionProvider>
+                    <StatusBar style="dark" />
+                    <RootStack />
+                  </ActiveSectionProvider>
+                </InviteBadgeProvider>
+              </NotificationBadgeProvider>
             </AuthProvider>
           </AppVersionGate>
         </IntlProvider>

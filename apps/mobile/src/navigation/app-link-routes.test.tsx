@@ -7,10 +7,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { settle } from "@/test/dom";
 import { AuthProvider } from "@/session/auth-context";
-import InviteScreen from "../../app/invite/[token]";
+import InviteScreen from "../../app/(app)/invite/[token]";
 import LinkInviteScreen from "../../app/i/[token]";
 import LinkWishlistScreen from "../../app/l/[token]";
-import PublicWishlistScreen from "../../app/wishlist/[token]";
+import PublicWishlistScreen from "../../app/(link)/wishlist/[token]";
 
 /**
  * Story 6.2 (E): App Links `/l/:token` and `/i/:token` open the public wishlist
@@ -170,8 +170,8 @@ describe("маршруты-двойники /l и /i (Story 6.2 E)", () => {
   it("двойники — re-export, без redirect и без +not-found", () => {
     // A redirect or a not-found hop would rewrite the history entry of the link,
     // and a local component would be a copy of the screen, not the screen itself.
-    expect(routeCode("l")).toBe('export { default } from "../wishlist/[token]";');
-    expect(routeCode("i")).toBe('export { default } from "../invite/[token]";');
+    expect(routeCode("l")).toBe('export { default } from "../(link)/wishlist/[token]";');
+    expect(routeCode("i")).toBe('export { default } from "../(app)/invite/[token]";');
   });
 
   it("двойник читает token тем же useLocalSearchParams и открывает тот же экран", async () => {

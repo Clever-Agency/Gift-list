@@ -11,7 +11,7 @@ import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
-import PublicWishlistScreen from "../../app/wishlist/[token]";
+import PublicWishlistScreen from "../../app/(link)/wishlist/[token]";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -703,7 +703,7 @@ describe("W12.21: вишлист по ссылке на медиа-пропса�
 
   it("экран не импортирует pageGutter: отступ приходит из CSS", () => {
     const source = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../app/wishlist/[token].tsx"),
+      join(dirname(fileURLToPath(import.meta.url)), "../../app/(link)/wishlist/[token].tsx"),
       "utf8",
     );
 

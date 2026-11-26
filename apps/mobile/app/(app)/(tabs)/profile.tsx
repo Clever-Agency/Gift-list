@@ -102,7 +102,7 @@ export default function MyProfileScreen() {
   return (
     <Screen>
       {/* A tab root: the bottom bar holds the home indicator (spec 6.2). */}
-      <SafeArea bottom={false}>
+      <SafeArea>
         <Stack.Screen options={{ title: profile("pageTitle", { brand }) }} />
         <PageScroll testID="profile-page">
           <PageContainer>

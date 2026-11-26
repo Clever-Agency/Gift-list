@@ -1098,7 +1098,7 @@ function FriendsContent({
   return (
     <Screen>
       {/* A tab root: the bottom bar holds the home indicator (spec 6.2). */}
-      <SafeArea bottom={false}>
+      <SafeArea>
         <Stack.Screen options={{ title: friends("pageTitle", { brand }) }} />
         <PageScroll
           testID="friends-page"

@@ -145,8 +145,9 @@ export function ReservationsScreen({
 
   return (
     <Screen>
-      {/* A tab root (spec 6.2): the bottom bar holds the home indicator. */}
-      <SafeArea bottom={false}>
+      {/* The shell decides the bottom edge: the bar holds it, or the frame does
+          on an expanded screen without the bar (AD-30). */}
+      <SafeArea>
         <Stack.Screen options={{ title: t("pageTitle", { brand }) }} />
         <PageScroll testID="reservations-page">
           <PageContainer>

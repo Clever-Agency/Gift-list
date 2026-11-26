@@ -243,15 +243,23 @@ export default function MyWishlistScreen() {
     }, []),
   );
 
-  useEffect(function redirectAnonymous() {
-    if (auth.state.status === "anonymous") {
-      // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
-      router.replace({
-        pathname: "/login",
-        params: sessionExpired ? { next: "/", reason: "session_expired" } : { next: "/" },
-      });
-    }
-  }, [auth.state.status, sessionExpired]);
+  // AD-30: `(tabs)` is the anchor under a deep link. While a public screen, such
+  // as the wishlist of a link, sits above it, this screen is mounted but not
+  // focused, and a guest must not be sent from that screen to login.
+  useFocusEffect(
+    useCallback(
+      function redirectAnonymous() {
+        if (auth.state.status === "anonymous") {
+          // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
+          router.replace({
+            pathname: "/login",
+            params: sessionExpired ? { next: "/", reason: "session_expired" } : { next: "/" },
+          });
+        }
+      },
+      [auth.state.status, sessionExpired],
+    ),
+  );
 
   // The create and edit screens set their confirmation here instead of on themselves:
   // they unmount on the way back, so a toast of their own would never be seen (the same
@@ -299,7 +307,9 @@ export default function MyWishlistScreen() {
   }
 
   useEffect(function loadGifts() {
-    if (!ownerId) return;
+    // The tabs are the anchor under a deep link (AD-30): mounted, but not
+    // focused, and they must not read the owner's wishlist behind another screen.
+    if (!ownerId || !focused.current) return;
     let cancelled = false;
 
     async function requestGifts() {
@@ -1149,9 +1159,9 @@ export default function MyWishlistScreen() {
 
   return (
     <Screen>
-      {/* Inside a tab: the bottom bar holds the home indicator, so this screen
-          takes the other three edges only (spec 6.2 → SafeArea bottom={false}). */}
-      <SafeArea bottom={false}>
+      {/* The shell decides the bottom edge (AD-30): inside the bar it holds the
+          home indicator, on an expanded screen without the bar the frame does. */}
+      <SafeArea>
         <Stack.Screen options={{ title: wishlist("pageTitle", { brand }) }} />
         <PageScroll testID="wishlist-page">
           <PageContainer>

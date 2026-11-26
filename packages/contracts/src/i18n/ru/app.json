@@ -415,6 +415,8 @@
     "visibleToFriends": "Показывать мои данные друзьям",
     "visibleToFriendsHint": "Видят только друзья",
     "saveAbout": "Сохранить «О себе»",
+    "edit": "Изменить",
+    "editLabel": "Изменить профиль",
     "relationship": {
       "addFriend": "Добавить в друзья",
       "acceptInvite": "Принять приглашение",

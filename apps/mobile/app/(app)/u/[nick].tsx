@@ -1,12 +1,16 @@
-import type {
-  GiftCard,
-  ProfileInviteCooldown,
-  ProfileRelationship,
+import {
+  isValidBirthDate,
+  type GiftCard,
+  type ProfileDetails,
+  type ProfileInviteCooldown,
+  type ProfileRelationship,
 } from "@gift-list/contracts";
 import {
+  Avatar,
   Button,
   Column,
   Heading,
+  LinkText,
   LoadingCards,
   PageContainer,
   PageScroll,
@@ -17,9 +21,9 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { Link, router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { useTranslations } from "use-intl";
+import { useLocale, useTranslations } from "use-intl";
 import { fetchProfile, type ProfileOwner } from "@/api/profile";
 import { getBrandName } from "@/config/env";
 import { requestBlock } from "@/profile/block-action";
@@ -78,6 +82,11 @@ type ScreenState =
        * `false` body without the field means there is no edge.
        */
       subscribed: boolean;
+      /**
+       * CLE-129/T8.4 (AD-7, AD-29): the profile fields the server allowed this
+       * viewer. `null` is a hidden block — the screen renders nothing of it.
+       */
+      details: ProfileDetails | null;
     }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
@@ -116,6 +125,13 @@ type ToastState = { message: string; tone: "info" | "error"; nick: string };
  * Story 4.5 adds «Заблокировать» next to the other buttons. The confirm names
  * the person, and a success leaves the route once its toast has been read: after
  * a block the profile is `not_found` for both sides (AD-7).
+ *
+ * CLE-129/T8.4 adds the header of the opened profile: the initials circle, the
+ * name and the nick, then the optional `details` block (a birthday without a
+ * year, gender, country and «Обо мне») that the server sends only to the owner
+ * and to a friend of an owner who opened the switch. The screen draws only that
+ * block and never restores a hidden field; the own profile reads the same and
+ * carries one extra «Изменить» link to `/profile`.
  */
 export default function ProfileScreen() {
   const t = useTranslations("app");
@@ -224,6 +240,7 @@ export default function ProfileScreen() {
                 relationship: result.relationship,
                 inviteCooldown: result.inviteCooldown ?? null,
                 subscribed: result.subscribed ?? false,
+                details: result.details ?? null,
               },
         );
         return;
@@ -759,14 +776,37 @@ export default function ProfileScreen() {
                   </YStack>
                 ) : (
                   <>
-                    <YStack testID="profile-owner" gap="$1">
-                      <Heading level={1} kind="display-sm">
-                        {view.owner.displayName}
-                      </Heading>
-                      <Text kind="caption" tone="muted">
-                        {t("form.nickPreview", { nick: view.owner.nick })}
-                      </Text>
-                    </YStack>
+                    <XStack testID="profile-owner" gap="$3" alignItems="center" width="100%">
+                      <Avatar
+                        name={view.owner.displayName}
+                        size="lg"
+                        decorative
+                        testID="profile-avatar"
+                      />
+                      <YStack flex={1} minWidth={0} gap="$1">
+                        <Heading level={1} kind="display-sm">
+                          {view.owner.displayName}
+                        </Heading>
+                        <Text kind="caption" tone="muted">
+                          {t("form.nickPreview", { nick: view.owner.nick })}
+                        </Text>
+                      </YStack>
+                      {ownProfile ? (
+                        <Link href="/profile" asChild>
+                          <LinkText
+                            render="a"
+                            role="link"
+                            aria-label={profile("editLabel")}
+                            testID="profile-edit"
+                          >
+                            {profile("edit")}
+                          </LinkText>
+                        </Link>
+                      ) : null}
+                    </XStack>
+                    {view.details !== null ? (
+                      <ProfileDetailsBlock details={view.details} />
+                    ) : null}
                     <XStack flexWrap="wrap" alignItems="center" gap="$2">
                       <RelationshipActions
                         relationship={view.relationship}
@@ -903,3 +943,104 @@ function RetryView({ text, label, onPress }: { text: string; label: string; onPr
 }
 
 RetryView.displayName = "RetryView";
+
+/**
+ * «12 марта»: the day and the month of the interface locale, never a year — the
+ * profile stores no year (AD-23, AD-29). The year 2000 only stands in for `Intl`,
+ * which cannot format a day and a month without one; it is never displayed.
+ */
+function birthdayText(day: number, month: number, locale: string): string {
+  const format = new Intl.DateTimeFormat(locale, { day: "numeric", month: "long" });
+  return format.format(new Date(Date.UTC(2000, month - 1, day)));
+}
+
+/**
+ * The country name in the reader's language from the built-in `Intl.DisplayNames`
+ * (D-64.3); the stored value stays the ISO code and an unknown one falls back to
+ * itself, so nothing ever throws on a value the list did not cover.
+ */
+function countryText(code: string, locale: string): string {
+  try {
+    return new Intl.DisplayNames([locale], { type: "region" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** One line of the details block: the label and the value next to it. */
+function DetailRow({ label, value, testID }: { label: string; value: string; testID: string }) {
+  return (
+    <XStack testID={testID} gap="$2" alignItems="baseline" flexWrap="wrap">
+      <Text kind="caption" tone="muted">
+        {label}
+      </Text>
+      <Text>{value}</Text>
+    </XStack>
+  );
+}
+
+DetailRow.displayName = "DetailRow";
+
+/**
+ * CLE-129/T8.4 (AD-7 ред. 2026-11-26, AD-29): the profile fields the server sent
+ * in the optional `details` block. Only those five fields are drawn, and only the
+ * non-empty ones: a profile with nothing filled in shows no block at all, so a
+ * stranger cannot tell that the fields exist. «Обо мне» is plain text — React
+ * escapes it, and its line breaks stay as written.
+ */
+function ProfileDetailsBlock({ details }: { details: ProfileDetails }) {
+  const profile = useTranslations("app.profile");
+  const locale = useLocale();
+
+  const birthday =
+    details.birthDay !== null &&
+    details.birthMonth !== null &&
+    isValidBirthDate(details.birthDay, details.birthMonth)
+      ? birthdayText(details.birthDay, details.birthMonth, locale)
+      : null;
+  const gender =
+    details.gender === null
+      ? null
+      : profile(details.gender === "MALE" ? "genderMale" : "genderFemale");
+  const country =
+    details.country === null ? null : countryText(details.country, locale);
+  const about = details.about === null ? null : details.about.trim();
+
+  if (birthday === null && gender === null && country === null && about === null) {
+    return null;
+  }
+
+  return (
+    <YStack
+      testID="profile-details"
+      width="100%"
+      maxWidth="$max-content"
+      gap="$2"
+      padding="$3"
+      borderWidth={1}
+      borderColor="$border"
+      borderRadius="$md"
+      backgroundColor="$surface"
+    >
+      {birthday !== null ? (
+        <DetailRow label={profile("birthday")} value={birthday} testID="profile-birthday" />
+      ) : null}
+      {gender !== null ? (
+        <DetailRow label={profile("gender")} value={gender} testID="profile-gender" />
+      ) : null}
+      {country !== null ? (
+        <DetailRow label={profile("country")} value={country} testID="profile-country" />
+      ) : null}
+      {about !== null && about !== "" ? (
+        <YStack testID="profile-about" gap="$1">
+          <Text kind="caption" tone="muted">
+            {profile("about")}
+          </Text>
+          <Text>{about}</Text>
+        </YStack>
+      ) : null}
+    </YStack>
+  );
+}
+
+ProfileDetailsBlock.displayName = "ProfileDetailsBlock";

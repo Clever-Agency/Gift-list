@@ -126,6 +126,36 @@ describe("fetchProfile", () => {
     expect(result).not.toHaveProperty("subscribed");
   });
 
+  it("passes the optional profile details block through", async () => {
+    const details = {
+      birthDay: 12,
+      birthMonth: 3,
+      gender: "FEMALE",
+      country: "BY",
+      about: "Люблю горы",
+    };
+    api.apiRequest.mockResolvedValue(
+      answer({ access: "gifts", gifts: [], owner, relationship: "FRIENDS", details }),
+    );
+
+    await expect(fetchProfile("anya")).resolves.toEqual({
+      ok: true,
+      access: "gifts",
+      gifts: [],
+      owner,
+      relationship: "FRIENDS",
+      details,
+    });
+  });
+
+  it("leaves the details block absent when the server hid it", async () => {
+    api.apiRequest.mockResolvedValue(answer({ access: "gifts", gifts: [], owner }));
+
+    const result = await fetchProfile("anya");
+
+    expect(result).not.toHaveProperty("details");
+  });
+
   it("never filters wishes by visibility on its own", async () => {
     const gifts = [
       card(),

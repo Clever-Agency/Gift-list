@@ -2,6 +2,7 @@ import {
   isNotFound,
   listDataSchema,
   type GiftCard,
+  type ProfileDetails,
   type ProfileInviteCooldown,
   type ProfileRelationship,
 } from "@gift-list/contracts";
@@ -35,6 +36,13 @@ export type ProfileResult =
        * subscription the server did not report.
        */
       subscribed?: boolean;
+      /**
+       * CLE-129/T8.4 (AD-7, AD-29): the profile details the server allowed this
+       * viewer — a birthday pair without a year, gender, country and «Обо мне».
+       * Absence means the block was hidden, so the screen shows nothing of it and
+       * never rebuilds a hidden field from any other source.
+       */
+      details?: ProfileDetails;
     }
   | { ok: true; access: "not_found" }
   | { ok: false; invalid: true }
@@ -86,5 +94,8 @@ export async function fetchProfile(nick: string): Promise<ProfileResult> {
     // Story 4.6: the profile-only viewer-to-owner flag. Absence is "not
     // subscribed"; the wishlist stays exactly as the server filtered it.
     ...(parsed.data.subscribed === undefined ? {} : { subscribed: parsed.data.subscribed }),
+    // CLE-129/T8.4: the optional `details` block of `/u/:nick` (AD-7, AD-29). A
+    // key that is absent is a hidden block: the screen must not invent fields.
+    ...(parsed.data.details === undefined ? {} : { details: parsed.data.details }),
   };
 }

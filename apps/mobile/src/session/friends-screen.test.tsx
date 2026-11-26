@@ -153,6 +153,16 @@ const oleg = card("oleg", "Олег", { relationship: "NONE", followsYou: true, 
 const gleb = card("gleb", "Глеб", { relationship: "INCOMING_PENDING", followsYou: true });
 const ivan = card("ivan", "Иван", { relationship: "OUTGOING_PENDING" });
 
+/**
+ * D-52: the friends search field exists for three friends and more, so a test
+ * that types into it starts from at least three rows.
+ */
+function someFriends(count: number): CircleCard[] {
+  return [fedor, alena, oleg, gleb, ivan]
+    .slice(0, count)
+    .map((one) => ({ ...one, relationship: "FRIENDS" }));
+}
+
 function page(items: CircleCard[], options: { nextCursor?: string | null; total?: number } = {}) {
   return {
     ok: true,
@@ -346,9 +356,33 @@ describe("друзья: шапка", () => {
       container.querySelectorAll<HTMLElement>('button, [role="button"], [role="link"]'),
     ).filter((node) => (node.textContent ?? "").trim() === "Назад");
     expect(back).toHaveLength(0);
-    // The screen itself and the way into «Поиск» stay.
-    expect(text()).toContain("Друзья");
-    expect(controlByText("Найти знакомых")).not.toBeNull();
+    // The screen itself stays: the segment still names the place.
+    expect(testId("friends-tabs")?.textContent).toContain("Друзья");
+  });
+
+  /**
+   * D-51: the visible «Друзья» heading and the «Найти знакомых» row above the
+   * tabs are gone. The `h1` stays for the screen reader only, in a 1 px box, and
+   * keeps the focus target of «Куда уходит фокус».
+   */
+  it("нет видимой шапки: h1 только для диктора, строки «Найти знакомых» нет", async () => {
+    signedIn();
+    await mount();
+
+    const title = container.querySelector<HTMLElement>('[role="heading"][aria-level="1"]');
+    expect(title?.textContent).toBe("Друзья");
+    const frame = title?.parentElement as HTMLElement | null;
+    expect(frame).not.toBeNull();
+    expect(getComputedStyle(frame as HTMLElement).opacity).toBe("0");
+    expect(getComputedStyle(frame as HTMLElement).overflow).toBe("hidden");
+
+    // The way into «Найти знакомых» above the tabs is gone; only the empty list
+    // carries it now (the next test).
+    expect(testId("friends-find-contacts")).toBeNull();
+    const aboveTabs = Array.from(
+      container.querySelectorAll<HTMLElement>('button, [role="button"], [role="link"]'),
+    ).filter((node) => (node.textContent ?? "").trim() === "Найти знакомых");
+    expect(aboveTabs).toHaveLength(0);
   });
 });
 
@@ -388,23 +422,60 @@ describe("друзья: поиск среди друзей", () => {
   it("ждёт паузу 300 мс, показывает «N из M» и ищет по всему кругу", async () => {
     vi.useFakeTimers();
     signedIn();
+    circle.fetchFriends.mockResolvedValue(page(someFriends(3)));
     await mount();
     expect(circle.fetchFriends).toHaveBeenCalledWith("");
+    expect(testId("friends-search-input")).not.toBeNull();
 
     await type("ал");
     await settle(299);
     expect(circle.fetchFriends).toHaveBeenCalledTimes(1);
 
-    circle.fetchFriends.mockResolvedValue(page([alena]));
+    circle.fetchFriends.mockResolvedValue(page([alena], { total: 1 }));
     await settle(1);
 
     expect(circle.fetchFriends).toHaveBeenLastCalledWith("ал");
     expect(testId("friends-counter")?.textContent).toBe("1 из 1");
   });
 
+  /** D-52: the field is about the whole circle, not the current answer. */
+  it("при запросе с одним результатом поле не исчезает", async () => {
+    vi.useFakeTimers();
+    signedIn();
+    circle.fetchFriends.mockResolvedValue(page(someFriends(3)));
+    await mount();
+    expect(testId("friends-search-input")).not.toBeNull();
+
+    circle.fetchFriends.mockResolvedValue(page([fedor], { total: 1 }));
+    await type("фё");
+    await settle(300);
+
+    expect(testId("friends-search-input")).not.toBeNull();
+    expect(testId("friends-counter")?.textContent).toBe("1 из 1");
+  });
+
+  it.each([0, 1, 2])("при %i друзьях поля поиска нет", async (count) => {
+    signedIn();
+    circle.fetchFriends.mockResolvedValue(page(someFriends(count)));
+    await mount();
+
+    expect(testId("friends-search-input")).toBeNull();
+    expect(testId("friends-counter")).toBeNull();
+  });
+
+  it("при трёх друзьях поле поиска видно", async () => {
+    signedIn();
+    circle.fetchFriends.mockResolvedValue(page(someFriends(3)));
+    await mount();
+
+    expect(testId("friends-search-input")).not.toBeNull();
+    expect(testId("friends-counter")?.textContent).toBe("3 из 3");
+  });
+
   it("0 результатов — «Никого не нашли по «{запрос}»» и переход в поиск с тем же q", async () => {
     vi.useFakeTimers();
     signedIn();
+    circle.fetchFriends.mockResolvedValue(page(someFriends(3)));
     await mount();
 
     circle.fetchFriends.mockResolvedValue(page([]));
@@ -422,16 +493,14 @@ describe("друзья: поиск среди друзей", () => {
     });
   });
 
-  it("«Найти знакомых» вверху и в пустом списке ведут в /search", async () => {
+  it("в пустом списке друзей «Найти знакомых» ведёт в /search", async () => {
     signedIn();
     circle.fetchFriends.mockResolvedValue(page([]));
     await mount();
 
     expect(text()).toContain("Пока нет друзей");
+    expect(testId("friends-find-contacts")).toBeNull();
     await press(controlByText("Найти знакомых"));
-    expect(navigation.push).toHaveBeenLastCalledWith("/search");
-
-    await press(testId("friends-find-contacts") as HTMLElement);
     expect(navigation.push).toHaveBeenLastCalledWith("/search");
   });
 
@@ -755,9 +824,10 @@ describe("друзья: удаление из друзей (Story 4.4)", () => {
 
   it("confirm удаляет друга, убирает строку, обновляет total и говорит toast", async () => {
     signedIn();
-    circle.fetchFriends.mockResolvedValue(page([fedor, alena]));
+    // D-52: four friends, so the search field and its counter stay after the removal.
+    circle.fetchFriends.mockResolvedValue(page(someFriends(4)));
     await mount();
-    expect(testId("friends-counter")?.textContent).toBe("2 из 2");
+    expect(testId("friends-counter")?.textContent).toBe("4 из 4");
 
     await askRemoveFriend("Фёдор");
     await press(controlByText("Удалить"));
@@ -766,8 +836,8 @@ describe("друзья: удаление из друзей (Story 4.4)", () => {
     expect(circle.removeFriend).toHaveBeenCalledWith("fedor");
     expect(testId("friends-row-fedor")).toBeNull();
     expect(testId("friends-row-alena")).not.toBeNull();
-    expect(testId("friends-counter")?.textContent).toBe("1 из 1");
-    expect(testId("friends-all-shown")?.textContent).toBe("Показаны все (1)");
+    expect(testId("friends-counter")?.textContent).toBe("3 из 3");
+    expect(testId("friends-all-shown")?.textContent).toBe("Показаны все (3)");
     expect(text()).toContain("Фёдор удалён из друзей");
   });
 
@@ -894,9 +964,10 @@ describe("друзья: блокировка (Story 4.5)", () => {
 
   it("блок убирает строку, обновляет total и говорит toast", async () => {
     signedIn();
-    circle.fetchFriends.mockResolvedValue(page([fedor, alena]));
+    // D-52: four friends, so the search field and its counter stay after the block.
+    circle.fetchFriends.mockResolvedValue(page(someFriends(4)));
     await mount();
-    expect(testId("friends-counter")?.textContent).toBe("2 из 2");
+    expect(testId("friends-counter")?.textContent).toBe("4 из 4");
 
     await askBlock("Фёдор");
     await press(confirmButton("Заблокировать"));
@@ -905,7 +976,7 @@ describe("друзья: блокировка (Story 4.5)", () => {
     expect(block.blockUser).toHaveBeenCalledWith("fedor");
     expect(testId("friends-row-fedor")).toBeNull();
     expect(testId("friends-row-alena")).not.toBeNull();
-    expect(testId("friends-counter")?.textContent).toBe("1 из 1");
+    expect(testId("friends-counter")?.textContent).toBe("3 из 3");
     expect(text()).toContain("Фёдор заблокирован");
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   });

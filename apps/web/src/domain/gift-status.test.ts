@@ -658,10 +658,11 @@ describe("the Story 5.6 event payload", () => {
       RESERVATION_GIVER_DEADLINE_PASSED: true,
       RESERVATION_OWNER_WINDOW_STARTED: true,
       RESERVATION_RELEASED_BY_EXPIRY: true,
+      RESERVATION_RELEASED_BY_ACCOUNT_DELETION: true,
       WISH_EXPIRED_AND_ARCHIVED: true,
     };
 
-    expect(Object.keys(kinds)).toHaveLength(9);
+    expect(Object.keys(kinds)).toHaveLength(10);
   });
 
   it("lets a timer transition carry no actor and a phase-only change", () => {

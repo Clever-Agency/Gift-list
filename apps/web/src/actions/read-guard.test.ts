@@ -19,6 +19,12 @@ import { describe, expect, it } from "vitest";
  * not pass the gate. The exemption is exactly one `.gift.findMany` whose
  * `select` is the closed reservation card — no link, token or owner name, and a
  * price that the mapper drops again while the card is closed.
+ *
+ * Story 6.3 adds the account-deletion scans in `delete-account.ts`: the command
+ * walks the reservations the account holds and the reservations on its wishes.
+ * Both read `id` only, so no card can leave the gate; the file is exempt only
+ * while every `.gift.findMany` there keeps that narrow `select` and no other
+ * `Gift` read kind appears.
  */
 const WISHLIST_READ = path.resolve(fileURLToPath(new URL("./wishlist-read.ts", import.meta.url)));
 const STATUS_SERVICE = path.resolve(
@@ -26,6 +32,9 @@ const STATUS_SERVICE = path.resolve(
 );
 const MY_RESERVATIONS_READ = path.resolve(
   fileURLToPath(new URL("./my-reservations.ts", import.meta.url)),
+);
+const DELETE_ACCOUNT = path.resolve(
+  fileURLToPath(new URL("./delete-account.ts", import.meta.url)),
 );
 const SRC = path.resolve(path.dirname(WISHLIST_READ), "..");
 
@@ -123,6 +132,7 @@ async function findViolations(): Promise<Violation[]> {
     const text = await readFile(file, "utf8");
     if (resolved === STATUS_SERVICE && isNarrowStatusScans(text)) continue;
     if (resolved === MY_RESERVATIONS_READ && isReservationCardScan(text)) continue;
+    if (resolved === DELETE_ACCOUNT && isAccountDeletionScans(text)) continue;
     for (const call of GIFT_READS) {
       if (call.test(text)) violations.push({ file: relative, call: String(call) });
     }
@@ -185,6 +195,18 @@ function findManySelectShape(text: string): string | null {
   return objectAt(text, declaration.index + declaration[0].length - 1);
 }
 
+/**
+ * Story 6.3 (AD-20): the account-deletion command reads `Gift` outside the gate
+ * to release the account's reservations and to name the holders of its wishes.
+ * The exemption holds only while every `.gift.findMany` selects `id` alone and
+ * the file has no other `Gift` read kind.
+ */
+function isAccountDeletionScans(text: string): boolean {
+  if (/\.gift\.(?:groupBy|count)\s*\(/.test(text) || rawGiftQueries(text).length > 0) return false;
+  const selects = findManySelects(text);
+  return selects.length > 0 && selects.every((select) => select === "{id:true}");
+}
+
 /** The object literal starting at `open`, whitespace and trailing commas removed. */
 function objectAt(text: string, open: number): string {
   let depth = 0;
@@ -231,6 +253,15 @@ describe("gift read guard (AD-7)", () => {
     const wider = text.replace("id: true,", "id: true, publicToken: true,");
     expect(wider).not.toBe(text);
     expect(isReservationCardScan(wider)).toBe(false);
+  });
+
+  it("lets account deletion scan ids only", async () => {
+    const text = await readFile(DELETE_ACCOUNT, "utf8");
+    expect(isAccountDeletionScans(text)).toBe(true);
+
+    const wider = text.replace("select: { id: true }", "select: { id: true, title: true }");
+    expect(wider).not.toBe(text);
+    expect(isAccountDeletionScans(wider)).toBe(false);
   });
 
   it("reads Gift rows only inside readWishlist", async () => {

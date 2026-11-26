@@ -47,6 +47,9 @@ type ReservationTimerDb = Pick<PrismaClient, "gift" | "$transaction">;
  */
 const EVENT_NAMES = {
   RESERVATION_RELEASED_BY_HOLDER: "gift.status",
+  // Story 6.3: the account-deletion release gets its own name — the holder did
+  // not press anything, and a log query must be able to tell the two apart.
+  RESERVATION_RELEASED_BY_ACCOUNT_DELETION: "gift.account-deletion.released",
   WISH_CLOSED: "gift.status",
   WISH_REOPENED: "gift.status",
   GIFT_EDITED: "gift.edited",
@@ -276,6 +279,45 @@ export function giftStatusTransaction(
         kind: "RESERVATION_RELEASED_BY_HOLDER",
       });
       return "success";
+    },
+    /**
+     * Story 6.3 (AD-20): the account-deletion release. A live reservation is the
+     * same CAS write as the holder's release and emits its own kind; a closed
+     * wish only loses the account link, which keeps `Gift.reservedById`
+     * (`Restrict`) from blocking the deletion — its status and closure columns
+     * stay, and there is no transition to report.
+     */
+    async releaseReservationByAccountDeletion(giftId, actorId, at) {
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      if (gift === null || gift.reservedById !== actorId) return "lost";
+      if (gift.status === "RESERVED") {
+        const { count } = await tx.gift.updateMany({
+          where: {
+            id: giftId,
+            status: "RESERVED",
+            reservedAt: gift.reservedAt,
+            reservedById: actorId,
+          },
+          data: RESERVATION_RELEASE_DATA,
+        });
+        if (count !== 1) return "lost";
+        // AD-15/D-49: the owner is never told about the release.
+        emit({
+          giftId,
+          actorId,
+          from: "RESERVED",
+          to: "OPEN",
+          at,
+          kind: "RESERVATION_RELEASED_BY_ACCOUNT_DELETION",
+        });
+        return "success";
+      }
+      if (gift.status !== "CLOSED") return "lost";
+      const { count } = await tx.gift.updateMany({
+        where: { id: giftId, status: "CLOSED", reservedById: actorId },
+        data: { reservedById: null },
+      });
+      return count === 1 ? "success" : "lost";
     },
     async closeGift(giftId, actorId, from, at) {
       const { count } = await tx.gift.updateMany({

@@ -220,6 +220,71 @@ describe("the Story 5.2 releases", () => {
   });
 });
 
+/**
+ * Story 6.3 (AD-20, D-49): the account-deletion release. A live reservation is
+ * cleared like the holder's own release and reports its own kind; a closed wish
+ * only loses the account link, with no transition and no notice to anybody.
+ */
+describe("Story 6.3: the account-deletion release", () => {
+  const at = new Date("2026-11-27T10:00:00.000Z");
+
+  it("releases a live reservation with the holder CAS and its own audit line", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    const outcome = await giftStatusTransaction(transactionClient())
+      .releaseReservationByAccountDeletion("g1", "u2", at);
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "g1", status: "RESERVED", reservedAt, reservedById: "u2" },
+      data: RESERVATION_RELEASE_DATA,
+    });
+    expectOneAuditLine(info.mock.calls, {
+      event: "gift.account-deletion.released",
+      giftId: "g1",
+      actorId: "u2",
+      from: "RESERVED",
+      to: "OPEN",
+      at: at.toISOString(),
+    });
+    // D-49: the owner of the wish learns nothing.
+    expect(createMany).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("drops only the account link of a closed wish and logs nothing", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    findUnique.mockResolvedValue({
+      id: "g1",
+      status: "CLOSED",
+      reservedById: "u2",
+      reservedAt,
+      title: "Плед",
+      titleSnapshotOnReserve: "Плед",
+      list: { ownerId: "u1" },
+    });
+
+    const outcome = await giftStatusTransaction(transactionClient())
+      .releaseReservationByAccountDeletion("g1", "u2", at);
+
+    expect(outcome).toBe("success");
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "g1", status: "CLOSED", reservedById: "u2" },
+      data: { reservedById: null },
+    });
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("answers lost for a reservation of somebody else", async () => {
+    const outcome = await giftStatusTransaction(transactionClient())
+      .releaseReservationByAccountDeletion("g1", "u3", at);
+
+    expect(outcome).toBe("lost");
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("the Story 5.3 close and undo", () => {
   const at = new Date("2026-11-19T12:00:00.000Z");
   const WINDOW_MS = 10 * 60 * 1000;

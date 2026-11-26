@@ -251,6 +251,11 @@ export function undoUntil(row: {
  *
  * Story 6.6 adds one transition: an expired reservation is cleared and the wish
  * archived in one write (`WISH_EXPIRED_AND_ARCHIVED`, `RESERVED → OPEN`).
+ *
+ * Story 6.3 adds the account-deletion release: the reservations of the deleted
+ * account are cleared through the service, and the line says so instead of
+ * pretending the holder pressed «Снять бронь». The owner is never a recipient
+ * (AD-15/D-49) — the wish just returns to `OPEN`.
  */
 export type GiftStatusEventKind =
   | "RESERVATION_RELEASED_BY_HOLDER"
@@ -261,6 +266,7 @@ export type GiftStatusEventKind =
   | "RESERVATION_GIVER_DEADLINE_PASSED"
   | "RESERVATION_OWNER_WINDOW_STARTED"
   | "RESERVATION_RELEASED_BY_EXPIRY"
+  | "RESERVATION_RELEASED_BY_ACCOUNT_DELETION"
   | "WISH_EXPIRED_AND_ARCHIVED";
 
 /**
@@ -405,6 +411,22 @@ export interface GiftStatusTransaction {
    * block the holder keeps control of the reservation (A-14, FR-25).
    */
   releaseReservationByHolder(
+    giftId: string,
+    actorId: string,
+    at: Date,
+  ): Promise<"success" | "lost">;
+  /**
+   * Story 6.3 (FR-51, AD-20, D-49): the account-deletion release. A `RESERVED`
+   * row of the actor is cleared exactly like the holder's own release (same CAS
+   * on the reservation instance) and reports `RESERVATION_RELEASED_BY_ACCOUNT_DELETION`;
+   * the owner is not notified — the wish reads `OPEN` again (AD-15). A `CLOSED`
+   * row keeps its status and closure columns and loses only `reservedById`: the
+   * closure keeps the past holder for audit, but the account is about to
+   * disappear and the `Restrict` on `Gift.reservedById` would block the
+   * deletion. Nothing is emitted for that housekeeping write, because no status
+   * changes (NFR-6). A row of somebody else or one that moved answers `lost`.
+   */
+  releaseReservationByAccountDeletion(
     giftId: string,
     actorId: string,
     at: Date,

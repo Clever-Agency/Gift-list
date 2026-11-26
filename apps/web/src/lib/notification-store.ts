@@ -8,6 +8,7 @@ import {
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import type { Notification, NotificationKind, Prisma } from "@/db/generated/client";
+import { calendarDay } from "@/domain/calendar-day";
 import type { GiftEditEventField } from "@/domain/gift-edit";
 import { UNDO_WINDOW_MS } from "@/domain/gift-status";
 import { VisibilityPolicy } from "@/domain/visibility";
@@ -21,6 +22,7 @@ type GiftEventKind = Exclude<NotificationKind,
 const giftSelect = {
   id: true,
   title: true,
+  expiresOn: true,
   archivedAt: true,
   visibility: true,
   status: true,
@@ -85,6 +87,13 @@ type GiftNotification = {
   eventAt?: Date;
   /** CLE-124/S9b-2: `true` for the reminder before the deadline. */
   reminder?: boolean;
+  /**
+   * Story 6.6: `WISH_EXPIRY` tells the holder whether the reservation was
+   * released (`true`) or kept because the gift is marked as bought (`false`).
+   * Absent means the flag never reaches the payload; rows written before the
+   * change are read as released.
+   */
+  released?: boolean;
 };
 
 /**
@@ -98,10 +107,31 @@ function giftEventKey(kind: GiftEventKind, giftId: string, at: Date, reminder = 
   return reminder ? `${kind}:reminder:${giftId}:${at.toISOString()}` : `${kind}:${giftId}:${at.toISOString()}`;
 }
 
+type WishExpiryKind = "WISH_EXPIRY_SOON" | "WISH_EXPIRY";
+
+/**
+ * Story 6.6: the wish-expiry notices run every cron hour, so their key cannot
+ * carry the run moment. The reservation instance (`reservedAt`) and the expiry
+ * day tell one notice from another: a repeated run adds nothing
+ * (`skipDuplicates`), while a re-reserved wish or a moved `expiresOn` gets its
+ * own notice. The key deliberately omits the `released` variant: one
+ * reservation and one expiry day produce one notice, whichever variant the
+ * first run wrote.
+ */
+export function wishExpiryEventKey(
+  kind: WishExpiryKind,
+  giftId: string,
+  reservedAt: Date,
+  expiresOn: Date | null,
+): string {
+  const day = expiresOn === null ? null : calendarDay(expiresOn);
+  return `${kind}:${giftId}:${reservedAt.toISOString()}:${day ?? "none"}`;
+}
+
 export async function enqueueGiftNotification(
   tx: Tx,
   gift: GiftSnapshot | null,
-  { kind, role, email, at, fields, eventAt, reminder }: GiftNotification,
+  { kind, role, email, at, fields, eventAt, reminder, released }: GiftNotification,
 ) {
   if (!gift?.reservedAt || !gift.reservedById) return;
   const recipientId = role === "owner" ? gift.list.ownerId : gift.reservedById;
@@ -117,10 +147,16 @@ export async function enqueueGiftNotification(
       ? { dueAt: gift.reservationDueAt.toISOString(), timeZone: canonicalTimeZone(gift.reservationTimeZone) }
       : {}),
     ...(kind === "RESERVATION_DUE" && reminder === true ? { reminder: true } : {}),
+    // Story 6.6: only `WISH_EXPIRY` has the two variants; the flag is omitted
+    // when the caller does not name one, so the payload stays compatible.
+    ...(kind === "WISH_EXPIRY" && released !== undefined ? { released } : {}),
     ...(fields ? { fields: [...fields] } : {}),
   };
+  const eventKey = kind === "WISH_EXPIRY_SOON" || kind === "WISH_EXPIRY"
+    ? wishExpiryEventKey(kind, gift.id, gift.reservedAt, gift.expiresOn)
+    : giftEventKey(kind, gift.id, eventAt ?? at, reminder === true);
   await enqueueNotification(tx, {
-    eventKey: giftEventKey(kind, gift.id, eventAt ?? at, reminder === true),
+    eventKey,
     kind,
     giftId: gift.id,
     actorId: role === "owner" ? gift.reservedById : gift.list.ownerId,

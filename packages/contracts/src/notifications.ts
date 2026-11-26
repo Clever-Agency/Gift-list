@@ -43,7 +43,13 @@ export const notificationPayloadSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("DATE_OWN") }),
   z.object({ kind: z.literal("SUGGESTION"), senderName: z.string().optional() }),
   z.object({ kind: z.literal("WISH_EXPIRY_SOON"), ...wish }),
-  z.object({ kind: z.literal("WISH_EXPIRY"), ...wish }),
+  /**
+   * Story 6.6 (D-26, D-49): the wish-expiry notice reaches the holder only.
+   * `false` — the gift was marked `bought`, so the reservation stays and the
+   * notice suggests «Подарил»; `true` or absent — the reservation was released.
+   * Rows written before the change carry no flag and are shown as released.
+   */
+  z.object({ kind: z.literal("WISH_EXPIRY"), ...wish, released: z.boolean().optional() }),
 ]);
 
 const genericEvent = z.object({ kind: z.literal("UNKNOWN") });

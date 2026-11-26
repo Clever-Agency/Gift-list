@@ -39,6 +39,7 @@ import {
   notificationGiftSnapshot,
   notificationIsActionable,
   projectNotification,
+  wishExpiryEventKey,
 } from "./notification-store";
 import { notificationEmailLink, processNotificationEmails } from "./notification-email";
 
@@ -48,6 +49,7 @@ const defaults = { datesInApp: true, datesEmail: true, wishExpiryInApp: true, wi
 const gift = {
   id: "gift",
   title: "Текущее название",
+  expiresOn: new Date("2026-11-28T00:00:00.000Z"),
   archivedAt: null,
   reservedAt,
   reservedById: "holder",
@@ -476,6 +478,72 @@ describe("CLE-124/S9b-2: the holder's actions from a reservation notice", functi
     await expect(actOnNotification("holder", "notification", { action: "extend", dueOn: "2026-11-25" }))
       .resolves.toMatchObject({ ok: false, code: "CONFLICT", reason: "RESERVATION_DUE_PASSED" });
     expect(db.gift.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Story 6.6 (FR-42, D-26, D-49): the wish-expiry notices are deduplicated by
+ * the reservation instance and the expiry day, never by the cron run moment.
+ */
+describe("Story 6.6: wish-expiry notification keys", function wishExpiryKeys() {
+  const expiresOn = new Date("2026-11-28T00:00:00.000Z");
+
+  it("keeps one key for a repeated run over the same reservation and expiry day", async function repeatedRun() {
+    const snapshot = await notificationGiftSnapshot(db as never, gift.id);
+
+    await enqueueGiftNotification(db as never, snapshot, {
+      kind: "WISH_EXPIRY_SOON", role: "holder", email: true, at: now,
+    });
+    await enqueueGiftNotification(db as never, snapshot, {
+      kind: "WISH_EXPIRY_SOON", role: "holder", email: true, at: new Date(now.getTime() + 60 * 60 * 1000),
+    });
+
+    const calls = db.notification.createMany.mock.calls.map(
+      ([args]) => args as { data: { eventKey: string }; skipDuplicates: boolean },
+    );
+    expect(calls.map(({ data }) => data.eventKey)).toEqual([
+      `WISH_EXPIRY_SOON:gift:${reservedAt.toISOString()}:2026-11-28`,
+      `WISH_EXPIRY_SOON:gift:${reservedAt.toISOString()}:2026-11-28`,
+    ]);
+    expect(calls.every(({ skipDuplicates }) => skipDuplicates)).toBe(true);
+  });
+
+  it("starts a new key for another reservation, expiry day or notice kind", function keyParts() {
+    expect(wishExpiryEventKey("WISH_EXPIRY", "gift", reservedAt, expiresOn))
+      .toBe(`WISH_EXPIRY:gift:${reservedAt.toISOString()}:2026-11-28`);
+    expect(wishExpiryEventKey("WISH_EXPIRY_SOON", "gift", reservedAt, expiresOn))
+      .toBe(`WISH_EXPIRY_SOON:gift:${reservedAt.toISOString()}:2026-11-28`);
+    expect(wishExpiryEventKey("WISH_EXPIRY", "gift", new Date(now.getTime()), expiresOn))
+      .not.toBe(wishExpiryEventKey("WISH_EXPIRY", "gift", reservedAt, expiresOn));
+    expect(wishExpiryEventKey("WISH_EXPIRY", "gift", reservedAt, new Date("2026-11-29T00:00:00.000Z")))
+      .not.toBe(wishExpiryEventKey("WISH_EXPIRY", "gift", reservedAt, expiresOn));
+    expect(wishExpiryEventKey("WISH_EXPIRY", "gift", reservedAt, null))
+      .toBe(`WISH_EXPIRY:gift:${reservedAt.toISOString()}:none`);
+  });
+
+  it("puts the released variant on WISH_EXPIRY only and omits an unnamed one", async function releasedVariant() {
+    const snapshot = await notificationGiftSnapshot(db as never, gift.id);
+
+    await enqueueGiftNotification(db as never, snapshot, {
+      kind: "WISH_EXPIRY", role: "holder", email: true, at: now, released: false,
+    });
+    await enqueueGiftNotification(db as never, snapshot, {
+      kind: "WISH_EXPIRY", role: "holder", email: true, at: now, released: true,
+    });
+    await enqueueGiftNotification(db as never, snapshot, {
+      kind: "WISH_EXPIRY", role: "holder", email: true, at: now,
+    });
+    await enqueueGiftNotification(db as never, snapshot, {
+      kind: "WISH_EXPIRY_SOON", role: "holder", email: true, at: now, released: true,
+    });
+
+    const payloads = db.notification.createMany.mock.calls.map(
+      ([args]) => (args as { data: { payload: Record<string, unknown> } }).data.payload,
+    );
+    expect(payloads[0]).toMatchObject({ released: false, titleSnapshot: gift.titleSnapshotOnReserve });
+    expect(payloads[1]).toMatchObject({ released: true, titleSnapshot: gift.titleSnapshotOnReserve });
+    expect(payloads[2]).not.toHaveProperty("released");
+    expect(payloads[3]).not.toHaveProperty("released");
   });
 });
 

@@ -116,3 +116,43 @@ describe("CLE-124/S9b-2: notification actions", () => {
     expect(notificationActionSchema.safeParse({ action: "given", dueOn: "2026-11-30" }).success).toBe(true);
   });
 });
+
+describe("Story 6.6: the wish-expiry payload", () => {
+  it("carries the released variant of WISH_EXPIRY", () => {
+    expect(notificationPayloadSchema.parse({
+      kind: "WISH_EXPIRY",
+      giftId: "g1",
+      titleSnapshot: "Плед",
+      released: true,
+    })).toMatchObject({ released: true });
+    expect(notificationPayloadSchema.parse({
+      kind: "WISH_EXPIRY",
+      giftId: "g1",
+      titleSnapshot: "Плед",
+      released: false,
+    })).toMatchObject({ released: false });
+  });
+
+  it("accepts a legacy WISH_EXPIRY row without the flag", () => {
+    const payload = notificationPayloadSchema.parse({
+      kind: "WISH_EXPIRY",
+      giftId: "g1",
+      titleSnapshot: "Плед",
+    });
+    expect(payload).not.toHaveProperty("released");
+  });
+
+  it("rejects a non-boolean flag and keeps the soon notice unchanged", () => {
+    expect(notificationPayloadSchema.safeParse({
+      kind: "WISH_EXPIRY",
+      giftId: "g1",
+      titleSnapshot: "Плед",
+      released: "yes",
+    }).success).toBe(false);
+    expect(notificationPayloadSchema.parse({
+      kind: "WISH_EXPIRY_SOON",
+      giftId: "g1",
+      titleSnapshot: "Плед",
+    })).toEqual({ kind: "WISH_EXPIRY_SOON", giftId: "g1", titleSnapshot: "Плед" });
+  });
+});

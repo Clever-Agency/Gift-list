@@ -1,18 +1,18 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { YStack } from "@gift-list/ui";
-import { AuthorLink } from "./author-link";
+import { SupportLink } from "./support-link";
 
 /**
- * «Написать автору» of the app footer. The address is the public `AUTHOR_MAILTO`
- * constant from `packages/contracts` (AD-24, D-35), so the link is always active:
- * there is no configured-empty state to show. A missing mail client only rejects
- * `openURL`, which the component swallows.
+ * «Написать в техподдержку» of the app footer and `/profile`. The address is the
+ * public `AUTHOR_MAILTO` constant from `packages/contracts` (AD-24, D-53), so the
+ * link is always active: there is no configured-empty state to show. A missing
+ * mail client only rejects `openURL`, which the component swallows.
  */
 const meta = {
-  title: "App/AuthorLink",
-  component: AuthorLink,
+  title: "App/SupportLink",
+  component: SupportLink,
   tags: ["autodocs"],
-} satisfies Meta<typeof AuthorLink>;
+} satisfies Meta<typeof SupportLink>;
 
 export default meta;
 
@@ -23,7 +23,7 @@ export const Default: Story = {
   render: function DefaultStory() {
     return (
       <YStack width={328} alignItems="center">
-        <AuthorLink />
+        <SupportLink />
       </YStack>
     );
   },
@@ -36,7 +36,7 @@ export const InFooterRow: Story = {
   render: function InFooterRowStory() {
     return (
       <YStack width={328} gap="$2" alignItems="center">
-        <AuthorLink />
+        <SupportLink />
       </YStack>
     );
   },

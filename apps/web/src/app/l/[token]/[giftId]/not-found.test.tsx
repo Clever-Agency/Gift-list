@@ -44,7 +44,7 @@ describe("app/l/[token]/[giftId]/not-found.tsx", () => {
     expect(html.match(/aria-level="1"/g) ?? []).toHaveLength(1);
     expect(html).toContain("Желание не найдено.");
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain('role="contentinfo"');
     // No wish and no list leaks into the 404.
     expect(html).not.toContain("Список не найден.");

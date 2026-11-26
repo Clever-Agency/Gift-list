@@ -548,13 +548,13 @@ describe("мой вишлист: заголовок и действия в од�
 });
 
 describe("мой вишлист: список", () => {
-  it("шапка, заголовок и «Написать автору» на месте, без smoke", async () => {
+  it("шапка и заголовок на месте, без smoke; ссылки техподдержки в футере нет (D-53)", async () => {
     respond(giftsAnswer([]));
     await mount();
 
     expect(text()).toContain(PRODUCT_NAME);
     expect(text()).toContain("Мой вишлист");
-    expect(text()).toContain("Написать автору");
+    expect(text()).not.toContain("Написать в техподдержку");
     expectNoSmoke();
   });
 
@@ -830,8 +830,9 @@ describe("мой вишлист: список", () => {
   /**
    * Story 3.5 creates «Поиск» before Story 6.2 gives it a place in the navigation
    * (вкладка «Поиск»), so the wishlist footer carries a temporary entry point.
+   * D-53: the support link left the footers of signed-in screens for `/profile`.
    */
-  it("в подвале «Моего вишлиста» нет временных разделов и «Выйти», «Написать автору» остаётся", async () => {
+  it("в подвале «Моего вишлиста» нет временных разделов и «Выйти», ссылки техподдержки тоже нет", async () => {
     respond(giftsAnswer([]));
     await mount();
 
@@ -842,7 +843,7 @@ describe("мой вишлист: список", () => {
       expect(footer?.querySelector(`[data-testid="${gone}"]`)).toBeNull();
     }
     expect(footer?.textContent).not.toContain("Выйти");
-    expect(footer?.textContent).toContain("Написать автору");
+    expect(footer?.textContent).not.toContain("Написать в техподдержку");
 
     // Nothing of the footer navigates: the tabs and «Профиль» own the routes now.
     expect(navigation.push).not.toHaveBeenCalled();

@@ -81,7 +81,7 @@ describe("PublicWishView: страница желания по ссылке", ()
     // The shared public shell, as on /l: one main landmark and the full footer.
     expect(html.match(/<main/g)).toHaveLength(1);
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
   });
 
   it("ведёт «Куплю сам» в приложение с возвратом к списку, только для единичного открытого", () => {

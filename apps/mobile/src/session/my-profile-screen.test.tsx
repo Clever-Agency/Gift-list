@@ -112,7 +112,7 @@ function button(label: string): HTMLElement | undefined {
   return controls(container).find((node) => (node.textContent ?? "").trim() === label);
 }
 
-/** A link by its visible text: «Написать автору» is an `AuthorLink`, not a button. */
+/** A link by its visible text: «Написать в техподдержку» is a `SupportLink`, not a button. */
 function link(label: string): HTMLElement | undefined {
   return Array.from(container.querySelectorAll<HTMLElement>('[role="link"]')).find(
     (node) => (node.textContent ?? "").trim() === label,
@@ -205,7 +205,7 @@ describe("профиль: гейт сессии", () => {
 });
 
 describe("профиль: меню", () => {
-  it("заголовок «Профиль» и четыре строки: профиль, настройки, автор, выход", async () => {
+  it("заголовок «Профиль» и четыре строки: профиль, настройки, техподдержка, выход", async () => {
     respond({ ok: true, data: user });
     await mount();
 
@@ -213,7 +213,7 @@ describe("профиль: меню", () => {
     expect(heading?.textContent).toBe("Профиль");
     expect(button("Мой профиль")).toBeDefined();
     expect(button("Настройки")).toBeDefined();
-    expect(link("Написать автору")).toBeDefined();
+    expect(link("Написать в техподдержку")).toBeDefined();
     expect(button("Выйти")).toBeDefined();
     expect(text()).toContain("Сделано с любовью командой cleverAgency");
   });

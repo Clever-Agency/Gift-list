@@ -167,6 +167,19 @@ describe("public shell copy", () => {
 });
 
 /**
+ * D-53 (CLE-129): the contact link goes to support, not to the author. One label
+ * for the app footer, `/profile`, the Next pages and the catalog of the letters.
+ */
+describe("support link copy", () => {
+  it("is «Написать в техподдержку» in the common and email catalogs", () => {
+    const messages = getMessages("ru");
+
+    expect(messages.common.writeToSupport).toBe("Написать в техподдержку");
+    expect(messages.email.writeToSupport).toBe(messages.common.writeToSupport);
+  });
+});
+
+/**
  * Story 6.2: названия разделов навигации и подпись badge входящих запросов.
  * «Разделы», «Вишлист», «Поиск», «Друзья», «Брони», «Профиль», «Мой вишлист»,
  * «Мои брони» — дословно из `EXPERIENCE.md` и `DESIGN.md`; «Мой профиль» и формы

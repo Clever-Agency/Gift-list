@@ -29,9 +29,9 @@ import { ToastHost } from "@/ui/toast";
  * login screen and comes back here.
  *
  * The rows live in `ProfileMenu`: «Мой профиль» (`/u/{nick}`), «Настройки»
- * (`/settings`), «Написать автору» and «Выйти» — the last one moved here from the
- * temporary footer of «Мой вишлист». «Подборки» arrive with Story 10.1, the full
- * user menu of the side bar with Story 6.3.
+ * (`/settings`), «Написать в техподдержку» and «Выйти» — the last one moved here
+ * from the temporary footer of «Мой вишлист». «Подборки» arrive with Story 10.1,
+ * the full user menu of the side bar with Story 6.3.
  */
 export default function MyProfileScreen() {
   const auth = useAuth();

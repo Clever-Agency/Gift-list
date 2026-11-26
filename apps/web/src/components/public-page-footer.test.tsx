@@ -82,7 +82,7 @@ describe("PublicPageFooter", () => {
 
     expect(html).toContain('role="contentinfo"');
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain(messages.common.writeToAuthor);
+    expect(html).toContain(messages.common.writeToSupport);
     expect(html).toContain(messages.common.footerTagline);
     // One real link, not a button or a client-only control.
     expect(html.match(/<a /g)?.length).toBe(1);
@@ -106,7 +106,7 @@ describe("PublicPageFooter", () => {
     }
     // The shared version is the full `/i` one, not the tagline-only `/l` one.
     expect(footers[0]).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(footers[0]).toContain("Написать автору");
+    expect(footers[0]).toContain("Написать в техподдержку");
     expect(footers[0]).toContain("Сделано с любовью командой cleverAgency");
   });
 });

@@ -73,7 +73,7 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("@anna");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain('role="contentinfo"');
     expect(html).toContain("Плед");
     expect(html).toContain("мечта");
@@ -178,6 +178,6 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).not.toContain("не найден");
     // The footer is the same full one in the empty state.
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
   });
 });

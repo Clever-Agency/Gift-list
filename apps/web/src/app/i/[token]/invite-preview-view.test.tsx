@@ -46,9 +46,9 @@ describe("InvitePreviewView: anonymous invite HTML", () => {
     expect(html).toContain("У меня уже есть аккаунт");
     expect(html).toContain("Войти");
 
-    // The footer of the shell: «Написать автору» and the agency tagline.
+    // The footer of the shell: «Написать в техподдержку» and the agency tagline.
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
 

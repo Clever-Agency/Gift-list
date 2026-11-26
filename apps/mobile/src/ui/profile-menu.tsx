@@ -1,6 +1,6 @@
 import { Pressable, Text, YStack } from "@gift-list/ui";
 import { useTranslations } from "use-intl";
-import { AuthorLink } from "@/ui/author-link";
+import { SupportLink } from "@/ui/support-link";
 
 export type ProfileMenuProps = {
   /**
@@ -54,14 +54,14 @@ ProfileRow.displayName = "ProfileRow";
 
 /**
  * «Профиль» (Story 6.2, `DESIGN.md` → Навигация приложения): the sections of the
- * signed-in person in one place — «Мой профиль», «Настройки», «Написать автору»
- * and «Выйти». «Подборки» appear with Story 10.1 and are not listed yet; the full
- * user menu of the side bar is Story 6.3.
+ * signed-in person in one place — «Мой профиль», «Настройки», «Написать в
+ * техподдержку» and «Выйти». «Подборки» appear with Story 10.1 and are not
+ * listed yet; the full user menu of the side bar is Story 6.3.
  *
  * The rows are the same actions the old temporary footer of «Мой вишлист» carried
- * (`EXPERIENCE.md` → Доступность: «Написать автору» у вошедшего — в «Профиле»).
- * The menu reads no data and sends nothing: the screen owns the session and the
- * routes.
+ * (`EXPERIENCE.md` → Доступность: «Написать в техподдержку» у вошедшего — в
+ * «Профиле»). The menu reads no data and sends nothing: the screen owns the
+ * session and the routes.
  */
 export function ProfileMenu({
   onOpenProfile,
@@ -96,17 +96,17 @@ export function ProfileMenu({
         onPress={onOpenSettings}
         testID={`${testID}-settings`}
       />
-      {/* «Написать автору» stays the shared `AuthorLink` (AD-24): one address and
-          one press behaviour across the footer and the profile. */}
+      {/* «Написать в техподдержку» stays the shared `SupportLink` (AD-24): one
+          address and one press behaviour across the footer and the profile. */}
       <YStack
-        testID={`${testID}-author`}
+        testID={`${testID}-support`}
         minHeight="$row-height"
         justifyContent="center"
         paddingHorizontal="$3"
         borderBottomWidth={1}
         borderColor="$border"
       >
-        <AuthorLink />
+        <SupportLink />
       </YStack>
       <ProfileRow
         label={wishlist("logout")}

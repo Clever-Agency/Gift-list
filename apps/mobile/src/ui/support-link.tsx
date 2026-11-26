@@ -4,12 +4,13 @@ import * as Linking from "expo-linking";
 import { useTranslations } from "use-intl";
 
 /**
- * «Написать автору» of the shared footer (AD-24, D-35). The address is the
- * public constant `AUTHOR_EMAIL` in `packages/contracts`, so the link is always
- * active and no build configuration can leave it as plain text. A missing mail
- * client only rejects `openURL`, which is swallowed: the footer never breaks.
+ * «Написать в техподдержку» of the shared footer and `/profile` (AD-24, D-53).
+ * The address is the public constant `AUTHOR_EMAIL` in `packages/contracts`, so
+ * the link is always active and no build configuration can leave it as plain
+ * text. A missing mail client only rejects `openURL`, which is swallowed: the
+ * footer never breaks.
  */
-export function AuthorLink() {
+export function SupportLink() {
   const t = useTranslations("common");
 
   function handlePress() {
@@ -25,10 +26,10 @@ export function AuthorLink() {
       justifyContent="center"
     >
       <Text kind="button" tone="primary">
-        {t("writeToAuthor")}
+        {t("writeToSupport")}
       </Text>
     </Pressable>
   );
 }
 
-AuthorLink.displayName = "AuthorLink";
+SupportLink.displayName = "SupportLink";

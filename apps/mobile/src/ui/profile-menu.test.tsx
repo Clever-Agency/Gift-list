@@ -6,8 +6,8 @@ import { ProfileMenu } from "./profile-menu";
 
 /**
  * «Профиль» (Story 6.2): четыре строки — «Мой профиль», «Настройки», «Написать
- * автору», «Выйти». «Подборок» (Story 10.1) нет. Меню ничего не читает: экран
- * передаёт переходы и выход, поэтому тест проверяет строки и нажатия.
+ * в техподдержку», «Выйти». «Подборок» (Story 10.1) нет. Меню ничего не читает:
+ * экран передаёт переходы и выход, поэтому тест проверяет строки и нажатия.
  */
 vi.mock("expo-linking", () => ({ openURL: vi.fn(() => Promise.resolve()) }));
 
@@ -98,13 +98,13 @@ afterEach(async () => {
 });
 
 describe("ProfileMenu", () => {
-  it("четыре строки по порядку: мой профиль, настройки, автор, выход", async () => {
+  it("четыре строки по порядку: мой профиль, настройки, техподдержка, выход", async () => {
     await mount();
 
     const rows = Array.from(
       container.querySelectorAll<HTMLElement>('[role="button"], [role="link"]'),
     ).map((node) => node.textContent);
-    expect(rows).toEqual(["Мой профиль", "Настройки", "Написать автору", "Выйти"]);
+    expect(rows).toEqual(["Мой профиль", "Настройки", "Написать в техподдержку", "Выйти"]);
   });
 
   it("«Подборок» нет (Story 10.1)", async () => {
@@ -141,11 +141,11 @@ describe("ProfileMenu", () => {
     expect(handlers.signOut).not.toHaveBeenCalled();
   });
 
-  it("«Написать автору» — та же ссылка `mailto:`, что в футере", async () => {
+  it("«Написать в техподдержку» — та же ссылка `mailto:`, что в футере анонима", async () => {
     await mount();
 
-    const author = row("profile-menu-author");
-    expect(author?.textContent).toContain("Написать автору");
+    const support = row("profile-menu-support");
+    expect(support?.textContent).toContain("Написать в техподдержку");
   });
 
   it("displayName совпадает с именем компонента", () => {

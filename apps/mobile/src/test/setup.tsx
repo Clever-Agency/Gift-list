@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { vi } from "vitest";
 
 /**
- * The shared footer renders `AuthorLink` on every page, so every route test now
- * imports `expo-linking`. Its native module is not available in Vitest; the stub
+ * On guest pages the shared footer renders `SupportLink`, so those route tests
+ * import `expo-linking`. Its native module is not available in Vitest; the stub
  * keeps the link inert unless a test overrides it.
  */
 vi.mock("expo-linking", () => ({ openURL: () => Promise.resolve() }));

@@ -20,10 +20,10 @@ const DIALOG_LAYOUTS = ["default", "detail"] as const;
  * and out with `quick` (160 ms, `DESIGN.md` → Движение); with «уменьшить
  * движение» the fade is 100 ms.
  *
- * `layout="detail"` is the wish-detail layer: almost the full screen below the
+ * `layout="detail"` is the wide scrolling layer: almost the full screen below the
  * `medium` breakpoint and up to `detail-width` above it, with a scrolling body.
  * The same slot content is used for the guest, loading and error examples
- * below, so `DetailDialog` and `BottomSheet` keep no separate catalog pages.
+ * below, and `BottomSheet` keeps no separate catalog page.
  *
  * Every showcase on the docs page runs in its own iframe
  * (`docs.story.inline: false`): a layer paints its scrim over the whole
@@ -380,7 +380,7 @@ type DetailStoryProps = {
   facts?: DetailFact[];
 };
 
-/** `layout="detail"` with the guest facts: the same slots `DetailDialog` fills. */
+/** `layout="detail"` with the guest facts: the wide scrolling layer. */
 function DetailDialogStory({ notice, retry, facts }: DetailStoryProps) {
   return (
     <Dialog

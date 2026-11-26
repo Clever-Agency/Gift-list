@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getBrandName } from "@/lib/env";
-import { wishlistPathForToken } from "@/lib/public-token";
+import { publicListPathForToken, wishlistPathForToken } from "@/lib/public-token";
 import { buildLinkMetadata, getLinkPage } from "./link-page";
 import { PublicWishlistView } from "./public-wishlist-view";
 
@@ -34,6 +34,7 @@ export default async function PublicWishlistPage({ params }: PageProps<"/l/[toke
     <PublicWishlistView
       view={page.view}
       locale={page.locale}
+      listPath={publicListPathForToken(token)}
       wishlistPath={wishlistPathForToken(token)}
     />
   );

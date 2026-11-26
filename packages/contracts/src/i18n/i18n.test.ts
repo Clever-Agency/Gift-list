@@ -130,6 +130,7 @@ describe("not-found copy", () => {
     const { web, app } = getMessages("ru");
     const pairs: ReadonlyArray<readonly [string, string]> = [
       [web.wishlist.notFound, app.myWishlist.listNotFound],
+      [web.wishlist.wishNotFound, app.gift.giftNotFound],
       [web.invite.notFound, app.invite.notFound],
     ];
 
@@ -144,6 +145,9 @@ describe("not-found copy", () => {
     const { web } = getMessages("ru");
 
     expect(web.wishlist.notFoundTitle).toBe(`${web.wishlist.notFound.slice(0, -1)} — {brand}`);
+    expect(web.wishlist.wishNotFoundTitle).toBe(
+      `${web.wishlist.wishNotFound.slice(0, -1)} — {brand}`,
+    );
     expect(web.invite.notFoundTitle).toBe(`${web.invite.notFound.slice(0, -1)} — {brand}`);
   });
 });

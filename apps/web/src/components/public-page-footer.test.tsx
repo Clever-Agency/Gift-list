@@ -92,8 +92,8 @@ describe("PublicPageFooter", () => {
     const messages = getMessages("ru");
     const pages = [
       page(<InvitePreviewView view={invite} locale="ru" brand="WishMoon" />),
-      page(<PublicWishlistView view={{ kind: "gifts", owner, gifts: [card()] }} locale="ru" wishlistPath="/wishlist/tok-1" />),
-      page(<PublicWishlistView view={{ kind: "gifts", owner, gifts: [] }} locale="ru" wishlistPath="/wishlist/tok-1" />),
+      page(<PublicWishlistView view={{ kind: "gifts", owner, gifts: [card()] }} locale="ru" listPath="/l/tok-1" wishlistPath="/wishlist/tok-1" />),
+      page(<PublicWishlistView view={{ kind: "gifts", owner, gifts: [] }} locale="ru" listPath="/l/tok-1" wishlistPath="/wishlist/tok-1" />),
       page(<PublicNotFound locale="ru" message={messages.web.invite.notFound} />),
       page(<PublicNotFound locale="ru" message={messages.web.wishlist.notFound} />),
     ];

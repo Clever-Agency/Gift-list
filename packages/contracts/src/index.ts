@@ -510,13 +510,7 @@ export {
   type TagCatalogItem,
 } from "./tag";
 
-export {
-  detailCopy,
-  toDetailFacts,
-  type DetailCopy,
-  type DetailFact,
-  type DetailViewer,
-} from "./detail-fields";
+export { type DetailViewer } from "./detail-viewer";
 
 export {
   DEFAULT_LOCALE,

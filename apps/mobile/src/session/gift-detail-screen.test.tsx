@@ -910,7 +910,7 @@ describe("страница владельца: своё желание", () => {
   it("AD-15: подброшенная бронь в ответе не появляется на странице владельца", async () => {
     // A broken payload: the owner route answers a reserved card with a live
     // holder. The page still reads as an open wish — no pill, no name, no
-    // holder's actions (the same second gate `toDetailFacts` keeps).
+    // holder's actions (the same second gate the page card keeps).
     respondOwner(
       ownerCard({
         status: "RESERVED",

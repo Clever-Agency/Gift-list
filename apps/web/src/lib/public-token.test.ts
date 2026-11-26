@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { invitePathForToken, isPublicTokenSegment, wishlistPathForToken } from "./public-token";
+import {
+  invitePathForToken,
+  isPublicTokenSegment,
+  publicListPathForToken,
+  wishlistPathForToken,
+} from "./public-token";
 
 describe("isPublicTokenSegment", () => {
   it("accepts one short identifier segment", () => {
@@ -41,6 +46,28 @@ describe("wishlistPathForToken", () => {
       "tok#fragment",
     ]) {
       expect(wishlistPathForToken(token)).toBeNull();
+    }
+  });
+});
+
+describe("publicListPathForToken", () => {
+  it("builds the public address of the list from the validated segment", () => {
+    expect(publicListPathForToken("tok-1")).toBe("/l/tok-1");
+  });
+
+  it("returns no target for the same segments the redirect refuses", () => {
+    for (const token of [
+      "",
+      "..",
+      "../admin",
+      "a/b",
+      "//evil.example",
+      "https://evil.example",
+      "%2e%2e",
+      "tok?next=//evil.example",
+      "tok#fragment",
+    ]) {
+      expect(publicListPathForToken(token)).toBeNull();
     }
   });
 });

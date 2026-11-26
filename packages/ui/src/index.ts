@@ -132,7 +132,6 @@ export { SegmentTabs, type SegmentTab, type SegmentTabsProps } from "./segment-t
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";
-export { DetailDialog, type DetailDialogProps, type DetailFactView } from "./detail-dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
 export { useReduceMotion } from "./use-reduce";
 export { hoverTransition, useHoverTransition } from "./hover";

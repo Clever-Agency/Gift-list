@@ -49,10 +49,10 @@ describe("loadWishPage: одно желание того же списка", () 
     expect(page.view).toEqual({ kind: "wish", owner, gift: publicWish });
     expect(page.listPath).toBe("/l/tok-1");
     expect(page.wishlistPath).toBe("/wishlist/tok-1");
-    expect(loadLinkPage).toHaveBeenCalledWith("tok-1");
+    expect(loadLinkPage).toHaveBeenCalledWith("tok-1", "g-open");
   });
 
-  it("отвечает not_found на чужой id: чтение идёт по списку, а не по желанию", async () => {
+  it("отвечает not_found, если в ответе списка нет запрошенного желания", async () => {
     loadLinkPage.mockResolvedValue(giftsPage([publicWish]));
 
     const page = await loadWishPage("tok-1", "g-foreign");

@@ -28,12 +28,13 @@ export async function readPublicWishlist(
   token: string,
   viewer: VisibilityViewer,
   locale: SupportedLocale,
+  giftId?: string,
 ): Promise<ListData | null> {
   if (!isPublicTokenSegment(token)) return null;
 
   return readWishlist({
     viewer,
-    target: { publicToken: token },
+    target: { publicToken: token, giftId },
     viaListToken: true,
     locale,
   });

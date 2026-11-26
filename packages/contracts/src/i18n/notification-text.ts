@@ -59,9 +59,27 @@ export function notificationText(event: NotificationItem["event"], locale: strin
   if (event.kind === "RESERVATION_KEPT_BY_OWNER") {
     date = notificationDay(event.dueAt, event.timeZone, resolved, -1);
   }
-  return copy[event.kind].replace(/\{(title|person|date)\}/g, function value(_, key: string) {
+  // Story 6.6: the kept-reservation variant suggests «Подарил», while the
+  // released one only states that the reservation was cleared. A row written
+  // before the flag existed reads as released.
+  const template = event.kind === "WISH_EXPIRY" && event.released === false
+    ? messages.notifications.wishExpiryKept
+    : copy[event.kind];
+  return template.replace(/\{(title|person|date)\}/g, function value(_, key: string) {
     if (key === "title") return title;
     if (key === "person") return person;
     return date;
   });
+}
+
+/**
+ * Story 6.6: the letter subject names the wish-expiry kind in the recipient's
+ * language. Every other kind keeps the general subject, so no new key is needed.
+ * The caller substitutes `{brand}` with the displayed product name (AD-24).
+ */
+export function notificationEmailSubject(event: NotificationItem["event"], locale: string): string {
+  const copy = getMessages(negotiateLocale([locale])).notifications;
+  if (event.kind === "WISH_EXPIRY_SOON") return copy.emailSubjectWishExpirySoon;
+  if (event.kind === "WISH_EXPIRY") return copy.emailSubjectWishExpiry;
+  return copy.emailSubject;
 }

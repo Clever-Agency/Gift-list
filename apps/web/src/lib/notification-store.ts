@@ -10,7 +10,7 @@ import { prisma } from "@/db/client";
 import type { Notification, NotificationKind, Prisma } from "@/db/generated/client";
 import { calendarDay } from "@/domain/calendar-day";
 import type { GiftEditEventField } from "@/domain/gift-edit";
-import { UNDO_WINDOW_MS } from "@/domain/gift-status";
+import { GIVABLE_RESERVATION_PHASES, UNDO_WINDOW_MS } from "@/domain/gift-status";
 import { VisibilityPolicy } from "@/domain/visibility";
 import { relationshipReader } from "@/lib/relationships";
 import { canonicalTimeZone } from "@/lib/time-zone";
@@ -220,7 +220,30 @@ function inChannel(kind: NotificationKind, prefs: NotificationPreferences, chann
   return true;
 }
 
+/**
+ * Story 6.6: the wish-expiry notice offers «Подарил» only in its kept variant
+ * (`released: false`) and only while that same reservation is live and givable
+ * for its holder. Any release, archive, re-reservation or `GIVEN` phase turns
+ * the control off, exactly like a stale `RESERVATION_DUE` row. The released
+ * variant has no action at all.
+ */
+function wishExpiryIsActionable(row: Notification, gift: GiftSnapshot | null): boolean {
+  const payload = row.payload;
+  const released = payload !== null && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as { released?: unknown }).released
+    : undefined;
+  if (released !== false) return false;
+  return Boolean(
+    gift?.status === "RESERVED" && !gift.archivedAt &&
+    gift.reservedById === row.recipientId && row.reservationAt &&
+    row.reservationAt.getTime() === gift.reservedAt?.getTime() &&
+    gift.reservationPhase !== null &&
+    (GIVABLE_RESERVATION_PHASES as readonly string[]).includes(gift.reservationPhase),
+  );
+}
+
 export function notificationIsActionable(row: Notification, gift: GiftSnapshot | null) {
+  if (row.kind === "WISH_EXPIRY") return wishExpiryIsActionable(row, gift);
   const payload = row.payload;
   const reminder = row.kind === "RESERVATION_DUE" && payload !== null &&
     typeof payload === "object" && !Array.isArray(payload) &&
@@ -250,7 +273,11 @@ export function isHiddenOwnerReservationNotification(
   row: Pick<Notification, "kind" | "payload">,
 ): boolean {
   if (row.kind === "RESERVATION_CREATED" || row.kind === "RESERVATION_OWNER_ASK") return true;
-  if (row.kind !== "RESERVATION_RELEASED" && row.kind !== "RESERVATION_AUTO_RELEASE") return false;
+  const ownerAddressed = row.kind === "RESERVATION_RELEASED" ||
+    row.kind === "RESERVATION_AUTO_RELEASE" ||
+    // Story 6.6 (D-49): the wish-expiry notice is holder-only as well.
+    row.kind === "WISH_EXPIRY_SOON" || row.kind === "WISH_EXPIRY";
+  if (!ownerAddressed) return false;
   const payload = row.payload;
   return payload !== null && typeof payload === "object" && !Array.isArray(payload) &&
     (payload as { role?: unknown }).role === "owner";

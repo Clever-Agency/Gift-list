@@ -5,7 +5,7 @@ import {
   notificationItemSchema,
   notificationPayloadSchema,
 } from "./notifications";
-import { notificationText } from "./i18n/notification-text";
+import { notificationEmailSubject, notificationText } from "./i18n/notification-text";
 import type { NotificationItem } from "./notifications";
 
 describe("CLE-124/S9b-2: notification payloads", () => {
@@ -154,5 +154,53 @@ describe("Story 6.6: the wish-expiry payload", () => {
       giftId: "g1",
       titleSnapshot: "Плед",
     })).toEqual({ kind: "WISH_EXPIRY_SOON", giftId: "g1", titleSnapshot: "Плед" });
+  });
+
+  it("carries the projection-computed actionable flag on WISH_EXPIRY only", () => {
+    expect(notificationPayloadSchema.parse({
+      kind: "WISH_EXPIRY",
+      giftId: "g1",
+      titleSnapshot: "Плед",
+      released: false,
+      actionable: true,
+    })).toMatchObject({ released: false, actionable: true });
+
+    // The soon notice has no action; a stray flag never reaches the client.
+    expect(notificationPayloadSchema.parse({
+      kind: "WISH_EXPIRY_SOON",
+      giftId: "g1",
+      titleSnapshot: "Плед",
+      actionable: true,
+    })).not.toHaveProperty("actionable");
+  });
+});
+
+describe("Story 6.6: wish-expiry copy", () => {
+  const soon = {
+    kind: "WISH_EXPIRY_SOON",
+    giftId: "g1",
+    titleSnapshot: "Плед",
+  } satisfies NotificationItem["event"];
+  const released = {
+    kind: "WISH_EXPIRY",
+    giftId: "g1",
+    titleSnapshot: "Плед",
+  } satisfies NotificationItem["event"];
+
+  it("names the soon notice and both expiry variants", () => {
+    expect(notificationText(soon, "ru")).toBe("Срок желания «Плед» через 3 дня");
+    expect(notificationText(released, "ru")).toBe("Срок желания «Плед» вышел, бронь снята");
+    expect(notificationText({ ...released, released: true }, "ru")).toBe(
+      "Срок желания «Плед» вышел, бронь снята",
+    );
+    expect(notificationText({ ...released, released: false }, "ru")).toBe(
+      "Срок желания «Плед» вышел. Если уже подарили — отметьте «Подарил»",
+    );
+  });
+
+  it("gives each wish-expiry kind its own letter subject and keeps the general one", () => {
+    expect(notificationEmailSubject(soon, "ru")).toBe("Срок желания истекает через 3 дня — {brand}");
+    expect(notificationEmailSubject(released, "ru")).toBe("Срок желания вышел — {brand}");
+    expect(notificationEmailSubject({ kind: "DATE_OWN" }, "ru")).toBe("Новое уведомление — {brand}");
   });
 });

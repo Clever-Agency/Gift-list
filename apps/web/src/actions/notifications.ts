@@ -44,8 +44,11 @@ export async function actOnNotification(
     if (!gift) return stale;
 
     // CLE-124/S9b-2: «Подарил» is idempotent — a second press on the same notice
-    // after the phase is already `GIVEN` is a success and writes no line.
-    if (command.action === "given" && gift.status === "RESERVED" &&
+    // after the phase is already `GIVEN` is a success and writes no line. Story
+    // 6.6 reuses the same action from the kept wish-expiry notice.
+    if (command.action === "given" &&
+      (row.kind === "RESERVATION_DUE" || row.kind === "WISH_EXPIRY") &&
+      gift.status === "RESERVED" &&
       gift.reservedById === userId && gift.reservationPhase === "GIVEN") {
       await tx.notification.updateMany({ where: { id, recipientId: userId, readAt: null }, data: { readAt: now } });
       return { ok: true, data: { id } };
@@ -77,6 +80,11 @@ export async function actOnNotification(
       } else {
         return stale;
       }
+    } else if (row.kind === "WISH_EXPIRY") {
+      // Story 6.6 (D-49): the kept-reservation notice offers only «Подарил»,
+      // through the same service method as the reservation deadline notice.
+      if (command.action !== "given") return stale;
+      outcome = await service.markReservationGiven(giftId, userId, now);
     } else {
       return stale;
     }

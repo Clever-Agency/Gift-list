@@ -41,6 +41,7 @@ import {
   projectNotification,
   wishExpiryEventKey,
 } from "./notification-store";
+import { getBrandName } from "@/lib/env";
 import { notificationEmailLink, processNotificationEmails } from "./notification-email";
 
 const now = new Date("2026-11-24T12:00:00Z");
@@ -567,6 +568,97 @@ describe("Story 6.6: wish-expiry notification keys", function wishExpiryKeys() {
   });
 });
 
+/**
+ * Story 6.6 (FR-42, D-26, D-49): the released notice only reports the removal;
+ * the kept one offers the same «Подарил» action as the deadline notice, and only
+ * while the very same reservation is live for its holder.
+ */
+describe("Story 6.6: wish-expiry presentation and actions", function wishExpiryUi() {
+  function wishExpiry(released: boolean | undefined, changes: Partial<Notification> = {}): Notification {
+    return record({
+      kind: "WISH_EXPIRY",
+      recipientId: "holder",
+      actorId: "owner",
+      payload: {
+        role: "holder",
+        titleSnapshot: gift.titleSnapshotOnReserve,
+        ...(released === undefined ? {} : { released }),
+      },
+      ...changes,
+    });
+  }
+
+  it("shows the released text without controls and the kept text with «Подарил»", async function variants() {
+    db.gift.findUnique.mockResolvedValue({
+      ...gift, status: "OPEN", archivedAt: now, reservedAt: null, reservedById: null, reservationPhase: null,
+    });
+    const released = await projectNotification(wishExpiry(true), defaults, "inApp", now);
+    expect(released?.event).toMatchObject({ kind: "WISH_EXPIRY", released: true, actionable: false });
+    expect(notificationText(released!.event, "ru")).toBe("Срок желания «Снимок названия» вышел, бронь снята");
+    expect(released?.href).toBeNull();
+
+    // A legacy row without the flag reads as released.
+    db.gift.findUnique.mockResolvedValue({ ...gift, reservationBought: true });
+    const legacy = await projectNotification(wishExpiry(undefined), defaults, "inApp", now);
+    expect(notificationText(legacy!.event, "ru")).toBe("Срок желания «Снимок названия» вышел, бронь снята");
+
+    const kept = await projectNotification(wishExpiry(false), defaults, "inApp", now);
+    expect(kept?.event).toMatchObject({ kind: "WISH_EXPIRY", released: false, actionable: true });
+    expect(notificationText(kept!.event, "ru")).toBe(
+      "Срок желания «Снимок названия» вышел. Если уже подарили — отметьте «Подарил»",
+    );
+    // Without wishlist access the holder still reaches the reservations screen,
+    // exactly like the other holder notices.
+    expect(kept?.href).toBe("/reservations");
+    expect(kept?.event).not.toHaveProperty("bought");
+  });
+
+  it("turns the action off when the reservation is gone, archived, re-reserved or already given", async function staleKept() {
+    const row = wishExpiry(false);
+    const live = await notificationGiftSnapshot(db as never, gift.id);
+
+    expect(notificationIsActionable(row, live)).toBe(true);
+    expect(notificationIsActionable(row, live && { ...live, status: "OPEN" })).toBe(false);
+    expect(notificationIsActionable(row, live && { ...live, archivedAt: now })).toBe(false);
+    expect(notificationIsActionable(row, live && { ...live, reservedAt: now })).toBe(false);
+    expect(notificationIsActionable(row, live && { ...live, reservationPhase: "GIVEN" })).toBe(false);
+    // The released variant never has an action, even on a live reservation.
+    expect(notificationIsActionable({ ...row, payload: { ...row.payload as object, released: true } }, live)).toBe(false);
+  });
+
+  it("runs «Подарил» from the kept notice and refuses it from the released one", async function givenFromNotice() {
+    db.$transaction.mockImplementation(async function run(work) { return work(db); });
+    db.notification.findFirst.mockResolvedValue(wishExpiry(false));
+    db.gift.updateMany.mockResolvedValue({ count: 1 });
+    db.notification.createMany.mockResolvedValue({ count: 1 });
+
+    await expect(actOnNotification("holder", "notification", { action: "given" }))
+      .resolves.toMatchObject({ ok: true });
+    expect(db.gift.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { reservationPhase: "GIVEN", reservationPhaseAt: expect.any(Date) },
+    }));
+
+    db.gift.updateMany.mockClear();
+    db.notification.findFirst.mockResolvedValue(wishExpiry(true));
+    db.gift.findUnique.mockResolvedValue({
+      ...gift, status: "OPEN", archivedAt: now, reservedAt: null, reservationPhase: null,
+    });
+    await expect(actOnNotification("holder", "notification", { action: "given" }))
+      .resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(db.gift.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("hides a wish-expiry row addressed to the owner", async function noOwner() {
+    const row = record({
+      kind: "WISH_EXPIRY",
+      recipientId: "owner",
+      payload: { role: "owner", titleSnapshot: gift.titleSnapshotOnReserve },
+    });
+    expect(isHiddenOwnerReservationNotification(row)).toBe(true);
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+  });
+});
+
 describe("email notification queue", function mailTests() {
   it("keeps the notification id on the existing return path through sign-in", function link() {
     const href = new URL(notificationEmailLink("http://example.test", "example"));
@@ -622,6 +714,40 @@ describe("email notification queue", function mailTests() {
     expect(send.mock.calls[1]![0].text.split("\n")[0]).toBe("Срок брони «Снимок названия» истёк");
     expect(send.mock.calls[1]![0].html).toContain("<p>Срок брони «Снимок названия» истёк</p>");
     expect(db.notification.findMany.mock.calls[1]![0].orderBy).toEqual([{ deliverAfter: "asc" }, { id: "asc" }]);
+  });
+
+  it("sends both wish-expiry kinds with their own subject and the variant body", async function wishExpiryMail() {
+    const soon = record({
+      id: "soon", kind: "WISH_EXPIRY_SOON", recipientId: "holder",
+      payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve },
+    });
+    const released = record({
+      id: "released", kind: "WISH_EXPIRY", recipientId: "holder",
+      payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve, released: true },
+    });
+    const kept = record({
+      id: "kept", kind: "WISH_EXPIRY", recipientId: "holder",
+      payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve, released: false },
+    });
+    mockEmailQueue([soon, released, kept]);
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 3 });
+    expect(send.mock.calls.map(call => call[0].subject)).toEqual([
+      `Срок желания истекает через 3 дня — ${getBrandName()}`,
+      `Срок желания вышел — ${getBrandName()}`,
+      `Срок желания вышел — ${getBrandName()}`,
+    ]);
+    expect(send.mock.calls.map(call => call[0].text.split("\n")[0])).toEqual([
+      "Срок желания «Снимок названия» через 3 дня",
+      "Срок желания «Снимок названия» вышел, бронь снята",
+      "Срок желания «Снимок названия» вышел. Если уже подарили — отметьте «Подарил»",
+    ]);
+    for (const call of send.mock.calls) {
+      expect(call[0].text).not.toContain(gift.title);
+      expect(call[0].html).not.toContain(gift.title);
+    }
   });
 
   it("retires expired attempts and reports them once across competing workers", async function expiredAttempts() {

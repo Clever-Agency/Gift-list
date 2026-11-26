@@ -48,8 +48,13 @@ export const notificationPayloadSchema = z.discriminatedUnion("kind", [
    * `false` — the gift was marked `bought`, so the reservation stays and the
    * notice suggests «Подарил»; `true` or absent — the reservation was released.
    * Rows written before the change carry no flag and are shown as released.
+   * `actionable` is computed on projection: the «Подарил» control lives only
+   * while the reservation is the same live one.
    */
-  z.object({ kind: z.literal("WISH_EXPIRY"), ...wish, released: z.boolean().optional() }),
+  z.object({
+    kind: z.literal("WISH_EXPIRY"), ...wish, released: z.boolean().optional(),
+    actionable: z.boolean().optional(),
+  }),
 ]);
 
 const genericEvent = z.object({ kind: z.literal("UNKNOWN") });

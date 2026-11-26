@@ -15,6 +15,8 @@
   "stale": "Даритель уже ответил",
   "markRead": "Отметить прочитанным",
   "emailSubject": "Новое уведомление — {brand}",
+  "emailSubjectWishExpirySoon": "Срок желания истекает через 3 дня — {brand}",
+  "emailSubjectWishExpiry": "Срок желания вышел — {brand}",
   "open": "Открыть уведомление",
   "settingsTitle": "Уведомления",
   "dates": "Напоминания о датах",
@@ -46,8 +48,9 @@
     "DATE_OWN": "Скоро ваш день рождения — обновите вишлист",
     "SUGGESTION": "Вам предложили желание",
     "WISH_EXPIRY_SOON": "Срок желания «{title}» через 3 дня",
-    "WISH_EXPIRY": "Срок желания «{title}» вышел"
+    "WISH_EXPIRY": "Срок желания «{title}» вышел, бронь снята"
   },
+  "wishExpiryKept": "Срок желания «{title}» вышел. Если уже подарили — отметьте «Подарил»",
   "changedFields": "Изменилось: {fields}",
   "fields": {
     "title": "название",

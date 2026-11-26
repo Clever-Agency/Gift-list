@@ -1,6 +1,12 @@
 import "server-only";
 
-import { getMessages, negotiateLocale, notificationChangedFields, notificationText } from "@gift-list/contracts";
+import {
+  getMessages,
+  negotiateLocale,
+  notificationChangedFields,
+  notificationEmailSubject,
+  notificationText,
+} from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import type { Notification, Prisma } from "@/db/generated/client";
 import { getBrandName, getEnv } from "@/lib/env";
@@ -155,7 +161,7 @@ export async function processNotificationEmails(
         if (current.emailFirstAttemptAt && clock().getTime() - current.emailFirstAttemptAt.getTime() >= RETRY_MS) continue;
         await send({
           to: current.recipient.email,
-          subject: copy.emailSubject.replace("{brand}", getBrandName()),
+          subject: notificationEmailSubject(item.event, locale).replace("{brand}", getBrandName()),
           text: [...lines, "", href].join("\n"),
           html: `${lines.map(line => `<p>${escapeHtml(line)}</p>`).join("")}<p><a href="${escapeHtml(href)}">${escapeHtml(copy.open)}</a></p>`,
         }, `notification/${item.id}`);

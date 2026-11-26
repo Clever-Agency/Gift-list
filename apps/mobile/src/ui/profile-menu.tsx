@@ -17,6 +17,8 @@ export type ProfileMenuProps = {
 
 type ProfileRowProps = {
   label: string;
+  /** A second line under the label, e.g. «Как меня видят другие». */
+  hint?: string;
   onPress: () => void;
   destructive?: boolean;
   disabled?: boolean;
@@ -27,7 +29,14 @@ type ProfileRowProps = {
  * One row of «Профиль»: the whole row is the target (44 px), the text is `button`
  * and the destructive «Выйти» is coral (`DESIGN.md` → Colors → Destructive).
  */
-function ProfileRow({ label, onPress, destructive = false, disabled = false, testID }: ProfileRowProps) {
+function ProfileRow({
+  label,
+  hint,
+  onPress,
+  destructive = false,
+  disabled = false,
+  testID,
+}: ProfileRowProps) {
   return (
     <Pressable
       role="button"
@@ -46,6 +55,11 @@ function ProfileRow({ label, onPress, destructive = false, disabled = false, tes
       <Text kind="button" tone={destructive ? "destructive" : "primary"}>
         {label}
       </Text>
+      {hint ? (
+        <Text kind="caption" tone="muted">
+          {hint}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -53,10 +67,10 @@ function ProfileRow({ label, onPress, destructive = false, disabled = false, tes
 ProfileRow.displayName = "ProfileRow";
 
 /**
- * «Профиль» (Story 6.2, `DESIGN.md` → Навигация приложения): the sections of the
- * signed-in person in one place — «Мой профиль», «Настройки», «Написать в
- * техподдержку» and «Выйти». «Подборки» appear with Story 10.1 and are not
- * listed yet; the full user menu of the side bar is Story 6.3.
+ * «Профиль» (Story 6.2, CLE-129): the sections of the signed-in person in one
+ * place — «Мой профиль» with the «Как меня видят другие» line, «Настройки»,
+ * «Написать в техподдержку» and «Выйти». «Подборки» appear with Story 10.1 and
+ * are not listed yet; the full user menu of the side bar is Story 6.3.
  *
  * The rows are the same actions the old temporary footer of «Мой вишлист» carried
  * (`EXPERIENCE.md` → Доступность: «Написать в техподдержку» у вошедшего — в
@@ -72,6 +86,7 @@ export function ProfileMenu({
 }: ProfileMenuProps) {
   const nav = useTranslations("app.nav");
   const settings = useTranslations("app.settings");
+  const profile = useTranslations("app.profile");
   const wishlist = useTranslations("app.myWishlist");
 
   return (
@@ -88,6 +103,7 @@ export function ProfileMenu({
     >
       <ProfileRow
         label={nav("myProfile")}
+        hint={profile("myProfileHint")}
         onPress={onOpenProfile}
         testID={`${testID}-my-profile`}
       />

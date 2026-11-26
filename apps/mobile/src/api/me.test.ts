@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { updateHideFromSearch, updateNick } from "@/api/me";
+import { updateHideFromSearch, updateName, updateNick } from "@/api/me";
 
 const rn = vi.hoisted(() => ({ OS: "web" }));
 const store = vi.hoisted(() => ({
@@ -105,6 +105,50 @@ describe("updateNick", () => {
       ok: false,
       invalid: true,
     });
+  });
+});
+
+describe("updateName", () => {
+  it("PATCHes the name as JSON to /api/v1/me/name and returns the user", async () => {
+    const renamed = { ...me, name: "Анна Ковалёва" };
+    fetchMock.mockResolvedValue(respond({ ok: true, data: renamed }));
+
+    await expect(updateName("Анна Ковалёва")).resolves.toEqual({ ok: true, data: renamed });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://api.test/api/v1/me/name");
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(JSON.stringify({ name: "Анна Ковалёва" }));
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Headers;
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.get("accept")).toBe("application/json");
+    expect(headers.get("accept-language")).toBe("ru-RU");
+  });
+
+  it("reports a network failure like the other clients", async () => {
+    fetchMock.mockRejectedValue(new TypeError("offline"));
+
+    await expect(updateName("Анна")).resolves.toEqual({ ok: false, network: true });
+  });
+
+  it("passes a 401 through, so the screen can sign out", async () => {
+    fetchMock.mockResolvedValue(
+      respond({ ok: false, code: "UNAUTHENTICATED", message: "Authentication required" }, 401),
+    );
+
+    await expect(updateName("Анна")).resolves.toEqual({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+  });
+
+  it("rejects a user without the new name instead of guessing it", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { ...me, name: 42 } }));
+
+    await expect(updateName("Анна")).resolves.toEqual({ ok: false, invalid: true });
   });
 });
 

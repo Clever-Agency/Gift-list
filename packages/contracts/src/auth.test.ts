@@ -12,6 +12,7 @@ import {
   loginBodySchema,
   nickIssue,
   nickUpdateBodySchema,
+  nameUpdateBodySchema,
   hideFromSearchUpdateBodySchema,
   passwordForgotBodySchema,
   passwordResetBodySchema,
@@ -141,6 +142,31 @@ describe("nickUpdateBodySchema", () => {
     expect(NICK_PATTERN.test("a".repeat(NICK_MAX))).toBe(true);
     expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(NICK_MIN) }).success).toBe(true);
     expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(NICK_MAX) }).success).toBe(true);
+  });
+});
+
+describe("nameUpdateBodySchema", () => {
+  it("trims the name and keeps an inner space", () => {
+    expect(nameUpdateBodySchema.parse({ name: "  Анна Ковалёва  " })).toEqual({
+      name: "Анна Ковалёва",
+    });
+  });
+
+  it("rejects an empty, blank or missing name on the name field", () => {
+    for (const body of [{ name: "" }, { name: "   " }, {}]) {
+      const parsed = nameUpdateBodySchema.safeParse(body);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["name"]);
+    }
+  });
+
+  it("accepts the cap in code points and rejects one more", () => {
+    const atCap = nameUpdateBodySchema.safeParse({ name: "я".repeat(DISPLAY_NAME_MAX) });
+    expect(atCap.success).toBe(true);
+
+    const overCap = nameUpdateBodySchema.safeParse({ name: "я".repeat(DISPLAY_NAME_MAX + 1) });
+    expect(overCap.success).toBe(false);
+    if (!overCap.success) expect(overCap.error.issues[0]?.path).toEqual(["name"]);
   });
 });
 

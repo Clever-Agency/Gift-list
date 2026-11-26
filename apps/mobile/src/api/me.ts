@@ -30,6 +30,24 @@ export async function updateNick(nick: string): Promise<MeResult> {
 }
 
 /**
+ * CLE-129/D-59: `PATCH /api/v1/me/name` changes the display name shown on the
+ * profile and in every list. The server trims the value and rewrites its search
+ * key; the answer is the full `Me` (AD-12), so the screen keeps the server name.
+ */
+export async function updateName(name: string): Promise<MeResult> {
+  const result = await apiRequest<unknown>("/api/v1/me/name", {
+    method: "PATCH",
+    body: { name },
+  });
+  if (!result.ok) return result;
+
+  const parsed = meSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, data: parsed.data };
+}
+
+/**
  * Story 3.5 (FR-8, AD-13): `PATCH /api/v1/me/hide-from-search` stores the
  * settings switch. The answer is the full `Me`, so the screen keeps the server
  * value and never a local guess; the same strict contract check applies.

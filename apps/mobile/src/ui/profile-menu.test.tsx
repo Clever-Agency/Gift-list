@@ -104,7 +104,20 @@ describe("ProfileMenu", () => {
     const rows = Array.from(
       container.querySelectorAll<HTMLElement>('[role="button"], [role="link"]'),
     ).map((node) => node.textContent);
-    expect(rows).toEqual(["Мой профиль", "Настройки", "Написать в техподдержку", "Выйти"]);
+    expect(rows).toEqual([
+      "Мой профильКак меня видят другие",
+      "Настройки",
+      "Написать в техподдержку",
+      "Выйти",
+    ]);
+  });
+
+  it("«Мой профиль» подписан «Как меня видят другие» (D-59)", async () => {
+    await mount();
+
+    const row = container.querySelector<HTMLElement>('[data-testid="profile-menu-my-profile"]');
+    expect(row?.textContent).toContain("Мой профиль");
+    expect(row?.textContent).toContain("Как меня видят другие");
   });
 
   it("«Подборок» нет (Story 10.1)", async () => {

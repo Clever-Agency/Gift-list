@@ -154,6 +154,18 @@ export const nickUpdateBodySchema = z.object({
 export type NickUpdateBody = z.infer<typeof nickUpdateBodySchema>;
 
 /**
+ * CLE-129/D-59: `/profile` edits the display name. The rule is the registration
+ * one (AD-24: a name is written as given and never declined), so the trimmed
+ * value is 1..{@link DISPLAY_NAME_MAX} code points and the route names the
+ * `name` field for the screen.
+ */
+export const nameUpdateBodySchema = z.object({
+  name: z.string().trim().min(1).max(DISPLAY_NAME_MAX),
+});
+
+export type NameUpdateBody = z.infer<typeof nameUpdateBodySchema>;
+
+/**
  * Story 3.5 (FR-8): the settings switch stores one flag. Any other key is a
  * `VALIDATION` answer on `hideFromSearch` — the route names the field the
  * screen sent, instead of a bare rejection from `z.strictObject` (whose

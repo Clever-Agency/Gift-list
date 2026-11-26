@@ -26,6 +26,12 @@ type PendingEmailChange = {
   locale: string | null;
 };
 
+/** The two addresses a Better Auth email-change link carries (T9.2a). */
+export type EmailChangeLinkClaim = {
+  oldEmail: string;
+  newEmail: string;
+};
+
 function pendingIdentifier(userId: string): string {
   return `${EMAIL_CHANGE_PENDING_PREFIX}${userId}`;
 }
@@ -84,11 +90,63 @@ export async function rememberEmailChangeRequest(input: {
 /**
  * CLE-129/T9.2: the user cancelled the request on the screen, so the old address
  * is no longer expected to be notified and the memory of the wish is dropped.
- * The one-time link itself is a signed token Better Auth cannot revoke; it still
- * expires in an hour and works once.
+ * The one-time link itself is a signed token Better Auth cannot revoke, but
+ * `email-change-verify.ts` refuses it once this row is gone (T9.2a), so a
+ * cancelled request never changes the address even if the letter is opened.
  */
 export async function forgetEmailChangeRequest(userId: string): Promise<void> {
   await prisma.verification.deleteMany({ where: { identifier: pendingIdentifier(userId) } });
+}
+
+/**
+ * CLE-129/T9.2a: reads the two addresses out of a Better Auth verification JWT
+ * **without** checking its signature. The `/verify-email` handler verifies the
+ * token itself; this reading only decides whether the change is still expected,
+ * and a signed-out or forged payload that fails the signature never changes
+ * anything either way. A payload without `updateTo` is a plain address
+ * verification, not a change, so it returns null.
+ */
+export function readEmailChangeLinkClaim(token: string): EmailChangeLinkClaim | null {
+  const [, encodedPayload] = token.split(".");
+  if (!encodedPayload) return null;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+  if (payload === null || typeof payload !== "object") return null;
+  const { email, updateTo } = payload as { email?: unknown; updateTo?: unknown };
+  if (typeof email !== "string" || typeof updateTo !== "string" || updateTo.trim() === "") {
+    return null;
+  }
+  return { oldEmail: email.toLowerCase(), newEmail: updateTo.toLowerCase() };
+}
+
+/**
+ * CLE-129/T9.2a: the pending row is the source of truth for a link that is
+ * already in somebody's mailbox. The link only proves the address was reachable
+ * when the request was made; the row says the request is still wanted and still
+ * points at **this** address. A cancel removes the row, and a newer request
+ * replaces it, so both the cancelled and the superseded link are refused.
+ */
+export async function isEmailChangeLinkStillPending(
+  claim: EmailChangeLinkClaim,
+): Promise<boolean> {
+  const owner = await prisma.user.findFirst({
+    where: { email: { equals: claim.oldEmail, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (!owner) return false;
+  const identifier = pendingIdentifier(owner.id);
+  const row = await prisma.verification.findFirst({ where: { identifier } });
+  if (!row) return false;
+  const pending = parsePending(row.value);
+  return (
+    pending !== null &&
+    pending.oldEmail.toLowerCase() === claim.oldEmail &&
+    pending.newEmail.toLowerCase() === claim.newEmail
+  );
 }
 
 /**

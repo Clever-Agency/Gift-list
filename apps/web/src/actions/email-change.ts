@@ -72,12 +72,12 @@ export async function requestEmailChange(
 }
 
 /**
- * CLE-129/T9.2 (FR-56): «Отменить» in the waiting block drops the pending wish,
- * so the old address is not notified if a letter is still opened later. The
- * confirmation link is a signed one-time token Better Auth cannot revoke; it
- * keeps its hour-long life. Nothing else is stored, so this is all the cancel
- * has to forget. The per-user rate limit is left as is: cancelling must not
- * become a way to send letters without a limit.
+ * CLE-129/T9.2 (FR-56): «Отменить» in the waiting block drops the pending wish.
+ * The confirmation link is a signed one-time token Better Auth cannot revoke,
+ * but `/verify-email` now checks this row before applying the change (T9.2a):
+ * once the row is gone the link is answered with `?error=INVALID_TOKEN` and the
+ * address stays as it is. The per-user rate limit is left as is: cancelling must
+ * not become a way to send letters without a limit.
  */
 export async function cancelEmailChange(
   headers: Headers,

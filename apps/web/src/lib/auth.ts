@@ -1,6 +1,7 @@
 import "server-only";
 
 import { betterAuth } from "better-auth";
+import { createAuthMiddleware } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { expo } from "@better-auth/expo";
 import { nextCookies } from "better-auth/next-js";
@@ -17,6 +18,7 @@ import {
 } from "@/lib/email-change-pending";
 import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
 import { invalidateOutstandingPasswordResets } from "@/lib/password-reset-tokens";
+import { guardEmailChangeVerification } from "@/lib/email-change-verify";
 
 function createAuth() {
   const env = getEnv();
@@ -83,6 +85,15 @@ function createAuth() {
         const locale = "locale" in user && typeof user.locale === "string" ? user.locale : null;
         await sendEmailChangeEmail({ to: user.email, locale, url });
       },
+    },
+    // FR-56, T9.2a: a change-email link that was cancelled or superseded must
+    // not move the account. The pending row is the source of truth, so the
+    // guard refuses such a link with `?error=INVALID_TOKEN` before Better Auth's
+    // `/verify-email` writes anything.
+    hooks: {
+      before: createAuthMiddleware(async function beforeVerifyEmail(ctx) {
+        await guardEmailChangeVerification(ctx);
+      }),
     },
     // FR-56: Better Auth applies the change inside `/verify-email`; this hook
     // runs after that write commits. It reads the address the account left and

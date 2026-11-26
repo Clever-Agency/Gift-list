@@ -41,6 +41,8 @@ type Row = {
   holderVisibleToOthers: boolean;
   visibility: "PUBLIC" | "FRIENDS" | "SECRET";
   archivedAt: Date | null;
+  priceAmount: number | null;
+  priceCurrency: "USD" | "EUR" | "CNY" | "BYN" | "RUB" | null;
   reservedById: string | null;
   list: { ownerId: string; owner: { nick: string } };
 };
@@ -60,6 +62,8 @@ function row(overrides: Partial<Row> = {}): Row {
     holderVisibleToOthers: true,
     visibility: "FRIENDS",
     archivedAt: null,
+    priceAmount: 250,
+    priceCurrency: "RUB",
     reservedById: HOLDER,
     list: { ownerId: OWNER, owner: { nick: "anna" } },
     ...overrides,
@@ -122,6 +126,8 @@ describe("getMyReservations", () => {
         holderVisibleToOthers: true,
         visibility: true,
         archivedAt: true,
+        priceAmount: true,
+        priceCurrency: true,
         reservedById: true,
         list: { select: { ownerId: true, owner: { select: { nick: true } } } },
       },
@@ -156,6 +162,9 @@ describe("getMyReservations", () => {
         bought: false,
         holderVisibleToOwner: false,
         holderVisibleToOthers: true,
+        priceAmount: 250,
+        priceCurrency: "RUB",
+        photoUrl: null,
         canOpenGift: true,
       },
     ]);
@@ -204,6 +213,8 @@ describe("getMyReservations", () => {
       giftId: "g1",
       phase: "AWAITING_OWNER",
       bought: true,
+      priceAmount: null,
+      priceCurrency: null,
       canOpenGift: false,
     });
     expect(relationsBetween).toHaveBeenCalledWith(HOLDER, OWNER);
@@ -287,6 +298,9 @@ describe("getMyReservations", () => {
       "holderVisibleToOwner",
       "ownerNick",
       "phase",
+      "photoUrl",
+      "priceAmount",
+      "priceCurrency",
       "status",
       "titleSnapshot",
     ]);
@@ -298,8 +312,6 @@ describe("getMyReservations", () => {
       "listToken",
       "visibility",
       "reservationTimeZone",
-      "priceAmount",
-      "priceCurrency",
       "description",
       "linkUrl",
       "ownerId",

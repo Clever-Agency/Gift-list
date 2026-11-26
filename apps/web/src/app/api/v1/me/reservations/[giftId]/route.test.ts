@@ -18,6 +18,9 @@ const card = {
   bought: false,
   holderVisibleToOwner: false,
   holderVisibleToOthers: true,
+  priceAmount: null,
+  priceCurrency: null,
+  photoUrl: null,
   canOpenGift: true,
 };
 

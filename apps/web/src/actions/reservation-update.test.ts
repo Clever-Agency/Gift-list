@@ -71,6 +71,8 @@ function cardRow(overrides: Record<string, unknown> = {}) {
     holderVisibleToOthers: true,
     visibility: "PUBLIC" as const,
     archivedAt: null,
+    priceAmount: null,
+    priceCurrency: null,
     reservedById: "holder",
     list: { ownerId: "owner", owner: { nick: "anna" } },
     ...overrides,
@@ -294,6 +296,9 @@ describe("updateMyReservation", () => {
         "holderVisibleToOwner",
         "ownerNick",
         "phase",
+        "photoUrl",
+        "priceAmount",
+        "priceCurrency",
         "status",
         "titleSnapshot",
       ]);

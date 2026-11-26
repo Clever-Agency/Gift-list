@@ -37,6 +37,9 @@ function card(overrides: Partial<ReservationCardData> = {}): ReservationCardData
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
     ...overrides,
   };

@@ -216,6 +216,8 @@ const holderWishes: Row[] = [
     // End of the picked day: 2026-12-10 00:00 UTC is the day 2026-12-09.
     reservationDueAt: new Date("2026-12-10T00:00:00.000Z"),
     reservationTimeZone: "UTC",
+    priceAmount: 320,
+    priceCurrency: "BYN",
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
     reservedById: HOLDER,
@@ -270,6 +272,9 @@ const RESERVATION_CARD_KEYS = [
   "holderVisibleToOwner",
   "ownerNick",
   "phase",
+  "photoUrl",
+  "priceAmount",
+  "priceCurrency",
   "status",
   "titleSnapshot",
 ];
@@ -342,6 +347,9 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
         bought: false,
         holderVisibleToOwner: false,
         holderVisibleToOthers: true,
+        priceAmount: null,
+        priceCurrency: null,
+        photoUrl: null,
         canOpenGift: false,
       },
     ]);
@@ -359,6 +367,10 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
     for (const forbidden of ["publicToken", "listToken", "visibility", "reservationTimeZone"]) {
       expect(body).not.toContain(forbidden);
     }
+    // AD-12 (ред. 2026-11-26): the closed card answers `null`/`null`, so the
+    // stored price of the wish never reaches a holder who lost the detail.
+    expect(body).not.toContain("320");
+    expect(body).not.toContain("BYN");
   });
 
   it("при Block вишлист закрыт как неизвестный, а карточка жива без ссылки на детали", async () => {
@@ -383,6 +395,8 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
       titleSnapshot: "Плед",
       status: "RESERVED",
       phase: "ACTIVE",
+      priceAmount: null,
+      priceCurrency: null,
       canOpenGift: false,
     });
     expectReservationCardKeys(card);
@@ -403,6 +417,9 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
     for (const forbidden of ["publicToken", "listToken", "visibility", "reservationTimeZone"]) {
       expect(body).not.toContain(forbidden);
     }
+    // A-14: a block closes the price with the detail.
+    expect(body).not.toContain("320");
+    expect(body).not.toContain("BYN");
   });
 });
 

@@ -597,6 +597,9 @@ describe("reservation cards and actions", () => {
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
   };
 
@@ -606,10 +609,20 @@ describe("reservation cards and actions", () => {
     expect(reservationListSchema.parse({ reservations: [] })).toEqual({ reservations: [] });
   });
 
-  /** AD-7: the card is a closed set, so no price, tags, visibility or zone leaks in. */
+  /** AD-12 (ред. 2026-11-26): the current price and a future photo are part of the card. */
+  it("accepts the price of an open wish and the photo field", () => {
+    const priced = { ...card, priceAmount: 149.9, priceCurrency: "BYN" };
+
+    expect(reservationCardSchema.parse(priced)).toEqual(priced);
+    expect(reservationCardSchema.parse({ ...priced, photoUrl: "https://cdn.example/p.jpg" }))
+      .toMatchObject({ photoUrl: "https://cdn.example/p.jpg" });
+    expect(reservationCardSchema.safeParse({ ...card, priceCurrency: "GBP" }).success).toBe(false);
+  });
+
+  /** AD-7: the card is a closed set, so no tags, visibility or zone leaks in. */
   it("rejects fields outside the card", () => {
     for (const extra of [
-      { priceAmount: 100 },
+      { description: "Тёплый" },
       { visibility: "PUBLIC" },
       { reservationTimeZone: "UTC" },
       { ownerName: "Анна" },

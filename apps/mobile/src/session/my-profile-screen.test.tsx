@@ -1,21 +1,26 @@
 // @vitest-environment happy-dom
-import type { Me } from "@gift-list/contracts";
+import type { Me, MyProfile } from "@gift-list/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
-import { controls, settle } from "@/test/dom";
+import { controls, dialogElement, settle, typeInto } from "@/test/dom";
 import MyProfileScreen from "../../app/(app)/(tabs)/profile";
 
 /**
  * «Профиль» (CLE-129, D-59): the tab is a data screen now — avatar, name, nick
- * and email, each editable field with its own save, then the menu of the own
- * public profile, the settings, the support link and «Выйти». The nick form
- * moved here from «Настройки». Birthday, gender, country and «Обо мне» come
- * with T8; the email change with T9.
+ * and email, each editable field with its own save, then «О себе» (birthday,
+ * gender, country, «Обо мне» and the friends switch, T8.3), then the menu of the
+ * own public profile, the settings, the support link and «Выйти». The nick form
+ * moved here from «Настройки»; the email change comes with T9.
  */
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
-const account = vi.hoisted(() => ({ updateName: vi.fn(), updateNick: vi.fn() }));
+const account = vi.hoisted(() => ({
+  getMyProfile: vi.fn(),
+  updateMyProfile: vi.fn(),
+  updateName: vi.fn(),
+  updateNick: vi.fn(),
+}));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
@@ -94,6 +99,24 @@ const user: Me = {
   hideFromSearch: false,
 };
 
+/** «О себе» starts empty: every field is optional (D-64). */
+const profile: MyProfile = {
+  ...user,
+  birthDay: null,
+  birthMonth: null,
+  gender: null,
+  country: null,
+  about: null,
+  profileVisibleToFriends: true,
+};
+
+/** The month names the form builds with `Intl.DateTimeFormat`. */
+function monthName(month: number): string {
+  return new Intl.DateTimeFormat("ru", { month: "long" }).format(
+    new Date(Date.UTC(2000, month - 1, 1)),
+  );
+}
+
 let root: Root;
 let container: HTMLElement;
 
@@ -137,6 +160,65 @@ async function blur(label: string) {
   await act(async () => {
     field(label).dispatchEvent(new Event("focusout", { bubbles: true }));
   });
+}
+
+/** «Обо мне» is a `<textarea>`; the shared `field` helper reads inputs only. */
+function area(label: string): HTMLTextAreaElement {
+  const node = Array.from(container.querySelectorAll("textarea")).find(
+    (item) => item.getAttribute("aria-label") === label,
+  );
+  expect(node, `поле «${label}»`).toBeDefined();
+  return node as HTMLTextAreaElement;
+}
+
+function areaText(label: string): string {
+  return area(label).parentElement?.textContent ?? "";
+}
+
+/** The opener of a value picker: its accessible name is «label: current value». */
+function pickerButton(name: string): HTMLElement | undefined {
+  return controls(document).find((node) =>
+    (node.getAttribute("aria-label") ?? "").startsWith(`${name}:`),
+  );
+}
+
+async function openPicker(name: string): Promise<HTMLElement | null> {
+  const opener = pickerButton(name);
+  expect(opener, `поле «${name}»`).toBeDefined();
+  await act(async () => {
+    opener?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+  return dialogElement();
+}
+
+async function pickOption(name: string, option: string) {
+  const layer = await openPicker(name);
+  expect(layer, `слой «${name}»`).not.toBeNull();
+  const radio = Array.from(layer?.querySelectorAll<HTMLElement>('[role="radio"]') ?? []).find(
+    (node) => (node.textContent ?? "").trim() === option,
+  );
+  expect(radio, `вариант «${option}» в «${name}»`).toBeDefined();
+  await act(async () => {
+    radio?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
+/** A switch is a `role="switch"` press surface, outside the `CONTROLS` helpers. */
+function switchNode(label: string): HTMLElement | null {
+  return container.querySelector<HTMLElement>(
+    `[role="switch"][aria-label="${label}"]`,
+  );
+}
+
+async function pressSwitch(label: string) {
+  const node = switchNode(label);
+  expect(node, `переключатель «${label}»`).not.toBeNull();
+  await act(async () => {
+    node?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
 }
 
 function button(label: string): HTMLElement | undefined {
@@ -183,6 +265,8 @@ async function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
+  account.getMyProfile.mockResolvedValue({ ok: true, data: profile });
+  account.updateMyProfile.mockResolvedValue({ ok: true, data: profile });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -508,6 +592,150 @@ describe("профиль: ник", () => {
 
     expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(field("Ник").value).toBe("newnick");
+  });
+});
+
+describe("профиль: «О себе»", () => {
+  it("показывает все поля, счётчик и включённый переключатель", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    expect(text()).toContain("О себе");
+    expect(account.getMyProfile).toHaveBeenCalledTimes(1);
+    expect(pickerButton("День рождения, день")?.textContent).toBe("Не указано");
+    expect(pickerButton("День рождения, месяц")?.textContent).toBe("Не указано");
+    expect(pickerButton("Страна")?.textContent).toBe("Не указана");
+    for (const label of ["Мужской", "Женский", "Не указан"]) {
+      expect(
+        container.querySelector(`[role="radio"][aria-label="${label}"]`),
+        `радио «${label}»`,
+      ).not.toBeNull();
+    }
+    expect(area("Обо мне").value).toBe("");
+    expect(areaText("Обо мне")).toContain("0 из 500");
+
+    const toggle = container.querySelector(
+      '[role="switch"][aria-label="Показывать мои данные друзьям"]',
+    );
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    expect(text()).toContain("Видят только друзья");
+  });
+
+  it("29 февраля допустим, 30 февраля выбрать нельзя", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await pickOption("День рождения, месяц", monthName(2));
+    const layer = await openPicker("День рождения, день");
+    expect(layer).not.toBeNull();
+    const options = Array.from(layer?.querySelectorAll<HTMLElement>('[role="radio"]') ?? []).map(
+      (node) => (node.textContent ?? "").trim(),
+    );
+    expect(options).toContain("29");
+    expect(options).not.toContain("30");
+  });
+
+  it("счётчик «Обо мне» считает знаки и не пускает больше 500", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await typeInto(area("Обо мне"), "Привет");
+    expect(areaText("Обо мне")).toContain("6 из 500");
+
+    await typeInto(area("Обо мне"), "а".repeat(501));
+    expect(areaText("Обо мне")).toContain("501 из 500");
+    await pressLabel("Сохранить «О себе»");
+
+    expect(account.updateMyProfile).not.toHaveBeenCalled();
+    expect(areaText("Обо мне")).toContain("«Обо мне» — до 500 знаков.");
+  });
+
+  it("«Сохранить» отправляет блок целиком, ДР — парой", async () => {
+    respond({ ok: true, data: user });
+    account.getMyProfile.mockResolvedValue({ ok: true, data: { ...profile, country: "BY" } });
+    const saved: MyProfile = {
+      ...profile,
+      birthDay: 14,
+      birthMonth: 11,
+      gender: "FEMALE",
+      country: "BY",
+      about: "Люблю книги",
+      profileVisibleToFriends: false,
+    };
+    account.updateMyProfile.mockResolvedValue({ ok: true, data: saved });
+    await mount();
+
+    await pickOption("День рождения, месяц", monthName(11));
+    await pickOption("День рождения, день", "14");
+    await press("Женский");
+    await typeInto(area("Обо мне"), "  Люблю книги  ");
+    await pressSwitch("Показывать мои данные друзьям");
+    await pressLabel("Сохранить «О себе»");
+
+    expect(account.updateMyProfile).toHaveBeenCalledWith({
+      birthDay: 14,
+      birthMonth: 11,
+      gender: "FEMALE",
+      country: "BY",
+      about: "Люблю книги",
+      profileVisibleToFriends: false,
+    });
+    expect(text()).toContain("Данные сохранены.");
+  });
+
+  it("переключатель «Показывать мои данные друзьям» меняет состояние", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    const toggle = () => switchNode("Показывать мои данные друзьям");
+    expect(toggle()?.getAttribute("aria-checked")).toBe("true");
+    await pressSwitch("Показывать мои данные друзьям");
+    expect(toggle()?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("ошибка страны от сервера показывается под полем", async () => {
+    respond({ ok: true, data: user });
+    account.updateMyProfile.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "",
+      field: "country",
+    });
+    await mount();
+
+    await pressLabel("Сохранить «О себе»");
+
+    expect(text()).toContain("Выберите страну из списка.");
+    expect(text()).not.toContain("Данные сохранены.");
+  });
+
+  it("если «О себе» не загрузилось, есть «Повторить»", async () => {
+    respond({ ok: true, data: user });
+    account.getMyProfile.mockResolvedValueOnce({ ok: false, network: true });
+    await mount();
+
+    expect(text()).toContain("Не получилось загрузить данные профиля. Проверьте сеть.");
+    account.getMyProfile.mockResolvedValueOnce({ ok: true, data: profile });
+    await press("Повторить");
+
+    expect(area("Обо мне")).toBeDefined();
+  });
+
+  it("401 при загрузке «О себе» гасит сессию и ведёт на вход", async () => {
+    respond({ ok: true, data: user });
+    account.getMyProfile.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "",
+    });
+    await mount();
+    await settle(20);
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/profile", reason: "session_expired" },
+    });
   });
 });
 

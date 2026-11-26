@@ -1,4 +1,10 @@
-import { meSchema, type Me } from "@gift-list/contracts";
+import {
+  meSchema,
+  myProfileSchema,
+  type Me,
+  type MyProfile,
+  type ProfileUpdateBody,
+} from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
 
 /**
@@ -60,6 +66,47 @@ export async function updateHideFromSearch(hideFromSearch: boolean): Promise<MeR
   if (!result.ok) return result;
 
   const parsed = meSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, data: parsed.data };
+}
+
+/**
+ * CLE-129/T8.3 (D-58, AD-29): the profile fields of the owner come from
+ * `GET /api/v1/me/profile` — `Me` plus the birthday pair, the gender, the ISO
+ * country code, «Обо мне» and the friends switch. The answer always carries
+ * every field for the owner, so `null` is "not set" and the form can tell an
+ * empty value from an absent one.
+ */
+export type MyProfileResult =
+  | { ok: true; data: MyProfile }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
+export async function getMyProfile(): Promise<MyProfileResult> {
+  const result = await apiRequest<unknown>("/api/v1/me/profile");
+  if (!result.ok) return result;
+
+  const parsed = myProfileSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  return { ok: true, data: parsed.data };
+}
+
+/**
+ * `PATCH /api/v1/me/profile` is the only write path of the profile fields
+ * (AD-29). An absent key means "leave as is"; the birthday is one pair, so the
+ * form always sends both keys or both `null`. The answer is the whole
+ * `MyProfile`, so the screen keeps the values the server normalized.
+ */
+export async function updateMyProfile(body: ProfileUpdateBody): Promise<MyProfileResult> {
+  const result = await apiRequest<unknown>("/api/v1/me/profile", {
+    method: "PATCH",
+    body,
+  });
+  if (!result.ok) return result;
+
+  const parsed = myProfileSchema.safeParse(result.data);
   if (!parsed.success) return { ok: false, invalid: true };
 
   return { ok: true, data: parsed.data };

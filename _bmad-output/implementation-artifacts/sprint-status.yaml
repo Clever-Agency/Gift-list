@@ -62,7 +62,7 @@ development_status:
   3-1-смена-ника-в-настройках: done
   3-2-visibilitypolicy-и-wire-dto-доступа: done
   3-3-публичная-ссылка-l-publictoken: review # CLE-53: 2026-11-26 добавлена проверка доступа до редиректа на /l/:token и /l/:token/:giftId (spec-3-3-public-wishlist-404.md и spec-3-3-public-wish-404.md); остаётся HTTP-приёмка браузера с сессией. App Links и Universal Links вынесены в отдельную поставку Раунда 1 (D-65, CLE-108)
-  3-4-профиль-u-nick: review # CLE-54: 3.4.1 GET /api/v1/u/:nick и 3.4.2 экран /u/[nick] готовы 2026-11-06; 3.4.3 — корневые typecheck/lint/test/build exit 0 на b18650c 2026-11-06; не done: друг/Block только на моках, кнопки Epic 4 скрыты, приёмка человеком
+  3-4-профиль-u-nick: review # CLE-54: на staging проверены видимость подписчика и друга и HTTP 404 при Block; после исправления повторить подписку и принятие заявки без перезагрузки (spec-3-4-profile-relationship-refresh.md)
   3-5-поиск-пользователей-и-скрыть-из-поиска: done # CLE-50: 3.5.1–3.5.4 готовы 2026-11-12: поиск, «скрыть из поиска», ранжирование, настоящие ссылки на /u/:nick; epic-3 остаётся in-progress
   epic-3-retrospective: optional
 

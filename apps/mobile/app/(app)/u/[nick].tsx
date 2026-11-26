@@ -88,7 +88,7 @@ type ScreenState =
        */
       details: ProfileDetails | null;
     }
-  | { status: "missing" }
+  | { status: "missing"; nick: string | null; viewerId: string | null }
   | { status: "error"; kind: "network" | "generic" };
 
 type ToastState = { message: string; tone: "info" | "error"; nick: string };
@@ -159,7 +159,7 @@ export default function ProfileScreen() {
   const nick = route?.nick ?? null;
   const next = route?.next ?? null;
   const [state, setState] = useState<ScreenState>(
-    nick === null ? { status: "missing" } : { status: "loading" },
+    nick === null ? { status: "missing", nick, viewerId: null } : { status: "loading" },
   );
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -172,6 +172,7 @@ export default function ProfileScreen() {
   const removalInFlight = useRef<string | null>(null);
   const subscriptionSeq = useRef(0);
   const nickRef = useRef(nick);
+  const completedRead = useRef<{ ownerId: string; nick: string; attempt: number } | null>(null);
   // Story 4.4: the confirm of «Удалить из друзей» and its in-flight state.
   const [friendConfirmOpen, setFriendConfirmOpen] = useState(false);
   const [friendConfirmBusy, setFriendConfirmBusy] = useState(false);
@@ -184,6 +185,12 @@ export default function ProfileScreen() {
   const [closedExpanded, setClosedExpanded] = useState(false);
 
   const ownerId = auth.state.status === "ready" ? auth.state.user.id : null;
+  const showingCurrentProfile = state.status === "ready" && state.nick === nick;
+  // Read one coherent profile after its access-changing actions settle.
+  const profileReadPaused =
+    (nick !== null && (pendingNick === nick || subscriptionNick === nick)) ||
+    (showingCurrentProfile && (friendConfirmBusy || blockConfirmBusy || leaveAfterBlock)) ||
+    (state.status === "missing" && state.nick === nick && state.viewerId === ownerId);
 
   useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous" && next !== null) {
@@ -214,6 +221,7 @@ export default function ProfileScreen() {
    */
   useEffect(function rememberRouteNick() {
     nickRef.current = nick;
+    completedRead.current = null;
     requestSeq.current += 1;
     // A subscription answer belongs to the nick it was asked for; the new route
     // must never receive it as its own state.
@@ -221,17 +229,27 @@ export default function ProfileScreen() {
   }, [nick]);
 
   useEffect(function loadProfile() {
-    if (ownerId === null || nick === null) return;
+    if (ownerId === null || nick === null || profileReadPaused) return;
+    const previousRead = completedRead.current;
+    if (
+      previousRead?.ownerId === ownerId &&
+      previousRead.nick === nick &&
+      previousRead.attempt === attempt
+    ) {
+      return;
+    }
+    const read = { ownerId, nick, attempt };
     const currentNick = nick;
     let cancelled = false;
 
     async function requestProfile() {
       const result = await fetchProfile(currentNick);
       if (cancelled) return;
+      completedRead.current = read;
       if (result.ok) {
         setState(
           result.access === "not_found"
-            ? { status: "missing" }
+            ? { status: "missing", nick: currentNick, viewerId: ownerId }
             : {
                 status: "ready",
                 nick: currentNick,
@@ -274,7 +292,7 @@ export default function ProfileScreen() {
     // `auth` is only read on the expired-session branch; re-running the fetch on
     // every auth context update would refetch the profile for no reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownerId, nick, attempt]);
+  }, [ownerId, nick, attempt, profileReadPaused]);
 
   if (nick === null) {
     return <NotFoundScreen />;
@@ -290,7 +308,10 @@ export default function ProfileScreen() {
 
   // A reused route with a new nick reads as loading until its own answer lands.
   const view: ScreenState =
-    state.status === "ready" && state.nick !== nick ? { status: "loading" } : state;
+    ((state.status === "ready" || state.status === "missing") && state.nick !== nick) ||
+    (state.status === "missing" && state.viewerId !== ownerId)
+      ? { status: "loading" }
+      : state;
   const viewer = auth.state.user;
   // Story 5.3: the profile reads the same one list; closed wishes are shown in
   // «Уже подарено» without actions. `/u/:nick` cards never carry `undoUntil`, so
@@ -447,7 +468,7 @@ export default function ProfileScreen() {
       return;
     }
     if (result.status === "missing") {
-      setState({ status: "missing" });
+      setState({ status: "missing", nick: requestedNick, viewerId: viewer.id });
       return;
     }
     if (result.status === "cooldown") {
@@ -466,9 +487,8 @@ export default function ProfileScreen() {
    * state; every failure rolls it back, and an answer that belongs to a
    * previous nick or an older press is ignored. The subscription has its own
    * in-flight slot and sequence, so it never cancels a friend action that is
-   * still on the wire. The wishlist is not reread: a subscription opens only
-   * `PUBLIC`, which the server has already filtered, and the screen must never
-   * add `FRIENDS` or `SECRET` wishes on its own.
+   * still on the wire. A success rereads the profile so the server applies
+   * the new visibility to the wishlist.
    */
   async function subscriptionAction(kind: SubscriptionAction) {
     if (nick === null || subscriptionInFlight.current === nick) return;
@@ -527,6 +547,7 @@ export default function ProfileScreen() {
         tone: "info",
         nick: requestedNick,
       });
+      setAttempt((value) => value + 1);
       return;
     }
 
@@ -546,7 +567,7 @@ export default function ProfileScreen() {
       return;
     }
     if (result.status === "missing") {
-      setState({ status: "missing" });
+      setState({ status: "missing", nick: requestedNick, viewerId: viewer.id });
       return;
     }
     setToast({ message: result.message, tone: "error", nick: requestedNick });
@@ -570,6 +591,7 @@ export default function ProfileScreen() {
       relationship: requestedView.relationship,
       inviteCooldown: requestedView.inviteCooldown,
       gifts: requestedView.gifts,
+      details: requestedView.details,
     };
     const seq = requestSeq.current + 1;
     requestSeq.current = seq;
@@ -585,6 +607,7 @@ export default function ProfileScreen() {
             // A friend may see `FRIENDS`; `SECRET` never arrives from the server,
             // but the rule stays closed: only `PUBLIC` survives the removal.
             gifts: current.gifts.filter((gift) => gift.visibility === "PUBLIC"),
+            details: null,
           }
         : current;
     });
@@ -620,6 +643,7 @@ export default function ProfileScreen() {
             relationship: previous.relationship,
             inviteCooldown: previous.inviteCooldown,
             gifts: previous.gifts,
+            details: previous.details,
           }
         : current;
     });
@@ -637,7 +661,7 @@ export default function ProfileScreen() {
       return;
     }
     if (result.status === "missing") {
-      setState({ status: "missing" });
+      setState({ status: "missing", nick: requestedNick, viewerId: viewer.id });
       return;
     }
     setToast({ message: result.message, tone: "error", nick: requestedNick });
@@ -679,6 +703,7 @@ export default function ProfileScreen() {
 
     const result = await requestBlock(requestedNick, { profile, common });
     if (blockInFlight.current === requestedNick) blockInFlight.current = null;
+    if (nickRef.current !== requestedNick) return;
 
     setBlockConfirmOpen(false);
     if (result.status === "blocked") {
@@ -703,7 +728,7 @@ export default function ProfileScreen() {
       return;
     }
     if (result.status === "missing") {
-      setState({ status: "missing" });
+      setState({ status: "missing", nick: requestedNick, viewerId: viewer.id });
       return;
     }
     setToast({ message: result.message, tone: "error", nick: requestedNick });

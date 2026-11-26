@@ -773,11 +773,15 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
               ],
               owner,
               "FRIENDS",
+              undefined,
+              undefined,
+              { birthDay: null, birthMonth: null, gender: null, country: null, about: "Люблю горы" },
             )
           : giftsAnswer([], owner, "INCOMING_PENDING"),
       );
     });
     await mount();
+    expect(text()).not.toContain("Люблю горы");
 
     await press("Принять приглашение");
 
@@ -786,6 +790,7 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
     expect(text()).toContain("Друзья");
     expect(text()).toContain("Наушники");
     expect(text()).toContain("Свитер");
+    expect(text()).toContain("Люблю горы");
     expect(text()).not.toContain("Зовёт в друзья");
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(button("Отклонить")).toBeUndefined();
@@ -1198,11 +1203,15 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
         return removal;
       }
       return Promise.resolve(
-        friendAnswer(
+        giftsAnswer(
           removed
             ? [gift()]
             : [gift(), gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" })],
+          owner,
           removed ? "NONE" : "FRIENDS",
+          undefined,
+          undefined,
+          removed ? undefined : { birthDay: null, birthMonth: null, gender: null, country: null, about: "Люблю горы" },
         ),
       );
     });
@@ -1210,6 +1219,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
 
     expect(text()).toContain("Друзья");
     expect(text()).toContain("Свитер");
+    expect(text()).toContain("Люблю горы");
 
     await openRemoveConfirm();
     await pressInDialog("Удалить");
@@ -1217,6 +1227,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
     expect(friendRemoveCalls()).toBe(1);
     expect(text()).toContain("Наушники");
     expect(text()).not.toContain("Свитер");
+    expect(text()).not.toContain("Люблю горы");
     expect(text()).not.toContain("Друзья");
     expect(button("Добавить в друзья")).toBeDefined();
     expect(button("Удалить из друзей")).toBeUndefined();
@@ -1604,13 +1615,14 @@ describe("профиль: устаревший cooldown сервера (Story 4.
 describe("профиль: подписка (Story 4.6)", () => {
   it("нет подписки: «Подписаться» шлёт POST, сразу меняет на «Отписаться» и говорит тост", async () => {
     let resolveSubscribe: (value: unknown) => void = () => {};
+    let subscribed = false;
     const subscribe = new Promise((resolve) => {
       resolveSubscribe = resolve;
     });
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/subscription") return subscribe;
-      return Promise.resolve(giftsAnswer([]));
+      return Promise.resolve(giftsAnswer(subscribed ? [gift()] : [], owner, "NONE", undefined, subscribed));
     });
     await mount();
 
@@ -1622,47 +1634,55 @@ describe("профиль: подписка (Story 4.6)", () => {
     expect(subscriptionCalls("POST")).toBe(1);
     expect(button("Отписаться")).toBeDefined();
     expect(button("Подписаться")).toBeUndefined();
-    // A subscription opens PUBLIC only, so the wishlist is not refetched.
     expect(profileReads()).toBe(1);
+    expect(text()).not.toContain("Наушники");
 
+    subscribed = true;
     await act(async () => resolveSubscribe(subscriptionAnswer("SUBSCRIBED")));
     await settle(10);
 
     expect(text()).toContain("Вы подписались");
+    expect(text()).toContain("Наушники");
     expect(button("Отписаться")).toBeDefined();
-    expect(profileReads()).toBe(1);
+    expect(profileReads()).toBe(2);
   });
 
   it("уже подписан: «Отписаться» шлёт DELETE и возвращает «Подписаться»", async () => {
+    let subscribed = true;
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/subscription") {
+        subscribed = false;
         return Promise.resolve(subscriptionAnswer("UNSUBSCRIBED"));
       }
-      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, true));
+      return Promise.resolve(giftsAnswer(subscribed ? [gift()] : [], owner, "NONE", undefined, subscribed));
     });
     await mount();
 
     expect(button("Отписаться")).toBeDefined();
     expect(button("Подписаться")).toBeUndefined();
+    expect(text()).toContain("Наушники");
 
     await press("Отписаться");
 
     expect(subscriptionCalls("DELETE")).toBe(1);
     expect(subscriptionCalls("POST")).toBe(0);
     expect(text()).toContain("Вы отписались");
+    expect(text()).not.toContain("Наушники");
     expect(button("Подписаться")).toBeDefined();
     expect(button("Отписаться")).toBeUndefined();
-    expect(profileReads()).toBe(1);
+    expect(profileReads()).toBe(2);
   });
 
   it("повторная подписка — успешный no-op, без ошибки и с тем же тостом", async () => {
+    let subscribed = false;
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/subscription") {
+        subscribed = true;
         return Promise.resolve(subscriptionAnswer("ALREADY_SUBSCRIBED"));
       }
-      return Promise.resolve(giftsAnswer([]));
+      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, subscribed));
     });
     await mount();
 
@@ -1675,12 +1695,14 @@ describe("профиль: подписка (Story 4.6)", () => {
   });
 
   it("повторная отписка — успешный no-op, без ошибки", async () => {
+    let subscribed = true;
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/subscription") {
+        subscribed = false;
         return Promise.resolve(subscriptionAnswer("NOT_SUBSCRIBED"));
       }
-      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, true));
+      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, subscribed));
     });
     await mount();
 
@@ -1750,6 +1772,8 @@ describe("профиль: подписка (Story 4.6)", () => {
 
   it("подписка и дружба не отменяют друг друга: ответ приглашения не теряется", async () => {
     let resolveInvite: (value: unknown) => void = () => {};
+    let inviteSent = false;
+    let subscribed = false;
     const invite = new Promise((resolve) => {
       resolveInvite = resolve;
     });
@@ -1757,9 +1781,12 @@ describe("профиль: подписка (Story 4.6)", () => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/invite") return invite;
       if (path === "/api/v1/u/boris/subscription") {
+        subscribed = true;
         return Promise.resolve(subscriptionAnswer("SUBSCRIBED"));
       }
-      return Promise.resolve(giftsAnswer([]));
+      return Promise.resolve(
+        giftsAnswer(subscribed ? [gift()] : [], owner, inviteSent ? "OUTGOING_PENDING" : "NONE", undefined, subscribed),
+      );
     });
     await mount();
 
@@ -1768,13 +1795,45 @@ describe("профиль: подписка (Story 4.6)", () => {
 
     await press("Подписаться");
     expect(text()).toContain("Вы подписались");
+    expect(text()).toContain("Ожидает ответа");
+    expect(profileReads()).toBe(1);
 
+    inviteSent = true;
     await act(async () => resolveInvite(inviteAnswer("INVITED")));
     await settle(10);
 
     expect(text()).toContain("Приглашение отправлено");
     expect(text()).toContain("Ожидает ответа");
+    expect(text()).toContain("Наушники");
     expect(button("Отписаться")).toBeDefined();
+    expect(profileReads()).toBe(2);
+  });
+
+  it("ответ профиля до NOT_FOUND от заявки не возвращает устаревшие желания", async () => {
+    let resolveRead: (value: unknown) => void = () => {};
+    const refresh = new Promise((resolve) => {
+      resolveRead = resolve;
+    });
+    let subscribed = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") return Promise.resolve(notFoundAnswer());
+      if (path === "/api/v1/u/boris/subscription") {
+        subscribed = true;
+        return Promise.resolve(subscriptionAnswer("SUBSCRIBED"));
+      }
+      return subscribed ? refresh : Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+    await press("Подписаться");
+    expect(profileReads()).toBe(2);
+
+    await press("Добавить в друзья");
+    await act(async () => resolveRead(giftsAnswer([gift()], owner, "NONE", undefined, true)));
+    await settle(10);
+
+    expect(text()).toContain("Пользователь не найден.");
+    expect(text()).not.toContain("Наушники");
   });
 });
 

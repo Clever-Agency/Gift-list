@@ -18,6 +18,7 @@
   "emailSubjectWishExpirySoon": "Срок желания истекает через 3 дня — {brand}",
   "emailSubjectWishExpiry": "Срок желания вышел — {brand}",
   "open": "Открыть уведомление",
+  "unsubscribe": "Отписаться",
   "settingsTitle": "Уведомления",
   "reminders": "Напоминания",
   "remindFriendDates": "Дни рождения и даты друзей",

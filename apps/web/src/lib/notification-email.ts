@@ -8,10 +8,11 @@ import {
   notificationText,
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
-import type { Notification, Prisma } from "@/db/generated/client";
+import type { Notification, NotificationKind, Prisma } from "@/db/generated/client";
 import { getBrandName, getEnv } from "@/lib/env";
 import { projectNotification, preferenceSelect, lockClosureGift } from "@/lib/notification-store";
 import { escapeHtml } from "@/lib/password-reset-mail";
+import { createUnsubscribeToken, type UnsubscribeType } from "@/lib/unsubscribe-token";
 
 const MINUTE_MS = 60_000;
 // Resend keeps a key for 24 hours. Leave a margin for the request in flight.
@@ -23,6 +24,8 @@ type Message = {
   subject: string;
   text: string;
   html: string;
+  /** Resend forwards these as letter headers (RFC 8058 needs the first two). */
+  headers?: Record<string, string>;
 };
 
 type SendEmail = (message: Message, idempotencyKey: string) => Promise<"sent" | "already-sent">;
@@ -55,6 +58,38 @@ export function notificationEmailLink(baseUrl: string, id: string) {
   url.protocol = "https:";
   url.searchParams.set("id", id);
   return url.toString();
+}
+
+/**
+ * CLE-137 (Story 7.2, FR-36): only the two date-reminder letters carry an
+ * unsubscribe link and the RFC 8058 headers. A reservation letter keeps no
+ * such control (R-3), so anything else answers `null`.
+ */
+export function notificationUnsubscribeType(kind: NotificationKind): UnsubscribeType | null {
+  if (kind === "DATE_FRIEND") return "friendDates";
+  if (kind === "DATE_OWN") return "ownList";
+  return null;
+}
+
+function publicLetterUrl(baseUrl: string, path: string) {
+  const url = new URL(path, baseUrl);
+  url.protocol = "https:";
+  return url.toString();
+}
+
+/**
+ * The visible `/unsubscribe/{token}` page and its one-click POST receiver
+ * (S4-3). The token grants that one reminder switch and nothing else.
+ */
+export function notificationUnsubscribeLinks(baseUrl: string, userId: string, kind: NotificationKind) {
+  const type = notificationUnsubscribeType(kind);
+  if (!type) return null;
+  const path = `/unsubscribe/${encodeURIComponent(createUnsubscribeToken(userId, type))}`;
+  return {
+    type,
+    page: publicLetterUrl(baseUrl, path),
+    oneClick: publicLetterUrl(baseUrl, `${path}/one-click`),
+  };
 }
 
 type Candidate = Pick<Notification, "id" | "kind" | "giftId" | "createdAt" | "emailFirstAttemptAt">;
@@ -159,11 +194,28 @@ export async function processNotificationEmails(
         // Projection may take time. Keep the last outbound request inside the
         // provider's key lifetime even on a delayed or resumed worker.
         if (current.emailFirstAttemptAt && clock().getTime() - current.emailFirstAttemptAt.getTime() >= RETRY_MS) continue;
+        // CLE-137 (Story 7.2): a date reminder offers «Отписаться» and the
+        // RFC 8058 headers; every other letter stays as it was (R-3).
+        const unsubscribe = notificationUnsubscribeLinks(baseUrl, current.recipientId, row.kind);
         await send({
           to: current.recipient.email,
           subject: notificationEmailSubject(item.event, locale).replace("{brand}", getBrandName()),
-          text: [...lines, "", href].join("\n"),
-          html: `${lines.map(line => `<p>${escapeHtml(line)}</p>`).join("")}<p><a href="${escapeHtml(href)}">${escapeHtml(copy.open)}</a></p>`,
+          text: [
+            ...lines,
+            "",
+            href,
+            ...(unsubscribe ? ["", `${copy.unsubscribe}: ${unsubscribe.page}`] : []),
+          ].join("\n"),
+          html: `${lines.map(line => `<p>${escapeHtml(line)}</p>`).join("")}<p><a href="${escapeHtml(href)}">${escapeHtml(copy.open)}</a></p>` +
+            (unsubscribe
+              ? `<p><a href="${escapeHtml(unsubscribe.page)}">${escapeHtml(copy.unsubscribe)}</a></p>`
+              : ""),
+          headers: unsubscribe
+            ? {
+              "List-Unsubscribe": `<${unsubscribe.oneClick}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            }
+            : undefined,
         }, `notification/${item.id}`);
         sent++;
       }

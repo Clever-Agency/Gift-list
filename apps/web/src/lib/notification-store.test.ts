@@ -3,6 +3,19 @@ import { notificationText, safeNextPath } from "@gift-list/contracts";
 import type { Notification } from "@/db/generated/client";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/env", function envModule() {
+  return {
+    getBrandName: function getBrandName() { return "WishMoon"; },
+    // CLE-137 (Story 7.2): the unsubscribe token reads the auth secret; tests
+    // must not depend on a developer `.env`.
+    getEnv: function getEnv() {
+      return {
+        BETTER_AUTH_SECRET: "01234567890123456789012345678901",
+        BETTER_AUTH_URL: "https://example.test",
+      };
+    },
+  };
+});
 
 const db = vi.hoisted(function database() {
   return {
@@ -52,7 +65,12 @@ import {
   wishExpiryEventKey,
 } from "./notification-store";
 import { getBrandName } from "@/lib/env";
-import { notificationEmailLink, processNotificationEmails } from "./notification-email";
+import {
+  notificationEmailLink,
+  notificationUnsubscribeLinks,
+  processNotificationEmails,
+} from "./notification-email";
+import { verifyUnsubscribeToken } from "./unsubscribe-token";
 
 const now = new Date("2026-11-24T12:00:00Z");
 const reservedAt = new Date("2026-11-22T12:00:00Z");
@@ -740,6 +758,75 @@ describe("email notification queue", function mailTests() {
     expect(safeNextPath(href.pathname + href.search)).toBe("/notifications?id=example");
   });
 
+  /**
+   * CLE-137 (Story 7.2, FR-36): each reminder type carries its own switch in
+   * the token, and no other letter gets an unsubscribe control (R-3).
+   */
+  it("maps only the two date reminders to an unsubscribe switch", function unsubscribeMapping() {
+    const friend = notificationUnsubscribeLinks("http://example.test", "owner", "DATE_FRIEND");
+    expect(friend?.type).toBe("friendDates");
+    expect(friend?.page).toMatch(/^https:\/\/example\.test\/unsubscribe\/[^/]+$/);
+    expect(friend?.oneClick).toBe(`${friend?.page}/one-click`);
+    expect(verifyUnsubscribeToken(friend!.page.split("/").pop()!))
+      .toEqual({ userId: "owner", type: "friendDates" });
+
+    const own = notificationUnsubscribeLinks("https://example.test", "holder", "DATE_OWN");
+    expect(own?.type).toBe("ownList");
+    expect(verifyUnsubscribeToken(own!.page.split("/").pop()!))
+      .toEqual({ userId: "holder", type: "ownList" });
+
+    for (const kind of ["RESERVATION_DUE", "WISH_EXPIRY", "GIFT_CLOSED", "FRIEND_INVITE"] as const) {
+      expect(notificationUnsubscribeLinks("https://example.test", "owner", kind)).toBeNull();
+    }
+  });
+
+  it("adds the own-list link and RFC 8058 headers to its reminder letter", async function ownListUnsubscribe() {
+    mockEmailQueue([record({ id: "own", kind: "DATE_OWN", giftId: null, actorId: null, payload: {} })]);
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 1 });
+    const message = send.mock.calls[0]![0];
+    const page = /^Отписаться: (https:\/\/\S+)$/m.exec(message.text)?.[1];
+    expect(page).toBeDefined();
+    expect(message.text).toContain("Скоро ваш день рождения");
+    expect(message.html).toContain(`<a href="${page}">Отписаться</a>`);
+    expect(message.headers).toEqual({
+      "List-Unsubscribe": `<${page}/one-click>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+    expect(verifyUnsubscribeToken(page!.split("/").pop()!)).toEqual({ userId: "owner", type: "ownList" });
+  });
+
+  it("keeps a reservation letter free of the unsubscribe control", async function reservationNoUnsubscribe() {
+    mockEmailQueue([record({
+      kind: "RESERVATION_DUE",
+      recipientId: "holder",
+      actorId: "owner",
+      payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve },
+    })]);
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 1 });
+    const message = send.mock.calls[0]![0];
+    expect(message.headers).toBeUndefined();
+    expect(message.text).not.toContain("Отписаться");
+    expect(message.html).not.toContain("/unsubscribe/");
+  });
+
+  it("does not send an own-list reminder while its type switch is off", async function ownListOff() {
+    mockEmailQueue(
+      [record({ kind: "DATE_OWN", giftId: null, actorId: null, payload: {} })],
+      { ...defaults, remindOwnList: false },
+    );
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 0 });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it.each([null, new Date(now.getTime() - 60_000)])(
     "lets only one worker claim the same pending attempt (%s)",
     async function concurrentClaim(firstAttemptAt) {
@@ -930,7 +1017,7 @@ function matchesQueueFilter(row: Notification, where: QueueFilter): boolean {
     matchesDate(row.emailFirstAttemptAt, where.emailFirstAttemptAt);
 }
 
-function mockEmailQueue(rows: Notification[]) {
+function mockEmailQueue(rows: Notification[], prefs = defaults) {
   db.notification.findMany.mockImplementation(async function select(args: { where: QueueFilter; take: number }) {
     return rows.filter(row => matchesQueueFilter(row, args.where))
       .sort((left, right) => left.deliverAfter.getTime() - right.deliverAfter.getTime())
@@ -946,7 +1033,7 @@ function mockEmailQueue(rows: Notification[]) {
   });
   db.notification.findUnique.mockImplementation(async function select(args: { where: QueueFilter }) {
     const row = rows.find(candidate => matchesQueueFilter(candidate, args.where));
-    return row ? { ...row, recipient: { ...defaults, email: "owner@example.test", locale: "ru" } } : null;
+    return row ? { ...row, recipient: { ...prefs, email: "owner@example.test", locale: "ru" } } : null;
   });
   return rows;
 }

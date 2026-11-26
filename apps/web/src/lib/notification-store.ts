@@ -28,6 +28,8 @@ const giftSelect = {
   status: true,
   reservedAt: true,
   reservedById: true,
+  // Story 6.6: the holder's own calendar day decides the «скоро» notice.
+  reservedBy: { select: { timeZone: true } },
   reservationPhase: true,
   reservationPhaseAt: true,
   reservationBought: true,

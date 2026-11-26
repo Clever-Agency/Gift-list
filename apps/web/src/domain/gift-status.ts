@@ -12,8 +12,9 @@
 // neither `bought` nor `GIVEN` protects a reservation from the timer — a holder
 // cannot keep a wish blocked forever by marking it or promising it.
 // Story 6.6: the wish-expiry cron clears an expired reservation and archives the
-// wish in one write unless the holder marked the gift as bought. That write also
-// lives in the adapter, next to the timer releases.
+// wish in one write unless the holder marked the gift as bought, and reminds the
+// holder three days before the date. Both live in the adapter, next to the timer
+// releases.
 
 import { RESERVATION_PHASES } from "@gift-list/contracts";
 import type { GiftEditEventField } from "./gift-edit";
@@ -361,6 +362,22 @@ export interface GiftStatusTransaction {
    * The owner never receives it.
    */
   remindReservationDue(giftId: string, at: Date): Promise<"success" | "lost">;
+  /**
+   * Story 6.6 (FR-42, D-26): the holder's «срок желания через 3 дня» notice. Not
+   * a transition: the status and every reservation column stay. The row is read
+   * inside the caller's transaction and only answers `success` when the notice
+   * was really inserted: the spot must still be the live reservation with the
+   * same `expiresOn`, not archived, and `at` must be the holder's local
+   * `expiresOn − 3` at or after 10:00 in their `User.timeZone`. A repeated run
+   * (or a run on a later day) writes nothing, because `skipDuplicates` keeps one
+   * row per reservation instance and expiry day. Only the holder is addressed
+   * (D-49).
+   */
+  remindWishExpirySoon(
+    giftId: string,
+    expectedExpiresOn: Date,
+    at: Date,
+  ): Promise<"success" | "lost">;
   /**
    * Story 5.5 (AD-9): CAS on any live reservation of the holder. Only
    * `reservationBought` changes, so clearing the mark in `AWAITING_OWNER` keeps

@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma, PrismaClient } from "@/db/generated/client";
 import { prisma } from "@/db/client";
 import { calendarDay, calendarDayToDate, isBeforeLocalToday } from "@/domain/calendar-day";
+import { isWishExpirySoon } from "@/domain/wish-expiry";
 import {
   EXTENDABLE_RESERVATION_PHASES,
   GIVABLE_RESERVATION_PHASES,
@@ -219,6 +220,25 @@ export function giftStatusTransaction(
         kind: "RESERVATION_DUE", role: "holder", email: true, at, eventAt: dueAt, reminder: true,
       });
       return "success";
+    },
+    async remindWishExpirySoon(giftId, expectedExpiresOn, at) {
+      const gift = await notificationGiftSnapshot(tx, giftId);
+      // The cron reads candidates outside this transaction, so every fact it
+      // relied on is checked again inside: a released reservation, an archive, a
+      // moved date or a run on the wrong day writes nothing.
+      if (gift === null || gift.status !== "RESERVED" || gift.archivedAt !== null) return "lost";
+      if (gift.reservedAt === null || gift.expiresOn === null) return "lost";
+      if (gift.expiresOn.getTime() !== expectedExpiresOn.getTime()) return "lost";
+      const day = calendarDay(gift.expiresOn);
+      if (day === null || !isWishExpirySoon(day, at, gift.reservedBy?.timeZone ?? null)) return "lost";
+      // The key carries the reservation instance and the expiry day, so a second
+      // run on the same day inserts nothing and reports `lost`. Only the holder
+      // is a recipient (D-49); `email: true` follows the notification-store
+      // convention and the channel filter is applied on projection.
+      const created = await enqueueGiftNotification(tx, gift, {
+        kind: "WISH_EXPIRY_SOON", role: "holder", email: true, at,
+      });
+      return created > 0 ? "success" : "lost";
     },
     async setReservationBought(giftId, actorId, write) {
       const { count } = await tx.gift.updateMany({
@@ -504,6 +524,8 @@ export type WishExpiryResult = {
   readonly released: number;
   /** Story 6.6: expired reservations kept because the gift is marked as bought. */
   readonly notifiedBought: number;
+  /** Story 6.6: «срок через 3 дня» notices queued for the holder. */
+  readonly remindedSoon: number;
   readonly failed: number;
 };
 
@@ -519,6 +541,16 @@ export type WishExpiryResult = {
  * notice, deduplicated by the reservation instance and the expiry day. There is
  * no lower bound on the date, so reservations that expired before the story
  * shipped are handled by the first run. The owner is never a recipient (D-49).
+ *
+ * A third pass queues the holder's «срок через 3 дня» notice. Its candidates are
+ * the `RESERVED` rows with `expiresOn` two to four UTC days ahead: a local day is
+ * at most one day away from UTC, so `expiresOn − 3` in the holder's zone can only
+ * fall in that band. The exact rule — the holder's local day equals
+ * `expiresOn − 3` and their local time is 10:00 or later — is the pure
+ * `isWishExpirySoon`, checked inside the service transaction with the holder's
+ * `User.timeZone`. A day that already passed (a reservation made after it, or a
+ * story shipped later) therefore never gets the notice late. Only the holder is
+ * addressed, and a repeated run inserts nothing.
  *
  * Candidates are read in batches by `id`. A local day of any zone is at most
  * UTC-today + 1, so a later `expiresOn` can never be due and is not read. The
@@ -536,6 +568,7 @@ export async function processWishExpiry(
   let archived = 0;
   let released = 0;
   let notifiedBought = 0;
+  let remindedSoon = 0;
   let failed = 0;
 
   let lastId: string | undefined;
@@ -596,25 +629,58 @@ export async function processWishExpiry(
     lastReservedId = rows[rows.length - 1]!.id;
   }
 
-  return { archived, released, notifiedBought, failed };
+  // Story 6.6: the holder's «срок желания через 3 дня» notice. The UTC band is
+  // wider than the rule on purpose: only the holder's own zone decides the day,
+  // and a local day is at most one day away from UTC.
+  const soonFrom = new Date(utcToday.getTime() + DAY_MS);
+  const soonUntil = new Date(utcToday.getTime() + 5 * DAY_MS);
+  let lastSoonId: string | undefined;
+  for (;;) {
+    const rows = await scanExpiryCandidates(db, "RESERVED", lastSoonId, soonUntil, soonFrom);
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      const expiresOn = row.expiresOn;
+      if (expiresOn === null) continue;
+      try {
+        const outcome = await runGiftStatusTransaction(
+          function remindExpirySoon(service) {
+            return service.remindWishExpirySoon(row.id, expiresOn, now);
+          },
+          db,
+        );
+        if (outcome === "success") remindedSoon += 1;
+      } catch (error) {
+        failed += 1;
+        logExpiryFailure("soon notice", row.id, error);
+      }
+    }
+
+    if (rows.length < EXPIRY_BATCH) break;
+    lastSoonId = rows[rows.length - 1]!.id;
+  }
+
+  return { archived, released, notifiedBought, remindedSoon, failed };
 }
 
 /**
  * Story 2.6 and 6.6: the one scan of a status whose date may have passed. It
  * reads the id, the date and the owner's zone only (AD-7: no card can leave the
- * gate from here), and pages by id. There is no lower bound on the date.
+ * gate from here), and pages by id. The expiry pass has no lower bound on the
+ * date; the «скоро» pass narrows the same scan to its UTC band.
  */
 function scanExpiryCandidates(
   db: WishExpiryDb,
   status: "OPEN" | "RESERVED",
   lastId: string | undefined,
   horizon: Date,
+  since?: Date,
 ) {
   return db.gift.findMany({
     where: {
       status,
       archivedAt: null,
-      expiresOn: { not: null, lt: horizon },
+      expiresOn: { not: null, lt: horizon, ...(since === undefined ? {} : { gte: since }) },
       ...(lastId === undefined ? {} : { id: { gt: lastId } }),
     },
     select: {

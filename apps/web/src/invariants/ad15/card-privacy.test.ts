@@ -423,6 +423,62 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
   });
 });
 
+describe("AD-15 (5) — ник держателя у гостя только по переключателю", () => {
+  function reservedRow(visibleToOthers: boolean): Row {
+    return gift({
+      id: "g-reserved",
+      title: "Плед",
+      visibility: "PUBLIC",
+      status: "RESERVED",
+      reservationPhase: "ACTIVE",
+      reservationDueAt: new Date("2026-12-10T00:00:00.000Z"),
+      reservationTimeZone: "UTC",
+      holderVisibleToOthers: visibleToOthers,
+      reservedById: HOLDER,
+      reservedBy: HOLDER_PERSON,
+    });
+  }
+
+  beforeEach(() => {
+    // A subscriber passes the PUBLIC filter of AD-7 without a friendship, so the
+    // card comes through the viewer branch with the holder facts on it.
+    state.actor = "guest";
+    state.list = LIST;
+    state.relations = { blocked: false, friend: false, subscriber: true, contactMatch: false };
+  });
+
+  it("отдаёт гостю nick и displayName только при holderVisibleToOthers (D-55)", async () => {
+    state.gifts = [reservedRow(true)];
+    const shown = await readWishlist({ viewer: { id: "guest" }, target: { ownerId: OWNER } });
+    const [shownCard] = shown?.gifts ?? [];
+    expect(shownCard?.reservedBy).toEqual({
+      id: HOLDER,
+      nick: "daria",
+      displayName: "Дарья",
+    });
+
+    state.gifts = [reservedRow(false)];
+    const hidden = await readWishlist({ viewer: { id: "guest" }, target: { ownerId: OWNER } });
+    const [hiddenCard] = hidden?.gifts ?? [];
+    expect(hiddenCard?.reservedBy).toBeNull();
+    expect(JSON.stringify(hiddenCard)).not.toContain("daria");
+    expect(JSON.stringify(hiddenCard)).not.toContain("Дарья");
+  });
+
+  it("не отдаёт владельцу ни имени, ни ника держателя", async () => {
+    state.actor = OWNER;
+    state.gifts = [reservedRow(true)];
+
+    const wishlist = await readWishlist({ viewer: { id: OWNER }, target: { ownerId: OWNER } });
+    const [card] = wishlist?.gifts ?? [];
+    expect(card?.reservedBy).toBeNull();
+
+    const body = JSON.stringify(wishlist);
+    expect(body).not.toContain("daria");
+    expect(body).not.toContain("Дарья");
+  });
+});
+
 describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () => {
   beforeEach(() => {
     state.actor = OWNER;

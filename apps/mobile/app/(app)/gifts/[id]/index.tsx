@@ -15,6 +15,7 @@ import {
   TagChip,
   TagChipList,
   Text,
+  XStack,
   YStack,
 } from "@gift-list/ui";
 import { formatDate, formatPrice } from "@gift-list/contracts";
@@ -55,6 +56,7 @@ export default function GiftDetailScreen() {
   const tPhase = useTranslations("app.gift.detail.phase");
   const tReservations = useTranslations("app.reservations");
   const tForm = useTranslations("app.form");
+  const tWishlist = useTranslations("app.myWishlist");
   const common = useTranslations("common");
   const locale = useLocale();
   const brand = getBrandName();
@@ -436,6 +438,24 @@ export default function GiftDetailScreen() {
                         return tGift("tagsMore", { count });
                       }}
                     />
+                  ) : null}
+                  {/* CLE-129, T4.2 / D-55: a guest sees «Берёт {имя}», and the name
+                      opens the holder's profile. The holder already has their own
+                      reservation block below, and the owner never gets a holder. */}
+                  {current.reservedBy && !current.reservation ? (
+                    <XStack
+                      gap="$1"
+                      alignItems="center"
+                      flexWrap="wrap"
+                      testID="gift-reserved-by"
+                    >
+                      <Text kind="label" tone="reserved">
+                        {tWishlist("reservedByPrefix")}
+                      </Text>
+                      <NavLink href={`/u/${encodeURIComponent(current.reservedBy.nick)}`}>
+                        {current.reservedBy.displayName}
+                      </NavLink>
+                    </XStack>
                   ) : null}
                   {current.reservation ? (
                     <YStack gap="$3" testID="gift-reservation">

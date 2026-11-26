@@ -71,8 +71,10 @@ vi.mock("expo-router", async () => {
   const React = await import("react");
   return {
     router: navigation,
-    Link: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, null, children),
+    // The real `Link asChild` hands its `href` to the child; the stub keeps the
+    // target visible as `data-href` so a test can assert where a link leads.
+    Link: ({ href, children }: { href?: string; children?: React.ReactNode }) =>
+      React.createElement("span", { "data-href": String(href) }, children),
     Stack: { Screen: () => null },
     useLocalSearchParams: () => search.params,
   };
@@ -369,6 +371,8 @@ describe("деталь желания: действия держателя", () 
     expect(control("Подарил")).toBeDefined();
     expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("false");
     expect(switchNamed("Показывать другим гостям, что дарю я")).toBeDefined();
+    // The holder has their own reservation block and gets no «Берёт …» line.
+    expect(text()).not.toContain("Берёт");
     // Снятие из 5.2 не продублировано рядом с новыми действиями.
     const releases = Array.from(
       document.querySelectorAll<HTMLElement>('button, [role="button"]'),
@@ -386,6 +390,16 @@ describe("деталь желания: действия держателя", () 
     await mount();
 
     expect(text()).toContain("Уже забронирован");
+    // CLE-129, T4.2 / D-55: the guest sees «Берёт Петя», and the name is a link
+    // to the holder's profile `/u/petya`.
+    expect(text()).toContain("Берёт");
+    const holderLink = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="link"]'),
+    ).find(function namedPeter(node) {
+      return node.textContent === "Петя";
+    });
+    expect(holderLink).toBeDefined();
+    expect(holderLink?.closest('[data-href="/u/petya"]')).not.toBeNull();
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeUndefined();
     expect(switchNamed("Показывать другим гостям, что дарю я")).toBeUndefined();

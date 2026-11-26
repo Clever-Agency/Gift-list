@@ -46,8 +46,10 @@ vi.mock("expo-router", async () => {
   return {
     router: navigation,
     Stack: { Screen: () => null },
-    Link: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, null, children),
+    // The real `Link asChild` clones its child with `href`; the stub keeps the
+    // target visible as `data-href` so a test can assert where a name link leads.
+    Link: ({ href, children }: { href?: string; children?: React.ReactNode }) =>
+      React.createElement("span", { "data-href": String(href) }, children),
     useLocalSearchParams: () => search.params,
   };
 });
@@ -402,6 +404,40 @@ describe("вишлист по ссылке: список", () => {
       params: { id: "g1", listToken: "tok_1", title: "Наушники", openReserve: "1" },
     });
     expect(dialogElement()).toBeNull();
+  });
+
+  it("имя дарителя — ссылка на профиль, вне кнопки карточки", async () => {
+    respond(
+      giftsAnswer([
+        gift(),
+        gift({
+          id: "g2",
+          title: "Свитер",
+          status: "RESERVED",
+          reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+        }),
+      ]),
+    );
+    await mount();
+
+    const items = Array.from(
+      container.querySelectorAll<HTMLElement>('[role="list"] [role="listitem"]'),
+    );
+    const reserved = items.find(function withSweater(node) {
+      return (node.textContent ?? "").includes("Свитер");
+    });
+    expect(reserved, "карточка забронированного желания").toBeDefined();
+
+    // The card draws «Берёт Олег»: the name is the link, its target is the profile.
+    expect(reserved?.textContent).toContain("Берёт");
+    const link = reserved?.querySelector<HTMLElement>('[role="link"]');
+    expect(link?.textContent).toBe("Олег");
+    const target = reserved?.querySelector<HTMLElement>('[data-href="/u/oleg"]');
+    expect(target?.contains(link as Node)).toBe(true);
+
+    // The line is a sibling of the card button: the link is not nested in it.
+    const button = reserved?.querySelector<HTMLElement>('[role="button"]');
+    expect(button?.contains(link as Node)).toBe(false);
   });
 
   it("не показывает скрытое желание, которого нет в ответе сервера", async () => {

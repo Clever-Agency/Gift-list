@@ -83,6 +83,39 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("--primary");
   });
 
+  it("делает имя дарителя ссылкой на его профиль и не вкладывает её в кнопку", () => {
+    const html = render({
+      kind: "gifts",
+      owner,
+      gifts: [
+        card({
+          id: "g-reserved",
+          title: "Свитер",
+          status: "RESERVED",
+          reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+          reservationLabel: "BOUGHT",
+        }),
+      ],
+    });
+
+    expect(html).toContain("Берёт");
+    expect(html).toContain('href="/u/oleg"');
+    expect(html).toContain("Олег");
+    // The name link is a sibling of the card button, never its content.
+    expect(html.indexOf('href="/u/oleg"')).toBeGreaterThan(html.indexOf('role="button"'));
+  });
+
+  it("не показывает имени дарителя, когда сервер его не прислал", () => {
+    const html = render({
+      kind: "gifts",
+      owner,
+      gifts: [card({ id: "g-reserved", title: "Свитер", status: "RESERVED" })],
+    });
+
+    expect(html).not.toContain("Берёт");
+    expect(html).not.toContain('href="/u/');
+  });
+
   it("links «Куплю сам» only for a SINGLE and OPEN wish, relative to the SPA", () => {
     const html = render({
       kind: "gifts",

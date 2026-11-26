@@ -1,8 +1,18 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
-import { Button, TagChipList, Text, WishCard as UiWishCard, YStack, restoreFocus, type FocusTarget } from "@gift-list/ui";
+import {
+  Button,
+  TagChipList,
+  Text,
+  WishCard as UiWishCard,
+  XStack,
+  YStack,
+  restoreFocus,
+  type FocusTarget,
+} from "@gift-list/ui";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
+import { NavLink } from "@/ui/nav-link";
 import { StatusPill } from "@/ui/status-pill";
 import { WishDetailDialog } from "@/ui/wish-detail-dialog";
 import type { DetailLoadResult } from "@/ui/wish-detail-load";
@@ -44,9 +54,18 @@ export function PublicGiftCard({
     gift.priceAmount !== null && gift.priceCurrency !== null
       ? formatPrice(gift.priceAmount, gift.priceCurrency, locale)
       : null;
-  const reservation = gift.reservedBy
-    ? t("reservedBy", { name: gift.reservedBy.displayName })
-    : null;
+  const reservation = gift.reservedBy ? (
+    // CLE-129, T4.2 / D-55: the holder's name is a link to `/u/{nick}`. It sits
+    // next to the card button, not inside it, so the link stays reachable by Tab.
+    <XStack gap="$1" alignItems="center" flexWrap="wrap" testID="gift-reserved-by">
+      <Text kind="label" tone="reserved">
+        {t("reservedByPrefix")}
+      </Text>
+      <NavLink href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}>
+        {gift.reservedBy.displayName}
+      </NavLink>
+    </XStack>
+  ) : null;
   const tagLabels = gift.tags.map(function labelOfTag(tag) {
     return tag.label;
   });

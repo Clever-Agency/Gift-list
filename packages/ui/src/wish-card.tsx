@@ -58,8 +58,13 @@ export type WishCardProps = {
   status: ReactNode;
   /** The tag row, e.g. the app's `TagChipList` (`DESIGN.md` → WishCard). */
   tags?: ReactNode;
-  /** The reservation line, «Подписи брони» in `EXPERIENCE.md`. */
-  reservation?: string | null;
+  /**
+   * The reservation line, «Подписи брони» in `EXPERIENCE.md`. A string is drawn
+   * as the plain label; a node lets the caller put the holder's name there as a
+   * link (CLE-129, T4.2). The line is a sibling of the card button, so a link can
+   * never end up nested in the button.
+   */
+  reservation?: ReactNode;
   /** With `onPress` the whole card is a button; without it, plain list content. */
   onPress?: () => void;
   /**
@@ -157,11 +162,6 @@ export function WishCard({
         ) : null}
         {status}
         {tags ? <View>{tags}</View> : null}
-        {reservation ? (
-          <Text kind="label" tone="reserved">
-            {reservation}
-          </Text>
-        ) : null}
       </YStack>
     </>
   );
@@ -185,6 +185,25 @@ export function WishCard({
       ) : (
         <View>{content}</View>
       )}
+      {reservation ? (
+        // The reservation line is a sibling of the card button, not its content:
+        // the holder's name may be a link to the profile, and a link inside a
+        // button would be invalid and unreachable by Tab (CLE-129, T4.2).
+        <YStack
+          paddingTop="$1"
+          paddingHorizontal="$1"
+          paddingRight={menu ? "$touch-target" : "$1"}
+          testID={testID ? `${testID}-reservation` : undefined}
+        >
+          {typeof reservation === "string" ? (
+            <Text kind="label" tone="reserved">
+              {reservation}
+            </Text>
+          ) : (
+            reservation
+          )}
+        </YStack>
+      ) : null}
       {menu ? (
         // The owner menu sits next to the title, under the photo (product decision
         // t477u). It stays a sibling of the card button, never nested in it: an

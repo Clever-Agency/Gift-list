@@ -99,6 +99,7 @@
     "listNotFound": "Список не найден.",
     "loading": "Загружаем вишлист",
     "reservedBy": "Берёт {name}",
+    "reservedByPrefix": "Берёт",
     "settings": "Настройки",
     "archiveSection": "Архив ({count})",
     "archiveMenu": "Меню",

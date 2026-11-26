@@ -237,6 +237,35 @@ describe("WishCard", () => {
     expect(footer?.textContent).toBe("Подарил");
   });
 
+  /**
+   * CLE-129, T4.2: the reservation line is a sibling of the card button, so the
+   * holder's name can be a link — a control is never nested in the card button.
+   */
+  it("строка брони — сосед кнопки карточки, имя-ссылка не вложена в кнопку", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        testID="card"
+        title="Плед"
+        status={<StatusPill status="reserved" label="Забронирован" />}
+        onPress={vi.fn()}
+        pressLabel="Плед, Забронирован"
+        reservation={
+          <span>
+            Берёт <a href="/u/anna">Анна</a>
+          </span>
+        }
+      />,
+    );
+
+    const line = container.querySelector<HTMLElement>("[data-testid='card-reservation']");
+    const cardButton = container.querySelector<HTMLElement>("[role='button']");
+    expect(line).not.toBeNull();
+    expect(cardButton?.contains(line as Node)).toBe(false);
+    expect(line?.querySelector("a")?.getAttribute("href")).toBe("/u/anna");
+    expect(line?.textContent).toBe("Берёт Анна");
+  });
+
   it("теги идут между статусом и бронью — до трёх и «+N», без лишних кнопок", async () => {    const { container, render } = mounted();
     await render(
       <WishCard

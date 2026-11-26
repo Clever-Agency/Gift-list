@@ -111,6 +111,29 @@ export const ReservedNameHidden: Story = {
   },
 };
 
+/** A long holder name at 360 px: the name link wraps and nothing is cut. */
+export const ReservedLongNameNarrow: Story = {
+  tags: ["!dev"],
+  args: {
+    gift: publicGift({
+      status: "RESERVED",
+      reservedBy: {
+        id: "user-2",
+        nick: "anna-konstantinovna",
+        displayName: "Анна Константиновна Преображенская",
+      },
+    }),
+  },
+  render: function ReservedLongNameNarrowStory(args) {
+    return (
+      <PublicList>
+        <PublicGiftCard {...args} />
+      </PublicList>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
+};
+
 /** More than three tags collapse into «+N», like on the owner's card. */
 export const ManyTags: Story = {
   tags: ["!dev"],

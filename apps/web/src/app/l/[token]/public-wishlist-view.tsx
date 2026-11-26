@@ -87,9 +87,21 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
     const tagLabels = gift.tags.map(function labelOfTag(tag) {
       return tag.label;
     });
-    const reservation = gift.reservedBy
-      ? tWishlist("reservedBy", { name: gift.reservedBy.displayName })
-      : null;
+    // CLE-129, T4.2 / D-55: the holder's name is a link to `/u/{nick}`, and the
+    // card draws it as a sibling of its button, so no anchor is nested in a button.
+    const reservation = gift.reservedBy ? (
+      <XStack gap="$1" alignItems="center" flexWrap="wrap">
+        <Text kind="label" tone="reserved">
+          {tWishlist("reservedByPrefix")}
+        </Text>
+        <a
+          href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}
+          style={{ textDecoration: "none" }}
+        >
+          <LinkText>{gift.reservedBy.displayName}</LinkText>
+        </a>
+      </XStack>
+    ) : null;
     const href =
       gift.quantity === "SINGLE" && gift.status === "OPEN" && wishlistPath
         ? `${wishlistPath}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`

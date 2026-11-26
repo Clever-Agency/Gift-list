@@ -8,7 +8,7 @@ import { WishCardSkeleton } from "./skeleton";
 import { StatusPill } from "./status-pill";
 import { Switch } from "./switch";
 import { TagChipList } from "./tag-chip";
-import { Text } from "./text";
+import { LinkText, Text } from "./text";
 import { WishCard, type WishCardProps } from "./wish-card";
 
 /**
@@ -128,8 +128,8 @@ What is not a prop:
     }),
     reservation: propDoc({
       description:
-        "The reservation line, «Подписи брони» in `EXPERIENCE.md`: «Бронирует Анна до 4 ноября». Drawn in the reserved colour.",
-      type: "string | null",
+        "The reservation line, «Подписи брони» in `EXPERIENCE.md`: «Бронирует Анна до 4 ноября». A string is drawn in the reserved colour; a node is rendered as is, so the app can make the holder's name a link. The line is a sibling of the card button (CLE-129, T4.2).",
+      type: "string | ReactNode",
       control: "text",
     }),
     onPress: propDoc({
@@ -393,6 +393,33 @@ export const Reserved: Story = {
       </CardGrid>
     );
   },
+};
+
+/**
+ * The holder shared their name: it is a link to `/u/{nick}` and sits next to the
+ * card button, never inside it (CLE-129, T4.2). The long name wraps at 360 px.
+ */
+export const ReservedHolderLink: Story = {
+  tags: ["!dev"],
+  args: {
+    status: <StatusPill status="reserved" label="Забронирован" />,
+    reservation: (
+      <XStack gap="$1" alignItems="center" flexWrap="wrap">
+        <Text kind="label" tone="reserved">
+          Берёт
+        </Text>
+        <LinkText>Анна Константиновна Преображенская</LinkText>
+      </XStack>
+    ),
+  },
+  render: function ReservedHolderLinkStory(args) {
+    return (
+      <CardGrid>
+        <WishCardPreview {...args} width="calc(50% - 8px)" />
+      </CardGrid>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
 };
 
 /** A closed wish reads as muted all the way down; its status is «Получен». */

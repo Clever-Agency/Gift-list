@@ -83,10 +83,10 @@ What is not a prop:
 
 - There is no photo URL: a wish without a photo always draws the placeholder, and its tint is seeded by the title. A future photo prop would be a separate change.
 - The app builds the status pill, the tag row, the visibility chip and the menu; they arrive as slots. The «есть теги», «есть чип» and «есть меню» handles stand ready-made samples in.
-- With \`onPress\` the whole card is a button and the plate's shadow lifts on hover; the chip is a later sibling drawn over the reserved footer, never inside the button, so Tab reaches the card first and the chip second.
+- With \`onPress\` the whole card is a button and the plate's shadow lifts on hover of any part of it, while the title is underlined — the card is the Tamagui group; the chip is a later sibling drawn over the reserved footer, never inside the button, so Tab reaches the card first and the chip second.
 - \`chipInteractive\` lets the chip layer take presses; without it every press outside the chip reaches the card.
 - \`listItem={false}\` is for an owner strip next to the card: the wrapper of the cell then carries the \`listitem\` role.
-- Hover, press and focus are CSS states, not props: hover the card, hold it, press Tab.
+- Hover, press and focus are CSS states, not props: hover any part of the card, hold it, press Tab.
         `.trim(),
       },
     },
@@ -143,7 +143,7 @@ What is not a prop:
     }),
     onPress: propDoc({
       description:
-        "Opens the wish. With it the whole card is a button, named by `pressLabel`, and the plate's shadow lifts on hover. Not a control: the sandbox always stands a `noop` in.",
+        "Opens the wish. With it the whole card is a button, named by `pressLabel`, and a hover of any part of it lifts the plate's shadow and underlines the title. Not a control: the sandbox always stands a `noop` in.",
       type: "() => void",
       control: false,
     }),
@@ -291,6 +291,39 @@ export const Playground: Story = {
     chipInteractive: true,
   },
   render: function PlaygroundStory(args) {
+    return (
+      <CardGrid>
+        <WishCardPreview {...args} />
+      </CardGrid>
+    );
+  },
+};
+
+/**
+ * Hover of the whole card (browser only): the pointer may sit on the title, the
+ * price, the tags or the empty footer — the plate lifts `$shadow-card-hover` and
+ * the title is underlined, both with the `quick` transition. There is no `$muted`
+ * fill over the card and no scale. The state is live, not faked with styles.
+ */
+export const Hover: Story = {
+  tags: ["!dev"],
+  args: {
+    onPress: noop,
+    pressLabel: "Плед из шерсти мериноса, 2 500 ₽, Открыт, мечта, для дома",
+    reservation: null,
+    withChip: true,
+    withMenu: true,
+    chipInteractive: true,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Наведите указатель на любую часть карточки — название, цену, теги или пустое место под ними: плитка поднимает тень `$shadow-card-hover`, название подчёркивается, переход `quick` 160 мс. Заливки `$muted` на всей карточке и увеличения нет. Состояние живое: стилями оно не подделано.",
+      },
+    },
+  },
+  render: function HoverStory(args) {
     return (
       <CardGrid>
         <WishCardPreview {...args} />

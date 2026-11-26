@@ -1,6 +1,7 @@
 import { View, styled } from "@tamagui/core";
 import { YStack } from "@tamagui/stacks";
 import type { ComponentRef, ReactNode, Ref } from "react";
+import { useHoverTransition } from "./hover";
 import { PhotoPlaceholder } from "./photo-placeholder";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
@@ -20,7 +21,9 @@ const Card = styled(View, {
 /**
  * The 4:5 photo plate: radius 16, the v8 card elevation from the theme
  * (`$shadow-card`: two soft layers in the light theme, tone plus top-edge highlight
- * in the dark one). A pressable card lifts the plate's shadow on hover.
+ * in the dark one). A pressable card lifts the plate's shadow when the pointer is
+ * anywhere over the card, not only over the plate: the button is the Tamagui group
+ * and the plate listens to `group-hover` (CLE-129, T2.2).
  */
 const Photo = styled(YStack, {
   name: "GLWishCardPhoto",
@@ -34,7 +37,7 @@ const Photo = styled(YStack, {
   boxShadow: "$shadow-card",
   variants: {
     interactive: {
-      true: { boxShadow: "$shadow-card hover:$shadow-card-hover" },
+      true: { boxShadow: "$shadow-card group-hover:$shadow-card-hover" },
     },
   } as const,
 });
@@ -115,9 +118,17 @@ export function WishCard({
   listItem = true,
   testID,
 }: WishCardProps) {
+  // The whole press zone is the Tamagui group of the card: the plate's shadow and
+  // the underlined title react to hovering any part of the button, not just the
+  // photo (CLE-129, T2.2). The shadow glides with the shared `quick` preset.
+  const transition = useHoverTransition();
   const content = (
     <>
-      <Photo interactive={Boolean(onPress)} testID={testID ? `${testID}-photo` : undefined}>
+      <Photo
+        interactive={Boolean(onPress)}
+        transition={onPress ? transition : null}
+        testID={testID ? `${testID}-photo` : undefined}
+      >
         <PhotoPlaceholder seed={title} />
       </Photo>
       <YStack
@@ -126,7 +137,13 @@ export function WishCard({
         paddingHorizontal="$1"
         paddingRight={menu ? "$touch-target" : "$1"}
       >
-        <Text kind="body-strong" tone={closed ? "muted" : "default"} numberOfLines={2}>
+        <Text
+          kind="body-strong"
+          tone={closed ? "muted" : "default"}
+          numberOfLines={2}
+          textDecorationLine={onPress ? "group-hover:underline" : undefined}
+          testID={testID ? `${testID}-title` : undefined}
+        >
           {title}
         </Text>
         {price ? (
@@ -151,7 +168,17 @@ export function WishCard({
   return (
     <Card role={listItem ? "listitem" : undefined} width={width} testID={testID}>
       {onPress ? (
-        <Pressable ref={pressRef} aria-label={pressLabel} onPress={onPress} borderRadius="$lg">
+        <Pressable
+          ref={pressRef}
+          aria-label={pressLabel}
+          onPress={onPress}
+          borderRadius="$lg"
+          // The card paints its hover itself — the lifted plate and the underlined
+          // title — so the general `$muted` fill of `Pressable` would double it
+          // (CLE-129, T2.2 decision).
+          hoverFill={false}
+          group
+        >
           {content}
         </Pressable>
       ) : (

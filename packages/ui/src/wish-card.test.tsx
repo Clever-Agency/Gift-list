@@ -3,7 +3,7 @@ import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { StatusPill } from "./status-pill";
 import { TagChipList } from "./tag-chip";
-import { createMount, declarationsFor } from "./test-utils";
+import { createMount, declarationsFor, stateValues } from "./test-utils";
 import { VisibilityChip } from "./visibility-chip";
 import { WishCard } from "./wish-card";
 
@@ -171,6 +171,59 @@ describe("WishCard", () => {
     const photo = container.querySelector<HTMLElement>("[data-testid='card-photo']") as HTMLElement;
     const hoverShadows = declarationsFor(photo, "box-shadow", true);
     expect(hoverShadows).toEqual([]);
+  });
+
+  /**
+   * CLE-129, T2.2: the hover belongs to the whole card, not only to the photo.
+   * The card button is the Tamagui group, so the plate lifts its shadow and the
+   * title is underlined when the pointer is anywhere over the card. The general
+   * `$muted` fill of `Pressable` is off — the card paints its own hover.
+   */
+  it("hover на всей карточке: группа кнопки поднимает тень плитки и подчёркивает название", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        testID="card"
+        title="Плед"
+        status={<StatusPill status="open" label="Открыт" />}
+        onPress={vi.fn()}
+        pressLabel="Плед, Открыт"
+      />,
+    );
+
+    const button = container.querySelector<HTMLElement>("[role='button']") as HTMLElement;
+    expect(button.classList.contains("t_group_true")).toBe(true);
+    // No muted fill on the whole card: the plate and the title carry the hover.
+    expect(stateValues(button, "hover", "background-color")).toEqual([]);
+
+    const photo = container.querySelector<HTMLElement>("[data-testid='card-photo']") as HTMLElement;
+    const hoverShadow = declarationsFor(photo, "box-shadow", true);
+    expect(hoverShadow.length).toBeGreaterThan(0);
+    // Only a hover of the group paints the shadow — not a hover of the plate itself.
+    for (const declaration of hoverShadow) {
+      expect(declaration.selector).toContain(".t_group_true");
+    }
+    expect(hoverShadow.map((declaration) => declaration.value).join(" ")).toContain(
+      "var(--shadow-card-hover)",
+    );
+    // The shadow glides with the shared `quick` preset; the card does not scale.
+    expect(photo.style.transition).toContain("160ms");
+    expect(stateValues(photo, "hover", "transform")).toEqual([]);
+
+    const title = container.querySelector<HTMLElement>("[data-testid='card-title']") as HTMLElement;
+    const hoverDecoration = declarationsFor(title, "text-decoration-line", true);
+    expect(hoverDecoration.map((declaration) => declaration.value)).toEqual(["underline"]);
+    for (const declaration of hoverDecoration) {
+      expect(declaration.selector).toContain(".t_group_true");
+    }
+  });
+
+  it("v8: без onPress у названия нет hover-подчёркивания", async () => {
+    const { container, render } = mounted();
+    await render(<WishCard testID="card" title="Плед" status={<StatusPill status="open" label="Открыт" />} />);
+
+    const title = container.querySelector<HTMLElement>("[data-testid='card-title']") as HTMLElement;
+    expect(declarationsFor(title, "text-decoration-line", true)).toEqual([]);
   });
 
   it("StatusPill — подпись словом, не кнопка", async () => {

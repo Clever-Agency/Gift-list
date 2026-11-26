@@ -7,10 +7,12 @@ import type { ReactNode } from "react";
 export type SafeAreaProps = {
   children?: ReactNode;
   /**
-   * Keep the bottom inset. Default `true`: a nested screen or a page outside the
-   * tab shell holds the home indicator itself. A screen inside the tab bar passes
-   * `false` — the bar already keeps the bottom inset, and adding it again would
-   * fold the home indicator twice (`EXPERIENCE.md` → Навигация).
+   * Keep the bottom inset. Default `true`: a page outside the tab shell holds the
+   * home indicator itself. Inside the shell the bar already keeps the bottom
+   * inset, and the frame drops it on its own (`useTabBarInset`), so adding it
+   * again would fold the home indicator twice (`EXPERIENCE.md` → Навигация).
+   * `false` drops the bottom edge in every case — a root tab screen says it
+   * explicitly, and an anonymous screen without a bar keeps the default.
    */
   bottom?: boolean;
 };

@@ -110,6 +110,39 @@ export const profileFieldsSchema = z.strictObject({
 export type ProfileFields = z.infer<typeof profileFieldsSchema>;
 
 /**
+ * The five detail fields of somebody else's profile (AD-7 ред. 2026-11-26,
+ * AD-29): the birthday pair, the gender, the ISO country code and «Обо мне».
+ * `null` means "not set", so the screen tells an empty field from a missing one.
+ * Every key is required inside the block, and the block itself is absent from
+ * the answer unless the viewer may see it — a hidden profile must not even show
+ * that the fields exist.
+ */
+const profileDetailsFields = {
+  birthDay: z.number().int().nullable(),
+  birthMonth: z.number().int().nullable(),
+  gender: genderSchema.nullable(),
+  country: z.string().nullable(),
+  about: z.string().nullable(),
+} as const;
+
+/** What an accepted friend sees when the owner opened the switch. */
+export const visibleProfileDetailsSchema = z.strictObject(profileDetailsFields);
+
+export type VisibleProfileDetails = z.infer<typeof visibleProfileDetailsSchema>;
+
+/**
+ * The optional `details` block of `GET /api/v1/u/:nick` (AD-7, AD-29). The owner
+ * also gets the switch back — it is their own setting; a friend never does,
+ * because `profileVisibleToFriends` is not part of somebody else's answer.
+ */
+export const profileDetailsSchema = z.strictObject({
+  ...profileDetailsFields,
+  profileVisibleToFriends: z.boolean().optional(),
+});
+
+export type ProfileDetails = z.infer<typeof profileDetailsSchema>;
+
+/**
  * `PATCH /api/v1/me/profile` (AD-29). Every field is optional: an absent key
  * means "leave as is", `null` means "clear". A birthday is one pair — a body
  * that touches it must carry **both** `birthDay` and `birthMonth` (or both

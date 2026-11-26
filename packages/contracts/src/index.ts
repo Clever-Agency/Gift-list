@@ -11,7 +11,7 @@ import {
   VISIBILITIES,
 } from "./enums";
 import { PROFILE_RELATIONSHIPS, profileInviteCooldownSchema } from "./friendship";
-import { profileFieldsSchema } from "./profile";
+import { profileDetailsSchema, profileFieldsSchema } from "./profile";
 
 export const ERROR_CODES = [
   "UNAUTHENTICATED",
@@ -197,11 +197,15 @@ export {
   genderSchema,
   isCountryCode,
   isValidBirthDate,
+  profileDetailsSchema,
   profileFieldsSchema,
   profileUpdateBodySchema,
+  visibleProfileDetailsSchema,
   type Gender,
+  type ProfileDetails,
   type ProfileFields,
   type ProfileUpdateBody,
+  type VisibleProfileDetails,
 } from "./profile";
 
 export {
@@ -329,6 +333,15 @@ export const listDataSchema = z.strictObject({
    * email or wish field rides along.
    */
   subscribed: z.boolean().optional(),
+  /**
+   * AD-7 ред. 2026-11-26 / AD-29: the owner's profile fields — a birthday pair
+   * without a year, gender, country and «Обо мне». Only `/u/:nick` adds the
+   * block, and only for the owner (with the switch) or an accepted friend of an
+   * owner who opened `profileVisibleToFriends`. Every other viewer gets no key
+   * at all, so neither `/l/:token`, search, notifications nor a stranger's
+   * answer can tell that the fields even exist.
+   */
+  details: profileDetailsSchema.optional(),
 });
 
 export type ListData = z.infer<typeof listDataSchema>;

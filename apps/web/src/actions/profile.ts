@@ -9,6 +9,7 @@ import {
 import { readWishlist } from "@/actions/wishlist-read";
 import { prisma } from "@/db/client";
 import { isValidNick, normalizeNick } from "@/domain/nick";
+import { profileDetailsFor } from "@/domain/profile-details";
 import { auth } from "@/lib/auth";
 import { requestLocale } from "@/lib/request-locale";
 import {
@@ -58,6 +59,14 @@ const unauthenticated = {
  * Story 4.6 adds one viewer-to-owner fact, `subscribed`, for the profile's
  * «Подписаться» / «Отписаться» switch. It is not a relationship and never
  * widens `readWishlist`: the subscriber still sees `PUBLIC` only (AD-19).
+ *
+ * CLE-129/T8.2 (AD-7 ред. 2026-11-26, AD-29) adds the optional `details` block.
+ * `canSeeProfileDetails` decides from the accepted `Friendship` alone: the owner
+ * always gets their fields plus the switch, an accepted friend gets them only
+ * while `profileVisibleToFriends` is on, and every other viewer gets no key at
+ * all. A Block is already the closed 404, so it never reaches the block. The
+ * relation is taken from the raw relationship read, not from the cooldown-adjusted
+ * button facts: a live rejection cooldown is a button state, not a lost friendship.
  */
 export async function getProfileByNick(
   nick: string,
@@ -71,7 +80,19 @@ export async function getProfileByNick(
 
   const owner = await prisma.user.findUnique({
     where: { nickNormalized },
-    select: { id: true, name: true, nick: true },
+    select: {
+      id: true,
+      name: true,
+      nick: true,
+      // AD-29: read here and nowhere else for `/u/:nick`; the policy below decides
+      // whether they travel. The switch itself is answered only to the owner.
+      birthDay: true,
+      birthMonth: true,
+      gender: true,
+      country: true,
+      about: true,
+      profileVisibleToFriends: true,
+    },
   });
   if (owner === null) return notFoundError();
 
@@ -91,6 +112,16 @@ export async function getProfileByNick(
   // the relationship and the cooldown are discarded with the rest of the profile.
   if (data === null) return notFoundError();
 
+  // AD-7 / AD-29: `undefined` keeps the key out of the answer entirely.
+  const details = profileDetailsFor(
+    { id: session.user.id },
+    { id: owner.id, profileVisibleToFriends: owner.profileVisibleToFriends },
+    // An accepted `Friendship` is exactly what `readProfileRelationship` reports
+    // before the cooldown composition; a pending invite never is a friendship.
+    { friend: relationship === "FRIENDS" },
+    owner,
+  );
+
   return {
     ok: true,
     data: listDataSchema.parse({
@@ -98,6 +129,7 @@ export async function getProfileByNick(
       owner: { displayName: owner.name, nick: owner.nick },
       ...profileRelationFacts(relationship, inviteCooldown),
       subscribed,
+      ...(details === undefined ? {} : { details }),
     }),
   };
 }

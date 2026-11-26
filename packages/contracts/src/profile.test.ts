@@ -4,8 +4,11 @@ import {
   COUNTRY_CODES,
   isCountryCode,
   isValidBirthDate,
+  listDataSchema,
   myProfileSchema,
+  profileDetailsSchema,
   profileUpdateBodySchema,
+  visibleProfileDetailsSchema,
 } from "./index";
 
 describe("profile contract (CLE-129/T8.1, AD-29)", () => {
@@ -134,5 +137,76 @@ describe("profile contract (CLE-129/T8.1, AD-29)", () => {
 
     expect(parsed.profileVisibleToFriends).toBe(true);
     expect(parsed).not.toHaveProperty("year");
+  });
+});
+
+describe("public profile details (CLE-129/T8.2, AD-7/AD-29)", () => {
+  const anna = {
+    birthDay: 14,
+    birthMonth: 6,
+    gender: "FEMALE",
+    country: "BY",
+    about: "Люблю походы и книги.",
+  };
+
+  it("accepts the five fields a friend sees, with every key present", () => {
+    const parsed = visibleProfileDetailsSchema.parse(anna);
+
+    expect(Object.keys(parsed).sort()).toEqual([
+      "about",
+      "birthDay",
+      "birthMonth",
+      "country",
+      "gender",
+    ]);
+    expect(parsed).not.toHaveProperty("profileVisibleToFriends");
+  });
+
+  it("accepts null as 'not set' in every detail field", () => {
+    const cleared = {
+      birthDay: null,
+      birthMonth: null,
+      gender: null,
+      country: null,
+      about: null,
+    };
+
+    expect(visibleProfileDetailsSchema.safeParse(cleared).success).toBe(true);
+    expect(profileDetailsSchema.parse(cleared)).not.toHaveProperty("profileVisibleToFriends");
+  });
+
+  it("adds the switch only to the owner's own answer", () => {
+    const own = profileDetailsSchema.parse({ ...anna, profileVisibleToFriends: false });
+
+    expect(own.profileVisibleToFriends).toBe(false);
+    expect(visibleProfileDetailsSchema.safeParse(own).success).toBe(false);
+  });
+
+  it("stays a closed set: no email, no year, no unknown key, no non-boolean switch", () => {
+    expect(profileDetailsSchema.safeParse({ ...anna, email: "a@example.com" }).success).toBe(false);
+    expect(profileDetailsSchema.safeParse({ ...anna, year: 1990 }).success).toBe(false);
+    expect(
+      profileDetailsSchema.safeParse({ ...anna, profileVisibleToFriends: "true" }).success,
+    ).toBe(false);
+    expect(
+      visibleProfileDetailsSchema.safeParse({ ...anna, profileVisibleToFriends: true }).success,
+    ).toBe(false);
+  });
+
+  it("rides on the profile answer as one optional block and never on a stub", () => {
+    const withDetails = listDataSchema.parse({
+      access: "gifts",
+      gifts: [],
+      owner: { displayName: "Анна", nick: "anna" },
+      details: anna,
+    });
+    expect(withDetails.details).toEqual(anna);
+
+    const hidden = listDataSchema.parse({ access: "gifts", gifts: [] });
+    expect(hidden).not.toHaveProperty("details");
+    expect(hidden).not.toHaveProperty("profileVisibleToFriends");
+    expect(
+      listDataSchema.safeParse({ access: "gifts", gifts: [], details: null }).success,
+    ).toBe(false);
   });
 });

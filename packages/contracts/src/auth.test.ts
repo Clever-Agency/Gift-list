@@ -9,6 +9,7 @@ import {
   newPasswordLengthReason,
   PASSWORD_MAX,
   PASSWORD_MIN,
+  emailChangeBodySchema,
   loginBodySchema,
   nickIssue,
   nickUpdateBodySchema,
@@ -167,6 +168,27 @@ describe("nameUpdateBodySchema", () => {
     const overCap = nameUpdateBodySchema.safeParse({ name: "я".repeat(DISPLAY_NAME_MAX + 1) });
     expect(overCap.success).toBe(false);
     if (!overCap.success) expect(overCap.error.issues[0]?.path).toEqual(["name"]);
+  });
+});
+
+describe("emailChangeBodySchema", () => {
+  it("trims and lower-cases the new address like registration", () => {
+    expect(emailChangeBodySchema.parse({ email: "  New.Address@Example.COM " })).toEqual({
+      email: "new.address@example.com",
+    });
+  });
+
+  it("rejects an invalid or over-long address on the email field", () => {
+    for (const email of ["", "anna", "a@", `${"a".repeat(EMAIL_MAX)}@example.com`]) {
+      const parsed = emailChangeBodySchema.safeParse({ email });
+      expect(parsed.success, JSON.stringify(email)).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["email"]);
+    }
+    expect(emailChangeBodySchema.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts an address at the cap", () => {
+    expect(emailChangeBodySchema.safeParse({ email: emailOfLength(EMAIL_MAX) }).success).toBe(true);
   });
 });
 

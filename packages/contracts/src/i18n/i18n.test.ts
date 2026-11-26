@@ -544,6 +544,26 @@ describe("owner change warning copy", () => {
   });
 });
 
+/**
+ * CLE-129/T9.1 (FR-56): два письма смены email. Ссылка и адрес подставляются
+ * кодом, поэтому в каталоге только тексты с `{brand}`, `{email}` и `{support}`.
+ */
+describe("email change copy", () => {
+  it("names the confirmation and the notice in the letter catalog", () => {
+    const { email } = getMessages("ru");
+
+    expect(email.emailChange.subject.endsWith("— {brand}")).toBe(true);
+    expect(email.emailChanged.subject.endsWith("— {brand}")).toBe(true);
+    expect(email.emailChange.text).toContain("только после перехода");
+    expect(email.emailChanged.text).toContain("{email}");
+    expect(email.emailChanged.text).toContain("{support}");
+    expect(email.emailChange.action.length).toBeGreaterThan(0);
+    for (const text of [email.emailChange.text, email.emailChanged.text]) {
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe("error catalog", () => {
   it("covers every error code and reason with non-empty text", () => {
     const { code, reason } = getMessages("ru").common.errors;

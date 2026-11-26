@@ -166,6 +166,18 @@ export const nameUpdateBodySchema = z.object({
 export type NameUpdateBody = z.infer<typeof nameUpdateBodySchema>;
 
 /**
+ * FR-56 (CLE-129/T9.1, D-58): the address a user asks to move the account to.
+ * The rule is the registration one — trimmed, lower-cased and deliverable — so a
+ * value accepted here can actually receive the confirmation link. `User.email`
+ * does not change until that link is opened; the contract only carries the wish.
+ */
+export const emailChangeBodySchema = z.object({
+  email: newEmailSchema,
+});
+
+export type EmailChangeBody = z.infer<typeof emailChangeBodySchema>;
+
+/**
  * Story 3.5 (FR-8): the settings switch stores one flag. Any other key is a
  * `VALIDATION` answer on `hideFromSearch` — the route names the field the
  * screen sent, instead of a bare rejection from `z.strictObject` (whose

@@ -6,6 +6,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { click, dialogElement, settle } from "@/test/dom";
+import { addCalendarDays, todayInZone } from "@/ui/reservation-extend-dialog";
 import { ReserveConfirm, defaultDueOn } from "./reserve-confirm";
 
 const catalog = JSON.parse(
@@ -112,6 +113,29 @@ describe("ReserveConfirm", () => {
     const text = dialogElement()?.textContent ?? "";
     expect(text).toContain("Если не продлить, бронь снимется через 7 дней после этой даты");
     expect(text).toContain("Не позже");
+  });
+
+  /** D-60: the deadline is our `DateField` — visible label, bounds, no clear button. */
+  it("дата — наше поле с подписью, границами и без кнопки очистки", async () => {
+    await render(
+      <ReserveConfirm open title="Плед" timeZone="Europe/Minsk" onClose={noop} onConfirm={noop} />,
+    );
+
+    const input = dialogElement()?.querySelector<HTMLInputElement>('input[type="date"]');
+    expect(input).not.toBeNull();
+    expect(dialogElement()?.querySelector(`label[for="${input?.id}"]`)?.textContent).toContain(
+      "Подарю до,",
+    );
+    expect(input?.getAttribute("aria-label")).toBeNull();
+
+    const min = todayInZone("Europe/Minsk");
+    expect(input?.min).toBe(min);
+    expect(input?.max).toBe(addCalendarDays(min, 30));
+
+    const described = input?.getAttribute("aria-describedby");
+    const hint = dialogElement()?.querySelector(`[id="${described}"]`);
+    expect(hint?.textContent).toContain("Не позже");
+    expect(dialogElement()?.textContent).not.toContain("Убрать дату");
   });
 
   it("sends the guests' switch without the removed owner flag", async () => {

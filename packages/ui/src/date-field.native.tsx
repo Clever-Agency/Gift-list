@@ -12,11 +12,18 @@ export type DateFieldProps = {
   /** `YYYY-MM-DD`, or `""` when the owner has not chosen a day. */
   value: string;
   onChange: (value: string) => void;
-  /** Inclusive lower bound, `YYYY-MM-DD`. */
+  /** Inclusive lower bound, `YYYY-MM-DD`. The picker enforces it. */
   min?: string;
+  /** Inclusive upper bound, `YYYY-MM-DD`. The picker enforces it. */
+  max?: string;
   error?: string;
   hint?: string;
-  clearLabel: string;
+  clearLabel?: string;
+  /**
+   * `false` hides the clear button of a date that cannot be empty, e.g. a
+   * reservation deadline. Defaults to `true`.
+   */
+  clearable?: boolean;
   /** The button text when no day is chosen. */
   placeholder: string;
   /** Shown on the button when a day is chosen, already formatted. */
@@ -48,9 +55,11 @@ export const DateField = forwardRef<unknown, DateFieldProps>(function DateField(
     value,
     onChange,
     min,
+    max,
     error,
     hint,
     clearLabel,
+    clearable,
     placeholder,
     displayValue,
     doneLabel,
@@ -59,6 +68,7 @@ export const DateField = forwardRef<unknown, DateFieldProps>(function DateField(
   ref,
 ) {
   const described = error || hint;
+  const showClear = clearable !== false && clearLabel !== undefined && value !== "";
   const [open, setOpen] = useState(false);
   const selected = value === "" ? new Date() : dateFromDay(value);
 
@@ -89,6 +99,7 @@ export const DateField = forwardRef<unknown, DateFieldProps>(function DateField(
       mode="date"
       display={Platform.OS === "ios" ? "inline" : "default"}
       minimumDate={min ? dateFromDay(min) : undefined}
+      maximumDate={max ? dateFromDay(max) : undefined}
       onChange={handleChange}
     />
   );
@@ -116,7 +127,7 @@ export const DateField = forwardRef<unknown, DateFieldProps>(function DateField(
           {value === "" ? placeholder : (displayValue ?? value)}
         </Text>
       </Pressable>
-      {value !== "" ? (
+      {showClear ? (
         <Pressable
           role="button"
           aria-label={clearLabel}

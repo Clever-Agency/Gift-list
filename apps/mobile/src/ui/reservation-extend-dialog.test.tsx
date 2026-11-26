@@ -163,8 +163,19 @@ describe("ReservationExtendDialog", () => {
     );
 
     expect(body()).toContain("Выберите дату не позже 20.12.2026.");
-    // Поле даты подписано: доступное имя — заголовок действия, а не пустое поле.
-    expect(dateInput()?.getAttribute("aria-label")).toBe("Продлить до…");
+    // Поле даты подписано видимой подписью (D-60): доступное имя — «Новая дата»,
+    // а ошибка связана через aria-describedby и читается как alert.
+    const input = dateInput();
+    expect(input).not.toBeNull();
+    expect(dialogElement()?.querySelector(`label[for="${input?.id}"]`)?.textContent).toBe(
+      "Новая дата",
+    );
+    expect(input?.getAttribute("aria-label")).toBeNull();
+    expect(input?.getAttribute("aria-invalid")).toBe("true");
+    const described = input?.getAttribute("aria-describedby");
+    const errorNode = dialogElement()?.querySelector(`[id="${described}"]`);
+    expect(errorNode?.textContent).toBe("Выберите дату не позже 20.12.2026.");
+    expect(errorNode?.getAttribute("role")).toBe("alert");
   });
 
   /**

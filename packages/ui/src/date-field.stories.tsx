@@ -35,8 +35,9 @@ The date field of a wish (\`DESIGN.md\` → Поле даты). In the browser i
 
 What is not a prop:
 
-- \`value\` is \`YYYY-MM-DD\`, or \`""\` when no day is chosen; the clear button appears only with a day set.
-- \`min\` is an inclusive lower bound the browser enforces in its own picker; the server checks the owner's time zone for the real rule.
+- \`value\` is \`YYYY-MM-DD\`, or \`""\` when no day is chosen; the clear button appears only with a day set and a \`clearable\` field.
+- \`min\` and \`max\` are inclusive bounds the browser enforces in its own picker; the server checks the owner's time zone for the real rule.
+- \`clearable={false}\` hides the clear button of a date that cannot be empty, e.g. a reservation deadline.
 - \`placeholder\`, \`displayValue\` and \`doneLabel\` are the phone half's copy (the empty button, the chosen day, the sheet's done action); the browser input has its own empty state, so the catalog does not turn them.
 - The error is one string: rendered once under the field, announced as an alert and linked with \`aria-describedby\` and \`aria-invalid\`. The «есть ошибка» handle stands a ready-made message in.
 - Hover and focus are CSS states, not props: hover the field, open the picker or press Tab.
@@ -71,6 +72,12 @@ What is not a prop:
       type: "string",
       control: "text",
     }),
+    max: propDoc({
+      description:
+        "An inclusive upper bound, `YYYY-MM-DD`: the browser greys later days out in its picker. The real rule is checked by the server in the owner's time zone.",
+      type: "string",
+      control: "text",
+    }),
     error: propDoc({
       description:
         "A validation error from the screen: shown in `destructive` under the field, announced with `role=\"alert\"` and linked to the input. An error replaces the hint. The «есть ошибка» handle stands a ready-made message in.",
@@ -85,10 +92,16 @@ What is not a prop:
     }),
     clearLabel: propDoc({
       description:
-        "The visible text and the accessible name of the clear button, e.g. «Сбросить». It exists only while a day is set.",
+        "The visible text and the accessible name of the clear button, e.g. «Сбросить». It exists only while a day is set and `clearable` is not `false`.",
       type: "string",
-      required: true,
       control: "text",
+    }),
+    clearable: propDoc({
+      description:
+        "`false` hides the clear button: the date cannot be empty, e.g. a reservation deadline. Defaults to `true`.",
+      type: "boolean",
+      defaultValue: "true",
+      control: "boolean",
     }),
     placeholder: propDoc({
       description: "Phone only: the text of the empty button before a day is chosen.",
@@ -128,6 +141,7 @@ What is not a prop:
     onChange: noop,
     hint: "После этого дня желание уйдёт в архив",
     clearLabel: "Сбросить",
+    clearable: true,
     testID: "date-field",
     hasError: false,
   },
@@ -139,7 +153,7 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * The sandbox: pick a day in the browser's own calendar and press «Сбросить» —
- * both really change the value. `label`, `hint` and `min` are in the panel;
+ * both really change the value. `label`, `hint`, `min` and `max` are in the panel;
  * «есть ошибка» stands a ready-made message in.
  */
 export const Playground: Story = {
@@ -187,6 +201,22 @@ export const WithMin: Story = {
   tags: ["!dev"],
   args: { min: "2026-11-19", value: "" },
   render: function WithMinStory(args) {
+    return <DateFieldStory {...args} />;
+  },
+};
+
+/** `min` and `max` keep the picker inside a window, e.g. today … today + 30 of a reservation. */
+export const WithRange: Story = {
+  tags: ["!dev"],
+  args: {
+    label: "Подарю до",
+    value: "2026-12-10",
+    min: "2026-11-26",
+    max: "2026-12-26",
+    hint: "Не позже 26.12.2026",
+    clearable: false,
+  },
+  render: function WithRangeStory(args) {
     return <DateFieldStory {...args} />;
   },
 };

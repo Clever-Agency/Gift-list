@@ -25,6 +25,16 @@ const anna = {
   hideFromSearch: false,
 };
 
+const specialName = "Код _%\\ здесь";
+const people = [anna, {
+  id: "u2",
+  name: specialName,
+  nick: "literal",
+  nameNormalized: normalizeForSearch(specialName),
+  nickNormalized: "literal",
+  hideFromSearch: false,
+}];
+
 type FindManyArgs = {
   where: {
     hideFromSearch: boolean;
@@ -48,10 +58,10 @@ beforeEach(() => {
   );
   findMany.mockImplementation(function findPeople(args: FindManyArgs) {
     if (args.where.hideFromSearch !== false) return [];
-    const nickQuery = args.where.nickNormalized?.startsWith;
-    const nameQuery = args.where.nameNormalized?.contains;
-    if (nickQuery !== undefined) return anna.nickNormalized.startsWith(nickQuery) ? [anna] : [];
-    return anna.nameNormalized.includes(nameQuery ?? "") ? [anna] : [];
+    const nickQuery = args.where.nickNormalized?.startsWith.replace(/\\([\\%_])/g, "$1");
+    const nameQuery = args.where.nameNormalized?.contains.replace(/\\([\\%_])/g, "$1");
+    if (nickQuery !== undefined) return people.filter((person) => person.nickNormalized.startsWith(nickQuery));
+    return people.filter((person) => person.nameNormalized.includes(nameQuery ?? ""));
   });
 });
 
@@ -97,6 +107,19 @@ describe("GET /api/v1/search", () => {
         ],
       },
     });
+  });
+
+  it("finds a name by the literal characters _, % and backslash", async function searchByLiteralName() {
+    const res = await GET(request("_%\\"));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      data: { users: [{ displayName: specialName, nick: "literal", relationship: "NONE", subscribed: false }] },
+    });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ nameNormalized: { contains: String.raw`\_\%\\` } }),
+    }));
   });
 
   it("treats a missing query as a successful empty list", async () => {

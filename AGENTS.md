@@ -38,7 +38,7 @@
 - Команды запускайте из корня; зависимость ставьте в свой workspace: `npm install <pkg> -w @gift-list/web`. Lock один — корневой `package-lock.json`, lock в workspace не создавайте.
 - Node.js 24.22.1+ (линия 24.x, как на Vercel; `engines` в корневом `package.json`): в более ранних версиях не закрыты уязвимости из октябрьского выпуска безопасности Node.js 2026, а Node 20 больше не поддерживается.
 - `prisma` и `@prisma/client` закреплены на 7.10.0: не ставьте `prisma@latest`, он может указать на Prisma 8 RC.
-- `npm run migrate` — интерактивный `prisma migrate dev` для разработки; вне разработки (staging, прод) — `npm exec -w @gift-list/web -- prisma migrate deploy` с `DATABASE_URL` целевой базы, шага миграций в CI нет.
+- `npm run migrate` запускает интерактивный `prisma migrate dev` для разработки. Для staging и production запускайте из корня `npm run migrate:deploy -w @gift-list/web` с подключением целевой базы. Команда выполняет миграции Prisma и пересчёт поисковых имён в Node. Порядок выкладки описан в `docs/deployment-environments.md`.
 - CI (`.github/workflows/ci.yml`) на PR и push в `staging` и `main` гоняет `typecheck`, `lint`, `test`, `build` и запуск standalone-сервера; локально перед PR прогоните те же `npm run typecheck`, `npm test`, `npm run lint`, `npm run build`.
 - Сборка — `output: 'standalone'`: вне Vercel запускайте `node apps/web/.next/standalone/apps/web/server.js`, не `npm start` (`next start`).
 

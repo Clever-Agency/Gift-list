@@ -241,7 +241,7 @@ describe("GET /api/v1/l/:token", () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it("treats a malformed token like an unknown one without touching the database", async () => {
+  it("treats a malformed token like an unknown one without reading the session or database", async () => {
     findUnique.mockResolvedValue(null);
     const unknown = await closedAnswer(["no-such-token"]);
     findUnique.mockClear();
@@ -253,6 +253,12 @@ describe("GET /api/v1/l/:token", () => {
       ["a\\b"],
       ["%2f"],
       ["%5C"],
+      ["tok%25"],
+      ["tok?query"],
+      ["tok#fragment"],
+      ["tok\u0000"],
+      ["tok\u001f"],
+      ["tok\u007f"],
       ["x".repeat(129)],
       ["a", "b"],
     ];

@@ -26,6 +26,15 @@ describe("isPublicTokenSegment", () => {
       expect(isPublicTokenSegment(token)).toBe(false);
     }
   });
+
+  it.each(["tok?", "tok#", "tok%", "tok\u0000", "tok\u001f", "tok\u007f"])(
+    "rejects an unsafe URL segment in the API and on the page (%j)",
+    function checkUnsafeToken(token) {
+      expect(isPublicTokenSegment(token)).toBe(false);
+      expect(wishlistPathForToken(token)).toBeNull();
+      expect(publicListPathForToken(token)).toBeNull();
+    },
+  );
 });
 
 describe("wishlistPathForToken", () => {

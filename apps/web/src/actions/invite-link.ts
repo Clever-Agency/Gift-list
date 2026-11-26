@@ -14,7 +14,7 @@ import {
 import { acceptInviteLink, readInviteLinkState, type InviteLinkOwner } from "@/domain/invite-link";
 import { auth } from "@/lib/auth";
 import { inviteLinkStore, readInviteLinkToken } from "@/lib/invite-link-store";
-import { isPublicTokenSegment } from "@/lib/public-token";
+import { isInviteTokenSegment } from "@/lib/public-token";
 
 const unauthenticated = {
   ok: false as const,
@@ -70,7 +70,7 @@ export async function getInvitePreview(
   token: string,
   headers: Headers,
 ): Promise<ActionResult<InviteLinkPreview>> {
-  if (!isPublicTokenSegment(token)) return notFoundError();
+  if (!isInviteTokenSegment(token)) return notFoundError();
 
   const session = await auth.api.getSession({ headers });
   if (!session) {
@@ -113,7 +113,7 @@ export async function acceptInviteByToken(
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
-  if (!isPublicTokenSegment(token)) return notFoundError();
+  if (!isInviteTokenSegment(token)) return notFoundError();
 
   const result = await acceptInviteLink(
     { viewerId: session.user.id, token },

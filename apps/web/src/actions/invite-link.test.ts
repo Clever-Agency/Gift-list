@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isPublicTokenSegment } from "@/lib/public-token";
 
 vi.mock("server-only", () => ({}));
 
@@ -33,6 +34,7 @@ const unauthenticated = {
 };
 const notFound = { ok: false, code: "NOT_FOUND", message: "Not found" };
 const forbidden = { ok: false, code: "FORBIDDEN", message: "Forbidden" };
+const legacyPercentTokens = ["invite%25token", "invite%3Ftoken"];
 
 beforeEach(() => {
   getSession.mockReset();
@@ -106,10 +108,22 @@ describe("getInvitePreview (Story 4.7)", () => {
   it("treats a malformed segment as not found before any read", async () => {
     getSession.mockResolvedValue(null);
 
-    for (const token of ["", ".", "..", "a/b", "a\\b", "%2f", "x".repeat(129)]) {
+    for (const token of ["", ".", "..", "a/b", "a\\b", "%2f", "a%2Eb", "a%5Cb", "x".repeat(129)]) {
       await expect(getInvitePreview(token, new Headers()), token).resolves.toEqual(notFound);
     }
+    expect(getSession).not.toHaveBeenCalled();
     expect(store.findOwnerByToken).not.toHaveBeenCalled();
+  });
+
+  it.each(legacyPercentTokens)("still reads the invite API segment %s", async function checkPreview(token) {
+    getSession.mockResolvedValue(null);
+
+    expect(isPublicTokenSegment(token)).toBe(false);
+    await expect(getInvitePreview(token, new Headers())).resolves.toEqual({
+      ok: true,
+      data: { inviter: { displayName: anna.displayName, nick: anna.nick } },
+    });
+    expect(store.findOwnerByToken).toHaveBeenCalledWith(token);
   });
 
   it("carries the closed viewer state for a signed-in viewer", async () => {
@@ -168,10 +182,19 @@ describe("acceptInviteByToken (Story 4.7)", () => {
   });
 
   it("does not open a transaction for a malformed segment", async () => {
-    for (const token of ["", "..", "a/b", "%2f"]) {
+    for (const token of ["", "..", "a/b", "%2f", "a%2Eb", "a%5Cb"]) {
       await expect(acceptInviteByToken(token, new Headers()), token).resolves.toEqual(notFound);
     }
     expect(store.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(legacyPercentTokens)("still accepts the invite API segment %s", async function checkAccept(token) {
+    expect(isPublicTokenSegment(token)).toBe(false);
+    await expect(acceptInviteByToken(token, new Headers())).resolves.toEqual({
+      ok: true,
+      data: { outcome: "FRIENDS" },
+    });
+    expect(store.findOwnerByToken).toHaveBeenCalledWith(token);
   });
 
   it("refuses the viewer's own link with FORBIDDEN without a reason", async () => {

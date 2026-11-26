@@ -11,11 +11,19 @@
 export const PUBLIC_TOKEN_MAX_LENGTH = 128;
 
 export function isPublicTokenSegment(token: string): boolean {
+  return hasTokenSegmentShape(token) && !UNSAFE_TARGET_CHARACTERS.test(token);
+}
+
+function hasTokenSegmentShape(token: string): boolean {
   if (token.length === 0 || token.length > PUBLIC_TOKEN_MAX_LENGTH) return false;
-  if (token.includes("/") || token.includes("\\")) return false;
   // A dot segment, or a dot pair anywhere in the segment, can traverse or
   // normalise away part of the path once a browser resolves it.
-  if (token === "." || token === ".." || token.includes("..")) return false;
+  return token !== "." && !token.includes("..");
+}
+
+/** Keep the invite API's existing token shape (Story 4.7). */
+export function isInviteTokenSegment(token: string): boolean {
+  if (!hasTokenSegmentShape(token) || token.includes("/") || token.includes("\\")) return false;
   const lowered = token.toLowerCase();
   return (
     !lowered.includes("%2f") &&
@@ -36,7 +44,6 @@ const UNSAFE_TARGET_CHARACTERS = /[\\/?#%\u0000-\u001f\u007f]/;
 
 export function wishlistPathForToken(token: string): string | null {
   if (!isPublicTokenSegment(token)) return null;
-  if (UNSAFE_TARGET_CHARACTERS.test(token)) return null;
   return `/wishlist/${token}`;
 }
 
@@ -46,7 +53,7 @@ export function wishlistPathForToken(token: string): string | null {
  * as {@link wishlistPathForToken}, so a forged segment never reaches an `href`.
  */
 export function publicListPathForToken(token: string): string | null {
-  if (wishlistPathForToken(token) === null) return null;
+  if (!isPublicTokenSegment(token)) return null;
   return `/l/${token}`;
 }
 
@@ -58,6 +65,5 @@ export function publicListPathForToken(token: string): string | null {
  */
 export function invitePathForToken(token: string): string | null {
   if (!isPublicTokenSegment(token)) return null;
-  if (UNSAFE_TARGET_CHARACTERS.test(token)) return null;
   return `/invite/${token}`;
 }

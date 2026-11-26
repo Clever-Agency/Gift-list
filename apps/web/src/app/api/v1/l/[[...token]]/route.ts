@@ -5,10 +5,9 @@ import { notFoundResponse, toResponse } from "@/lib/api-v1";
  * Story 3.3 (AD-7, AD-26): the public wishlist read by link token.
  *
  * The token is exactly one path segment, so an optional catch-all is used on
- * purpose: a bare `/api/v1/l`, a trailing slash, a path with extra segments or an
- * encoded slash all reach this handler instead of falling through to the generic
- * API 404. Every one of them is not a token and is answered exactly like an
- * unknown token — same body, same status, no database read and no token in a log.
+ * purpose: the canonical bare `/api/v1/l`, extra segments and malformed tokens
+ * get the same refusal as an unknown token, before any session or database read.
+ * Next.js redirects `/api/v1/l/` to `/api/v1/l` with HTTP 308 before this handler.
  *
  * The route is a thin AD-12 adapter; `getWishlistByToken` owns the session, the
  * locale and the single `readWishlist` gate. `toResponse` sets `Cache-Control:

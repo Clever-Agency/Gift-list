@@ -227,6 +227,11 @@ function respond(
 ) {
   api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
     if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+    // D-63: the owner route comes first; a foreign wish is NOT_FOUND there, so
+    // the page then asks the viewer route exactly as before.
+    if (path === "/api/v1/me/gifts/g1") {
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+    }
     if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
       return Promise.resolve({ ok: true, data: card });
     }
@@ -447,6 +452,9 @@ describe("деталь желания: действия держателя", () 
     let answer: (value: unknown) => void = function noop() {};
     api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
       if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
         return Promise.resolve({ ok: true, data: gift() });
       }
@@ -621,6 +629,9 @@ describe("деталь желания: действия держателя", () 
     let reads = 0;
     api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
       if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
         reads += 1;
         if (reads === 1) return Promise.resolve({ ok: true, data: gift() });
@@ -670,6 +681,9 @@ describe("деталь желания: одно действие за раз", (
     let answer: (value: unknown) => void = function noop() {};
     api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
       if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
         return Promise.resolve({ ok: true, data: gift() });
       }
@@ -725,5 +739,102 @@ describe("деталь желания: одно действие за раз", (
     });
     await settle();
     expect(control("Снять бронь")).toBeUndefined();
+  });
+});
+
+/**
+ * AD-15 (14) / D-63: the owner opens `/gifts/{id}` and reads the page from
+ * `GET /api/v1/me/gifts/:id` only. There is no redirect to the form any more, the
+ * guest route is never asked, and not one word about a reservation appears —
+ * even if a broken payload carries a holder. «Изменить» leads to the edit screen.
+ */
+describe("страница владельца: своё желание", () => {
+  function ownerCard(overrides: Partial<GiftCard> = {}): GiftCard {
+    return gift({
+      status: "OPEN",
+      reservedBy: null,
+      reservation: undefined,
+      visibility: "FRIENDS",
+      linkUrl: "https://shop.example/pled",
+      ...overrides,
+    });
+  }
+
+  function respondOwner(card: GiftCard = ownerCard()) {
+    api.apiRequest.mockImplementation(function answer(path: string) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") return Promise.resolve({ ok: true, data: card });
+      // The guest route answers a reserved card: the page must never ask it.
+      if (path === "/api/v1/gifts/g1") return Promise.resolve({ ok: true, data: gift() });
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+    });
+  }
+
+  function ownerReads(): number {
+    return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts/g1").length;
+  }
+
+  it("видит поля, видимость и «Изменить», без «Куплю сам» и брони", async () => {
+    respondOwner();
+    await mount();
+
+    expect(text()).toContain("Наушники");
+    expect(text()).toContain("https://shop.example/pled");
+    expect(text()).toContain("Кто видит");
+    expect(text()).toContain("Друзьям");
+    expect(control("Изменить")).toBeDefined();
+    expect(control("Куплю сам")).toBeUndefined();
+    expect(control("Снять бронь")).toBeUndefined();
+    expect(text()).not.toContain("Бронь");
+    expect(text()).not.toContain("Берёт");
+    expect(text()).not.toContain("Забронирован");
+    // AD-15 (14): only the owner route was read, and nothing redirected.
+    expect(ownerReads()).toBe(1);
+    expect(giftReads()).toBe(0);
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("«Изменить» открывает форму желания с его id", async () => {
+    respondOwner();
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("AD-15: подброшенная бронь в ответе не появляется на странице владельца", async () => {
+    // A broken payload: the owner route answers a reserved card with a live
+    // holder. The page still reads as an open wish — no pill, no name, no
+    // holder's actions (the same second gate `toDetailFacts` keeps).
+    respondOwner(
+      ownerCard({
+        status: "RESERVED",
+        reservedBy: { id: "u3", nick: "daria", displayName: "Дарья" },
+        reservation: {
+          dueAt: DUE_ON,
+          phase: "ACTIVE",
+          bought: true,
+          holderVisibleToOwner: true,
+          holderVisibleToOthers: true,
+        },
+      }),
+    );
+    await mount();
+
+    expect(text()).toContain("Открыт");
+    expect(text()).not.toContain("Забронирован");
+    expect(text()).not.toContain("Дарья");
+    expect(text()).not.toContain("Берёт");
+    expect(text()).not.toContain("Куплено");
+    expect(control("Снять бронь")).toBeUndefined();
+    expect(switchNamed("Купил")).toBeUndefined();
+    expect(control("Куплю сам")).toBeUndefined();
+    expect(control("Изменить")).toBeDefined();
   });
 });

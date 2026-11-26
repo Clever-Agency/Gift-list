@@ -6,19 +6,17 @@ import type {
 import {
   Button,
   Column,
-  Heading,
   PageContainer,
   PageScroll,
   SafeArea,
   Screen,
   Switch,
   TagChip,
-  TagChipList,
   Text,
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { formatDate, formatPrice } from "@gift-list/contracts";
+import { formatDate, type DetailViewer } from "@gift-list/contracts";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
@@ -33,6 +31,7 @@ import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { EmptyState } from "@/ui/empty-state";
+import { GiftDetail } from "@/ui/gift-detail";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { ReservationExtendDialog, canExtendReservation } from "@/ui/reservation-extend-dialog";
@@ -42,8 +41,8 @@ import {
   type ReservationVisibilityValues,
 } from "@/ui/reservation-visibility";
 import { ReserveConfirm } from "@/ui/reserve-confirm";
-import { StatusPill } from "@/ui/status-pill";
 import { ToastHost } from "@/ui/toast";
+import { loadOwnerDetail } from "@/ui/wish-detail-load";
 
 type ScreenState =
   | { status: "loading" }
@@ -74,6 +73,10 @@ export default function GiftDetailScreen() {
   const [state, setState] = useState<ScreenState>(
     id ? { status: "loading" } : { status: "missing" },
   );
+  // D-63 / AD-15 (14): the owner's page is built from the owner card alone
+  // (`GET /api/v1/me/gifts/:id`), which carries no `reservation`, no `reservedBy`
+  // and no `RESERVED` status, so the page cannot tell a booked wish from an open one.
+  const [viewer, setViewer] = useState<DetailViewer>("guest");
   const [attempt, setAttempt] = useState(0);
   const [gift, setGift] = useState<GiftCard | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -117,9 +120,26 @@ export default function GiftDetailScreen() {
 
     async function requestGift() {
       if (!id) return;
+      // D-63 / AD-15 (14): the owner's page reads only the owner route, so a
+      // booking never reaches it. A foreign wish answers NOT_FOUND there, and the
+      // screen then asks the viewer route — the same single request a guest had.
+      const owner = await loadOwnerDetail(id);
+      if (cancelled) return;
+      if (owner.ok) {
+        setViewer("owner");
+        setGift(owner.gift);
+        setState({ status: "ready", gift: owner.gift });
+        return;
+      }
+      if (owner.reason === "network") {
+        setState({ status: "error", kind: "network" });
+        return;
+      }
+
       const result = await fetchViewerGift(id, listToken);
       if (cancelled) return;
       if (result.ok) {
+        setViewer("guest");
         setGift(result.gift);
         setState({ status: "ready", gift: result.gift });
         if (
@@ -135,10 +155,10 @@ export default function GiftDetailScreen() {
         setState({ status: "missing" });
         return;
       }
-      if ("code" in result && result.code === "FORBIDDEN") {
-        router.replace({ pathname: "/gifts/[id]/edit", params: { id } });
-        return;
-      }
+      // FORBIDDEN here means the owner route answered the owner, so the earlier
+      // read failed for another reason (and the owner still deserves its own
+      // answer, never a redirect to the edit form). UNAUTHENTICATED is the same
+      // rare tail: the screen already checked the session before the reads.
       setState({ status: "error", kind: "network" in result ? "network" : "generic" });
     }
 
@@ -151,14 +171,18 @@ export default function GiftDetailScreen() {
   if (!id) return <NotFoundScreen />;
 
   const current = gift ?? (state.status === "ready" ? state.gift : null);
+  // The owner never gets a reserve button, a hint or a release: the page is the
+  // wish as an open card, plus «Изменить» (D-49, AD-15 (14)).
+  const isGuest = viewer === "guest";
   const showReserveCta =
-    current?.quantity === "SINGLE" && current?.status === "OPEN";
+    isGuest && current?.quantity === "SINGLE" && current?.status === "OPEN";
   // Story 5.2 (A-14): only the live holder gets `reservation` from the server, so
   // its presence is the holder branch, not a name or a relationship lookup. The
   // release itself is only possible while the wish is `RESERVED`.
-  const showRelease = current?.status === "RESERVED" && current.reservation !== undefined;
+  const showRelease =
+    isGuest && current?.status === "RESERVED" && current.reservation !== undefined;
   const reserveHint =
-    current && !showReserveCta && !showRelease
+    isGuest && current && !showReserveCta && !showRelease
       ? current.quantity === "UNLIMITED"
         ? tGift("reserveNoButton.UNLIMITED")
         : tGift(`reserveNoButton.${current.status}` as "reserveNoButton.RESERVED")
@@ -418,31 +442,48 @@ export default function GiftDetailScreen() {
                   }} />
                 </YStack>
               ) : current ? (
-                <YStack gap="$4" flexGrow={1}>
-                  <Heading level={1} kind="display-sm">
-                    {current.title}
-                  </Heading>
-                  {current.description ? <Text kind="body">{current.description}</Text> : null}
-                  {current.priceAmount !== null && current.priceCurrency !== null ? (
-                    <Text kind="label" tone="muted">
-                      {formatPrice(current.priceAmount, current.priceCurrency, locale)}
-                    </Text>
-                  ) : null}
-                  <StatusPill status={current.status} />
-                  {current.tags.length > 0 ? (
-                    <TagChipList
-                      labels={current.tags.map(function tagLabel(tag) {
-                        return tag.label;
-                      })}
-                      moreLabel={function moreTags(count: number) {
-                        return tGift("tagsMore", { count });
-                      }}
-                    />
-                  ) : null}
+                <GiftDetail
+                  gift={current}
+                  viewer={viewer}
+                  actions={
+                    viewer === "owner" ? (
+                      <Button
+                        label={tGift("detail.editShort")}
+                        variant="secondary"
+                        onPress={function openEdit() {
+                          router.push({ pathname: "/gifts/[id]/edit", params: { id } });
+                        }}
+                        testID="gift-edit"
+                      />
+                    ) : showReserveCta ? (
+                      <Button
+                        label={tGift("reserveCta")}
+                        variant="reserve"
+                        onPress={function openConfirm() {
+                          setConfirmOpen(true);
+                        }}
+                      />
+                    ) : showRelease ? (
+                      <Button
+                        label={tGift("release.confirm")}
+                        variant="secondary"
+                        disabled={holderBusy}
+                        onPress={function openReleaseConfirm() {
+                          setReleaseConfirmOpen(true);
+                        }}
+                      />
+                    ) : reserveHint ? (
+                      <Text kind="label" tone="muted" accessibilityRole="text">
+                        {reserveHint}
+                      </Text>
+                    ) : undefined
+                  }
+                >
                   {/* CLE-129, T4.2 / D-55: a guest sees «Берёт {имя}», and the name
                       opens the holder's profile. The holder already has their own
-                      reservation block below, and the owner never gets a holder. */}
-                  {current.reservedBy && !current.reservation ? (
+                      reservation block below, and the owner never gets a holder:
+                      the viewer gate is the page's second AD-15 check. */}
+                  {isGuest && current.reservedBy && !current.reservation ? (
                     <XStack
                       gap="$1"
                       alignItems="center"
@@ -457,7 +498,7 @@ export default function GiftDetailScreen() {
                       </NavLink>
                     </XStack>
                   ) : null}
-                  {current.reservation ? (
+                  {isGuest && current.reservation ? (
                     <YStack gap="$3" testID="gift-reservation">
                       {/* «Подписи брони» (EXPERIENCE.md) — та же таблица, что у
                           карточки «Моих броней». В детали дата полная. */}
@@ -526,31 +567,7 @@ export default function GiftDetailScreen() {
                       />
                     </YStack>
                   ) : null}
-                  <YStack flexGrow={1} />
-                  {showReserveCta ? (
-                    <Button
-                      label={tGift("reserveCta")}
-                      variant="reserve"
-                      onPress={function openConfirm() {
-                        setConfirmOpen(true);
-                      }}
-                    />
-                  ) : showRelease ? (
-                    <Button
-                      label={tGift("release.confirm")}
-                      variant="secondary"
-                      disabled={holderBusy}
-                      onPress={function openReleaseConfirm() {
-                        setReleaseConfirmOpen(true);
-                      }}
-                    />
-                  ) : reserveHint ? (
-                    <Text kind="label" tone="muted" accessibilityRole="text">
-                      {reserveHint}
-                    </Text>
-                  ) : null}
-                  <NavLink href="/">{tGift("backToList")}</NavLink>
-                </YStack>
+                </GiftDetail>
               ) : null}
             </Column>
           </PageContainer>

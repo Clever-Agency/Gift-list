@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-30-2026 20:37
-last_updated: '11-26-2026 19:36'
+last_updated: '11-26-2026 23:09'
 project: Gift List
 project_key: NOKEY
 tracking_system: file-system
@@ -129,8 +129,8 @@ action_items:
     epic: 3
     action: "Проверить насыщенный поиск и миграцию нормализации имён на PostgreSQL"
     owner: "Сервер"
-    status: open
-    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-26.md"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/spec-cle-131-search-postgres.md"
   - id: "epic-3-retro-profile-state"
     epic: 3
     action: "Проверить смену зрителя на открытом вишлисте и откат личных полей при

@@ -78,11 +78,13 @@ export async function searchUsers(
   const query = normalizeForSearch(input.q.trim());
   if (query === "") return { ok: true, data: { users: [] } };
 
+  // Prisma adds the outer wildcards. Escape the query before SQL applies the limit.
+  const literalPattern = query.replace(/[\\%_]/g, "\\$&");
   const [byNick, byDisplayName] = await Promise.all([
     prisma.user.findMany({
       where: {
         hideFromSearch: false,
-        nickNormalized: { startsWith: query },
+        nickNormalized: { startsWith: literalPattern },
         ...notBlockedWithViewer(session.user.id),
       },
       select: { id: true, name: true, nick: true },
@@ -92,7 +94,7 @@ export async function searchUsers(
     prisma.user.findMany({
       where: {
         hideFromSearch: false,
-        nameNormalized: { contains: query },
+        nameNormalized: { contains: literalPattern },
         ...notBlockedWithViewer(session.user.id),
       },
       select: { id: true, name: true, nick: true },
@@ -126,11 +128,9 @@ export async function searchUsers(
 }
 
 /**
- * Merges the two buckets without duplicates. The pure predicate is repeated
- * here, so a `LIKE` wildcard in the query cannot smuggle in a row and the answer
- * stays a real prefix/substring match. Ranking and the
- * {@link USER_SEARCH_LIMIT} cap happen after the merge, so an exact nick is
- * never pushed out by a longer list of weaker matches.
+ * Merges the two buckets without duplicates and checks the current display
+ * values against the literal query. Ranking and the {@link USER_SEARCH_LIMIT}
+ * cap happen after the merge, giving exact nicks priority over name matches.
  */
 function mergeSearchRows(
   byNick: readonly SearchRow[],

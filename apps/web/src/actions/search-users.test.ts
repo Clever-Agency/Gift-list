@@ -78,8 +78,8 @@ beforeEach(() => {
     Promise.resolve(new Map(ids.map((id) => [id, { relationship: "NONE", subscribed: false }]))),
   );
   findMany.mockImplementation(function findPeople(args: FindManyArgs) {
-    const nickQuery = args.where.nickNormalized?.startsWith;
-    const nameQuery = args.where.nameNormalized?.contains;
+    const nickQuery = args.where.nickNormalized?.startsWith.replace(/\\([\\%_])/g, "$1");
+    const nameQuery = args.where.nameNormalized?.contains.replace(/\\([\\%_])/g, "$1");
     const viewerId = args.where.blocksReceived?.none.blockerId;
     return people.filter(function visibleMatch(row) {
       if (args.where.hideFromSearch !== false || row.hideFromSearch) return false;

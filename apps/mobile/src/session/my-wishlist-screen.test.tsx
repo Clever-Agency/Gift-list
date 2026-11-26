@@ -116,6 +116,28 @@ vi.mock("expo-router", async () => {
     router: navigation,
     Stack: { Screen: () => null },
     useLocalSearchParams: () => search.params,
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child and draws nothing of its own — the wish card itself is the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href: unknown;
+      asChild?: boolean;
+      children: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href: String(href) }, children);
+      return React.cloneElement(children, {
+        href:
+          typeof href === "string"
+            ? href
+            : (href as { pathname?: string } | null | undefined)?.pathname,
+        onPress: function onPress() {
+          navigation.push(href);
+        },
+      });
+    },
     useFocusEffect: (effect: () => void | (() => void)) => {
       const focused = React.useSyncExternalStore(
         focusStore.subscribe,
@@ -294,31 +316,6 @@ async function refocus() {
 /** Every read of the owner list, so a refocus refetch is countable. */
 function listReads(): number {
   return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
-}
-
-/** A button of the open layer by its whole visible text. */
-async function pressInDialog(label: string) {
-  const dialog = dialogElement();
-  expect(dialog).not.toBeNull();
-  if (!dialog) throw new Error("нет открытого слоя");
-  const target = controls(dialog).find((node) => (node.textContent ?? "").trim() === label);
-  expect(target, `кнопка «${label}» в слое`).toBeDefined();
-  await act(async () => {
-    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await settle(10);
-}
-
-/**
- * D-49 (CLE-124): the neutral warning of an open non-secret wish. It is the only
- * question of the three paths, and it never mentions a reservation as a fact.
- */
-function expectSurpriseWarning(body: string) {
-  const dialog = dialogElement();
-  expect(dialog).not.toBeNull();
-  expect(dialog?.textContent).toContain("Кто-то мог уже забронировать или купить этот подарок.");
-  expect(dialog?.textContent).toContain(body);
-  return dialog as HTMLElement;
 }
 
 async function mount(extra?: ReactNode) {
@@ -645,144 +642,49 @@ describe("мой вишлист: список", () => {
   });
 
   /**
-   * CLE-84: the owner card opens details. «Изменить желание» inside the dialog
-   * is the way into the edit form (Story 2.2). The pressable lives
-   * inside the listitem, so the list semantics above stay exactly as they were.
-   * D-54: the card has no visibility chip next to the card button.
+   * CLE-129, T4.4 (D-63): the owner card is a real link to the wish page
+   * `/gifts/{id}`, and the detail dialog is gone. The link lives inside the
+   * listitem, so the list semantics above stay exactly as they were.
+   * D-54: the card has no visibility chip next to it.
    */
-  it("нажатие на карточку открывает подробности, listitem остаётся", async () => {
+  it("карточка — ссылка на страницу желания, listitem остаётся, диалога нет", async () => {
     respond(giftsAnswer([gift(), gift({ id: "g2", title: "Свитер" })]));
     await mount();
 
     const items = container.querySelectorAll('[role="list"] [role="listitem"]');
     expect(items).toHaveLength(2);
 
-    // The label is the `DESIGN.md` content phrase; the mock renders Pressable as a button.
-    const card = items[0]?.querySelector('[role="button"]') as HTMLElement | null;
+    // The label is the `DESIGN.md` content phrase; the card itself is the link.
+    const card = items[0]?.querySelector('[role="link"]') as HTMLElement | null;
     expect(card?.getAttribute("aria-label")).toContain("Наушники");
     expect(card?.getAttribute("aria-label")).not.toContain("Изменить");
-    // The card and its ⋯ menu: two controls, and no visibility chip next to them.
-    expect(items[0]?.querySelectorAll('[role="button"]')).toHaveLength(2);
+    // The link and its ⋯ menu: two controls, and no visibility chip next to them.
+    expect(items[0]?.querySelectorAll('[role="link"]')).toHaveLength(1);
+    expect(items[0]?.querySelectorAll('[role="button"]')).toHaveLength(1);
     expect(items[0]?.querySelector("[aria-label^='Видимость:']")).toBeNull();
+
     await act(async () => {
       card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-
     await settle();
-    const dialog = dialogElement();
-    expect(dialog).not.toBeNull();
-    expect(dialog?.textContent).toContain("Наушники");
-    expect(dialog?.textContent).toContain("Изменить желание");
-    expect(navigation.push).not.toHaveBeenCalled();
-    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
-    await act(async () => {
-      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    // D-49 (CLE-124): PUBLIC is an open non-secret wish, so the neutral question is
-    // a step of the same details layer, and the form has not opened yet.
-    expectSurpriseWarning(
-      "Если вы измените желание, даритель получит уведомление.",
-    );
-    expect(text()).toContain("Изменить желание?");
-    expect(navigation.push).not.toHaveBeenCalled();
-
-    await pressInDialog("Изменить");
 
     expect(navigation.push).toHaveBeenCalledWith({
-      pathname: "/gifts/[id]/edit",
+      pathname: "/gifts/[id]",
       params: { id: "g1" },
     });
-  });
-
-  it("«Отмена» в окне «Изменить» оставляет подробности и не открывает форму", async () => {
-    respond(giftsAnswer([gift({ visibility: "FRIENDS" })]));
-    await mount();
-
-    const card = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
-    await act(async () => {
-      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    expectSurpriseWarning(
-      "Если вы измените желание, даритель получит уведомление.",
-    );
-
-    await pressInDialog("Отмена");
-    await settle(300);
-
-    expect(navigation.push).not.toHaveBeenCalled();
-    // One layer: the step is gone and the details are back, not a second window.
-    expect(dialogElement()?.textContent).toContain("Изменить желание");
-    expect(text()).not.toContain("Изменить желание?");
-  });
-
-  it("секретное желание открывает форму сразу, без окна", async () => {
-    respond(giftsAnswer([gift({ visibility: "SECRET" })]));
-    await mount();
-
-    const card = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      card.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
-    await act(async () => {
-      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    expect(text()).not.toContain("Изменить желание?");
-    expect(text()).not.toContain("Кто-то мог уже забронировать или купить этот подарок.");
-    expect(navigation.push).toHaveBeenCalledWith({
-      pathname: "/gifts/[id]/edit",
-      params: { id: "g1" },
-    });
-  });
-
-  it("подробности берут описание из чтения одного желания и возвращают фокус на карточку", async () => {
-    const card = gift();
-    respond(giftsAnswer([card]));
-    api.apiRequest.mockImplementation((path: string) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path === "/api/v1/me/gifts/g1") {
-        return Promise.resolve({
-          ok: true,
-          data: { ...card, description: "Синие, с шумоподавлением." },
-        });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-    await mount();
-
-    const cardButton = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    expect(dialogElement()?.textContent).toContain("Синие, с шумоподавлением.");
-    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/me/gifts/g1");
-
-    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
-    await act(async () => {
-      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle(300);
     expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(cardButton);
+    expect(text()).not.toContain("Изменить желание");
+  });
+
+  it("«Изменить» живёт на странице желания, а не в списке", async () => {
+    respond(giftsAnswer([gift()]));
+    await mount();
+
+    expect(button("Изменить")).toBeUndefined();
+    expect(navigation.push).not.toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
   });
 
   it("пустой вишлист: «Пока пусто» и «Добавить желание» ведёт в форму", async () => {
@@ -1532,7 +1434,7 @@ describe("мой вишлист: у владельца нет признаков
     expect(container.querySelector("[data-testid='owner-action-label']")).toBeNull();
   });
 
-  it("деталь из старого ответа: ни факта брони, ни «Снять бронь»", async () => {
+  it("карточка из старого ответа: ни факта брони, ни «Снять бронь», ссылка ведёт на страницу", async () => {
     respond(
       giftsAnswer([
         gift({
@@ -1545,19 +1447,13 @@ describe("мой вишлист: у владельца нет признаков
     );
     await mount();
 
-    const cardButton = container.querySelector(
-      '[role="listitem"] [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    const detail = dialogElement()?.textContent ?? "";
-    expect(detail).toContain("Кто видит");
-    expect(detail).toContain("Изменить желание");
-    await expectNoReservation(detail);
-    expect(detail).not.toContain("Снять бронь");
+    expect(text()).toContain("Открыт");
+    await expectNoReservation(text());
+    expect(text()).not.toContain("Снять бронь");
+    // The card reads as open, and the page it links to has no reservation either:
+    // that is `gift-detail-screen.test` (AD-15 (14)).
+    const card = container.querySelector('[role="listitem"] [role="link"]') as HTMLElement;
+    expect(card.getAttribute("aria-label")).not.toContain("Забронирован");
   });
 });
 
@@ -2194,14 +2090,6 @@ describe("мой вишлист: закрытие желания", () => {
     await settle(10);
   }
 
-  async function openDetailOfFirstCard() {
-    const cardButton = container.querySelector('[role="listitem"] [role="button"]') as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-  }
-
   /** The card of the closed wish: expand «Получено» first. */
   async function openClosedMenu(closedTitle = "Получено (1)") {
     await press(closedTitle);
@@ -2266,7 +2154,7 @@ describe("мой вишлист: закрытие желания", () => {
     expect(confirm).not.toContain("бронировавший");
   });
 
-  it("шаг в подробностях: «Отметить полученным» → «Подтвердить», диалог закрывается", async () => {
+  it("«Отметить полученным» есть в ⋯ карточки после ухода окна подробностей", async () => {
     let cards: GiftCard[] = [gift()];
     respondClose({
       cards: () => cards,
@@ -2276,15 +2164,12 @@ describe("мой вишлист: закрытие желания", () => {
       },
     });
     await mount();
-    await openDetailOfFirstCard();
 
-    expect(dialogElement()?.textContent).toContain("Изменить желание");
-    await pressInDialog("Отметить полученным");
+    // The card itself only goes to the page; the owner's action stays in the ⋯.
+    await pressTestId("wishlist-card-menu-g1");
     await settle();
-
-    expect(dialogElement()?.textContent).toContain("Подарок «Наушники» получен?");
-    expect(dialogElement()?.textContent).not.toContain("Кто видит");
-
+    await pressInDialog("Отметить полученным");
+    await settle(300);
     await pressInDialog("Подтвердить");
     await settle(300);
 

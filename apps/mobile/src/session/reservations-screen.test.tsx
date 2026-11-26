@@ -102,6 +102,20 @@ vi.mock("expo-router", async () => {
   return {
     router: navigation,
     Stack: { Screen: () => null },
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child and draws nothing of its own — `NavLink` draws the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href: string;
+      asChild?: boolean;
+      children: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href }, children);
+      return React.cloneElement(children, { href });
+    },
     useLocalSearchParams: () => search.params,
     useFocusEffect: (effect: () => void | (() => void)) => {
       const focused = React.useSyncExternalStore(
@@ -264,7 +278,10 @@ describe("экран «Мои брони»", () => {
 
     expect(text()).toContain("Мои брони");
     expect(text()).toContain("Плед");
-    expect(text()).toContain("у @anya");
+    // CLE-129, T4.4: «у @ника» — ссылка на профиль владельца.
+    expect(text()).toContain("у");
+    expect(text()).toContain("@anya");
+    expect(container.querySelector('[role="link"][href="/u/anya"]')).not.toBeNull();
     expect(text()).toContain("Вы берёте · до 01.12");
   });
 

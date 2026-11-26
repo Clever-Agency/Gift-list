@@ -58,8 +58,29 @@ vi.mock("expo-router", async () => {
   return {
     router: navigation,
     Stack: { Screen: () => null },
-    Link: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, null, children),
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child (the wish card is the anchor) and draws nothing of its own.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href?: unknown;
+      asChild?: boolean;
+      children?: React.ReactElement<Record<string, unknown>>;
+    }) {
+      const target =
+        typeof href === "string"
+          ? href
+          : (href as { pathname?: string } | null | undefined)?.pathname;
+      if (!asChild) return React.createElement("a", { href: target }, children);
+      return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        href: target,
+        onPress: function onPress() {
+          navigation.push(href);
+        },
+      });
+    },
     useLocalSearchParams: () => search.params,
   };
 });
@@ -1862,6 +1883,31 @@ describe("W12.20: экран профиля на медиа-пропсах", () 
     expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
     expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
     expect(paintedSpace(body as Element, "gap", 360)).toBe(spacing["grid-gap"]);
+  });
+
+  /**
+   * CLE-129, T4.4 (D-63): a wish card of somebody else's profile is a real link
+   * to the wish page; the profile has no list token, and no dialog opens.
+   */
+  it("карточка желания ведёт на страницу /gifts/{id} без токена списка", async () => {
+    await mountAt(1024);
+
+    const card = container.querySelector<HTMLElement>(
+      '[role="list"] [role="listitem"] [role="link"]',
+    );
+    expect(card, "ссылка карточки").not.toBeNull();
+    expect(card?.getAttribute("aria-label")).toContain("Наушники");
+
+    await act(async () => {
+      card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]",
+      params: { id: "g1", title: "Наушники" },
+    });
+    expect(dialogElement()).toBeNull();
   });
 
   /**

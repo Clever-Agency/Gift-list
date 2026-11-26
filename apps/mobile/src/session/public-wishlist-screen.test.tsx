@@ -43,13 +43,34 @@ vi.mock("expo-localization", () => ({
 }));
 vi.mock("expo-router", async () => {
   const React = await import("react");
+  /** The target as a string: `asChild` hands it to the anchor the child draws. */
+  function hrefOf(href: unknown): string | undefined {
+    return typeof href === "string"
+      ? href
+      : (href as { pathname?: string } | null | undefined)?.pathname;
+  }
   return {
     router: navigation,
     Stack: { Screen: () => null },
-    // The real `Link asChild` clones its child with `href`; the stub keeps the
-    // target visible as `data-href` so a test can assert where a name link leads.
-    Link: ({ href, children }: { href?: string; children?: React.ReactNode }) =>
-      React.createElement("span", { "data-href": String(href) }, children),
+    // An honest `asChild`: the router's `Link` puts `href` and `onPress` onto its
+    // only child and draws nothing of its own — the card itself is the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href?: unknown;
+      asChild?: boolean;
+      children?: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href: hrefOf(href) }, children);
+      return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        href: hrefOf(href),
+        onPress: function onPress() {
+          navigation.push(href);
+        },
+      });
+    },
     useLocalSearchParams: () => search.params,
   };
 });
@@ -360,7 +381,7 @@ describe("вишлист по ссылке: список", () => {
     expect(text()).not.toContain("Друзьям");
   });
 
-  it("карточка открывает обновлённые подробности, «Куплю сам» ведёт в бронь", async () => {
+  it("карточка — ссылка на страницу желания, «Куплю сам» ведёт в бронь", async () => {
     const card = gift();
     respond(giftsAnswer([card]));
     api.apiRequest.mockImplementation((path: string) => {
@@ -375,26 +396,22 @@ describe("вишлист по ссылке: список", () => {
     });
     await mount();
 
-    const cardButton = container.querySelector(
-      '[role="listitem"] [role="button"]',
+    // CLE-129, T4.4: the card is a real link to the wish page; no dialog, and the
+    // guest keeps the list token, so the page reads the same public list.
+    const cardLink = container.querySelector(
+      '[role="listitem"] [role="link"]',
     ) as HTMLElement;
+    expect(cardLink.getAttribute("aria-label")).toBe("Наушники");
     await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      cardLink.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 
-    const dialog = dialogElement();
-    expect(dialog?.textContent).toContain("Обновлённое описание с сервера.");
-    expect(dialog?.textContent).not.toContain("Всем");
-    expect(navigation.push).not.toHaveBeenCalled();
-
-    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
-    await act(async () => {
-      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]",
+      params: { id: "g1", listToken: "tok_1", title: "Наушники" },
     });
-    await settle(300);
     expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(cardButton);
 
     // This file's translator stub only loads `app` and `common`, so the web
     // catalogue key is what the button renders here.
@@ -430,14 +447,16 @@ describe("вишлист по ссылке: список", () => {
 
     // The card draws «Берёт Олег»: the name is the link, its target is the profile.
     expect(reserved?.textContent).toContain("Берёт");
-    const link = reserved?.querySelector<HTMLElement>('[role="link"]');
+    const link = reserved?.querySelector<HTMLElement>('[role="link"][href="/u/oleg"]');
     expect(link?.textContent).toBe("Олег");
-    const target = reserved?.querySelector<HTMLElement>('[data-href="/u/oleg"]');
-    expect(target?.contains(link as Node)).toBe(true);
 
-    // The line is a sibling of the card button: the link is not nested in it.
-    const button = reserved?.querySelector<HTMLElement>('[role="button"]');
-    expect(button?.contains(link as Node)).toBe(false);
+    // The line is a sibling of the card link: the profile link is not nested in it.
+    const cardLink = Array.from(
+      reserved?.querySelectorAll<HTMLElement>('[role="link"]') ?? [],
+    ).find(function isCard(node) {
+      return node.getAttribute("href") !== "/u/oleg";
+    });
+    expect(cardLink?.contains(link as Node)).toBe(false);
   });
 
   it("не показывает скрытое желание, которого нет в ответе сервера", async () => {

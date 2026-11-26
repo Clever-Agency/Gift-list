@@ -85,7 +85,7 @@ What is not a prop:
 
 - There is no photo URL: a wish without a photo always draws the placeholder, and its tint is seeded by the title. A future photo prop would be a separate change.
 - The app builds the status pill, the tag row and the menu; they arrive as slots. The «есть теги», «есть меню» and «есть действия» handles stand ready-made samples in.
-- With \`onPress\` the whole card is a button and the plate's shadow lifts on hover of any part of it, while the title is underlined — the card is the Tamagui group.
+- With \`onPress\` or \`href\` the whole card is one target and the plate's shadow lifts on hover of any part of it, while the title is underlined — the card is the Tamagui group. With \`href\` the target is a real \`<a>\` (CLE-129, T4.4).
 - \`footer\` adds an action block — the buttons and the switch of a reservation card. It is a sibling of the card button too: nothing is nested, and Tab goes card first, actions next.
 - D-54: the card has no visibility chip and no «who sees» control: visibility changes only in the wish form.
 - \`listItem={false}\` is for an owner strip next to the card: the wrapper of the cell then carries the \`listitem\` role.
@@ -134,9 +134,15 @@ What is not a prop:
     }),
     onPress: propDoc({
       description:
-        "Opens the wish. With it the whole card is a button, named by `pressLabel`, and a hover of any part of it lifts the plate's shadow and underlines the title. Not a control: the sandbox always stands a `noop` in.",
+        "Opens the wish. With it the whole card is a target, named by `pressLabel`, and a hover of any part of it lifts the plate's shadow and underlines the title. Not a control: the sandbox always stands a `noop` in.",
       type: "() => void",
       control: false,
+    }),
+    href: propDoc({
+      description:
+        "The page the card links to. With it the press zone is a real `<a href>` on the web — a new tab works like on any link — and the router adds its own press on the phone (CLE-129, T4.4).",
+      type: "string",
+      control: "text",
     }),
     pressLabel: propDoc({
       description:
@@ -146,7 +152,7 @@ What is not a prop:
     }),
     pressRef: propDoc({
       description:
-        "The card button itself, so a closing detail dialog can return focus to it. A ref, not a control.",
+        "The card target itself, so a caller can return focus to it after a layer closes. A ref, not a control.",
       type: "Ref<ComponentRef<typeof Pressable>>",
       control: false,
     }),

@@ -6,9 +6,10 @@ import { WishCard } from "./gift-card";
 
 /**
  * The owner's gift card (AD-12, `DESIGN.md` → WishCard): title, price, status pill and
- * up to three tags with «+N». Only an `onPress` makes the card a button. The stories
- * use a fixture card: the server owns which fields a viewer may see
- * (`VisibilityPolicy`, AD-7).
+ * up to three tags with «+N». Only an `onPress` or `href` makes the card a target:
+ * the app hands it the wish page `/gifts/{id}`, a real `<a href>` on the web
+ * (CLE-129, T4.4). The stories use a fixture card: the server owns which fields a
+ * viewer may see (`VisibilityPolicy`, AD-7).
  *
  * D-54: the card has no visibility chip: visibility changes only in the wish form.
  *

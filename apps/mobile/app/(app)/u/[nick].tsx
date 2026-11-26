@@ -45,7 +45,6 @@ import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { EmptyState } from "@/ui/empty-state";
 import { NotFoundScreen } from "@/ui/not-found-screen";
 import { PublicGiftCard } from "@/ui/public-gift-card";
-import { loadViewerDetail } from "@/ui/wish-detail-load";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
@@ -808,13 +807,6 @@ export default function ProfileScreen() {
                                   key={gift.id}
                                   gift={gift}
                                   width={cardWidth}
-                                  loadDetail={
-                                    auth.state.status === "ready"
-                                      ? function loadThisGift() {
-                                          return loadViewerDetail(gift.id, undefined, gift);
-                                        }
-                                      : undefined
-                                  }
                                 />
                               );
                             })}
@@ -836,13 +828,6 @@ export default function ProfileScreen() {
                                   key={gift.id}
                                   gift={gift}
                                   width={cardWidth}
-                                  loadDetail={
-                                    auth.state.status === "ready"
-                                      ? function loadThisGift() {
-                                          return loadViewerDetail(gift.id, undefined, gift);
-                                        }
-                                      : undefined
-                                  }
                                 />
                               );
                             })}

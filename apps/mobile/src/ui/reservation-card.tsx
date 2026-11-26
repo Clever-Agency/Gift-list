@@ -10,10 +10,12 @@ import {
   TagChip,
   Text,
   WishCard,
+  XStack,
   YStack,
   type FocusTarget,
 } from "@gift-list/ui";
 import { useLocale, useTranslations } from "use-intl";
+import { NavLink } from "@/ui/nav-link";
 import { canExtendReservation } from "@/ui/reservation-extend-dialog";
 import {
   ReservationVisibility,
@@ -62,6 +64,10 @@ function joinCardName(parts: readonly (string | null)[]): string {
  * срок, подпись фазы, чип «Куплено», действия «Купил», «Подарил» (Story 5.7),
  * «Продлить до…», переключатель «Показывать другим гостям, что дарю я» и ⋮ со
  * «Снять бронь».
+ *
+ * «У @ника» — ссылка на `/u/{ник}` (CLE-129, T4.4; `DESIGN.md` → ReservationCard),
+ * поэтому строка владельца живёт в `footer`, соседом кнопки карточки: ссылка
+ * внутри ссылки карточки была бы вложенным интерактивом и недоступной с Tab.
  *
  * Цена — текущая цена желания (D-64.7): у недоступного желания (`canOpenGift =
  * false`) её нет, как и ссылки на деталь. Теги, описание и остальные желания в
@@ -119,6 +125,24 @@ export function ReservationCard({
     active ? tPhase("ACTIVE", { date: due }) : `${phase}, ${tPhase(card.phase)}`,
   ]);
 
+  // CLE-129, T4.4: «у @ника» — ссылка на профиль владельца. Она стоит в `footer`,
+  // соседом кнопки карточки: внутри ссылки карточки была бы ссылка в ссылке.
+  const ownerLine = (
+    <XStack
+      gap="$1"
+      alignItems="center"
+      flexWrap="wrap"
+      testID={testID ? `${testID}-owner` : undefined}
+    >
+      <Text kind="caption" tone="muted">
+        {t("ownerPrefix")}
+      </Text>
+      <NavLink href={`/u/${encodeURIComponent(card.ownerNick)}`}>
+        {`@${card.ownerNick}`}
+      </NavLink>
+    </XStack>
+  );
+
   const menu = onMenu ? (
     <Pressable
       ref={menuRef}
@@ -139,6 +163,7 @@ export function ReservationCard({
 
   const footer = (
     <YStack gap="$2">
+      {ownerLine}
       {card.bought ? <TagChip variant="card" label={t("boughtChip")} /> : null}
       <Switch
         label={t("bought")}
@@ -183,16 +208,11 @@ export function ReservationCard({
       title={card.titleSnapshot}
       price={price}
       status={
-        <YStack gap="$1">
+        active ? null : (
           <Text kind="caption" tone="muted">
-            {owner}
+            {tPhase(card.phase)}
           </Text>
-          {active ? null : (
-            <Text kind="caption" tone="muted">
-              {tPhase(card.phase)}
-            </Text>
-          )}
-        </YStack>
+        )
       }
       reservation={phase}
       onPress={open}

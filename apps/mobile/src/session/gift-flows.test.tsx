@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { controls, settle, typeInto } from "@/test/dom";
 import MyWishlistScreen from "../../app/(app)/(tabs)/index";
+import GiftDetailScreen from "../../app/(app)/gifts/[id]/index";
 import EditGiftScreen from "../../app/(app)/gifts/[id]/edit";
 import NewGiftScreen from "../../app/(app)/gifts/new";
 
@@ -158,6 +159,30 @@ vi.mock("expo-router", async () => {
     router: navigation.router,
     Stack: { Screen: () => null },
     useLocalSearchParams: () => navigation.params(),
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child and draws nothing of its own — the wish card is the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href?: unknown;
+      asChild?: boolean;
+      children?: React.ReactElement<Record<string, unknown>>;
+    }) {
+      const target =
+        typeof href === "string"
+          ? href
+          : (href as { pathname?: string } | null | undefined)?.pathname;
+      function onPress() {
+        navigation.router.push(href as { pathname: string; params?: Record<string, string> });
+      }
+      if (!asChild) return React.createElement("a", { href: target, onClick: onPress }, children);
+      return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        href: target,
+        onPress,
+      });
+    },
     // The mounted top route is the focused screen: the effect lives as long as
     // that screen is rendered, like focus/blur around a pushed screen.
     useFocusEffect: (effect: () => void | (() => void)) => {
@@ -240,6 +265,8 @@ function Routes() {
       return <MyWishlistScreen />;
     case "/gifts/new":
       return <NewGiftScreen />;
+    case "/gifts/[id]":
+      return <GiftDetailScreen />;
     case "/gifts/[id]/edit":
       return <EditGiftScreen />;
     default:
@@ -282,23 +309,9 @@ async function press(label: string) {
   await settle(10);
 }
 
-/** A button of the open layer by its whole visible text. */
-async function pressInDialog(label: string) {
-  const dialog = document.querySelector<HTMLElement>('[role="dialog"], [role="alertdialog"]');
-  expect(dialog).not.toBeNull();
-  const target = controls(dialog as Element).find(
-    (node) => (node.textContent ?? "").trim() === label,
-  );
-  expect(target, `кнопка «${label}» в слое`).toBeDefined();
-  await act(async () => {
-    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await settle(10);
-}
-
-/** The wish card's main zone: its content name starts with the title, not an action. */
+/** The wish card's main zone: a link whose accessible name is the content phrase. */
 async function pressCard(title: string) {
-  const target = container.querySelector('[role="listitem"] > [role="button"]');
+  const target = container.querySelector('[role="listitem"] [role="link"]');
   expect(target?.getAttribute("aria-label")).toContain(title);
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -439,11 +452,11 @@ describe("поток: сохранение из шага «Сохранить и
 });
 
 /**
- * Story 2.2, edit flow across screens: the owner card opens the detail dialog
- * (CLE-84), «Изменить желание» opens `/gifts/[id]/edit` with the id, the screen
- * reads that wish and prefills the
- * form, the changed field travels back as `GiftUpdate`, and the list shows
- * «Изменения сохранены.» from `?toast=` over a freshly read list.
+ * Story 2.2, edit flow across screens: the owner card opens the wish page
+ * `/gifts/{id}` (CLE-129, T4.4), «Изменить» there opens `/gifts/[id]/edit` with
+ * the id, the screen reads that wish and prefills the form, the changed field
+ * travels back as `GiftUpdate`, and the list shows «Изменения сохранены.» from
+ * `?toast=` over a freshly read list.
  */
 describe("поток: редактирование желания из списка", () => {
   it("список → карточка → edit с id → fetchGift → правка → updateGift(id, GiftUpdate) → список с «Изменения сохранены.»", async () => {
@@ -463,24 +476,17 @@ describe("поток: редактирование желания из спис�
     await pressCard("Свитер");
     await flush();
 
-    expect(navigation.pathname()).toBe("/");
-    await press("Изменить желание");
-    await flush();
-
-    // D-49 (CLE-124): the open non-secret wish asks the neutral question before
-    // the form; only the accepted «Изменить» opens `/gifts/[id]/edit`.
-    expect(text()).toContain("Изменить желание?");
-    expect(text()).toContain(
-      "Кто-то мог уже забронировать или купить этот подарок. Если вы измените желание, даритель получит уведомление.",
-    );
-    expect(navigation.pathname()).toBe("/");
-
-    await pressInDialog("Изменить");
+    // CLE-129, T4.4 (D-63): the card opens the wish page; «Изменить» lives there,
+    // and the page reads the owner card through its own route.
+    expect(navigation.pathname()).toBe("/gifts/[id]");
+    expect(navigation.params()).toEqual({ id: "g1" });
+    expect(gifts.fetchGift).toHaveBeenCalledWith("g1");
+    expect(text()).toContain("Свитер");
+    await press("Изменить");
     await flush();
 
     expect(navigation.pathname()).toBe("/gifts/[id]/edit");
     expect(navigation.params()).toEqual({ id: "g1" });
-    expect(gifts.fetchGift).toHaveBeenCalledWith("g1");
 
     // The form is prefilled from the stored AD-12 card.
     expect(text()).toContain("Изменить желание");

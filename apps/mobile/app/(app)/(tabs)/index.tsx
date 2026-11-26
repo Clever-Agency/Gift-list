@@ -16,7 +16,7 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Link, router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import {
@@ -27,11 +27,8 @@ import {
   restoreGift,
   undoGiftClose,
 } from "@/api/my-gifts";
-import { loadOwnerDetail } from "@/ui/wish-detail-load";
-import { WishDetailDialog, type WishDetailStep } from "@/ui/wish-detail-dialog";
 import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
-import { needsSurpriseWarning } from "@/domain/surprise-warning";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
@@ -48,7 +45,6 @@ import { WishCard } from "@/ui/gift-card";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
-import { useSurpriseWarningCopy } from "@/ui/surprise-warning";
 import { ToastHost } from "@/ui/toast";
 import { useCardGrid } from "@/ui/use-card-grid";
 import { useUndoWindow } from "@/ui/use-undo-window";
@@ -109,7 +105,8 @@ const COPY_LINK_REASON_ID = "wishlist-copy-link-reason";
 /**
  * «Мой вишлист» (Story 2.1): AD-7 owner branch through `api/v1`, so every own wish
  * comes back, including `SECRET`. The gift card is the shared AD-12 contract; the
- * screen only adds the owner chip, status pill and the empty/loading/error states.
+ * screen only adds the status pill and the empty/loading/error states, and makes
+ * every card a link to the wish page `/gifts/{id}` (CLE-129, T4.4).
  */
 export default function MyWishlistScreen() {
   const t = useTranslations("app");
@@ -147,10 +144,8 @@ export default function MyWishlistScreen() {
   const pendingMenuAction = useRef<(() => void) | null>(null);
   const menuReturn = useRef<string | null>(null);
   const menuNodes = useRef(new Map<string, ChipNode | null>());
-  // Story 5.3: closing a wish from the card asks first; the details layer uses a
-  // step instead (`closeStep`).
+  // Story 5.3: closing a wish from the card asks first.
   const [closeConfirm, setCloseConfirm] = useState<GiftCard | null>(null);
-  const [closeStep, setCloseStep] = useState<GiftCard | null>(null);
   const [closeBusy, setCloseBusy] = useState(false);
   // Story 5.3: deleting a closed wish is the existing DELETE behind a confirm.
   const [deleteConfirm, setDeleteConfirm] = useState<GiftCard | null>(null);
@@ -162,16 +157,6 @@ export default function MyWishlistScreen() {
   const [restoreDate, setRestoreDate] = useState("");
   const [restoreError, setRestoreError] = useState<string | undefined>();
   const [archiveBusy, setArchiveBusy] = useState(false);
-  const cardNodes = useRef(new Map<string, ChipNode | null>());
-  const [detail, setDetail] = useState<GiftCard | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  // D-49 (CLE-124): «Изменить» of an open non-secret wish asks the neutral
-  // question as a step of the details layer, never as a second window over it.
-  const [editStep, setEditStep] = useState(false);
-  const detailReturn = useRef<string | null>(null);
-  // A close from the details hands focus to «Отменить» in the toast, so the closing
-  // layer must not put it back on the card.
-  const [skipDetailFocus, setSkipDetailFocus] = useState(false);
   // Review m9: coming back to the screen (e.g. from the composer) refetches the list.
   // The mount effect owns the very first load, so the first focus right after mount is
   // not a reason to fetch again; a refocus refresh is silent (only `retry` shows the
@@ -188,9 +173,6 @@ export default function MyWishlistScreen() {
   const closedMenuWindow = useUndoWindow(
     cardMenu?.status === "CLOSED" ? cardMenu.undoUntil : null,
   );
-  // The neutral question of «Изменить»: the details layer shows it as its own step,
-  // so it reads exactly the stand-alone window's texts (D-49).
-  const editWarning = useSurpriseWarningCopy("edit", detail?.title ?? "");
 
   // The closing toast lands focus on «Отменить» (`DESIGN.md` → «Куда уходит
   // фокус», пункт «а»). The toast is on screen by the time the effect runs.
@@ -403,109 +385,11 @@ export default function MyWishlistScreen() {
     router.push("/gifts/new");
   }
 
-  function openDetail(gift: GiftCard) {
-    detailReturn.current = gift.id;
-    setDetail(gift);
-    setCloseStep(null);
-    setEditStep(false);
-    setDetailOpen(true);
-  }
-
-  function closeDetail() {
-    setDetailOpen(false);
-  }
-
-  function detailClosed() {
-    const id = detailReturn.current;
-    detailReturn.current = null;
-    setCloseStep(null);
-    setEditStep(false);
-    setCloseBusy(false);
-    setDetail(null);
-    const skip = skipDetailFocus;
-    setSkipDetailFocus(false);
-    if (skip) return;
-    restoreFocus(id ? cardNodes.current.get(id) : null);
-  }
-
   /**
-   * «Изменить желание» in the details (Story 2.2). D-49 (CLE-124): an open
-   * non-secret wish gets the neutral question first, as a step of the same
-   * details layer; any other wish goes straight to the form.
-   */
-  function editDetail() {
-    if (!detail) return;
-    if (needsSurpriseWarning(detail)) {
-      setEditStep(true);
-      return;
-    }
-    openEditForm();
-  }
-
-  /** The accepted «Изменить»: the details leave and the existing form route opens. */
-  function openEditForm() {
-    if (!detail) return;
-    const id = detail.id;
-    setEditStep(false);
-    setDetailOpen(false);
-    setDetail(null);
-    router.push({ pathname: "/gifts/[id]/edit", params: { id } });
-  }
-
-  /** «Отмена» of the neutral question: back to the details, the form never opened. */
-  function cancelEditStep() {
-    setEditStep(false);
-  }
-
-  function loadDetail() {
-    if (!detail) return Promise.resolve({ ok: false as const, reason: "unavailable" as const });
-    return loadOwnerDetail(detail.id);
-  }
-
-  /**
-   * The step is a plain object (`WishDetailStep`): the close step lives in the same
-   * details layer instead of a second dialog.
-   */
-  /** «Подтвердить» of the step: the same one transition as the card's confirm. */
-  async function confirmStepClose() {
-    if (!closeStep || closeBusy) return;
-    await runClose(closeStep);
-  }
-
-  /** «Подарок «Y» получен?»: the step of the details layer (Story 5.3). */
-  const closeStepView: WishDetailStep | null = closeStep
-    ? {
-        key: "close",
-        title: t("gift.close.title", { title: closeStep.title }),
-        cancelLabel: t("gift.close.cancel"),
-        confirmLabel: t("gift.close.confirm"),
-        busy: closeBusy,
-        onConfirm: confirmStepClose,
-        onCancel: cancelCloseStep,
-      }
-    : null;
-
-  /** The «Изменить» question of the details layer (`WishDetailStep`, one layer). */
-  const editStepView: WishDetailStep | null =
-    editStep && detail
-      ? {
-          key: "surprise-edit",
-          title: editWarning.title,
-          body: editWarning.body,
-          cancelLabel: editWarning.cancel,
-          confirmLabel: editWarning.confirm,
-          returnTo: "edit",
-          onConfirm: openEditForm,
-          onCancel: cancelEditStep,
-        }
-      : null;
-
-  /**
-   * Story 5.3: one transition `OPEN | RESERVED → CLOSED`, whoever asked — the ⋯
-   * confirm of the card or the step of the details layer. The answer is the
-   * owner's card with `undoUntil`; the list is reread and the undo toast opens
-   * with focus on «Отменить». A broken connection keeps the layer open, so the
-   * person can try again or cancel.
+   * Story 5.3: one transition `OPEN | RESERVED → CLOSED` of the card's ⋯ menu.
+   * The answer is the owner's card with `undoUntil`; the list is reread and the
+   * undo toast opens with focus on «Отменить». A broken connection keeps the
+   * confirm open, so the person can try again or cancel.
    */
   async function runClose(gift: GiftCard) {
     setCloseBusy(true);
@@ -513,16 +397,6 @@ export default function MyWishlistScreen() {
     setCloseBusy(false);
     if (result.ok) {
       setCloseConfirm(null);
-      if (detail?.id === gift.id) {
-        // The step stays on screen while the layer fades out; `detailClosed`
-        // clears it, so the details do not flash under the closing step. The card
-        // under the dialog gets its focus back only when the dialog is closed by
-        // the person: here focus belongs to «Отменить» in the toast.
-        setSkipDetailFocus(true);
-        setDetailOpen(false);
-      } else {
-        setCloseStep(null);
-      }
       setAttempt((value) => value + 1);
       showClosedToast(gift.id);
       return;
@@ -532,7 +406,6 @@ export default function MyWishlistScreen() {
       return;
     }
     setCloseConfirm(null);
-    setCloseStep(null);
     if ("invalid" in result) {
       setToast({ message: common("errors.generic"), tone: "error" });
       return;
@@ -564,16 +437,15 @@ export default function MyWishlistScreen() {
   }
 
   /**
-   * «Вернуть в открытые» из тоста, ⋯ карточки или подробностей. The server owns
-   * the window: a late undo answers `CONFLICT` with `UNDO_WINDOW_EXPIRED`, so the
-   * person reads «Время на отмену вышло» and the list is reread. A success shows
-   * no second toast: the card simply returns to the active grid.
+   * «Вернуть в открытые» из тоста или ⋯ карточки. The server owns the window: a
+   * late undo answers `CONFLICT` with `UNDO_WINDOW_EXPIRED`, so the person reads
+   * «Время на отмену вышло» and the list is reread. A success shows no second
+   * toast: the card simply returns to the active grid.
    */
   async function undoClosed(id: string) {
     const result = await undoGiftClose(id);
     if (result.ok) {
       setToast(null);
-      if (detail?.id === id) setDetailOpen(false);
       setAttempt((value) => value + 1);
       return;
     }
@@ -646,23 +518,6 @@ export default function MyWishlistScreen() {
   function confirmCloseFromCard() {
     if (!closeConfirm || closeBusy) return;
     void runClose(closeConfirm);
-  }
-
-  /** «Отметить полученным» in the details: the step asks, in the same layer. */
-  function requestMarkReceived() {
-    if (!detail) return;
-    setCloseStep(detail);
-  }
-
-  function cancelCloseStep() {
-    if (closeBusy) return;
-    setCloseStep(null);
-  }
-
-  /** The undo button of the details layer. */
-  function undoDetailClose() {
-    if (!detail) return;
-    void undoClosed(detail.id);
   }
 
   /**
@@ -912,25 +767,25 @@ export default function MyWishlistScreen() {
     );
   }
 
-  /** One card of the active grid or of «Получено (N)»: both open the details. */
+  /**
+   * One card of the active grid or of «Получено (N)»: both open the wish page
+   * `/gifts/{id}` (CLE-129, T4.4). The router's `Link` hands `href` and `onPress`
+   * to the card, so the web gets a real `<a href>` — a new tab works — while a
+   * plain click stays in the app.
+   */
   function renderGiftCard(gift: GiftCard) {
-    function handlePress() {
-      openDetail(gift);
-    }
-
-    function setCardNode(node: ChipNode | null) {
-      cardNodes.current.set(gift.id, node);
-    }
-
     return (
-      <WishCard
+      <Link
         key={gift.id}
-        gift={gift}
-        width={cardWidth}
-        onPress={handlePress}
-        pressRef={setCardNode}
-        menu={cardMenuTrigger(gift)}
-      />
+        href={{ pathname: "/gifts/[id]", params: { id: gift.id } }}
+        asChild
+      >
+        <WishCard
+          gift={gift}
+          width={cardWidth}
+          menu={cardMenuTrigger(gift)}
+        />
+      </Link>
     );
   }
 
@@ -1177,21 +1032,6 @@ export default function MyWishlistScreen() {
             </YStack>
           )}
         </Dialog>
-        {detail ? (
-          <WishDetailDialog
-            open={detailOpen}
-            viewer="owner"
-            snapshot={detail}
-            load={loadDetail}
-            onClose={closeDetail}
-            onClosed={detailClosed}
-            onEdit={editDetail}
-            onMarkReceived={requestMarkReceived}
-            onUndoClose={undoDetailClose}
-            undoUntil={detail.undoUntil ?? null}
-            step={closeStepView ?? editStepView}
-          />
-        ) : null}
         {/* Story 5.3: the ⋯ of one card — received, undo, copy or delete. */}
         <GiftCardMenu
           open={cardMenu !== null}

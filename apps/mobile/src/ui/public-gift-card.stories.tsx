@@ -6,10 +6,10 @@ import { PublicGiftCard } from "./public-gift-card";
 
 /**
  * The card a link visitor sees (Story 3.3, CLE-84): the same `packages/ui` card,
- * without the visibility chip. The main zone opens the detail dialog. «Куплю сам»
- * does not. The server has already applied
- * `VisibilityPolicy` (AD-7): whatever arrives in `gift` is allowed for this viewer,
- * so the card never inspects `visibility`.
+ * without the visibility chip. The main zone is a link to the wish page
+ * `/gifts/{id}` (CLE-129, T4.4). «Куплю сам» does not follow it. The server has
+ * already applied `VisibilityPolicy` (AD-7): whatever arrives in `gift` is allowed
+ * for this viewer, so the card never inspects `visibility`.
  */
 const meta = {
   title: "App/PublicGiftCard",

@@ -346,6 +346,7 @@
     "emptyText": "Нажмите «Куплю сам» у желания друга — бронь появится здесь.",
     "openGift": "Открыть желание «{title}»",
     "owner": "у @{nick}",
+    "ownerPrefix": "у",
     "due": "до {date}",
     "bought": "Купил",
     "boughtChip": "Куплено",

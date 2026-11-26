@@ -6,23 +6,18 @@ import {
   WishCard as UiWishCard,
   XStack,
   YStack,
-  restoreFocus,
-  type FocusTarget,
 } from "@gift-list/ui";
-import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { Link, router } from "expo-router";
 import { useLocale, useTranslations } from "use-intl";
 import { NavLink } from "@/ui/nav-link";
 import { StatusPill } from "@/ui/status-pill";
-import { WishDetailDialog } from "@/ui/wish-detail-dialog";
-import type { DetailLoadResult } from "@/ui/wish-detail-load";
 
 /**
  * Story 3.3 / DESIGN → `/l/{token}`: the link visitor sees the same
  * `packages/ui` card as the owner, but without the visibility chip and without
- * the hidden-count affordance. The main zone opens the detail dialog (CLE-84)
- * and does not put `visibility` in the accessible name. «Куплю сам» is a sibling
- * and does not open the dialog.
+ * the hidden-count affordance. The main zone is a real link to the wish page
+ * `/gifts/{id}` (CLE-129, T4.4) and does not put `visibility` in the accessible
+ * name. «Куплю сам» is a sibling and does not open the page.
  *
  * The server has already applied `VisibilityPolicy`: whatever arrives in
  * `gift` is allowed for this viewer. This component deliberately does not
@@ -32,20 +27,12 @@ export function PublicGiftCard({
   gift,
   width,
   listToken,
-  loadDetail,
 }: {
   gift: GiftCardData;
   width: number;
-  /** When set, «Куплю сам» returns here with `?reserve=` after auth. */
+  /** When set, the page and «Куплю сам» return here with `?reserve=` after auth. */
   listToken?: string;
-  /**
-   * Signed-in refresh of one wish. Omit it for an anonymous visitor: the list
-   * card is already everything the server allowed.
-   */
-  loadDetail?: () => Promise<DetailLoadResult>;
 }) {
-  const [detailOpen, setDetailOpen] = useState(false);
-  const cardRef = useRef<FocusTarget | null>(null);
   const t = useTranslations("app.myWishlist");
   const tGift = useTranslations("app.gift");
   const tWeb = useTranslations("web.wishlist");
@@ -93,45 +80,38 @@ export function PublicGiftCard({
     };
   }
 
-  function openDetail() {
-    setDetailOpen(true);
-  }
-
-  function closeDetail() {
-    setDetailOpen(false);
-  }
-
-  function returnToCard() {
-    restoreFocus(cardRef.current);
-  }
-
   function openReserveFlow() {
     router.push({ pathname: "/gifts/[id]", params: detailParams(true) });
   }
 
   return (
     <YStack gap="$2" width={width}>
-      <UiWishCard
-        title={gift.title}
-        closed={gift.status === "CLOSED"}
-        price={price}
-        status={<StatusPill status={gift.status} />}
-        tags={
-          tagLabels.length > 0 ? (
-            <TagChipList
-              labels={tagLabels}
-              testID="gift-tags"
-              moreLabel={moreTagLabel}
-              moreAccessibilityLabel={moreTagAccessibilityLabel}
-            />
-          ) : undefined
-        }
-        reservation={reservation}
-        width={width}
-        pressLabel={gift.title}
-        pressRef={cardRef as never}
-        onPress={openDetail}
-      />
+      {/*
+        The router's `Link` hands `href` and `onPress` to the card; on the web that
+        is a real `<a href>`, so the wish opens in a new tab like any link
+        (CLE-129, T4.4), while the router keeps in-app navigation for a plain click.
+      */}
+      <Link href={{ pathname: "/gifts/[id]", params: detailParams(false) }} asChild>
+        <UiWishCard
+          title={gift.title}
+          closed={gift.status === "CLOSED"}
+          price={price}
+          status={<StatusPill status={gift.status} />}
+          tags={
+            tagLabels.length > 0 ? (
+              <TagChipList
+                labels={tagLabels}
+                testID="gift-tags"
+                moreLabel={moreTagLabel}
+                moreAccessibilityLabel={moreTagAccessibilityLabel}
+              />
+            ) : undefined
+          }
+          reservation={reservation}
+          width={width}
+          pressLabel={gift.title}
+        />
+      </Link>
       {showReserve ? (
         <Button
           label={tWeb("buyMyself")}
@@ -148,14 +128,6 @@ export function PublicGiftCard({
           {tGift(`reserveNoButton.${gift.status}`)}
         </Text>
       ) : null}
-      <WishDetailDialog
-        open={detailOpen}
-        viewer="guest"
-        snapshot={gift}
-        load={loadDetail}
-        onClose={closeDetail}
-        onClosed={returnToCard}
-      />
     </YStack>
   );
 }

@@ -1,7 +1,9 @@
-import type {
-  GiftCard,
-  ReservationActionBody,
-  ReservationCard as ReservationCardData,
+import {
+  formatDate,
+  type DetailViewer,
+  type GiftCard,
+  type ReservationActionBody,
+  type ReservationCard as ReservationCardData,
 } from "@gift-list/contracts";
 import {
   Button,
@@ -16,7 +18,6 @@ import {
   XStack,
   YStack,
 } from "@gift-list/ui";
-import { formatDate, type DetailViewer } from "@gift-list/contracts";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
@@ -446,7 +447,7 @@ export default function GiftDetailScreen() {
                   gift={current}
                   viewer={viewer}
                   actions={
-                    viewer === "owner" ? (
+                    viewer === "owner" && current.status !== "CLOSED" ? (
                       <Button
                         label={tGift("detail.editShort")}
                         variant="secondary"

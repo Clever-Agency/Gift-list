@@ -48,6 +48,26 @@ vi.mock("use-intl", async () => {
   };
 });
 
+vi.mock("expo-router", async () => {
+  const React = await import("react");
+  return {
+    // An honest `asChild`: the router's `Link` puts `href` and `onPress` onto its
+    // only child and draws nothing of its own (`NavLink` draws the anchor).
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href: string;
+      asChild?: boolean;
+      children: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href }, children);
+      return React.cloneElement(children, { href });
+    },
+  };
+});
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: Root;
@@ -122,7 +142,8 @@ describe("ReservationCard", () => {
     await render(<ReservationCard card={card()} onBoughtChange={noop} onVisibilityChange={noop} />);
 
     expect(text()).toContain("Плед из шерсти мериноса");
-    expect(text()).toContain("у @anya");
+    expect(text()).toContain("у");
+    expect(text()).toContain("@anya");
     // «Вы берёте · до DD.MM» — срок без года, отдельной строки «до …» нет (Story 5.5).
     expect(text()).toContain("Вы берёте · до 01.12");
   });
@@ -315,7 +336,7 @@ describe("ReservationCard", () => {
     );
 
     expect(text()).toContain(formatPrice(250000, "RUB", "ru"));
-    expect(text()).toContain("у @anya");
+    expect(text()).toContain("@anya");
   });
 
   it("при canOpenGift = false цены нет", async () => {
@@ -355,8 +376,33 @@ describe("ReservationCard", () => {
     expect(button?.contains(byLabel("Купил") as Node)).toBe(false);
   });
 
-  it("⋯ открывает меню и имеет доступное имя", async () => {
-    const onMenu = vi.fn();
+  /**
+   * CLE-129, T4.4 (`DESIGN.md` → ReservationCard): «у @ника» — ссылка на профиль
+   * владельца, и живёт она в `footer`, соседом кнопки карточки, а не внутри неё.
+   */
+  it("«у @ника» — ссылка на профиль, вне кнопки карточки", async () => {
+    await render(
+      <ReservationCard
+        testID="reservation-g1"
+        card={card()}
+        onOpenGift={noop}
+        onMenu={noop}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    const link = container.querySelector<HTMLElement>('[role="link"]');
+    expect(link?.textContent).toBe("@anya");
+    expect(link?.getAttribute("href")).toBe("/u/anya");
+
+    const button = container.querySelector<HTMLElement>('[role="button"]:not([aria-haspopup])');
+    const footer = container.querySelector<HTMLElement>('[data-testid="reservation-g1-footer"]');
+    expect(footer?.contains(link as Node)).toBe(true);
+    expect(button?.contains(link as Node)).toBe(false);
+  });
+
+  it("⋯ открывает меню и имеет доступное имя", async () => {    const onMenu = vi.fn();
     await render(
       <ReservationCard
         card={card()}

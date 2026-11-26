@@ -48,8 +48,31 @@ describe("WishCard", () => {
     expect(container.textContent).toContain("Плед");
   });
 
-  it("с onPress вся карточка — кнопка с именем, Enter и Space тоже нажимают", async () => {
-    const onPress = vi.fn();
+  /**
+   * CLE-129, T4.4: with `href` the press zone is a real `<a>`, so a browser can
+   * open the wish page in a new tab; the card stays the `listitem` around it.
+   */
+  it("с href основная зона — настоящая ссылка на страницу желания", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        title="Плед"
+        status={<StatusPill status="open" label="Открыт" />}
+        href="/gifts/g1"
+        pressLabel="Плед, Открыт"
+      />,
+    );
+
+    const link = container.querySelector("[role='link']") as HTMLElement;
+    expect(link).not.toBeNull();
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("href")).toBe("/gifts/g1");
+    expect(link.getAttribute("aria-label")).toBe("Плед, Открыт");
+    // The list item stays the outer element of the cell.
+    expect(container.querySelector("[role='listitem']")?.contains(link)).toBe(true);
+  });
+
+  it("с onPress вся карточка — кнопка с именем, Enter и Space тоже нажимают", async () => {    const onPress = vi.fn();
     const { container, render } = mounted();
     await render(
       <WishCard

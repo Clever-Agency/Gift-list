@@ -808,6 +808,19 @@ describe("страница владельца: своё желание", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
+  /**
+   * Story 5.3: a closed wish has no edit. The dialog that served the list gated the
+   * button the same way; the page keeps the rule now that the dialog is gone
+   * (CLE-129, T4.4).
+   */
+  it("у закрытого желания «Изменить» нет", async () => {
+    respondOwner(ownerCard({ status: "CLOSED" }));
+    await mount();
+
+    expect(text()).toContain("Наушники");
+    expect(control("Изменить")).toBeUndefined();
+  });
+
   it("AD-15: подброшенная бронь в ответе не появляется на странице владельца", async () => {
     // A broken payload: the owner route answers a reserved card with a live
     // holder. The page still reads as an open wish — no pill, no name, no

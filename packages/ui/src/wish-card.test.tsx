@@ -234,8 +234,32 @@ describe("WishCard", () => {
     expect(container.querySelector("[role='button']")).toBeNull();
   });
 
-  it("теги идут между статусом и бронью — до трёх и «+N», без лишних кнопок", async () => {
+  /**
+   * `ReservationCard` puts its actions in the `footer` slot: they are a sibling of
+   * the card button, so no control is nested inside another and Tab goes card
+   * first, actions next.
+   */
+  it("footer — сосед кнопки карточки, а не её содержимое", async () => {
     const { container, render } = mounted();
+    await render(
+      <WishCard
+        testID="card"
+        title="Плед"
+        status={<StatusPill status="reserved" label="Забронирован" />}
+        onPress={vi.fn()}
+        pressLabel="Плед, Забронирован"
+        footer={<button type="button">Подарил</button>}
+      />,
+    );
+
+    const footer = container.querySelector<HTMLElement>("[data-testid='card-footer']");
+    const cardButton = container.querySelector<HTMLElement>("[role='button']") as HTMLElement;
+    expect(footer).not.toBeNull();
+    expect(cardButton.contains(footer as Node)).toBe(false);
+    expect(footer?.textContent).toBe("Подарил");
+  });
+
+  it("теги идут между статусом и бронью — до трёх и «+N», без лишних кнопок", async () => {    const { container, render } = mounted();
     await render(
       <WishCard
         title="Плед"

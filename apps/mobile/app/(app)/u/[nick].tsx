@@ -39,6 +39,7 @@ import {
 import { SubscriptionActions } from "@/profile/subscription-actions";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
+import { CardGridList } from "@/ui/card-grid-list";
 import { ClosedSection } from "@/ui/closed-section";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { EmptyState } from "@/ui/empty-state";
@@ -800,12 +801,7 @@ export default function ProfileScreen() {
                     ) : (
                       <>
                         {activeGifts.length > 0 ? (
-                          <XStack
-                            role="list"
-                            flexWrap="wrap"
-                            gap="$grid-gap"
-                            alignItems="flex-start"
-                          >
+                          <CardGridList alignStart>
                             {activeGifts.map(function renderGift(gift) {
                               return (
                                 <PublicGiftCard
@@ -822,7 +818,7 @@ export default function ProfileScreen() {
                                 />
                               );
                             })}
-                          </XStack>
+                          </CardGridList>
                         ) : null}
                         {closedGifts.length > 0 ? (
                           <ClosedSection

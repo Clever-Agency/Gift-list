@@ -79,6 +79,16 @@ export type WishCardProps = {
   /** Owner menu, a sibling of the card button (Story 2.6 archive). */
   menu?: ReactNode;
   /**
+   * The footer under the card body, a sibling of the card button: the actions of
+   * a reservation card (`DESIGN.md` → ReservationCard: «Купил», «Подарил»,
+   * «Продлить до…», the visibility switch). Interactive content stays out of the
+   * card button, so nothing is nested and Tab reaches the card first, the footer
+   * next. The reserved chip-height area is dropped when a footer is passed: the
+   * footer takes that place. A chip and a footer are not meant to meet — the chip
+   * layer is pinned to the bottom of the card.
+   */
+  footer?: ReactNode;
+  /**
    * Whether the card itself is the `listitem` of the surrounding `role="list"`.
    * Story 5.6 passes `false` when an owner strip stands next to the card: then the
    * wrapper of the cell carries the role, so the strip buttons stay inside the one
@@ -99,7 +109,8 @@ export type WishCardProps = {
  * v8 layout: the 4:5 photo plate on top (placeholder until a wish has a photo),
  * then the title (two lines, ellipsis), the price, the status pill, the tags and the
  * reservation line — all below the photo on the page background, never as text on
- * the photo. There is no heart and no gifted-progress bar.
+ * the photo. There is no heart and no gifted-progress bar. A `footer` makes the
+ * room of the reserved chip area an action block of the caller (`ReservationCard`).
  */
 export function WishCard({
   title,
@@ -115,6 +126,7 @@ export function WishCard({
   pressRef,
   width,
   menu,
+  footer,
   listItem = true,
   testID,
 }: WishCardProps) {
@@ -160,8 +172,9 @@ export function WishCard({
         ) : null}
       </YStack>
       {/* The footer area, reserved so the chip layer has room and the empty space
-          next to the chip belongs to the card button. */}
-      <View marginTop="$2" height="$chip-height" />
+          next to the chip belongs to the card button. A card with a footer puts
+          the footer there instead (`ReservationCard`). */}
+      {footer ? null : <View marginTop="$2" height="$chip-height" />}
     </>
   );
 
@@ -219,6 +232,13 @@ export function WishCard({
           pointerEvents={chipInteractive ? "box-none" : "none"}
         >
           {chip}
+        </View>
+      ) : null}
+      {footer ? (
+        // The actions of the card, never inside the card button: Tab goes card,
+        // then the fields and buttons of the footer.
+        <View marginTop="$2" testID={testID ? `${testID}-footer` : undefined}>
+          {footer}
         </View>
       ) : null}
     </Card>

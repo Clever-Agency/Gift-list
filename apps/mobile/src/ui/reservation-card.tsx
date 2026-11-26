@@ -1,11 +1,15 @@
-import { formatDate, type ReservationCard as ReservationCardData } from "@gift-list/contracts";
+import {
+  formatDate,
+  formatPrice,
+  type ReservationCard as ReservationCardData,
+} from "@gift-list/contracts";
 import {
   Button,
   Pressable,
   Switch,
   TagChip,
   Text,
-  XStack,
+  WishCard,
   YStack,
   type FocusTarget,
 } from "@gift-list/ui";
@@ -37,20 +41,37 @@ export type ReservationCardProps = {
   onVisibilityChange: (next: ReservationVisibilityValues) => void;
   /** The ⋮, so the screen's menu can return focus to it. */
   menuRef?: (node: FocusTarget | null) => void;
+  /** The card width: the «Мои брони» grid passes the measured column (`useCardGrid`). */
+  width?: number | string;
   testID?: string;
 };
 
+/** The comma-separated accessible name, without empty parts (`DESIGN.md` → Доступность). */
+function joinCardName(parts: readonly (string | null)[]): string {
+  return parts
+    .filter(function hasText(part): part is string {
+      return part !== null && part.trim() !== "";
+    })
+    .join(", ");
+}
+
 /**
- * Карточка одной брони держателя (Story 5.5, `DESIGN.md` → ReservationCard,
- * `EXPERIENCE.md` → «Подписи брони»): снимок названия, `@ник` владельца, срок,
- * фаза, чип «Куплено», переключатель «Показывать другим гостям, что дарю я» и
- * действия «Купил», «Подарил» (Story 5.7), «Продлить до…», «Снять бронь» (⋮). Без
- * цены, тегов и остальных желаний: набор полей задан контрактом `reservationCardSchema`
- * (A-14, AD-7).
+ * Карточка одной брони держателя (Story 5.5, D-56, `DESIGN.md` → ReservationCard,
+ * `EXPERIENCE.md` → «Подписи брони»): та же v8-карточка желания (`WishCard`) —
+ * фото-заглушка 4:5, снимок названия и текущая цена, — под ней `@ник` владельца,
+ * срок, подпись фазы, чип «Куплено», действия «Купил», «Подарил» (Story 5.7),
+ * «Продлить до…», переключатель «Показывать другим гостям, что дарю я» и ⋮ со
+ * «Снять бронь».
+ *
+ * Цена — текущая цена желания (D-64.7): у недоступного желания (`canOpenGift =
+ * false`) её нет, как и ссылки на деталь. Теги, описание и остальные желания в
+ * карточку не попадают: набор полей задан `reservationCardSchema` (A-14, AD-7).
  *
  * Основная зона — ссылка на деталь только при `canOpenGift`: после unfriend,
  * Block или сужения видимости сервер отвечает `false`, и тогда карточка не
- * ссылается никуда, а действия остаются на месте.
+ * нажимается и не подсвечивается на hover, а действия остаются на месте.
+ * Действия живут в `footer` карточки желания — соседом её кнопки, поэтому ни одно
+ * действие не вложено в другое.
  *
  * Компонент ничего не запрашивает: `busy` и сами действия принадлежат экрану,
  * поэтому одна карточка не может отправить два запроса.
@@ -66,6 +87,7 @@ export function ReservationCard({
   onBoughtChange,
   onVisibilityChange,
   menuRef,
+  width,
   testID,
 }: ReservationCardProps) {
   const t = useTranslations("app.reservations");
@@ -83,81 +105,40 @@ export function ReservationCard({
   const extend = canExtendReservation(card, timeZone) ? onExtend : undefined;
   // The stage already reads «Подарено», so «Подарил» is not repeated there.
   const given = card.phase === "GIVEN" ? undefined : onGiven;
+  // D-64.7: current price, none while the wish is unreachable or has no price.
+  const price =
+    card.canOpenGift && card.priceAmount !== null && card.priceCurrency !== null
+      ? formatPrice(card.priceAmount, card.priceCurrency, locale)
+      : null;
+  const owner = t("owner", { nick: card.ownerNick });
+  const phase = active ? tPhase("ACTIVE", { date: due }) : t("due", { date: due });
+  const pressLabel = joinCardName([
+    card.titleSnapshot,
+    price,
+    owner,
+    active ? tPhase("ACTIVE", { date: due }) : `${phase}, ${tPhase(card.phase)}`,
+  ]);
 
-  const content = (
-    <>
-      <Text kind="body-strong" numberOfLines={2}>
-        {card.titleSnapshot}
-      </Text>
-      <Text kind="caption" tone="muted">
-        {t("owner", { nick: card.ownerNick })}
-      </Text>
-      {active ? (
-        <Text kind="label" tone="reserved">
-          {tPhase("ACTIVE", { date: due })}
-        </Text>
-      ) : (
-        <YStack gap="$1">
-          <Text kind="label" tone="reserved">
-            {t("due", { date: due })}
-          </Text>
-          <Text kind="caption" tone="muted">
-            {tPhase(card.phase)}
-          </Text>
-        </YStack>
-      )}
-    </>
-  );
-
-  return (
-    <YStack
-      role="listitem"
-      testID={testID}
-      width="100%"
-      borderWidth={1}
-      borderColor="$border"
-      borderRadius="$md"
-      backgroundColor="$surface"
-      padding="$card-padding"
-      gap="$2"
+  const menu = onMenu ? (
+    <Pressable
+      ref={menuRef}
+      role="button"
+      aria-label={tGift("closed.menuLabel")}
+      aria-haspopup="dialog"
+      onPress={onMenu}
+      disabled={busy}
+      width="$touch-target"
+      height="$touch-target"
+      alignItems="center"
+      justifyContent="center"
+      testID={testID ? `${testID}-menu` : undefined}
     >
-      <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
-        {open ? (
-          <Pressable
-            role="link"
-            aria-label={t("openGift", { title: card.titleSnapshot })}
-            onPress={open}
-            disabled={busy}
-            flex={1}
-            minWidth={0}
-            gap="$1"
-            testID={testID ? `${testID}-link` : undefined}
-          >
-            {content}
-          </Pressable>
-        ) : (
-          <YStack flex={1} minWidth={0} gap="$1">
-            {content}
-          </YStack>
-        )}
-        {onMenu ? (
-          <Pressable
-            ref={menuRef}
-            role="button"
-            aria-label={tGift("closed.menuLabel")}
-            aria-haspopup="dialog"
-            onPress={onMenu}
-            disabled={busy}
-            width="$touch-target"
-            height="$touch-target"
-            alignItems="center"
-            justifyContent="center"
-            testID={testID ? `${testID}-menu` : undefined}
-          >
-            <Text aria-hidden>⋯</Text>
-          </Pressable>
-        ) : null}
-      </XStack>
+      <Text aria-hidden>⋯</Text>
+    </Pressable>
+  ) : undefined;
+
+  const footer = (
+    <YStack gap="$2">
       {card.bought ? <TagChip variant="card" label={t("boughtChip")} /> : null}
       <Switch
         label={t("bought")}
@@ -193,6 +174,32 @@ export function ReservationCard({
         testID={testID ? `${testID}-visibility` : undefined}
       />
     </YStack>
+  );
+
+  return (
+    <WishCard
+      testID={testID}
+      width={width}
+      title={card.titleSnapshot}
+      price={price}
+      status={
+        <YStack gap="$1">
+          <Text kind="caption" tone="muted">
+            {owner}
+          </Text>
+          {active ? null : (
+            <Text kind="caption" tone="muted">
+              {tPhase(card.phase)}
+            </Text>
+          )}
+        </YStack>
+      }
+      reservation={phase}
+      onPress={open}
+      pressLabel={open ? pressLabel : undefined}
+      menu={menu}
+      footer={footer}
+    />
   );
 }
 

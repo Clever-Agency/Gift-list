@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { formatDate, type ReservationCard } from "@gift-list/contracts";
+import { formatDate, formatPrice, type ReservationCard } from "@gift-list/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -221,8 +221,10 @@ function dialogControl(label: string): HTMLElement | undefined {
   return dialog ? controlByText(label, dialog) : undefined;
 }
 
+/** The card button of a card: the ⋮, the switches and the footer are siblings, not it. */
 function cardLink(giftId = "g1"): HTMLElement | null {
-  return container.querySelector<HTMLElement>(`[data-testid="reservation-${giftId}-link"]`);
+  const card = container.querySelector<HTMLElement>(`[data-testid="reservation-${giftId}"]`);
+  return card?.querySelector<HTMLElement>(':scope > [role="button"]') ?? null;
 }
 
 async function mount() {
@@ -543,6 +545,25 @@ describe("экран «Мои брони»", () => {
       pathname: "/gifts/[id]",
       params: { id: "g1" },
     });
+  });
+
+  /** D-64.7: цена — текущая цена желания; у недоступного желания её нет. */
+  it("цена есть у доступного желания и пропадает при canOpenGift = false", async () => {
+    respond(listAnswer([card({ priceAmount: 250000, priceCurrency: "RUB" })]));
+    await mount();
+
+    expect(text()).toContain(formatPrice(250000, "RUB", "ru"));
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    respond(
+      listAnswer([card({ canOpenGift: false, priceAmount: 250000, priceCurrency: "RUB" })]),
+    );
+    await mount();
+
+    expect(text()).not.toContain(formatPrice(250000, "RUB", "ru"));
+    expect(cardLink()).toBeNull();
+    expect(byLabel("Купил")).toBeDefined();
   });
 
   it("в GIVEN нет продления и «Подарил», но «Купил» и ⋮ на месте", async () => {

@@ -2,9 +2,11 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { XStack, YStack } from "@tamagui/stacks";
 import type { ComponentType, ReactNode } from "react";
 import { propDoc } from "../../../.storybook/argTypes";
+import { Button } from "./button";
 import { Pressable } from "./pressable";
 import { WishCardSkeleton } from "./skeleton";
 import { StatusPill } from "./status-pill";
+import { Switch } from "./switch";
 import { TagChipList } from "./tag-chip";
 import { Text } from "./text";
 import { VisibilityChip } from "./visibility-chip";
@@ -21,6 +23,7 @@ type WishCardCatalogProps = Omit<WishCardProps, "status"> & {
   withTags: boolean;
   withChip: boolean;
   withMenu: boolean;
+  withFooter: boolean;
 };
 
 /** The catalog copy is a fixture, not a product string (`packages/ui` has no translations). */
@@ -46,6 +49,17 @@ const READY_CHIP = (
   />
 );
 
+/** The action block the app puts in the `footer` of a reservation card. */
+const READY_FOOTER = (
+  <YStack gap="$2">
+    <Switch label="Купил" checked={false} onChange={noop} />
+    <Button variant="outline" label="Продлить до…" onPress={noop} />
+    <Text kind="label" tone="muted">
+      у @anya
+    </Text>
+  </YStack>
+);
+
 /** The overflow trigger the app puts on an archived card: a 44 px target, a sibling of the card. */
 const READY_MENU = (
   <Pressable
@@ -67,7 +81,7 @@ const READY_MENU = (
  * reservation line. There is no frame around the cell and no text on the photo.
  *
  * The sandbox turns the strings, the states and the width in the panel; the status,
- * tags, visibility chip and menu are ready-made samples behind handles.
+ * tags, visibility chip, menu and footer are ready-made samples behind handles.
  */
 const meta = {
   title: "UI/WishCard",
@@ -82,8 +96,9 @@ const meta = {
 What is not a prop:
 
 - There is no photo URL: a wish without a photo always draws the placeholder, and its tint is seeded by the title. A future photo prop would be a separate change.
-- The app builds the status pill, the tag row, the visibility chip and the menu; they arrive as slots. The «есть теги», «есть чип» and «есть меню» handles stand ready-made samples in.
+- The app builds the status pill, the tag row, the visibility chip and the menu; they arrive as slots. The «есть теги», «есть чип», «есть меню» and «есть действия» handles stand ready-made samples in.
 - With \`onPress\` the whole card is a button and the plate's shadow lifts on hover of any part of it, while the title is underlined — the card is the Tamagui group; the chip is a later sibling drawn over the reserved footer, never inside the button, so Tab reaches the card first and the chip second.
+- \`footer\` turns the room of the reserved chip area into an action block — the buttons and the switch of a reservation card. It is a sibling of the card button too: nothing is nested, and Tab goes card first, actions next.
 - \`chipInteractive\` lets the chip layer take presses; without it every press outside the chip reaches the card.
 - \`listItem={false}\` is for an owner strip next to the card: the wrapper of the cell then carries the \`listitem\` role.
 - Hover, press and focus are CSS states, not props: hover any part of the card, hold it, press Tab.
@@ -172,6 +187,12 @@ What is not a prop:
       type: "ReactNode",
       control: false,
     }),
+    footer: propDoc({
+      description:
+        "The action block under the card body, a sibling of the card button: the reservation actions. The sandbox keeps ready-made switches and buttons behind «есть действия».",
+      type: "ReactNode",
+      control: false,
+    }),
     listItem: propDoc({
       description:
         "Whether the card itself is the `listitem` of the surrounding `role=\"list\"`. Story 5.6 passes `false` when an owner strip stands next to the card.",
@@ -214,6 +235,17 @@ What is not a prop:
         defaultValue: { summary: "false" },
       },
     },
+    withFooter: {
+      name: "есть действия",
+      description:
+        "Ручка каталога: показать в слоте `footer` готовый блок действий карточки брони — переключатель и кнопку.",
+      control: "boolean",
+      table: {
+        category: "Ручки каталога",
+        type: { summary: "boolean" },
+        defaultValue: { summary: "false" },
+      },
+    },
   },
   args: {
     title: "Плед из шерсти мериноса",
@@ -227,6 +259,7 @@ What is not a prop:
     withTags: true,
     withChip: false,
     withMenu: false,
+    withFooter: false,
   },
 } satisfies Meta<WishCardCatalogProps>;
 
@@ -249,9 +282,11 @@ function WishCardPreview({
   withTags,
   withChip,
   withMenu,
+  withFooter,
   tags,
   chip,
   menu,
+  footer,
   status,
   ...cardArgs
 }: WishCardCatalogProps) {
@@ -269,6 +304,7 @@ function WishCardPreview({
       tags={withTags ? (tags ?? READY_TAGS) : tags}
       chip={withChip ? (chip ?? READY_CHIP) : chip}
       menu={withMenu ? (menu ?? READY_MENU) : menu}
+      footer={withFooter ? (footer ?? READY_FOOTER) : footer}
     />
   );
 }
@@ -336,6 +372,24 @@ export const Hover: Story = {
 export const WithMenu: Story = {
   args: { menu: READY_MENU },
   render: function WithMenuStory(args) {
+    return (
+      <CardGrid>
+        <WishCardPreview {...args} width="calc(50% - 8px)" />
+      </CardGrid>
+    );
+  },
+};
+
+/**
+ * The `footer` slot: the actions of a reservation card stand under the body in the
+ * place of the reserved chip area. They are siblings of the card button, so Tab
+ * goes card first, actions next; the plate still lifts its shadow on hover of the
+ * card itself.
+ */
+export const WithFooter: Story = {
+  tags: ["!dev"],
+  args: { withFooter: true, withChip: false, withMenu: true },
+  render: function WithFooterStory(args) {
     return (
       <CardGrid>
         <WishCardPreview {...args} width="calc(50% - 8px)" />

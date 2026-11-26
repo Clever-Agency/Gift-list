@@ -38,6 +38,7 @@ import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
+import { CardGridList } from "@/ui/card-grid-list";
 import { ClosedSection } from "@/ui/closed-section";
 import { CloseGiftConfirm } from "@/ui/close-gift-confirm";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
@@ -1282,9 +1283,9 @@ export default function MyWishlistScreen() {
                     ) : null}
                     {activeGifts.length > 0 ? (
                       // Review m5: the grid is a list for assistive tech.
-                      <XStack role="list" flexWrap="wrap" gap="$grid-gap">
+                      <CardGridList>
                         {activeGifts.map(renderGiftCard)}
-                      </XStack>
+                      </CardGridList>
                     ) : null}
                     {closedGifts.length > 0 ? (
                       <ClosedSection

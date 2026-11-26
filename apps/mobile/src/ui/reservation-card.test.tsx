@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import type { ReservationCard as ReservationCardData } from "@gift-list/contracts";
+import { formatPrice } from "@gift-list/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -259,7 +260,7 @@ describe("ReservationCard", () => {
     expect(control("Подарил")).toBeUndefined();
   });
 
-  it("при canOpenGift основная зона — ссылка с названием желания", async () => {
+  it("при canOpenGift основная зона — кнопка карточки, она открывает желание", async () => {
     const onOpenGift = vi.fn();
     await render(
       <ReservationCard
@@ -270,28 +271,88 @@ describe("ReservationCard", () => {
       />,
     );
 
-    const link = byLabel("Открыть желание «Плед из шерсти мериноса»");
-    expect(link?.getAttribute("role")).toBe("link");
-    await click(link);
+    // `DESIGN.md` → Доступность: имя карточки — фраза из содержимого, а не действие.
+    const button = container.querySelector<HTMLElement>('[role="button"]:not([aria-haspopup])');
+    expect(button?.getAttribute("aria-label")).toBe(
+      "Плед из шерсти мериноса, у @anya, Вы берёте · до 01.12",
+    );
+    await click(button);
     expect(onOpenGift).toHaveBeenCalledTimes(1);
   });
 
-  it("без canOpenGift карточка не ссылается на деталь", async () => {
+  it("без canOpenGift карточка не нажимается и не ссылается на деталь", async () => {
     const onOpenGift = vi.fn();
     await render(
       <ReservationCard
         card={card({ canOpenGift: false })}
         onOpenGift={onOpenGift}
+        onMenu={noop}
         onBoughtChange={noop}
         onVisibilityChange={noop}
       />,
     );
 
-    expect(container.querySelector('[role="link"]')).toBeNull();
-    expect(container.querySelector('[aria-label^="Открыть желание"]')).toBeNull();
+    // Единственная кнопка — ⋮ меню: самой карточки-кнопки нет, hover ей не нужен.
+    const buttons = Array.from(container.querySelectorAll<HTMLElement>('[role="button"]'));
+    expect(buttons.map((node) => node.getAttribute("aria-haspopup"))).toEqual(["dialog"]);
+    expect(container.querySelector('[aria-label^="Плед из шерсти мериноса"]')).toBeNull();
     expect(onOpenGift).not.toHaveBeenCalled();
     // Действия остаются: карточка самодостаточна после unfriend/Block (A-14).
     expect(byLabel("Купил")).not.toBeNull();
+  });
+
+  /**
+   * D-64.7: цена карточки — текущая цена желания; у недоступного желания цены нет,
+   * даже если в данных она почему-то осталась.
+   */
+  it("показывает цену желания тем же форматтером, что карточка желания", async () => {
+    await render(
+      <ReservationCard
+        card={card({ priceAmount: 250000, priceCurrency: "RUB" })}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    expect(text()).toContain(formatPrice(250000, "RUB", "ru"));
+    expect(text()).toContain("у @anya");
+  });
+
+  it("при canOpenGift = false цены нет", async () => {
+    await render(
+      <ReservationCard
+        card={card({ canOpenGift: false, priceAmount: 250000, priceCurrency: "RUB" })}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    expect(text()).not.toContain(formatPrice(250000, "RUB", "ru"));
+  });
+
+  it("карточка на основе WishCard: фото-заглушка и действия соседом кнопки карточки", async () => {
+    await render(
+      <ReservationCard
+        testID="reservation-g1"
+        card={card({ priceAmount: 250000, priceCurrency: "RUB" })}
+        onOpenGift={noop}
+        onMenu={noop}
+        onBoughtChange={noop}
+        onVisibilityChange={noop}
+      />,
+    );
+
+    // Та же плитка-заглушка 4:5 и та же подпись названия, что у карточки желания.
+    expect(container.querySelector('[data-testid="reservation-g1-photo"] svg')).not.toBeNull();
+    expect(container.querySelector('[data-testid="reservation-g1-title"]')?.textContent).toBe(
+      "Плед из шерсти мериноса",
+    );
+    // Действия живут в footer — соседом кнопки, а не внутри неё.
+    const button = container.querySelector<HTMLElement>('[role="button"]:not([aria-haspopup])');
+    const footer = container.querySelector<HTMLElement>('[data-testid="reservation-g1-footer"]');
+    expect(footer).not.toBeNull();
+    expect(button?.contains(footer as Node)).toBe(false);
+    expect(button?.contains(byLabel("Купил") as Node)).toBe(false);
   });
 
   it("⋯ открывает меню и имеет доступное имя", async () => {

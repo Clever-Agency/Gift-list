@@ -10,7 +10,6 @@ import {
   Screen,
   spacing,
   Text,
-  XStack,
   YStack,
 } from "@gift-list/ui";
 import { Stack, router, useLocalSearchParams } from "expo-router";
@@ -20,6 +19,7 @@ import { fetchPublicWishlist, type PublicWishlistOwner } from "@/api/public-wish
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
+import { CardGridList } from "@/ui/card-grid-list";
 import { ClosedSection } from "@/ui/closed-section";
 import { EmptyState } from "@/ui/empty-state";
 import { NavLink } from "@/ui/nav-link";
@@ -304,12 +304,7 @@ export default function PublicWishlistScreen() {
                     ) : (
                       <>
                         {activeGifts.length > 0 ? (
-                          <XStack
-                            role="list"
-                            flexWrap="wrap"
-                            gap="$grid-gap"
-                            alignItems="flex-start"
-                          >
+                          <CardGridList alignStart>
                             {activeGifts.map(function renderGift(gift) {
                               return (
                                 <PublicGiftCard
@@ -327,7 +322,7 @@ export default function PublicWishlistScreen() {
                                 />
                               );
                             })}
-                          </XStack>
+                          </CardGridList>
                         ) : null}
                         {closedGifts.length > 0 ? (
                           <ClosedSection

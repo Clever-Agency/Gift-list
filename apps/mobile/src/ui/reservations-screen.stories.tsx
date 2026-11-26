@@ -7,9 +7,10 @@ import {
 } from "./reservations-screen";
 
 /**
- * Экран «Мои брони» (Story 5.5): заголовок, карточки, пустое состояние, ошибка и
- * скелет загрузки. Экран рисует переданное состояние: запросы, сессию и слои
- * держит маршрут, поэтому каталог показывает его без сети.
+ * Экран «Мои брони» (Story 5.5): заголовок, сетка карточек, пустое состояние,
+ * ошибка и скелет загрузки. Карточки — как у «Моих желаний»: две колонки до
+ * `bp-expanded`, три от него. Экран рисует переданное состояние: запросы, сессию и
+ * слои держит маршрут, поэтому каталог показывает его без сети.
  */
 const meta = {
   title: "App/ReservationsScreen",
@@ -48,7 +49,7 @@ function card(overrides: Partial<ReservationCardData> = {}): ReservationCardData
 const ready = {
   status: "ready",
   reservations: [
-    card(),
+    card({ priceAmount: 250000, priceCurrency: "RUB" }),
     card({
       giftId: "gift-2",
       titleSnapshot: "Свитер с оленями",
@@ -64,6 +65,14 @@ const ready = {
       dueAt: "2026-12-09",
       phase: "GIVEN",
       canOpenGift: false,
+    }),
+    card({
+      giftId: "gift-4",
+      titleSnapshot: "Сертификат на мастер-класс по керамике для двоих",
+      ownerNick: "vera",
+      dueAt: "2026-12-12",
+      priceAmount: 1200000,
+      priceCurrency: "RUB",
     }),
   ],
 } satisfies ReservationsState;
@@ -82,7 +91,7 @@ const base = {
   onVisibilityChange: noop,
 } satisfies ReservationsScreenProps;
 
-/** Список: три фазы, «Куплено», «Подарил» у активной и одна карточка без ссылки. */
+/** Сетка: две колонки на 360 px, четыре карточки с ценой, «Куплено» и без ссылки. */
 export const List: Story = {
   args: base,
 };

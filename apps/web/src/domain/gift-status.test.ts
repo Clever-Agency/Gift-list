@@ -648,7 +648,7 @@ describe("the Story 5.6 reservation timers", () => {
 describe("the Story 5.6 event payload", () => {
   const at = new Date("2026-11-20T12:00:00.000Z");
 
-  it("adds the two reservation-timer kinds to the seam", () => {
+  it("adds the reservation-timer and wish-expiry kinds to the seam", () => {
     const kinds: Record<GiftStatusEventKind, true> = {
       RESERVATION_RELEASED_BY_HOLDER: true,
       WISH_CLOSED: true,
@@ -658,9 +658,10 @@ describe("the Story 5.6 event payload", () => {
       RESERVATION_GIVER_DEADLINE_PASSED: true,
       RESERVATION_OWNER_WINDOW_STARTED: true,
       RESERVATION_RELEASED_BY_EXPIRY: true,
+      WISH_EXPIRED_AND_ARCHIVED: true,
     };
 
-    expect(Object.keys(kinds)).toHaveLength(8);
+    expect(Object.keys(kinds)).toHaveLength(9);
   });
 
   it("lets a timer transition carry no actor and a phase-only change", () => {

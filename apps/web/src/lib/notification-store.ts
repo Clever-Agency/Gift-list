@@ -51,7 +51,7 @@ export function notificationGiftSnapshot(db: Pick<Tx, "gift">, id: string) {
 }
 
 export async function enqueueNotification(tx: Tx, data: Prisma.NotificationCreateManyInput) {
-  await tx.notification.createMany({ data, skipDuplicates: true });
+  return tx.notification.createMany({ data, skipDuplicates: true });
 }
 
 export async function enqueueFriendNotification(
@@ -133,7 +133,7 @@ export async function enqueueGiftNotification(
   gift: GiftSnapshot | null,
   { kind, role, email, at, fields, eventAt, reminder, released }: GiftNotification,
 ) {
-  if (!gift?.reservedAt || !gift.reservedById) return;
+  if (!gift?.reservedAt || !gift.reservedById) return 0;
   const recipientId = role === "owner" ? gift.list.ownerId : gift.reservedById;
   const payload = {
     role,
@@ -155,7 +155,10 @@ export async function enqueueGiftNotification(
   const eventKey = kind === "WISH_EXPIRY_SOON" || kind === "WISH_EXPIRY"
     ? wishExpiryEventKey(kind, gift.id, gift.reservedAt, gift.expiresOn)
     : giftEventKey(kind, gift.id, eventAt ?? at, reminder === true);
-  await enqueueNotification(tx, {
+  // Story 6.6: the number of rows actually written. `skipDuplicates` turns a
+  // repeated wish-expiry notice into `0`, so a cron run can tell "queued now"
+  // from "already queued" without a second read.
+  const { count } = await enqueueNotification(tx, {
     eventKey,
     kind,
     giftId: gift.id,
@@ -168,6 +171,7 @@ export async function enqueueGiftNotification(
     emailRequired: email,
     payload,
   });
+  return count;
 }
 
 /**

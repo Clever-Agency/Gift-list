@@ -11,6 +11,9 @@
 // counted from `reservationDueAt`, not from the phase moment. CLE-124/S9b-1:
 // neither `bought` nor `GIVEN` protects a reservation from the timer — a holder
 // cannot keep a wish blocked forever by marking it or promising it.
+// Story 6.6: the wish-expiry cron clears an expired reservation and archives the
+// wish in one write unless the holder marked the gift as bought. That write also
+// lives in the adapter, next to the timer releases.
 
 import { RESERVATION_PHASES } from "@gift-list/contracts";
 import type { GiftEditEventField } from "./gift-edit";
@@ -244,6 +247,9 @@ export function undoUntil(row: {
  * `RESERVED → RESERVED` except the expiry release, so the `kind` is what tells
  * the phase moves apart. CLE-124/D-49 removes the owner's release and keep:
  * the owner never takes part in a reservation of their own wish.
+ *
+ * Story 6.6 adds one transition: an expired reservation is cleared and the wish
+ * archived in one write (`WISH_EXPIRED_AND_ARCHIVED`, `RESERVED → OPEN`).
  */
 export type GiftStatusEventKind =
   | "RESERVATION_RELEASED_BY_HOLDER"
@@ -253,7 +259,8 @@ export type GiftStatusEventKind =
   | "GIFT_DELETED"
   | "RESERVATION_GIVER_DEADLINE_PASSED"
   | "RESERVATION_OWNER_WINDOW_STARTED"
-  | "RESERVATION_RELEASED_BY_EXPIRY";
+  | "RESERVATION_RELEASED_BY_EXPIRY"
+  | "WISH_EXPIRED_AND_ARCHIVED";
 
 /**
  * The payload of {@link RecordGiftEvent}: identifiers and the transition only —
@@ -296,6 +303,16 @@ export type UndoCloseSnapshot = {
   readonly closedAt: Date;
   readonly closedFromStatus: ClosedFromStatus;
 };
+
+/**
+ * Story 6.6 (FR-42, D-26): the three answers of the wish-expiry write of one
+ * expired `RESERVED` wish. `released` — the reservation was cleared and the wish
+ * archived in one write; `notified` — the gift is marked as bought, so the
+ * status and the reservation stay and only the holder's notice was queued;
+ * `lost` — nothing was written (lost race, moved date, closed or archived wish,
+ * or a repeated run whose notice already exists).
+ */
+export type WishExpiryOutcome = "released" | "notified" | "lost";
 
 /**
  * One `RESERVED → OPEN` write (AD-9). The adapter implements it with Prisma; the
@@ -422,6 +439,18 @@ export interface GiftStatusTransaction {
    * 5.2 release uses.
    */
   releaseReservationByExpiry(giftId: string, at: Date): Promise<"success" | "lost">;
+  /**
+   * Story 6.6 (FR-42, D-26): one expired `RESERVED` wish of the wish-expiry
+   * cron. `bought=false`: CAS `RESERVED → OPEN` with `archivedAt = at` in one
+   * write; the predicate compares the reservation instance, `expiresOn`,
+   * `archivedAt` and `bought=false`, so a holder's release or «Купил», an
+   * owner's close or a moved date in between wins the race and answers `lost`.
+   * `bought=true`: nothing changes — only one `WISH_EXPIRY` (variant
+   * `released: false`) is queued, deduplicated by the reservation instance and
+   * the expiry day, so a repeated run answers `lost` and writes nothing.
+   * Whatever the variant, only the holder is a recipient (D-49).
+   */
+  expireReservedWish(giftId: string, at: Date): Promise<WishExpiryOutcome>;
 }
 
 /** Only a single open wish can be reserved; unlimited gifts are rejected upstream. */

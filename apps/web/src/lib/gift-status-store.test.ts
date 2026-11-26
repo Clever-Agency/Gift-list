@@ -31,8 +31,12 @@ function transactionClient(): Prisma.TransactionClient {
   return { $queryRaw: queryRaw, gift: { updateMany, findUnique }, notification: { createMany, deleteMany } } as unknown as Prisma.TransactionClient;
 }
 
-function expiryClient(): PrismaClient {
-  return { gift: { findMany, updateMany } } as unknown as PrismaClient;
+/** Story 6.6: archiving an `OPEN` row and one transaction per `RESERVED` row. */
+function expiryClient(): Pick<PrismaClient, "gift" | "$transaction"> {
+  return {
+    gift: { findMany, updateMany },
+    $transaction: transaction,
+  } as unknown as Pick<PrismaClient, "gift" | "$transaction">;
 }
 
 /** Story 5.6: the timer reads candidates and runs one transaction per row. */
@@ -64,6 +68,8 @@ beforeEach(() => {
     return [{ status: "CLOSED", closedAt: null }];
   });
   updateMany.mockResolvedValue({ count: 1 });
+  // Story 6.6: `enqueueGiftNotification` reports the inserted rows.
+  createMany.mockResolvedValue({ count: 1 });
   // Story 5.6 (R1): the expiry release reads the holder before its CAS.
   findUnique.mockResolvedValue({
     id: "g1",
@@ -823,9 +829,17 @@ describe("runGiftStatusTransaction", () => {
 
 describe("processWishExpiry", () => {
   const now = new Date("2026-11-10T12:00:00.000Z");
+  const zeroReserved = { released: 0, notifiedBought: 0 };
+
+  /** The `OPEN` pass and the `RESERVED` pass read the same table; keep them apart. */
+  function serveOpen(rows: unknown[]) {
+    findMany.mockImplementation(({ where }: { where: { status: string } }) =>
+      Promise.resolve(where.status === "OPEN" ? rows : []),
+    );
+  }
 
   it("archives an open wish only after the owner's local day has passed", async () => {
-    findMany.mockResolvedValue([
+    serveOpen([
       {
         id: "yesterday",
         expiresOn: new Date("2026-11-09T00:00:00.000Z"),
@@ -845,6 +859,7 @@ describe("processWishExpiry", () => {
 
     await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
       archived: 1,
+      ...zeroReserved,
       failed: 0,
     });
 
@@ -872,7 +887,7 @@ describe("processWishExpiry", () => {
 
   it("archives on the next local day, including a zone that is already tomorrow", async () => {
     const late = new Date("2026-11-10T22:00:00.000Z");
-    findMany.mockResolvedValue([
+    serveOpen([
       {
         id: "minsk",
         expiresOn: new Date("2026-11-10T00:00:00.000Z"),
@@ -882,12 +897,13 @@ describe("processWishExpiry", () => {
 
     await expect(processWishExpiry(late, expiryClient())).resolves.toEqual({
       archived: 1,
+      ...zeroReserved,
       failed: 0,
     });
   });
 
   it("does not count a CAS that lost the race", async () => {
-    findMany.mockResolvedValue([
+    serveOpen([
       {
         id: "g1",
         expiresOn: new Date("2026-11-09T00:00:00.000Z"),
@@ -898,19 +914,21 @@ describe("processWishExpiry", () => {
 
     await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
       archived: 0,
+      ...zeroReserved,
       failed: 0,
     });
   });
 
   it("compares expiresOn in the CAS so a date moved forward keeps the wish", async () => {
     const read = new Date("2026-11-09T00:00:00.000Z");
-    findMany.mockResolvedValue([
+    serveOpen([
       { id: "g1", expiresOn: read, list: { owner: { timeZone: "UTC" } } },
     ]);
     updateMany.mockResolvedValue({ count: 0 });
 
     await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
       archived: 0,
+      ...zeroReserved,
       failed: 0,
     });
     expect(updateMany).toHaveBeenCalledWith(
@@ -923,7 +941,7 @@ describe("processWishExpiry", () => {
   it("logs a failing row by id and error name, counts it and processes the rest", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const old = new Date("2026-11-01T00:00:00.000Z");
-    findMany.mockResolvedValue([
+    serveOpen([
       { id: "bad", expiresOn: old, list: { owner: { timeZone: "UTC" } } },
       { id: "good", expiresOn: old, list: { owner: { timeZone: "UTC" } } },
     ]);
@@ -931,6 +949,7 @@ describe("processWishExpiry", () => {
 
     await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
       archived: 1,
+      ...zeroReserved,
       failed: 1,
     });
     expect(updateMany).toHaveBeenCalledTimes(2);
@@ -949,30 +968,464 @@ describe("processWishExpiry", () => {
       list: { owner: { timeZone: "UTC" } },
     }));
     findMany.mockImplementation(
-      ({ where, take }: { where: { id?: { gt: string } }; take: number }) =>
+      ({ where, take }: { where: { status: string; id?: { gt: string } }; take: number }) =>
         Promise.resolve(
-          all.filter((row) => where.id === undefined || row.id > where.id.gt).slice(0, take),
+          where.status === "OPEN"
+            ? all.filter((row) => where.id === undefined || row.id > where.id.gt).slice(0, take)
+            : [],
         ),
     );
 
     await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
       archived: 501,
+      ...zeroReserved,
       failed: 0,
     });
-    expect(findMany).toHaveBeenCalledTimes(2);
+    // Two `OPEN` pages and one empty `RESERVED` read.
+    expect(findMany).toHaveBeenCalledTimes(3);
     expect(findMany.mock.calls[1]?.[0]).toMatchObject({
       where: { id: { gt: "g0499" } },
     });
     expect(findMany.mock.calls[1]?.[0]).not.toHaveProperty("cursor");
+    expect(findMany.mock.calls[2]?.[0]).toMatchObject({
+      where: { status: "RESERVED", expiresOn: { not: null } },
+    });
+  });
+
+  it("reads expired reservations with no lower date bound", async () => {
+    serveOpen([]);
+
+    await processWishExpiry(now, expiryClient());
+
+    const read = findMany.mock.calls.find(
+      ([args]) => (args as { where: { status: string } }).where.status === "RESERVED",
+    )?.[0] as { where: Record<string, unknown>; take: number; orderBy: unknown; select: unknown };
+    expect(read.where).toEqual({
+      status: "RESERVED",
+      archivedAt: null,
+      expiresOn: { not: null, lt: new Date("2026-11-11T00:00:00.000Z") },
+    });
+    // No lower bound: reservations that expired before the story shipped are due too.
+    expect(read.where.expiresOn).not.toHaveProperty("gte");
+    expect(read).toMatchObject({
+      orderBy: { id: "asc" },
+      take: 500,
+      select: {
+        id: true,
+        expiresOn: true,
+        list: { select: { owner: { select: { timeZone: true } } } },
+      },
+    });
   });
 
   it("changes nothing when there is no candidate", async () => {
     findMany.mockResolvedValue([]);
     await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
       archived: 0,
+      ...zeroReserved,
       failed: 0,
     });
     expect(updateMany).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("Story 6.6: expireReservedWish", () => {
+  const at = new Date("2026-11-20T12:00:00.000Z");
+  const expiresOn = new Date("2026-11-19T00:00:00.000Z");
+  const snapshot = {
+    id: "g1",
+    status: "RESERVED",
+    archivedAt: null,
+    reservedById: "u2",
+    reservedAt,
+    reservationPhase: "ACTIVE",
+    reservationPhaseAt,
+    reservationDueAt,
+    reservationTimeZone: "UTC",
+    reservationBought: false,
+    expiresOn,
+    title: "Плед",
+    titleSnapshotOnReserve: "Плед",
+    visibility: "PUBLIC",
+    list: { ownerId: "u1", owner: { nick: "owner" } },
+  };
+  const eventKey = `WISH_EXPIRY:g1:${reservedAt.toISOString()}:2026-11-19`;
+
+  it.each(["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER", "GIVEN"] as const)(
+    "clears an expired %s reservation and archives the wish in one write",
+    async (phase) => {
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+      findUnique.mockResolvedValue({ ...snapshot, reservationPhase: phase });
+
+      await expect(
+        giftStatusTransaction(transactionClient()).expireReservedWish("g1", at),
+      ).resolves.toBe("released");
+
+      expect(updateMany).toHaveBeenCalledWith({
+        where: {
+          id: "g1",
+          status: "RESERVED",
+          archivedAt: null,
+          reservedAt,
+          expiresOn,
+          reservationBought: false,
+        },
+        data: { ...RESERVATION_RELEASE_DATA, archivedAt: at },
+      });
+      // The phase is deliberately absent: `GIVEN` is cleared like every other phase.
+      const { where } = updateMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+      expect(where).not.toHaveProperty("reservationPhase");
+
+      expect(createMany).toHaveBeenCalledExactlyOnceWith({
+        skipDuplicates: true,
+        data: expect.objectContaining({
+          kind: "WISH_EXPIRY",
+          recipientId: "u2",
+          emailRequired: true,
+          eventKey,
+        }),
+      });
+      const payload = (createMany.mock.calls[0]?.[0] as {
+        data: { payload: Record<string, unknown> };
+      }).data.payload;
+      expect(payload).toMatchObject({ role: "holder", titleSnapshot: "Плед", released: true });
+
+      expectOneAuditLine(info.mock.calls, {
+        event: "gift.wish.expired-and-archived",
+        giftId: "g1",
+        actorId: null,
+        from: "RESERVED",
+        to: "OPEN",
+        recipientId: "u2",
+        at: at.toISOString(),
+      });
+      info.mockRestore();
+    },
+  );
+
+  it("keeps the status and the reservation of a bought wish and queues only its notice", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    findUnique.mockResolvedValue({ ...snapshot, reservationBought: true });
+
+    await expect(
+      giftStatusTransaction(transactionClient()).expireReservedWish("g1", at),
+    ).resolves.toBe("notified");
+
+    // Nothing changes on the wish: the Story 5.6 timer clears the reservation later.
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).toHaveBeenCalledExactlyOnceWith({
+      skipDuplicates: true,
+      data: expect.objectContaining({
+        kind: "WISH_EXPIRY",
+        recipientId: "u2",
+        eventKey,
+        payload: expect.objectContaining({ released: false, titleSnapshot: "Плед" }),
+      }),
+    });
+    // No transition, so no audit line (NFR-6).
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("writes nothing after the bought notice already exists", async () => {
+    findUnique.mockResolvedValue({ ...snapshot, reservationBought: true });
+    createMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    const tx = giftStatusTransaction(transactionClient());
+
+    await expect(tx.expireReservedWish("g1", at)).resolves.toBe("notified");
+    await expect(
+      tx.expireReservedWish("g1", new Date(at.getTime() + 60 * 60 * 1000)),
+    ).resolves.toBe("lost");
+
+    // The same reservation instance and the same expiry day give the same key.
+    const keys = createMany.mock.calls.map(
+      ([args]) => (args as { data: { eventKey: string } }).data.eventKey,
+    );
+    expect(keys).toEqual([eventKey, eventKey]);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("writes neither data nor a notice when the archive CAS loses the race", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    findUnique.mockResolvedValue(snapshot);
+    updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      giftStatusTransaction(transactionClient()).expireReservedWish("g1", at),
+    ).resolves.toBe("lost");
+
+    expect(updateMany).toHaveBeenCalledTimes(1);
+    expect(createMany).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it.each([
+    null,
+    { status: "OPEN", archivedAt: null },
+    { status: "RESERVED", archivedAt: at },
+    { status: "RESERVED", expiresOn: null },
+    { status: "RESERVED", reservedAt: null },
+  ])("writes nothing for a snapshot that is not an expiring reservation: %o", async (row) => {
+    findUnique.mockResolvedValue(row === null ? null : { ...snapshot, ...row });
+
+    await expect(
+      giftStatusTransaction(transactionClient()).expireReservedWish("g1", at),
+    ).resolves.toBe("lost");
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("never addresses the owner in either variant", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    findUnique.mockResolvedValue(snapshot);
+    const tx = giftStatusTransaction(transactionClient());
+
+    await expect(tx.expireReservedWish("g1", at)).resolves.toBe("released");
+    findUnique.mockResolvedValue({ ...snapshot, reservationBought: true });
+    await expect(tx.expireReservedWish("g1", at)).resolves.toBe("notified");
+
+    // u1 owns g1 and u2 holds it: an owner row would carry `recipientId: "u1"`.
+    expect(createMany.mock.calls.map(([args]) => {
+      const row = args.data as { kind: string; recipientId: string };
+      return `${row.kind}:${row.recipientId}`;
+    })).toEqual(["WISH_EXPIRY:u2", "WISH_EXPIRY:u2"]);
+    info.mockRestore();
+  });
+});
+
+/**
+ * Story 6.6: the cron's `RESERVED` pass. The owner's local day decides whether
+ * the wish is due, every row runs in its own transaction, and the counters tell
+ * a cleared reservation from a bought one and from a lost race.
+ */
+describe("Story 6.6: expired reservations in processWishExpiry", () => {
+  const now = new Date("2026-11-20T12:00:00.000Z");
+  const expiresOn = new Date("2026-11-19T00:00:00.000Z");
+  const snapshot = {
+    id: "g1",
+    status: "RESERVED",
+    archivedAt: null,
+    reservedById: "u2",
+    reservedAt,
+    reservationPhase: "ACTIVE",
+    reservationPhaseAt,
+    reservationDueAt,
+    reservationTimeZone: "UTC",
+    reservationBought: false,
+    expiresOn,
+    title: "Плед",
+    titleSnapshotOnReserve: "Плед",
+    visibility: "PUBLIC",
+    list: { ownerId: "u1", owner: { nick: "owner" } },
+  };
+
+  beforeEach(commitEachTransaction);
+
+  function candidate(id = "g1", day = expiresOn, timeZone = "UTC") {
+    return { id, expiresOn: day, list: { owner: { timeZone } } };
+  }
+
+  function serveReserved(rows: unknown[]) {
+    findMany.mockImplementation(({ where }: { where: { status: string } }) =>
+      Promise.resolve(where.status === "RESERVED" ? rows : []),
+    );
+  }
+
+  it.each(["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER", "GIVEN"] as const)(
+    "releases an expired %s reservation in its own transaction and archives the wish",
+    async (phase) => {
+      serveReserved([candidate()]);
+      findUnique.mockResolvedValue({ ...snapshot, reservationPhase: phase });
+
+      await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
+        archived: 0,
+        released: 1,
+        notifiedBought: 0,
+        failed: 0,
+      });
+
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(updateMany).toHaveBeenCalledWith({
+        where: {
+          id: "g1",
+          status: "RESERVED",
+          archivedAt: null,
+          reservedAt,
+          expiresOn,
+          reservationBought: false,
+        },
+        data: { ...RESERVATION_RELEASE_DATA, archivedAt: now },
+      });
+      expect(createMany).toHaveBeenCalledExactlyOnceWith({
+        skipDuplicates: true,
+        data: expect.objectContaining({
+          kind: "WISH_EXPIRY",
+          recipientId: "u2",
+          payload: expect.objectContaining({ released: true }),
+        }),
+      });
+    },
+  );
+
+  it("keeps a bought reservation untouched and counts its notice", async () => {
+    serveReserved([candidate()]);
+    findUnique.mockResolvedValue({ ...snapshot, reservationBought: true });
+
+    await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
+      archived: 0,
+      released: 0,
+      notifiedBought: 1,
+      failed: 0,
+    });
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).toHaveBeenCalledExactlyOnceWith({
+      skipDuplicates: true,
+      data: expect.objectContaining({
+        kind: "WISH_EXPIRY",
+        recipientId: "u2",
+        payload: expect.objectContaining({ released: false }),
+      }),
+    });
+  });
+
+  it("counts nothing on a repeated run over the same bought reservation", async () => {
+    serveReserved([candidate()]);
+    findUnique.mockResolvedValue({ ...snapshot, reservationBought: true });
+    createMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+    await expect(processWishExpiry(now, expiryClient())).resolves.toMatchObject({
+      notifiedBought: 1,
+    });
+    await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
+      archived: 0,
+      released: 0,
+      notifiedBought: 0,
+      failed: 0,
+    });
+    expect(createMany).toHaveBeenCalledTimes(2);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("releases a reservation that expired long before the story shipped on the first run", async () => {
+    const old = new Date("2026-10-01T00:00:00.000Z");
+    serveReserved([candidate("g1", old)]);
+    findUnique.mockResolvedValue({ ...snapshot, expiresOn: old });
+
+    await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
+      archived: 0,
+      released: 1,
+      notifiedBought: 0,
+      failed: 0,
+    });
+    // No lower bound: the CAS anchors on the date the run read.
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ expiresOn: old }) }),
+    );
+  });
+
+  it("does nothing while the owner's local day has not passed", async () => {
+    // 08:00 UTC is still the previous evening in Honolulu, so the 20th is not over.
+    const late = new Date("2026-11-20T08:00:00.000Z");
+    serveReserved([candidate("g1", new Date("2026-11-20T00:00:00.000Z"), "Pacific/Honolulu")]);
+
+    await expect(processWishExpiry(late, expiryClient())).resolves.toEqual({
+      archived: 0,
+      released: 0,
+      notifiedBought: 0,
+      failed: 0,
+    });
+    expect(transaction).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("writes no notice when the CAS loses the race to a holder's release or a moved date", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    serveReserved([candidate()]);
+    findUnique.mockResolvedValue(snapshot);
+    updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
+      archived: 0,
+      released: 0,
+      notifiedBought: 0,
+      failed: 0,
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(createMany).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
+    info.mockRestore();
+  });
+
+  it("writes nothing when the holder released or the owner archived the wish in between", async () => {
+    serveReserved([candidate()]);
+    findUnique.mockResolvedValue({ ...snapshot, status: "OPEN", reservedById: null });
+
+    await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
+      archived: 0,
+      released: 0,
+      notifiedBought: 0,
+      failed: 0,
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it("counts a failing row, logs only its id and error name and processes the rest", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    serveReserved([candidate("bad"), candidate("good")]);
+    findUnique
+      .mockRejectedValueOnce(new Error("secret title"))
+      .mockResolvedValueOnce(snapshot);
+
+    await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
+      archived: 0,
+      released: 1,
+      notifiedBought: 0,
+      failed: 1,
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(error.mock.calls);
+    expect(logged).toContain("bad");
+    expect(logged).not.toContain("Плед");
+    expect(logged).not.toContain("secret title");
+    error.mockRestore();
+  });
+
+  it("runs one transaction per row and pages the reservations by id", async () => {
+    const rows = Array.from({ length: 501 }, (_, index) =>
+      candidate(`g${String(index).padStart(4, "0")}`),
+    );
+    findUnique.mockResolvedValue(snapshot);
+    findMany.mockImplementation(
+      ({ where, take }: { where: { status: string; id?: { gt: string } }; take: number }) =>
+        Promise.resolve(
+          where.status === "RESERVED"
+            ? rows.filter((row) => where.id === undefined || row.id > where.id.gt).slice(0, take)
+            : [],
+        ),
+    );
+
+    await expect(processWishExpiry(now, expiryClient())).resolves.toEqual({
+      archived: 0,
+      released: 501,
+      notifiedBought: 0,
+      failed: 0,
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(501);
+    const reservedCalls = findMany.mock.calls.filter(
+      ([args]) => (args as { where: { status: string } }).where.status === "RESERVED",
+    );
+    expect(reservedCalls).toHaveLength(2);
+    expect(reservedCalls[1]?.[0]).toMatchObject({ where: { id: { gt: "g0499" } }, take: 500 });
   });
 });
 

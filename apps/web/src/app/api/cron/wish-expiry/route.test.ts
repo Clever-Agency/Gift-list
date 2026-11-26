@@ -36,13 +36,13 @@ describe("POST /api/cron/wish-expiry", () => {
     expect(processWishExpiry).not.toHaveBeenCalled();
   });
 
-  it("returns only the archived count", async () => {
-    processWishExpiry.mockResolvedValue({ archived: 2, failed: 0 });
+  it("returns the run counters only", async () => {
+    processWishExpiry.mockResolvedValue({ archived: 2, released: 1, notifiedBought: 3, failed: 0 });
     const response = await POST(post(`Bearer ${secret}`));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       ok: true,
-      data: { archived: 2 },
+      data: { archived: 2, released: 1, notifiedBought: 3 },
     });
   });
 
@@ -56,7 +56,7 @@ describe("POST /api/cron/wish-expiry", () => {
   });
 
   it("answers 500 without a body when some rows failed", async () => {
-    processWishExpiry.mockResolvedValue({ archived: 1, failed: 1 });
+    processWishExpiry.mockResolvedValue({ archived: 1, released: 0, notifiedBought: 0, failed: 1 });
     const response = await POST(post(`Bearer ${secret}`));
     expect(response.status).toBe(500);
     await expect(response.text()).resolves.toBe("");

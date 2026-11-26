@@ -93,6 +93,9 @@ beforeEach(function reset() {
   db.gift.findUnique.mockResolvedValue(gift);
   db.user.findUniqueOrThrow.mockResolvedValue(defaults);
   db.relationsBetween.mockResolvedValue({ blocked: false, friend: false, subscriber: false, contactMatch: false });
+  // Story 6.6: `enqueueGiftNotification` reports how many rows it actually
+  // wrote; an insert is the ordinary answer of these tests.
+  db.notification.createMany.mockResolvedValue({ count: 1 });
 });
 
 describe("notification privacy and availability", function privacyTests() {
@@ -544,6 +547,23 @@ describe("Story 6.6: wish-expiry notification keys", function wishExpiryKeys() {
     expect(payloads[1]).toMatchObject({ released: true, titleSnapshot: gift.titleSnapshotOnReserve });
     expect(payloads[2]).not.toHaveProperty("released");
     expect(payloads[3]).not.toHaveProperty("released");
+  });
+
+  it("reports the rows it actually wrote and zero when the notice already exists", async function createdCount() {
+    const snapshot = await notificationGiftSnapshot(db as never, gift.id);
+    db.notification.createMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+
+    await expect(enqueueGiftNotification(db as never, snapshot, {
+      kind: "WISH_EXPIRY", role: "holder", email: true, at: now, released: true,
+    })).resolves.toBe(1);
+    // `skipDuplicates` turned the repeated notice into an empty insert.
+    await expect(enqueueGiftNotification(db as never, snapshot, {
+      kind: "WISH_EXPIRY", role: "holder", email: true, at: now, released: true,
+    })).resolves.toBe(0);
+    // A snapshot without a reservation has nothing to address.
+    await expect(enqueueGiftNotification(db as never, null, {
+      kind: "WISH_EXPIRY", role: "holder", email: true, at: now,
+    })).resolves.toBe(0);
   });
 });
 

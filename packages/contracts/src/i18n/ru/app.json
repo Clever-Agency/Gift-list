@@ -252,17 +252,6 @@
       "FRIENDS": "Друзьям",
       "SECRET": "Секрет"
     },
-    "visibilityLower": {
-      "PUBLIC": "всем",
-      "FRIENDS": "друзьям",
-      "SECRET": "секрет"
-    },
-    "visibilityChipLabel": "Видимость: {value}. Изменить",
-    "visibilityInCardName": "видимость {value}",
-    "visibilityPicker": {
-      "title": "Кто видит «{title}»",
-      "cancel": "Отмена"
-    },
     "quantity": {
       "SINGLE": "Один раз",
       "UNLIMITED": "Можно дарить снова"
@@ -270,7 +259,6 @@
     "tagsMore": "+{count}",
     "tagsMoreLabel": "Ещё теги ({count}): {tags}",
     "toast": {
-      "visibility": "Видимость: {value}",
       "closed": "Отмечено полученным",
       "undo": "Отменить"
     },

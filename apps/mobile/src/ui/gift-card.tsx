@@ -7,7 +7,6 @@ import {
 } from "@gift-list/ui";
 import { useLocale, useTranslations } from "use-intl";
 import { StatusPill } from "@/ui/status-pill";
-import { VisibilityChip, type VisibilityChipRef } from "@/ui/visibility-chip";
 
 /** The comma-separated card name of `DESIGN.md` → Доступность, without empty parts. */
 function joinCardName(parts: readonly (string | null)[]): string {
@@ -33,19 +32,12 @@ function joinCardName(parts: readonly (string | null)[]): string {
  * is always the outer element, so the list semantics of the grid survive the
  * pressable inside it.
  *
- * The detail button covers the whole card (CLE-65, CLE-84): the footer area is reserved under
- * the body with an empty spacer of the same height (footer margin + chip + card
- * padding), so a press on the empty space next to the chip opens the edit route
- * too. The visibility chip is drawn over that reserved area from a sibling layer,
- * never from inside the button: nothing is nested, and the Tab order stays the card
- * first, the chip second.
+ * The detail button covers the whole card (CLE-65, CLE-84): nothing is nested, so
+ * one press opens the edit route.
  *
- * Story 2.3: the visibility chip is a button of its own only when
- * `onVisibilityPress` is passed and the wish can still change its visibility —
- * `OPEN` or a legacy `RESERVED` (`DESIGN.md` → VisibilityChip; `EXPERIENCE.md` →
- * Visibility chip). A closed or archived wish is read-only (product clarification
- * t351u), so its chip only shows the value. A non-pressable chip lets the press
- * through to the card underneath, so it also opens the detail dialog.
+ * D-54 (CLE-129): the card has no visibility chip and no «who sees» control at
+ * all — visibility changes only in the wish form. The owner card keeps the status
+ * pill and the ⋯ menu; a legacy `RESERVED` card still reads as open (D-49).
  *
  * NOTE FOR UX: the wish photo is not in the contract yet, so the v8 card shows the
  * placeholder. CLE-84: the press zone opens the detail dialog. The ⋮ menu is still
@@ -55,8 +47,6 @@ export function WishCard({
   gift,
   width,
   onPress,
-  onVisibilityPress,
-  visibilityChipRef,
   pressRef,
   menu,
   closed = false,
@@ -66,10 +56,6 @@ export function WishCard({
   onPress?: () => void;
   /** The card button, so the detail dialog can return focus to it. */
   pressRef?: Ref<FocusTarget>;
-  /** Opens the visibility picker; only `OPEN` and legacy `RESERVED` wishes get a pressable chip. */
-  onVisibilityPress?: () => void;
-  /** Where focus returns when the visibility layer closes (Story 2.3). */
-  visibilityChipRef?: VisibilityChipRef;
   /** Archive menu, drawn as a sibling of the card button (Story 2.6). */
   menu?: ReactNode;
   /** Archive cards read as closed even while the stored status stays OPEN. */
@@ -77,7 +63,6 @@ export function WishCard({
 }) {
   const tGift = useTranslations("app.gift");
   const tStatus = useTranslations("app.gift.status");
-  const tVisibilityLower = useTranslations("app.gift.visibilityLower");
   const locale = useLocale();
   const price =
     gift.priceAmount !== null && gift.priceCurrency !== null
@@ -86,12 +71,6 @@ export function WishCard({
   // D-49: a reservation is never a fact for the owner. A stale card may still say
   // `RESERVED`; it is shown exactly like an open wish.
   const status = gift.status === "RESERVED" ? "OPEN" : gift.status;
-  // `DESIGN.md` → VisibilityChip: the chip is a button on a wish that can still
-  // change it. `CLOSED` and an archived wish are read-only (CLE-82/S23.3).
-  const visibilityPress =
-    onVisibilityPress !== undefined && gift.status !== "CLOSED" && gift.archivedAt === null
-      ? onVisibilityPress
-      : undefined;
   // Story 2.5.7: labels are the server's, already ordered by the mapper. The
   // visual row shows up to three chips; the accessible name keeps every tag so
   // a screen reader hears tags that «+N» hides.
@@ -99,14 +78,14 @@ export function WishCard({
     return tag.label;
   });
   // `DESIGN.md` → Доступность: the pressable main zone reads as one phrase —
-  // title, price, status, all tags and visibility. Empty parts are dropped, so
-  // no double separators reach the screen reader.
+  // title, price, status and all tags. D-54: visibility is not part of the card,
+  // so it is not in the phrase either. Empty parts are dropped, so no double
+  // separators reach the screen reader.
   const pressLabel = joinCardName([
     gift.title,
     price,
     tStatus(status),
     tagLabels.length > 0 ? tagLabels.join(", ") : null,
-    tGift("visibilityInCardName", { value: tVisibilityLower(gift.visibility) }),
   ]);
 
   function moreTagLabel(hiddenCount: number): string {
@@ -136,14 +115,6 @@ export function WishCard({
           />
         ) : undefined
       }
-      chip={
-        <VisibilityChip
-          visibility={gift.visibility}
-          onPress={visibilityPress}
-          chipRef={visibilityChipRef}
-        />
-      }
-      chipInteractive={visibilityPress !== undefined}
       onPress={onPress}
       pressLabel={pressLabel}
       pressRef={pressRef as never}

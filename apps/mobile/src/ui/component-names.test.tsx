@@ -9,8 +9,6 @@ import { WishCard } from "@/ui/gift-card";
 import { GiftForm } from "@/ui/gift-form";
 import { TextField } from "@/ui/text-field";
 import { ToastHost } from "@/ui/toast";
-import { VisibilityChip } from "@/ui/visibility-chip";
-import { VisibilityPicker } from "@/ui/visibility-picker";
 
 /**
  * CLE-64: «в React DevTools нет `Anonymous` для наших компонентов». DevTools takes
@@ -280,20 +278,6 @@ const samples: { name: string; element: ReactElement }[] = [
     ),
   },
   { name: "WishCard", element: <WishCard gift={gift()} width={343} /> },
-  { name: "VisibilityChip", element: <VisibilityChip visibility="PUBLIC" onPress={noop} /> },
-  {
-    name: "VisibilityPicker",
-    element: (
-      <VisibilityPicker
-        visible
-        title="Плед"
-        value="PUBLIC"
-        onSelect={noop}
-        onClose={noop}
-        onClosed={noop}
-      />
-    ),
-  },
   { name: "GiftForm", element: <GiftForm submitting={false} onSubmit={noop} /> },
   {
     name: "TextField",
@@ -323,8 +307,6 @@ describe("CLE-64: имена компонентов в src/ui", () => {
         "ToastHost",
         "ConfirmDialog",
         "WishCard",
-        "VisibilityChip",
-        "VisibilityPicker",
         "GiftForm",
         "TextField",
       ]),

@@ -9,19 +9,17 @@ import { StatusPill } from "./status-pill";
 import { Switch } from "./switch";
 import { TagChipList } from "./tag-chip";
 import { Text } from "./text";
-import { VisibilityChip } from "./visibility-chip";
 import { WishCard, type WishCardProps } from "./wish-card";
 
 /**
- * The wish card props plus the «есть теги», «есть чип» and «есть меню» catalog
- * handles. The slots are nodes, so the catalog keeps ready-made samples behind
- * switches instead of node knobs. The cast on `component` is what lets the Docs
- * controls see the handles; the component itself stays unchanged.
+ * The wish card props plus the «есть теги» and «есть меню» catalog handles. The
+ * slots are nodes, so the catalog keeps ready-made samples behind switches instead
+ * of node knobs. The cast on `component` is what lets the Docs controls see the
+ * handles; the component itself stays unchanged.
  */
 type WishCardCatalogProps = Omit<WishCardProps, "status"> & {
   status?: ReactNode;
   withTags: boolean;
-  withChip: boolean;
   withMenu: boolean;
   withFooter: boolean;
 };
@@ -36,16 +34,6 @@ const READY_TAGS = (
     moreLabel={function moreLabel(count) {
       return `+${count}`;
     }}
-  />
-);
-
-/** The ready-made visibility chip of the «есть чип» handle. */
-const READY_CHIP = (
-  <VisibilityChip
-    tone="public"
-    label="Всем"
-    accessibilityLabel="Видимость: всем. Изменить"
-    onPress={noop}
   />
 );
 
@@ -81,7 +69,7 @@ const READY_MENU = (
  * reservation line. There is no frame around the cell and no text on the photo.
  *
  * The sandbox turns the strings, the states and the width in the panel; the status,
- * tags, visibility chip, menu and footer are ready-made samples behind handles.
+ * tags, menu and footer are ready-made samples behind handles.
  */
 const meta = {
   title: "UI/WishCard",
@@ -96,10 +84,10 @@ const meta = {
 What is not a prop:
 
 - There is no photo URL: a wish without a photo always draws the placeholder, and its tint is seeded by the title. A future photo prop would be a separate change.
-- The app builds the status pill, the tag row, the visibility chip and the menu; they arrive as slots. The «есть теги», «есть чип», «есть меню» and «есть действия» handles stand ready-made samples in.
-- With \`onPress\` the whole card is a button and the plate's shadow lifts on hover of any part of it, while the title is underlined — the card is the Tamagui group; the chip is a later sibling drawn over the reserved footer, never inside the button, so Tab reaches the card first and the chip second.
-- \`footer\` turns the room of the reserved chip area into an action block — the buttons and the switch of a reservation card. It is a sibling of the card button too: nothing is nested, and Tab goes card first, actions next.
-- \`chipInteractive\` lets the chip layer take presses; without it every press outside the chip reaches the card.
+- The app builds the status pill, the tag row and the menu; they arrive as slots. The «есть теги», «есть меню» and «есть действия» handles stand ready-made samples in.
+- With \`onPress\` the whole card is a button and the plate's shadow lifts on hover of any part of it, while the title is underlined — the card is the Tamagui group.
+- \`footer\` adds an action block — the buttons and the switch of a reservation card. It is a sibling of the card button too: nothing is nested, and Tab goes card first, actions next.
+- D-54: the card has no visibility chip and no «who sees» control: visibility changes only in the wish form.
 - \`listItem={false}\` is for an owner strip next to the card: the wrapper of the cell then carries the \`listitem\` role.
 - Hover, press and focus are CSS states, not props: hover any part of the card, hold it, press Tab.
         `.trim(),
@@ -144,18 +132,6 @@ What is not a prop:
       type: "string | null",
       control: "text",
     }),
-    chip: propDoc({
-      description:
-        "The visibility chip, drawn over the reserved footer as a sibling of the main zone. A slot: «есть чип» stands a ready-made `VisibilityChip` in.",
-      type: "ReactNode",
-      control: false,
-    }),
-    chipInteractive: propDoc({
-      description:
-        "The chip is a button of its own: its layer takes presses, the rest goes to the card. Without it every press outside the chip reaches the card.",
-      type: "boolean",
-      defaultValue: "false",
-    }),
     onPress: propDoc({
       description:
         "Opens the wish. With it the whole card is a button, named by `pressLabel`, and a hover of any part of it lifts the plate's shadow and underlines the title. Not a control: the sandbox always stands a `noop` in.",
@@ -164,7 +140,7 @@ What is not a prop:
     }),
     pressLabel: propDoc({
       description:
-        "The accessible name of the card button, e.g. «Плед, 2 500 ₽, Открыт, мечта, видимость всем».",
+        "The accessible name of the card button, e.g. «Плед, 2 500 ₽, Открыт, мечта».",
       type: "string",
       control: "text",
     }),
@@ -214,16 +190,6 @@ What is not a prop:
         defaultValue: { summary: "true" },
       },
     },
-    withChip: {
-      name: "есть чип",
-      description: "Ручка каталога: показать в слоте `chip` готовый чип видимости «Всем».",
-      control: "boolean",
-      table: {
-        category: "Ручки каталога",
-        type: { summary: "boolean" },
-        defaultValue: { summary: "false" },
-      },
-    },
     withMenu: {
       name: "есть меню",
       description:
@@ -252,12 +218,10 @@ What is not a prop:
     price: "2 500 ₽",
     width: 240,
     closed: false,
-    chipInteractive: false,
     listItem: true,
     pressLabel: "Плед из шерсти мериноса, 2 500 ₽, Открыт, мечта, для дома",
     testID: "wish-card",
     withTags: true,
-    withChip: false,
     withMenu: false,
     withFooter: false,
   },
@@ -280,11 +244,9 @@ CardGrid.displayName = "CardGrid";
 
 function WishCardPreview({
   withTags,
-  withChip,
   withMenu,
   withFooter,
   tags,
-  chip,
   menu,
   footer,
   status,
@@ -302,7 +264,6 @@ function WishCardPreview({
         )
       }
       tags={withTags ? (tags ?? READY_TAGS) : tags}
-      chip={withChip ? (chip ?? READY_CHIP) : chip}
       menu={withMenu ? (menu ?? READY_MENU) : menu}
       footer={withFooter ? (footer ?? READY_FOOTER) : footer}
     />
@@ -312,19 +273,17 @@ function WishCardPreview({
 WishCardPreview.displayName = "WishCardPreview";
 
 /**
- * The sandbox: write the title, the price and the reservation, flip `closed`,
- * `chipInteractive` and `listItem`, change the width, and turn the status, tags,
- * chip and menu samples on and off. The card is pressable here, so hover is live.
- * There is no photo knob: a wish without a photo always draws the placeholder.
+ * The sandbox: write the title, the price and the reservation, flip `closed` and
+ * `listItem`, change the width, and turn the status, tags and menu samples on and
+ * off. The card is pressable here, so hover is live. There is no photo knob: a wish
+ * without a photo always draws the placeholder.
  */
 export const Playground: Story = {
   args: {
     onPress: noop,
     pressLabel: "Плед из шерсти мериноса, 2 500 ₽, Открыт, мечта, для дома",
     reservation: null,
-    withChip: true,
     withMenu: true,
-    chipInteractive: true,
   },
   render: function PlaygroundStory(args) {
     return (
@@ -347,9 +306,7 @@ export const Hover: Story = {
     onPress: noop,
     pressLabel: "Плед из шерсти мериноса, 2 500 ₽, Открыт, мечта, для дома",
     reservation: null,
-    withChip: true,
     withMenu: true,
-    chipInteractive: true,
   },
   parameters: {
     docs: {
@@ -381,14 +338,13 @@ export const WithMenu: Story = {
 };
 
 /**
- * The `footer` slot: the actions of a reservation card stand under the body in the
- * place of the reserved chip area. They are siblings of the card button, so Tab
- * goes card first, actions next; the plate still lifts its shadow on hover of the
- * card itself.
+ * The `footer` slot: the actions of a reservation card stand under the body. They
+ * are siblings of the card button, so Tab goes card first, actions next; the plate
+ * still lifts its shadow on hover of the card itself.
  */
 export const WithFooter: Story = {
   tags: ["!dev"],
-  args: { withFooter: true, withChip: false, withMenu: true },
+  args: { withFooter: true, withMenu: true },
   render: function WithFooterStory(args) {
     return (
       <CardGrid>
@@ -460,31 +416,6 @@ export const WithoutPrice: Story = {
   tags: ["!dev"],
   args: { price: null },
   render: function WithoutPriceStory(args) {
-    return (
-      <CardGrid>
-        <WishCardPreview {...args} width="calc(50% - 8px)" />
-      </CardGrid>
-    );
-  },
-};
-
-/** The owner's card: pressing the card opens it, the chip opens the visibility layer. */
-export const OwnerWithChip: Story = {
-  tags: ["!dev"],
-  args: {
-    onPress: noop,
-    pressLabel: "Плед из шерсти мериноса, 2 500 ₽, Открыт, мечта, видимость всем",
-    chip: (
-      <VisibilityChip
-        tone="public"
-        label="Всем"
-        accessibilityLabel="Видимость: всем. Изменить"
-        onPress={noop}
-      />
-    ),
-    chipInteractive: true,
-  },
-  render: function OwnerWithChipStory(args) {
     return (
       <CardGrid>
         <WishCardPreview {...args} width="calc(50% - 8px)" />

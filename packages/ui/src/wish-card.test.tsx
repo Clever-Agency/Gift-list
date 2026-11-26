@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { StatusPill } from "./status-pill";
 import { TagChipList } from "./tag-chip";
 import { createMount, declarationsFor, stateValues } from "./test-utils";
-import { VisibilityChip } from "./visibility-chip";
 import { WishCard } from "./wish-card";
 
 const mounted = createMount();
@@ -91,49 +90,28 @@ describe("WishCard", () => {
     expect(button.textContent).toContain("Свободно");
   });
 
-  it("чип соседний элемент, а не внутри кнопки карточки; Tab: карточка, затем чип", async () => {
-    const onChip = vi.fn();
-    const onCard = vi.fn();
+  /**
+   * D-54: the card has no visibility chip and no «who sees» control — visibility
+   * changes only in the wish form. The card button is the only control of the card.
+   */
+  it("D-54: на карточке нет чипа видимости и второй кнопки", async () => {
     const { container, render } = mounted();
     await render(
       <WishCard
         title="Плед"
         status={<StatusPill status="open" label="Свободно" />}
-        onPress={onCard}
-        pressLabel="Плед, 2 500 ₽, Свободно"
-        chipInteractive
-        chip={
-          <VisibilityChip
-            tone="public"
-            label="Всем"
-            accessibilityLabel="Видимость: всем. Изменить"
-            onPress={onChip}
-          />
-        }
+        reservation="Забронировал Аня"
+        onPress={vi.fn()}
+        pressLabel="Плед, Свободно"
       />,
     );
 
     const buttons = Array.from(container.querySelectorAll("[role='button']"));
-    expect(buttons.map((node) => node.getAttribute("aria-label"))).toEqual([
-      "Плед, 2 500 ₽, Свободно",
-      "Видимость: всем. Изменить",
-    ]);
-    expect(buttons[0]?.contains(buttons[1] as Node)).toBe(false);
-    expect(buttons[1]?.getAttribute("aria-haspopup")).toBe("dialog");
-
-    await act(async () => {
-      (buttons[1] as HTMLElement).click();
-    });
-    expect(onChip).toHaveBeenCalledTimes(1);
-    expect(onCard).not.toHaveBeenCalled();
-  });
-
-  it("чип без onPress не кнопка", async () => {
-    const { container, render } = mounted();
-    await render(<VisibilityChip tone="secret" label="Секрет" />);
-
-    expect(container.querySelector("[role='button']")).toBeNull();
-    expect(container.textContent).toBe("Секрет");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.getAttribute("aria-label")).toBe("Плед, Свободно");
+    expect(container.textContent).not.toContain("Всем");
+    expect(container.textContent).not.toContain("Друзьям");
+    expect(container.textContent).not.toContain("Секрет");
   });
 
   it("v8: фото-плитка 4:5 с радиусом 16 и тенью карточки, текст под фото", async () => {

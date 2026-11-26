@@ -14,7 +14,7 @@ import { Text } from "./text";
  */
 const Card = styled(View, {
   name: "GLWishCard",
-  // The chip layer is positioned against the card (the web needs it spelled out).
+  // The menu layer is positioned against the card (the web needs it spelled out).
   position: "relative",
 });
 
@@ -60,10 +60,6 @@ export type WishCardProps = {
   tags?: ReactNode;
   /** The reservation line, «Подписи брони» in `EXPERIENCE.md`. */
   reservation?: string | null;
-  /** The visibility chip; drawn over the reserved footer as a sibling of the main zone. */
-  chip?: ReactNode;
-  /** The chip is a button of its own: its layer takes presses, the rest goes to the card. */
-  chipInteractive?: boolean;
   /** With `onPress` the whole card is a button; without it, plain list content. */
   onPress?: () => void;
   /**
@@ -83,9 +79,7 @@ export type WishCardProps = {
    * a reservation card (`DESIGN.md` → ReservationCard: «Купил», «Подарил»,
    * «Продлить до…», the visibility switch). Interactive content stays out of the
    * card button, so nothing is nested and Tab reaches the card first, the footer
-   * next. The reserved chip-height area is dropped when a footer is passed: the
-   * footer takes that place. A chip and a footer are not meant to meet — the chip
-   * layer is pinned to the bottom of the card.
+   * next.
    */
   footer?: ReactNode;
   /**
@@ -100,17 +94,17 @@ export type WishCardProps = {
 
 /**
  * `DESIGN.md` → WishCard (AD-12). Presentational: the app builds the status pill,
- * the chip and the texts from its data. The card is a list item; the press zone of
- * an owner card is the whole card (photo, body, the footer area reserved under it
- * and the gaps), and the chip is a later sibling drawn over the reserved footer,
- * never inside the button: nothing is nested and Tab reaches the card first, the
- * chip second.
+ * the tags and the texts from its data. The card is a list item; the press zone of
+ * an owner card is the whole card (photo, body and the gaps), and the ⋯ menu is a
+ * later sibling, never inside the button: nothing is nested and Tab reaches the
+ * card first.
  *
  * v8 layout: the 4:5 photo plate on top (placeholder until a wish has a photo),
  * then the title (two lines, ellipsis), the price, the status pill, the tags and the
  * reservation line — all below the photo on the page background, never as text on
- * the photo. There is no heart and no gifted-progress bar. A `footer` makes the
- * room of the reserved chip area an action block of the caller (`ReservationCard`).
+ * the photo. There is no heart and no gifted-progress bar. D-54: there is no
+ * visibility chip either — visibility changes only in the wish form. A `footer`
+ * makes an action block of the caller (`ReservationCard`).
  */
 export function WishCard({
   title,
@@ -119,8 +113,6 @@ export function WishCard({
   status,
   tags,
   reservation,
-  chip,
-  chipInteractive,
   onPress,
   pressLabel,
   pressRef,
@@ -171,10 +163,6 @@ export function WishCard({
           </Text>
         ) : null}
       </YStack>
-      {/* The footer area, reserved so the chip layer has room and the empty space
-          next to the chip belongs to the card button. A card with a footer puts
-          the footer there instead (`ReservationCard`). */}
-      {footer ? null : <View marginTop="$2" height="$chip-height" />}
     </>
   );
 
@@ -219,19 +207,6 @@ export function WishCard({
           >
             {menu}
           </View>
-        </View>
-      ) : null}
-      {chip ? (
-        <View
-          position="absolute"
-          left={0}
-          bottom={0}
-          zIndex="$base"
-          // `box-none`: presses outside an interactive chip reach the card button
-          // underneath; a chip without a button lets every press through.
-          pointerEvents={chipInteractive ? "box-none" : "none"}
-        >
-          {chip}
         </View>
       ) : null}
       {footer ? (

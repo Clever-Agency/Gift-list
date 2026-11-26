@@ -104,7 +104,7 @@ vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
-// The visibility chip draws its icon with `expo-symbols`; it is decorative.
+// The discard dialog draws its close cross with `expo-symbols`; it is decorative.
 vi.mock("expo-symbols", async () => {
   const React = await import("react");
   return {

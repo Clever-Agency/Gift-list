@@ -4,7 +4,7 @@ import { act, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
-import { controls, settle, typeInto } from "@/test/dom";
+import { controls, dialogElement, settle, typeInto } from "@/test/dom";
 import MyWishlistScreen from "../../app/(app)/(tabs)/index";
 import GiftDetailScreen from "../../app/(app)/gifts/[id]/index";
 import EditGiftScreen from "../../app/(app)/gifts/[id]/edit";
@@ -309,6 +309,20 @@ async function press(label: string) {
   await settle(10);
 }
 
+/** A press inside the open layer: the page's own «Изменить» stays behind it. */
+async function pressInDialog(label: string) {
+  const dialog = dialogElement();
+  expect(dialog, `слой для «${label}»`).toBeDefined();
+  const target = controls(dialog as HTMLElement).find((node) =>
+    (node.textContent ?? "").includes(label),
+  );
+  expect(target, `кнопка «${label}» в слое`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
 /** The wish card's main zone: a link whose accessible name is the content phrase. */
 async function pressCard(title: string) {
   const target = container.querySelector('[role="listitem"] [role="link"]');
@@ -453,7 +467,8 @@ describe("поток: сохранение из шага «Сохранить и
 
 /**
  * Story 2.2, edit flow across screens: the owner card opens the wish page
- * `/gifts/{id}` (CLE-129, T4.4), «Изменить» there opens `/gifts/[id]/edit` with
+ * `/gifts/{id}` (CLE-129, T4.4), «Изменить» there asks the neutral question first
+ * (T4.4a, D-49) and the question's «Изменить» opens `/gifts/[id]/edit` with
  * the id, the screen reads that wish and prefills the form, the changed field
  * travels back as `GiftUpdate`, and the list shows «Изменения сохранены.» from
  * `?toast=` over a freshly read list.
@@ -483,6 +498,12 @@ describe("поток: редактирование желания из спис�
     expect(gifts.fetchGift).toHaveBeenCalledWith("g1");
     expect(text()).toContain("Свитер");
     await press("Изменить");
+    await flush();
+
+    // D-49 (T4.4a): the neutral question comes before the form, and its own
+    // «Изменить» is the one that navigates.
+    expect(text()).toContain("Изменить желание?");
+    await pressInDialog("Изменить");
     await flush();
 
     expect(navigation.pathname()).toBe("/gifts/[id]/edit");

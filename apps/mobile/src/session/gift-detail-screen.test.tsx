@@ -746,7 +746,8 @@ describe("деталь желания: одно действие за раз", (
  * AD-15 (14) / D-63: the owner opens `/gifts/{id}` and reads the page from
  * `GET /api/v1/me/gifts/:id` only. There is no redirect to the form any more, the
  * guest route is never asked, and not one word about a reservation appears —
- * even if a broken payload carries a holder. «Изменить» leads to the edit screen.
+ * even if a broken payload carries a holder. «Изменить» asks the neutral question
+ * (T4.4a) and then leads to the edit screen.
  */
 describe("страница владельца: своё желание", () => {
   function ownerCard(overrides: Partial<GiftCard> = {}): GiftCard {
@@ -794,18 +795,103 @@ describe("страница владельца: своё желание", () => {
     expect(navigation.replace).not.toHaveBeenCalled();
   });
 
-  it("«Изменить» открывает форму желания с его id", async () => {
+  /**
+   * D-49 / T4.4a: «Изменить» of an open non-secret wish asks the neutral question
+   * first — the same `ConfirmDialog` the details layer used to show — and only its
+   * «Изменить» opens the form (`EXPERIENCE.md` → «Правка желания»).
+   */
+  it("«Изменить» сначала спрашивает, и «Изменить» в вопросе открывает форму с его id", async () => {
     respondOwner();
     await mount();
 
     await click(control("Изменить"));
     await settle();
 
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(dialogElement()?.textContent).toContain("Изменить желание?");
+    expect(dialogElement()?.textContent).toContain(
+      "Кто-то мог уже забронировать или купить этот подарок. Если вы измените желание, даритель получит уведомление.",
+    );
+
+    await click(dialogControl("Изменить"));
+    await settle();
+
     expect(navigation.push).toHaveBeenCalledWith({
       pathname: "/gifts/[id]/edit",
       params: { id: "g1" },
     });
+    expect(dialogElement()).toBeNull();
     expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("«Отмена» вопроса оставляет на странице, форма не открывается", async () => {
+    respondOwner();
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+    await click(dialogControl("Отмена"));
+    await settle();
+
+    expect(dialogElement()).toBeNull();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(text()).toContain("Наушники");
+    expect(control("Изменить")).toBeDefined();
+  });
+
+  /**
+   * AD-15 (14): the page is built from the owner's card, so the question is the same
+   * for a booked wish and for an open one — the broken payload below carries a holder
+   * that never reaches a single word of the layer.
+   */
+  it("вопрос одинаков для подложенного забронированного желания и без брони", async () => {
+    respondOwner();
+    await mount();
+    await click(control("Изменить"));
+    await settle();
+    const openQuestion = dialogElement()?.textContent ?? "";
+    await click(dialogControl("Отмена"));
+    await settle();
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    respondOwner(
+      ownerCard({
+        status: "RESERVED",
+        reservedBy: { id: "u3", nick: "daria", displayName: "Дарья" },
+        reservation: {
+          dueAt: DUE_ON,
+          phase: "ACTIVE",
+          bought: true,
+          holderVisibleToOwner: true,
+          holderVisibleToOthers: true,
+        },
+      }),
+    );
+    await mount();
+    await click(control("Изменить"));
+    await settle();
+
+    expect(dialogElement()?.textContent).toBe(openQuestion);
+    expect(openQuestion).toContain("Изменить желание?");
+    expect(openQuestion).not.toContain("Дарья");
+    expect(openQuestion).not.toContain("Берёт");
+    expect(openQuestion).not.toContain("Куплено");
+  });
+
+  /** D-49: a secret wish cannot have been reserved, so it goes straight to the form. */
+  it("у секретного желания вопроса нет — сразу форма", async () => {
+    respondOwner(ownerCard({ visibility: "SECRET" }));
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+
+    expect(dialogElement()).toBeNull();
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
   });
 
   /**

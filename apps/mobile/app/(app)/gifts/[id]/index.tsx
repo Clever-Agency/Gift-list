@@ -28,10 +28,12 @@ import {
 } from "@/api/reservations";
 import { fetchViewerGift, releaseMyReservation, reserveGift } from "@/api/viewer-gift";
 import { getBrandName } from "@/config/env";
+import { needsSurpriseWarning } from "@/domain/surprise-warning";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { EmptyState } from "@/ui/empty-state";
+import { restoreFocus, type FocusTarget } from "@/ui/focus";
 import { GiftDetail } from "@/ui/gift-detail";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
@@ -42,6 +44,7 @@ import {
   type ReservationVisibilityValues,
 } from "@/ui/reservation-visibility";
 import { ReserveConfirm } from "@/ui/reserve-confirm";
+import { SurpriseWarningDialog } from "@/ui/surprise-warning";
 import { ToastHost } from "@/ui/toast";
 import { loadOwnerDetail } from "@/ui/wish-detail-load";
 
@@ -85,6 +88,14 @@ export default function GiftDetailScreen() {
   const [dateError, setDateError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const reserveInFlight = useRef(false);
+  // D-49 (CLE-124): «Изменить» of an open non-secret wish asks the neutral question
+  // first (`EXPERIENCE.md` → Interaction Primitives, «Правка желания»). The question
+  // reads only the owner's own card — no reservation field ever reaches the page
+  // (AD-15 (14)), so it is shown the same with a booking and without one.
+  const [editWarningOpen, setEditWarningOpen] = useState(false);
+  const editButtonRef = useRef<FocusTarget>(null);
+  // A confirmed question leaves for the form, so there is no button to return to.
+  const editAccepted = useRef(false);
   // Story 5.2: the holder's own release — the confirm, its request in flight, and
   // the same one-at-a-time guard the reserve uses.
   const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false);
@@ -415,6 +426,43 @@ export default function GiftDetailScreen() {
     reportActionFailure(result);
   }
 
+  /**
+   * «Изменить» (T4.4a): an open non-secret wish gets the neutral question first, any
+   * other wish goes straight to the form (`needsSurpriseWarning` reads only the status,
+   * the visibility and the archive — never a reservation).
+   */
+  function startEdit() {
+    if (!current) return;
+    if (needsSurpriseWarning(current)) {
+      editAccepted.current = false;
+      setEditWarningOpen(true);
+      return;
+    }
+    openEditForm();
+  }
+
+  /** The accepted «Изменить»: the question closes and the existing form route opens. */
+  function openEditForm() {
+    if (!id) return;
+    editAccepted.current = true;
+    setEditWarningOpen(false);
+    router.push({ pathname: "/gifts/[id]/edit", params: { id } });
+  }
+
+  /** «Отмена» of the neutral question: stay on the page, the form never opened. */
+  function cancelEditWarning() {
+    setEditWarningOpen(false);
+  }
+
+  /** The question has left the tree: «Изменить» gets focus back unless the form opened. */
+  function restoreEditFocus() {
+    if (editAccepted.current) {
+      editAccepted.current = false;
+      return;
+    }
+    restoreFocus(editButtonRef.current);
+  }
+
   return (
     <Screen>
       <SafeArea>
@@ -449,11 +497,10 @@ export default function GiftDetailScreen() {
                   actions={
                     viewer === "owner" && current.status !== "CLOSED" ? (
                       <Button
+                        ref={editButtonRef as never}
                         label={tGift("detail.editShort")}
                         variant="secondary"
-                        onPress={function openEdit() {
-                          router.push({ pathname: "/gifts/[id]/edit", params: { id } });
-                        }}
+                        onPress={startEdit}
                         testID="gift-edit"
                       />
                     ) : showReserveCta ? (
@@ -611,6 +658,19 @@ export default function GiftDetailScreen() {
             onConfirm={function confirmExtend(dueOn) {
               void submitExtend(dueOn);
             }}
+          />
+        ) : null}
+        {/* D-49: the neutral question of «Изменить» — the same `ConfirmDialog` as on
+            the form's delete and visibility narrowing, the viewer gate is AD-15's
+            second check (the page itself is built from the owner's card only). */}
+        {current && viewer === "owner" ? (
+          <SurpriseWarningDialog
+            visible={editWarningOpen}
+            kind="edit"
+            title={current.title}
+            onConfirm={openEditForm}
+            onCancel={cancelEditWarning}
+            onClosed={restoreEditFocus}
           />
         ) : null}
         {toast ? (

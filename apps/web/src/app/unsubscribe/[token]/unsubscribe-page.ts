@@ -7,7 +7,7 @@ import { createTranslator } from "next-intl";
 import { getMessages, type SupportedLocale } from "@gift-list/contracts";
 import { applyUnsubscribe } from "@/actions/unsubscribe";
 import { requestLocale } from "@/lib/request-locale";
-import type { UnsubscribeType } from "@/lib/unsubscribe-token";
+import { verifyUnsubscribeToken, type UnsubscribeType } from "@/lib/unsubscribe-token";
 
 /**
  * CLE-137 (Story 7.2, FR-36): what `/unsubscribe/{token}` may show. One closed
@@ -22,23 +22,26 @@ export type UnsubscribeView =
 export type UnsubscribePage = { locale: SupportedLocale; view: UnsubscribeView };
 
 /**
- * Story 7.2: opening the letter link turns the switch of its own type off; the
- * «Вернуть» form comes back with `restored` and turns the same switch on again.
- * The page is the write: a mail client or a person may only ever reach these two
- * idempotent outcomes (Design: `/unsubscribe/{token}`, FR-36).
+ * Story 7.2: opening the letter link turns the switch of its own type off.
+ * `restored` is the return of the «Вернуть» form, and the POST has already
+ * turned the switch back on: here the page only verifies the token and picks
+ * the sentence, so a GET with `?restored=1` writes nothing (Design:
+ * `/unsubscribe/{token}`, FR-36).
  */
 export async function loadUnsubscribePage(
   token: string,
   restored: boolean,
 ): Promise<UnsubscribePage> {
   const locale = requestLocale((await headers()).get("accept-language"));
-  const result = await applyUnsubscribe(token, restored);
-  if (!result.ok) return { locale, view: { kind: "invalid" } };
 
-  return {
-    locale,
-    view: restored ? { kind: "restored" } : { kind: "done", type: result.type },
-  };
+  if (restored) {
+    if (verifyUnsubscribeToken(token) === null) return { locale, view: { kind: "invalid" } };
+    return { locale, view: { kind: "restored" } };
+  }
+
+  const result = await applyUnsubscribe(token, false);
+  if (!result.ok) return { locale, view: { kind: "invalid" } };
+  return { locale, view: { kind: "done", type: result.type } };
 }
 
 /** One answer per request, so the page and its metadata never disagree. */

@@ -2,19 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { headers, applyUnsubscribe } = vi.hoisted(() => ({
+const { headers, applyUnsubscribe, verifyUnsubscribeToken } = vi.hoisted(() => ({
   headers: vi.fn(),
   applyUnsubscribe: vi.fn(),
+  verifyUnsubscribeToken: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ headers }));
 vi.mock("@/actions/unsubscribe", () => ({ applyUnsubscribe }));
+vi.mock("@/lib/unsubscribe-token", () => ({ verifyUnsubscribeToken }));
 
 import { buildUnsubscribeMetadata, loadUnsubscribePage } from "./unsubscribe-page";
 
 beforeEach(() => {
   headers.mockReset();
   applyUnsubscribe.mockReset();
+  verifyUnsubscribeToken.mockReset();
   headers.mockResolvedValue(new Headers({ "accept-language": "ru-RU,ru;q=0.9" }));
 });
 
@@ -27,16 +30,28 @@ describe("loadUnsubscribePage", () => {
       view: { kind: "done", type: "friendDates" },
     });
     expect(applyUnsubscribe).toHaveBeenCalledWith("token", false);
+    expect(verifyUnsubscribeToken).not.toHaveBeenCalled();
   });
 
-  it("turns the same switch back on for the «Вернуть» form", async () => {
-    applyUnsubscribe.mockResolvedValue({ ok: true, type: "ownList", enabled: true });
+  it("only confirms a genuine token on the restored GET and writes nothing", async () => {
+    verifyUnsubscribeToken.mockReturnValue({ userId: "user-1", type: "ownList" });
 
     await expect(loadUnsubscribePage("token", true)).resolves.toEqual({
       locale: "ru",
       view: { kind: "restored" },
     });
-    expect(applyUnsubscribe).toHaveBeenCalledWith("token", true);
+    expect(verifyUnsubscribeToken).toHaveBeenCalledWith("token");
+    expect(applyUnsubscribe).not.toHaveBeenCalled();
+  });
+
+  it("answers a forged restored token neutrally and still writes nothing", async () => {
+    verifyUnsubscribeToken.mockReturnValue(null);
+
+    await expect(loadUnsubscribePage("forged", true)).resolves.toEqual({
+      locale: "ru",
+      view: { kind: "invalid" },
+    });
+    expect(applyUnsubscribe).not.toHaveBeenCalled();
   });
 
   it("answers a bad token and a deleted account with the one neutral view", async () => {

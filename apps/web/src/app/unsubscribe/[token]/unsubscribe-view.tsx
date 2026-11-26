@@ -27,9 +27,9 @@ function messageFor(
  * sentence of the current state; the only action is «Вернуть», a real form POST
  * (a GET must stay safe: a link preview would otherwise re-enable a switch).
  *
- * After «Вернуть» the same page is rendered from the `restored` query, so the
- * fresh document starts with the `role="status"` heading — the reading order
- * moves to it without client JavaScript.
+ * After «Вернуть» the same page is rendered from the `restored` query (its POST
+ * did the write), so the fresh document starts with the `role="status"`
+ * heading — the reading order moves to it without client JavaScript.
  */
 export function UnsubscribeView({ view, locale, token }: UnsubscribeViewProps) {
   const copy = getMessages(locale).web.unsubscribe;

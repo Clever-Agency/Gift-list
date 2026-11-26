@@ -62,7 +62,7 @@ describe("app/unsubscribe/[token]/page.tsx", () => {
     expect(html).toContain('action="/unsubscribe/tok-1/restore"');
   });
 
-  it("asks the loader to turn the switch back on when the form redirects", async () => {
+  it("reads the restored state from the form redirect and leaves the write to the POST", async () => {
     await render({ kind: "restored" }, { restored: "1" });
 
     expect(getUnsubscribePage).toHaveBeenCalledWith("tok-1", true);
@@ -87,6 +87,17 @@ describe("app/unsubscribe/[token]/page.tsx", () => {
     expect(html).not.toContain("Вернуть");
     expect(html).not.toContain("<form");
     expect(html).not.toContain("Войти");
+  });
+
+  it("gives a forged restored token the neutral sentence without any action", async () => {
+    const html = await render({ kind: "invalid" }, { restored: "1" });
+
+    expect(html).toContain(
+      "Ссылка недействительна. Управлять письмами можно в настройках приложения.",
+    );
+    expect(html).not.toContain("Напоминания снова включены");
+    expect(html).not.toContain("Вернуть");
+    expect(html).not.toContain("<form");
   });
 
   it("asks the loader to turn the switch off on a plain GET", async () => {

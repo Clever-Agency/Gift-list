@@ -9,7 +9,8 @@ import { UnsubscribeView } from "./unsubscribe-view";
  * Story 7.2 (FR-36) / AD-26: the server page of an unsubscribe link. It lives
  * without a session and names no account: a mail client and a person both reach
  * the same answer. Opening the link turns the switch of its type off; the
- * `restored` query is the return of the «Вернуть» form and turns it back on.
+ * `restored` query is the return of the «Вернуть» form, whose POST has already
+ * turned it back on, so this GET only confirms and writes nothing.
  *
  * AD-16: this page depends on `Accept-Language` and writes, so the server never
  * caches it (`next.config.ts` keeps `/unsubscribe` private, `no-store`).

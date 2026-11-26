@@ -1270,7 +1270,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
     expect(text()).not.toContain("Нет доступа");
   });
 
-  it("сеть: chip и желания откатываются, профиль не перечитывается, toast «Нет сети»", async () => {
+  it("при ошибке сети восстанавливаются дружба, желания и «Обо мне» без перечитывания профиля", async function () {
     let resolveRemove: (value: unknown) => void = () => {};
     const removal = new Promise((resolve) => {
       resolveRemove = resolve;
@@ -1279,18 +1279,24 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/friend") return removal;
       return Promise.resolve(
-        friendAnswer(
+        giftsAnswer(
           [gift(), gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" })],
+          owner,
           "FRIENDS",
+          undefined,
+          undefined,
+          { birthDay: null, birthMonth: null, gender: null, country: null, about: "Люблю горы" },
         ),
       );
     });
     await mount();
 
+    expect(text()).toContain("Люблю горы");
     await openRemoveConfirm();
     await pressInDialog("Удалить");
 
     expect(text()).not.toContain("Свитер");
+    expect(text()).not.toContain("Люблю горы");
 
     await act(async () => resolveRemove({ ok: false, network: true }));
     await settle(10);
@@ -1298,6 +1304,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
     expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
     expect(text()).toContain("Друзья");
     expect(text()).toContain("Свитер");
+    expect(text()).toContain("Люблю горы");
     expect(button("Удалить из друзей")).toBeDefined();
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(profileReads()).toBe(1);

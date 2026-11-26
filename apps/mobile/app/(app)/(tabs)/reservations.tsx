@@ -12,7 +12,7 @@ import {
 } from "@/api/reservations";
 import { releaseMyReservation } from "@/api/viewer-gift";
 import { useAuth } from "@/session/auth-context";
-import { mutationErrorMessage } from "@/session/form-issue";
+import { mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { GiftCardMenu, type GiftCardMenuAction } from "@/ui/gift-card-menu";
 import { ReservationExtendDialog } from "@/ui/reservation-extend-dialog";
 import { ReservationReleaseConfirm } from "@/ui/reservation-release-confirm";
@@ -150,7 +150,7 @@ function ReservationsContent({
     const signedOut = await auth.signOut();
     if (!signedOut.ok) {
       onSessionExpired(false);
-      setToast({ message: app("form.network"), tone: "error" });
+      setToast({ message: signOutErrorMessage(signedOut, app("form.network"), common), tone: "error" });
     }
     return signedOut.ok;
   }

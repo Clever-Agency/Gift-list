@@ -7,7 +7,7 @@ import { listBlocked, unblockUser } from "@/api/block";
 import { updateHideFromSearch } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
-import { formIssue, mutationErrorMessage } from "@/session/form-issue";
+import { formIssue, mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { NotificationSettings } from "@/ui/notification-settings";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
@@ -99,7 +99,7 @@ function SettingsForm({
     const signedOut = await auth.signOut();
     if (!signedOut.ok) {
       onSessionExpired(false);
-      setToast({ message: t("form.network"), tone: "error" });
+      setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error" });
     }
   }
 
@@ -133,7 +133,7 @@ function SettingsForm({
 
     if (result.ok) {
       setHideFromSearch(result.data.hideFromSearch);
-      auth.setUser(result.data);
+      auth.updateUser(result.data);
       setToast({ message: t("settings.hideFromSearchSaved"), tone: "info" });
       return;
     }

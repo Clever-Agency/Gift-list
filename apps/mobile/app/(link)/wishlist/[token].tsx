@@ -18,6 +18,7 @@ import { useTranslations } from "use-intl";
 import { fetchPublicWishlist, type PublicWishlistOwner } from "@/api/public-wishlist";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
+import { signOutErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { CardGridList } from "@/ui/card-grid-list";
 import { ClosedSection } from "@/ui/closed-section";
@@ -38,9 +39,7 @@ import { publicWishlistRoute } from "@/wishlist/public-token";
  */
 type ScreenState =
   | { status: "loading" }
-  // The token is kept with the answer: a reused route with another link must not
-  // show the previous owner's list while the new read is in flight.
-  | { status: "ready"; token: string; gifts: GiftCard[]; owner: PublicWishlistOwner }
+  | { status: "ready"; gifts: GiftCard[]; owner: PublicWishlistOwner }
   | { status: "missing" }
   | { status: "error"; kind: "network" | "generic" };
 
@@ -54,13 +53,31 @@ type ToastState = { message: string; tone: "info" | "error" };
  * Next page renders, and only the server decides which wishes a friend may see.
  */
 export default function PublicWishlistScreen() {
+  const auth = useAuth();
+  const params = useLocalSearchParams<{ token?: string; reserve?: string; title?: string }>();
+  const route = publicWishlistRoute(paramValue(params.token));
+  if (!route) return <NotFoundScreen />;
+
+  // Карточки, уведомления и переход к брони принадлежат зрителю одной ссылки.
+  const viewer = auth.state.status === "ready" ? `user:${auth.state.user.id}` : auth.state.status;
+  return (
+    <WishlistContent key={`${viewer}/${route.token}`} token={route.token} auth={auth} params={params} />
+  );
+}
+
+PublicWishlistScreen.displayName = "PublicWishlistScreen";
+
+function WishlistContent({ token, auth, params }: {
+  token: string;
+  auth: ReturnType<typeof useAuth>;
+  params: { reserve?: string; title?: string };
+}) {
   const t = useTranslations("app");
   const wishlist = useTranslations("app.wishlist");
   const myWishlist = useTranslations("app.myWishlist");
   const closedCopy = useTranslations("app.gift.closed");
   const common = useTranslations("common");
   const brand = getBrandName();
-  const auth = useAuth();
   // W12.21: the page gutter is the Tamagui media clause
   // `$page-gutter medium:$page-gutter-lg`, so the browser lays it out with a CSS
   // media query and the phone reads the same theme key.
@@ -72,12 +89,7 @@ export default function PublicWishlistScreen() {
   // Destructured: React's `refs` lint rule treats an object that holds a ref callback
   // as a ref, and a member read of it during render is an error.
   const { cardWidth, attachContainer } = useCardGrid();
-  const params = useLocalSearchParams<{ token?: string; reserve?: string; title?: string }>();
-  const route = publicWishlistRoute(paramValue(params.token));
-  const token = route?.token ?? null;
-  const [state, setState] = useState<ScreenState>(
-    token === null ? { status: "missing" } : { status: "loading" },
-  );
+  const [state, setState] = useState<ScreenState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   // Story 5.3: «Уже подарено» is closed until the visitor opens it.
@@ -85,43 +97,24 @@ export default function PublicWishlistScreen() {
 
   // A guest is a first-class visitor here: the server's link read already opens
   // only PUBLIC wishes, so the screen never sends an anonymous visitor to login.
-  // A failed session read is treated the same way as a guest and the list is read
-  // anonymously; the list read reports its own network failure with «Повторить».
+  // Если /me недоступен, публичная ссылка всё равно запрашивает список.
+  // Сервер определяет выдачу по учётным данным фактического запроса.
   const authPending = auth.state.status === "loading";
 
   useEffect(function loadWishlist() {
-    if (authPending || token === null) return;
-    const currentToken = token;
+    if (authPending) return;
     let cancelled = false;
 
     async function requestWishlist() {
-      let result = await fetchPublicWishlist(currentToken);
+      const answer = await fetchPublicWishlist(token);
       if (cancelled) return;
 
-      // A stale token must not be reported as a network failure: the link route
-      // needs no session at all. Drop the session and repeat the read once as a
-      // guest; only the retry's own answer decides what the visitor sees.
-      if (!result.ok && "code" in result && result.code === "UNAUTHENTICATED") {
-        const signedOut = await auth.signOut();
-        if (cancelled) return;
-        if (!signedOut.ok) {
-          // Signing out failed on the network, so the network text is exact here.
-          setState({ status: "error", kind: "network" });
-          setToast({ message: t("form.network"), tone: "error" });
-          return;
-        }
-        result = await fetchPublicWishlist(currentToken);
-        if (cancelled) return;
-      }
-
-      const answer = result;
       if (answer.ok) {
         setState(
           answer.access === "not_found"
             ? { status: "missing" }
             : {
                 status: "ready",
-                token: currentToken,
                 gifts: answer.gifts,
                 owner: answer.owner,
               },
@@ -129,10 +122,17 @@ export default function PublicWishlistScreen() {
         return;
       }
       if ("code" in answer && answer.code === "UNAUTHENTICATED") {
-        // Even the guest retry was rejected: this is a broken answer, not a
-        // network problem and not a stale session any more.
-        setState({ status: "error", kind: "generic" });
-        setToast({ message: common("errors.generic"), tone: "error" });
+        if (auth.state.status === "anonymous") {
+          setState({ status: "error", kind: "generic" });
+          setToast({ message: common("errors.generic"), tone: "error" });
+          return;
+        }
+        // При успешном выходе гостевой экземпляр экрана сам запросит список.
+        const signedOut = await auth.signOut();
+        if (!cancelled && !signedOut.ok) {
+          setState({ status: "error", kind: "network" in signedOut ? "network" : "generic" });
+          setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error" });
+        }
         return;
       }
       const network = "network" in answer;
@@ -175,7 +175,7 @@ export default function PublicWishlistScreen() {
       return;
     }
     if (auth.state.status !== "ready") return;
-    if (state.status !== "ready" || state.token !== token) return;
+    if (state.status !== "ready") return;
     handledReserve.current = handleKey;
     const gift = state.gifts.find(function matchGift(row) {
       return row.id === reserveId;
@@ -199,18 +199,9 @@ export default function PublicWishlistScreen() {
     }
   }, [authPending, auth.state.status, params.reserve, params.title, state, token]);
 
-  if (token === null) {
-    return <NotFoundScreen />;
-  }
-
-  // A reused route with a new token reads as loading until its own answer lands.
-  const view: ScreenState =
-    authPending || (state.status === "ready" && state.token !== token)
-      ? { status: "loading" }
-      : state;
   // Story 5.3: the one list is split on the client; the closed wishes of the
   // visitor go into «Уже подарено» without any action.
-  const allGifts = view.status === "ready" ? view.gifts : [];
+  const allGifts = state.status === "ready" ? state.gifts : [];
   const activeGifts = allGifts.filter(function notClosed(gift) {
     return gift.status !== "CLOSED";
   });
@@ -238,7 +229,6 @@ export default function PublicWishlistScreen() {
   const reservedWhileEntering =
     auth.state.status === "ready" &&
     state.status === "ready" &&
-    state.token === token &&
     reserveIdNow !== undefined &&
     state.gifts.some(function taken(row) {
       return row.id === reserveIdNow && row.status === "RESERVED";
@@ -270,32 +260,32 @@ export default function PublicWishlistScreen() {
                 paddingBottom="$section-gap"
                 gap="$grid-gap"
               >
-                {view.status === "loading" ? (
+                {state.status === "loading" ? (
                   <LoadingCards
                     testID="wishlist-loading"
                     label={myWishlist("loading")}
                     width={cardWidth}
                   />
-                ) : view.status === "error" ? (
+                ) : state.status === "error" ? (
                   <RetryView
                     text={
-                      view.kind === "network"
+                      state.kind === "network"
                         ? myWishlist("loadError")
                         : myWishlist("loadErrorGeneric")
                     }
                     label={myWishlist("retry")}
                     onPress={retry}
                   />
-                ) : view.status === "missing" ? (
+                ) : state.status === "missing" ? (
                   <WishlistUnavailable />
                 ) : (
                   <>
                     <YStack testID="wishlist-owner" gap="$1">
                       <Heading level={1} kind="display-sm">
-                        {view.owner.displayName}
+                        {state.owner.displayName}
                       </Heading>
                       <Text kind="caption" tone="muted">
-                        {t("form.nickPreview", { nick: view.owner.nick })}
+                        {t("form.nickPreview", { nick: state.owner.nick })}
                       </Text>
                     </YStack>
                     {allGifts.length === 0 ? (
@@ -360,7 +350,7 @@ export default function PublicWishlistScreen() {
   );
 }
 
-PublicWishlistScreen.displayName = "PublicWishlistScreen";
+WishlistContent.displayName = "WishlistContent";
 
 /**
  * UI6: a well-formed link whose list cannot be read. An unknown token, a token

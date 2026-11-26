@@ -14,7 +14,7 @@ import { deleteGift, fetchGift, updateGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { needsSurpriseWarning, needsVisibilityWarning } from "@/domain/surprise-warning";
 import { useAuth } from "@/session/auth-context";
-import { mutationErrorMessage } from "@/session/form-issue";
+import { mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { useDiscardGuard } from "@/session/use-discard-guard";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
@@ -170,8 +170,8 @@ export default function EditGiftScreen() {
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
         if (!signedOut.ok && !cancelled) {
           setSessionExpired(false);
-          setState({ status: "error", kind: "network" });
-          setToast({ message: t("form.network"), tone: "error" });
+          setState({ status: "error", kind: "network" in signedOut ? "network" : "generic" });
+          setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error" });
         }
         return;
       }
@@ -282,7 +282,7 @@ export default function EditGiftScreen() {
         // No hand-over happened: guard the still mounted form again.
         guard.revokeLeave();
         setSessionExpired(false);
-        setToast({ message: t("form.network"), tone: "error" });
+        setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error" });
       }
       return;
     }
@@ -430,7 +430,7 @@ export default function EditGiftScreen() {
       if (!signedOut.ok) {
         guard.revokeLeave();
         setSessionExpired(false);
-        setToast({ message: t("form.network"), tone: "error" });
+        setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error" });
       }
       return;
     }

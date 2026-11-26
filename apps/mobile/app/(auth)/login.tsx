@@ -38,9 +38,15 @@ export default function LoginScreen() {
   const emailRef = useRef<TextInputInstance | null>(null);
   const passwordRef = useRef<TextInputInstance | null>(null);
   // The my-wishlist screen signs out on an expired session and hands the notice over
-  // in `?reason=`, so it is still on screen after that screen unmounts.
+  // in `?reason=`, so it is still on screen after that screen unmounts. «Настройки»
+  // hands over the same way once the account is deleted (Story 6.3).
+  const reason = paramValue(params.reason);
   const [toast, setToast] = useState<string | null>(
-    paramValue(params.reason) === "session_expired" ? t("session.expired") : null,
+    reason === "session_expired"
+      ? t("session.expired")
+      : reason === "account_deleted"
+        ? t("session.accountDeleted")
+        : null,
   );
 
   function change(field: string, setValue: (value: string) => void) {

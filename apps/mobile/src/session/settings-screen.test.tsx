@@ -5,7 +5,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
-import { controls } from "@/test/dom";
+import { controls, dialogElement, settle } from "@/test/dom";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { pageGutter } from "@/ui/card-grid";
 import SettingsScreen from "../../app/(app)/settings";
@@ -22,7 +22,10 @@ import SettingsScreen from "../../app/(app)/settings";
 const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
-const me = vi.hoisted(() => ({ updateHideFromSearch: vi.fn() }));
+const me = vi.hoisted(() => ({
+  updateHideFromSearch: vi.fn(),
+  deleteAccount: vi.fn(),
+}));
 const blocks = vi.hoisted(() => ({ listBlocked: vi.fn(), unblockUser: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
@@ -37,6 +40,16 @@ vi.mock("@/api/me", () => me);
 vi.mock("@/api/block", () => blocks);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+// The confirm dialog draws its close cross with `expo-symbols`, which loads a
+// symbol font at runtime; the icon is decorative here.
+vi.mock("expo-symbols", async () => {
+  const React = await import("react");
+  return {
+    SymbolView: function SymbolView() {
+      return React.createElement("span", { "aria-hidden": true });
+    },
+  };
+});
 vi.mock("react-native", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-native")>();
   function useWindowDimensions() {
@@ -159,6 +172,22 @@ async function pressLabel(label: string) {
   });
 }
 
+/**
+ * The dialog is portalled to `document.body`, outside the test container, and
+ * exact labels keep «Удалить» apart from the «Удалить аккаунт» row.
+ */
+function pageButton(label: string): HTMLElement | undefined {
+  return controls(document).find((node) => (node.textContent ?? "").trim() === label);
+}
+
+async function pressPage(label: string) {
+  const target = pageButton(label);
+  expect(target, `кнопка «${label}»`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
 /** The name and the @nick of a row, as the reader announces them together. */
 function blockedRow(nick: string): HTMLElement | null {
   return container.querySelector<HTMLElement>(`[data-testid="blocked-row-${nick}"]`);
@@ -264,6 +293,163 @@ describe("настройки: только настройки", () => {
     // The real settings stay: the search switch and the blocked section.
     expect(hideSwitch()).not.toBeNull();
     expect(text()).toContain("Заблокированные");
+  });
+});
+
+describe("настройки: аккаунт (Story 6.3, D-59)", () => {
+  it("внизу «Аккаунт»: «Выйти» и destructive «Удалить аккаунт»", async () => {
+    signedIn();
+    await mount();
+
+    const section = container.querySelector<HTMLElement>('[data-testid="account-section"]');
+    expect(section).not.toBeNull();
+    expect(section?.textContent).toContain("Аккаунт");
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="settings-sign-out"]')?.textContent,
+    ).toBe("Выйти");
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="settings-delete-account"]')
+        ?.textContent,
+    ).toBe("Удалить аккаунт");
+  });
+
+  it("«Выйти» завершает сессию и уводит на вход с возвратом в настройки", async () => {
+    signedIn();
+    await mount();
+
+    await press("Выйти");
+
+    expect(api.apiRequest).toHaveBeenLastCalledWith("/api/v1/session", { method: "DELETE" });
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(probe.auth?.state).toEqual({ status: "anonymous" });
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/settings" },
+    });
+  });
+
+  it("«Удалить аккаунт» спрашивает подтверждение с именем и предупреждает о потере", async () => {
+    signedIn();
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+
+    const dialog = dialogElement();
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("Удалить аккаунт «Аня»?");
+    expect(dialog?.textContent).toContain(
+      "Вишлист, желания, друзья, брони и подписки удалятся навсегда. Отменить это нельзя.",
+    );
+    expect(pageButton("Отмена")).toBeDefined();
+    expect(pageButton("Удалить")).toBeDefined();
+    expect(me.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it("«Отмена» закрывает подтверждение и ничего не удаляет", async () => {
+    signedIn();
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Отмена");
+    await settle(300);
+
+    expect(me.deleteAccount).not.toHaveBeenCalled();
+    expect(dialogElement()).toBeNull();
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+  });
+
+  it("успех: один запрос, локальная сессия погашена, вход с тостом «Аккаунт удалён»", async () => {
+    signedIn();
+    me.deleteAccount.mockResolvedValue({ ok: true });
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+    await settle();
+
+    expect(me.deleteAccount).toHaveBeenCalledTimes(1);
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(probe.auth?.state).toEqual({ status: "anonymous" });
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { reason: "account_deleted" },
+    });
+  });
+
+  it("во время запроса «Удалить» занята и второй тап не шлёт второй запрос", async () => {
+    signedIn();
+    me.deleteAccount.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+
+    expect(me.deleteAccount).toHaveBeenCalledTimes(1);
+    expect(dialogElement()?.textContent).toContain("Удаляем…");
+    expect(pageButton("Удаляем…")?.getAttribute("aria-disabled")).toBe("true");
+
+    await pressPage("Удаляем…");
+    expect(me.deleteAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("сеть: тост, аккаунт и сессия на месте — можно повторить", async () => {
+    signedIn();
+    me.deleteAccount.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+    await settle();
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("409 (удаление идёт) — понятный тост ошибки, ничего не потеряно", async () => {
+    signedIn();
+    me.deleteAccount.mockResolvedValue({
+      ok: false,
+      code: "CONFLICT",
+      message: "Account deletion is in progress, retry",
+    });
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+    await settle();
+
+    expect(text()).toContain("Не получилось удалить аккаунт. Попробуйте ещё раз.");
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("401 при удалении: сессия закончилась, вход с возвратом в настройки", async () => {
+    signedIn();
+    me.deleteAccount.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+    await settle();
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/settings", reason: "session_expired" },
+    });
   });
 });
 

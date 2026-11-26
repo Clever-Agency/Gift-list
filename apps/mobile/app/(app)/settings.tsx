@@ -4,10 +4,11 @@ import { router, Stack } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import { listBlocked, unblockUser } from "@/api/block";
-import { updateHideFromSearch } from "@/api/me";
+import { deleteAccount, updateHideFromSearch } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
 import { formIssue, mutationErrorMessage } from "@/session/form-issue";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { NotificationSettings } from "@/ui/notification-settings";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
@@ -16,6 +17,13 @@ import { ToastHost } from "@/ui/toast";
 
 /** One toast at a time; the saved notice is neutral, a failed save is destructive. */
 type ToastState = { message: string; tone: "info" | "error" };
+
+/**
+ * Why the screen is about to leave for login. The settings guard owns the move;
+ * login reads the reason from `?reason=` and shows its own toast. `account_deleted`
+ * is the one reason without a return path: there is no account to come back to.
+ */
+type LeaveReason = "session_expired" | "account_deleted";
 
 /**
  * «Настройки» (CLE-129, D-59): only the real settings — search visibility,
@@ -28,22 +36,27 @@ type ToastState = { message: string; tone: "info" | "error" };
  */
 export default function SettingsScreen() {
   const auth = useAuth();
-  const [sessionExpired, setSessionExpired] = useState(false);
+  const [leaveReason, setLeaveReason] = useState<LeaveReason | null>(null);
 
   useEffect(function redirectAnonymous() {
     if (auth.state.status === "anonymous") {
-      // The login screen owns the «Сессия закончилась» toast: it outlives this screen.
+      // The login screen owns the notice: it outlives this screen.
+      if (leaveReason === "account_deleted") {
+        router.replace({ pathname: "/login", params: { reason: leaveReason } });
+        return;
+      }
       router.replace({
         pathname: "/login",
-        params: sessionExpired
-          ? { next: "/settings", reason: "session_expired" }
-          : { next: "/settings" },
+        params:
+          leaveReason === "session_expired"
+            ? { next: "/settings", reason: leaveReason }
+            : { next: "/settings" },
       });
     }
-  }, [auth.state.status, sessionExpired]);
+  }, [auth.state.status, leaveReason]);
 
-  function handleSessionExpired(expired: boolean) {
-    setSessionExpired(expired);
+  function handleLeave(reason: LeaveReason | null) {
+    setLeaveReason(reason);
   }
 
   if (auth.state.status === "error") {
@@ -52,7 +65,7 @@ export default function SettingsScreen() {
 
   if (auth.state.status !== "ready") return <SessionLoadingScreen size="form" />;
 
-  return <SettingsForm user={auth.state.user} onSessionExpired={handleSessionExpired} />;
+  return <SettingsForm user={auth.state.user} onLeave={handleLeave} />;
 }
 
 SettingsScreen.displayName = "SettingsScreen";
@@ -65,10 +78,10 @@ SettingsScreen.displayName = "SettingsScreen";
  */
 function SettingsForm({
   user,
-  onSessionExpired,
+  onLeave,
 }: {
   user: Me;
-  onSessionExpired: (expired: boolean) => void;
+  onLeave: (reason: LeaveReason | null) => void;
 }) {
   const t = useTranslations("app");
   const common = useTranslations("common");
@@ -78,6 +91,11 @@ function SettingsForm({
   const [hideFromSearch, setHideFromSearch] = useState(user.hideFromSearch);
   const [hidePending, setHidePending] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  // The account block takes one action at a time: one sign-out, or one deletion.
+  const [signingOut, setSigningOut] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const accountInFlight = useRef(false);
   // The switch is disabled while its PATCH runs: one toggle, one request, and
   // the row never flips twice before the answer arrives.
   const hideInFlight = useRef(false);
@@ -95,10 +113,10 @@ function SettingsForm({
    * failure instead of silently pretending the session is gone.
    */
   async function expireSession() {
-    onSessionExpired(true);
+    onLeave("session_expired");
     const signedOut = await auth.signOut();
     if (!signedOut.ok) {
-      onSessionExpired(false);
+      onLeave(null);
       setToast({ message: t("form.network"), tone: "error" });
     }
   }
@@ -156,6 +174,73 @@ function SettingsForm({
     setToast({ message: issue.text, tone: "error" });
   }
 
+  /**
+   * «Выйти» of the account block: `AuthContext` clears the session and the guard
+   * above opens login with a return here. A failed request keeps the person on
+   * the screen and reports the one network sentence.
+   */
+  async function signOut() {
+    if (accountInFlight.current || deleting) return;
+    accountInFlight.current = true;
+    setSigningOut(true);
+    const result = await auth.signOut();
+    accountInFlight.current = false;
+    setSigningOut(false);
+    if (!result.ok) showToast(t("form.network"), "error");
+  }
+
+  function handleSignOut() {
+    void signOut();
+  }
+
+  function askDeleteAccount() {
+    if (accountInFlight.current) return;
+    setDeleteOpen(true);
+  }
+
+  function cancelDeleteAccount() {
+    if (deleting) return;
+    setDeleteOpen(false);
+  }
+
+  /**
+   * Story 6.3 (FR-51, AD-20, D-33): one press runs one deletion. The client has
+   * already dropped the token on success, so the screen only turns the app
+   * anonymous; the guard opens login with «Аккаунт удалён». A failure keeps the
+   * account and the screen as they were: `busy` is retryable, a network error
+   * proves nothing.
+   */
+  async function confirmDeleteAccount() {
+    if (accountInFlight.current) return;
+    accountInFlight.current = true;
+    setDeleting(true);
+
+    const result = await deleteAccount();
+
+    accountInFlight.current = false;
+    setDeleting(false);
+    setDeleteOpen(false);
+
+    if (result.ok) {
+      onLeave("account_deleted");
+      await auth.signOutLocally();
+      return;
+    }
+    if ("network" in result) {
+      showToast(t("form.network"), "error");
+      return;
+    }
+    if ("invalid" in result) {
+      showToast(common("errors.generic"), "error");
+      return;
+    }
+    if (result.code === "UNAUTHENTICATED") {
+      await expireSession();
+      return;
+    }
+    showToast(t("settings.account.deleteError"), "error");
+  }
+
   return (
     <Screen>
       <SafeArea>
@@ -211,11 +296,55 @@ function SettingsForm({
                     are not restored by it. */}
                 <BlockedSection onToast={showToast} onExpired={expireSession} />
                 <NotificationSettings key={user.id} />
+                {/* Story 6.3 (D-59): the account block keeps the two exits of the
+                    screen — «Выйти» and the destructive «Удалить аккаунт» last. */}
+                <YStack gap="$grid-gap" paddingTop="$section-gap" testID="account-section">
+                  <Heading level={2}>{t("settings.account.title")}</Heading>
+                  <YStack
+                    borderWidth={1}
+                    borderColor="$border"
+                    borderRadius="$md"
+                    backgroundColor="$surface"
+                    overflow="hidden"
+                  >
+                    <SettingsRow
+                      label={t("settings.account.signOut")}
+                      onPress={handleSignOut}
+                      disabled={signingOut || deleting}
+                      testID="settings-sign-out"
+                    />
+                    <SettingsRow
+                      label={t("settings.account.delete")}
+                      onPress={askDeleteAccount}
+                      destructive
+                      disabled={deleting || signingOut}
+                      testID="settings-delete-account"
+                    />
+                  </YStack>
+                </YStack>
               </YStack>
               <SiteFooter />
             </Column>
           </PageContainer>
         </PageScroll>
+        <ConfirmDialog
+          variant="confirm"
+          visible={deleteOpen}
+          title={t("settings.account.deleteTitle", { name: user.name })}
+          body={t("settings.account.deleteBody")}
+          confirmLabel={
+            deleting ? t("settings.account.deleteBusy") : t("settings.account.deleteConfirm")
+          }
+          cancelLabel={t("settings.account.deleteCancel")}
+          busy={deleting}
+          onConfirm={function confirmDelete() {
+            void confirmDeleteAccount();
+          }}
+          onCancel={cancelDeleteAccount}
+          onClosed={function deleteClosed() {
+            setDeleting(false);
+          }}
+        />
         {toast ? (
           <ToastHost message={toast.message} tone={toast.tone} onDismiss={dismissToast} />
         ) : null}
@@ -225,6 +354,48 @@ function SettingsForm({
 }
 
 SettingsForm.displayName = "SettingsForm";
+
+/**
+ * One row of the account block: the whole row is the target (44 px), the label is
+ * `button`, and a destructive action is coral (`DESIGN.md` → Colors → Destructive).
+ * The same shape as the rows of «Профиль», without the extra props of that menu.
+ */
+function SettingsRow({
+  label,
+  onPress,
+  destructive = false,
+  disabled = false,
+  testID,
+}: {
+  label: string;
+  onPress: () => void;
+  destructive?: boolean;
+  disabled?: boolean;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      role="button"
+      disabled={disabled}
+      onPress={onPress}
+      testID={testID}
+      width="100%"
+      minHeight="$row-height"
+      justifyContent="center"
+      paddingHorizontal="$3"
+      paddingVertical={12}
+      borderBottomWidth={1}
+      borderColor="$border"
+      cursor="pointer"
+    >
+      <Text kind="button" tone={destructive ? "destructive" : "primary"}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+SettingsRow.displayName = "SettingsRow";
 
 /** The list of my own blocks: the first page, an optional next one and one row per person. */
 type BlockedState =

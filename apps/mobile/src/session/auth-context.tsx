@@ -32,6 +32,12 @@ type AuthContextValue = {
   state: AuthState;
   setUser: (user: Me) => void;
   signOut: () => Promise<{ ok: true } | { ok: false; network: true }>;
+  /**
+   * The session is already dead on the server (the account was just deleted):
+   * drop the local token and pending hand-offs, then turn the app anonymous
+   * without a second request.
+   */
+  signOutLocally: () => Promise<void>;
   /** Reread `/api/v1/me` after a network failure; also used by retry views. */
   retry: () => void;
 };
@@ -104,19 +110,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState({ status: "ready", user });
     }
 
+    async function signOutLocally(): Promise<void> {
+      await clearSessionToken();
+      forgetAuthEmail();
+      attempted.current = null;
+      setState({ status: "anonymous" });
+    }
+
     async function signOut(): Promise<{ ok: true } | { ok: false; network: true }> {
       const result = await apiRequest<{ signedOut: true }>("/api/v1/session", {
         method: "DELETE",
       });
       if (!result.ok && "network" in result) return { ok: false, network: true };
-      await clearSessionToken();
-      forgetAuthEmail();
-      attempted.current = null;
-      setState({ status: "anonymous" });
+      await signOutLocally();
       return { ok: true };
     }
 
-    return { state, setUser, signOut, retry };
+    return { state, setUser, signOut, signOutLocally, retry };
   }, [state, retry]);
 
   return (

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelEmailChange,
+  deleteAccount,
   getMyProfile,
   requestEmailChange,
   updateHideFromSearch,
@@ -13,6 +14,7 @@ const rn = vi.hoisted(() => ({ OS: "web" }));
 const store = vi.hoisted(() => ({
   readSessionToken: vi.fn(),
   writeSessionToken: vi.fn(),
+  clearSessionToken: vi.fn(),
 }));
 
 vi.mock("react-native", () => ({
@@ -61,6 +63,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   store.readSessionToken.mockReset();
   store.writeSessionToken.mockReset();
+  store.clearSessionToken.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -395,6 +398,72 @@ describe("requestEmailChange", () => {
       ok: false,
       network: true,
     });
+  });
+});
+
+describe("deleteAccount", () => {
+  it("DELETEs /api/v1/me with an explicit confirmation and clears the local session", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { deleted: true } }));
+
+    await expect(deleteAccount()).resolves.toEqual({ ok: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://api.test/api/v1/me");
+    expect(init.method).toBe("DELETE");
+    expect(init.body).toBe(JSON.stringify({ confirm: true }));
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Headers;
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.get("accept-language")).toBe("ru-RU");
+    expect(store.clearSessionToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the session when the command answers busy", async () => {
+    fetchMock.mockResolvedValue(
+      respond(
+        {
+          ok: false,
+          code: "CONFLICT",
+          message: "Account deletion is in progress, retry",
+        },
+        409,
+      ),
+    );
+
+    await expect(deleteAccount()).resolves.toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "Account deletion is in progress, retry",
+    });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session on a dead or foreign session, so the screen can sign out itself", async () => {
+    fetchMock.mockResolvedValue(
+      respond({ ok: false, code: "UNAUTHENTICATED", message: "Authentication required" }, 401),
+    );
+
+    await expect(deleteAccount()).resolves.toEqual({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("rejects a success without the deleted flag instead of clearing the session", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: {} }));
+
+    await expect(deleteAccount()).resolves.toEqual({ ok: false, invalid: true });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("reports a network failure and keeps the session", async () => {
+    fetchMock.mockRejectedValue(new TypeError("offline"));
+
+    await expect(deleteAccount()).resolves.toEqual({ ok: false, network: true });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
   });
 });
 

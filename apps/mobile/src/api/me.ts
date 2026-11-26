@@ -1,4 +1,5 @@
 import {
+  accountDeletedSchema,
   emailChangeAcceptedSchema,
   emailChangeCancelledSchema,
   meSchema,
@@ -8,6 +9,8 @@ import {
   type ProfileUpdateBody,
 } from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
+import { clearSessionToken } from "@/platform/session-token";
+import { forgetAuthEmail } from "@/session/auth-navigation";
 
 /**
  * Story 3.1: the nick change answers with the current user, so the settings
@@ -135,6 +138,38 @@ export async function requestEmailChange(email: string): Promise<EmailChangeResu
   const parsed = emailChangeAcceptedSchema.safeParse(result.data);
   if (!parsed.success) return { ok: false, invalid: true };
 
+  return { ok: true };
+}
+
+/**
+ * Story 6.3 (FR-51, AD-20, D-33): the one self-serve account deletion. The body
+ * carries `confirm: true`, so a stray call of the same route cannot wipe an
+ * account; the server checks the session and the command itself removes the
+ * lists, wishes, reservations, friends and sessions.
+ *
+ * A success means the account is gone (or was already gone, the command is
+ * idempotent), so the local session is dead too: the bearer token and any
+ * pending email hand-off are dropped here, and the screen moves to the guest
+ * state. A failure keeps everything: `busy` only asks for a retry, and a
+ * network error proves nothing about the account.
+ */
+export type DeleteAccountResult =
+  | { ok: true }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
+export async function deleteAccount(): Promise<DeleteAccountResult> {
+  const result = await apiRequest<unknown>("/api/v1/me", {
+    method: "DELETE",
+    body: { confirm: true },
+  });
+  if (!result.ok) return result;
+
+  const parsed = accountDeletedSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  await clearSessionToken();
+  forgetAuthEmail();
   return { ok: true };
 }
 

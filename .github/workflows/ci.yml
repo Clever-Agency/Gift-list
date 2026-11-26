@@ -20,9 +20,23 @@ jobs:
     name: check
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: gift_f5_cle130_ci
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d gift_f5_cle130_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       RUN_AFFECTED_TESTS: ${{ github.event_name == 'pull_request' && github.base_ref == 'staging' }}
-      # Заглушки: репозиторий публичный, реальных секретов нет, БД не используется.
+      # Заглушки для сборки и smoke без БД. Шаг HTTP с БД получает отдельные параметры.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
       BETTER_AUTH_SECRET: ci-placeholder-secret-not-used-anywhere-000
       BETTER_AUTH_URL: http://localhost:3000
@@ -115,5 +129,12 @@ jobs:
 
       # CLE-103 followup: /l и /i отвечают реальным 404, а его документ несёт
       # noindex и закрытый <title> (без базы: сегмент заведомо битый).
-      - name: Check public 404 HTML (/l, /i)
+      - name: Check public 404 and API canonicalization
         run: node apps/web/scripts/verify-public-404-http.mjs
+
+      - name: Check public wish HTTP on disposable PostgreSQL
+        env:
+          DISPOSABLE_DATABASE_URL: postgresql://ci:ci@127.0.0.1:55432/gift_f5_cle130_ci
+          DISPOSABLE_DIRECT_URL: postgresql://ci:ci@127.0.0.1:55432/gift_f5_cle130_ci
+          DISPOSABLE_PG_CONFIRM: gift_f5_cle130_ci
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON apps/web/scripts/verify-public-wish-http.mjs

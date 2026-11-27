@@ -437,6 +437,41 @@ it("показывает день рождения друга и открыва�
   }
 });
 
+/**
+ * Story 7.4 (FR-35): the owner's own birthday reminder asks to update the
+ * wishlist and opens «Мой вишлист» (`/`), not the notification page.
+ */
+it("показывает напоминание о своём ДР и открывает «Мой вишлист»", async function ownBirthday() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "own-birthday",
+      createdAt: "2026-11-24T13:30:00.000Z",
+      readAt: "2026-11-24T13:31:00.000Z",
+      href: "/",
+      event: { kind: "DATE_OWN" },
+    }],
+    nextCursor: null,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    expect(container.textContent).toContain("Скоро ваш день рождения — обновите вишлист");
+
+    const row = container.querySelector<HTMLElement>('[role="button"][aria-label^="Скоро ваш день рождения"]');
+    expect(row).not.toBeNull();
+    await act(async function openWishlist() { row?.click(); });
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/");
+    expect(mocks.mark).not.toHaveBeenCalled();
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
 async function press(label: string) {
   const button = actionButton(label);
   expect(button).toBeDefined();

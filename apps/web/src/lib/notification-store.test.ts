@@ -284,6 +284,15 @@ describe("notification privacy and availability", function privacyTests() {
     await expect(projectNotification(row, { ...defaults, datesEmail: false }, "email", now)).resolves.toBeNull();
   });
 
+  it("opens «Мой вишлист» from the own birthday reminder", async function ownReminderHref() {
+    const row = record({ kind: "DATE_OWN", giftId: null, actorId: null, payload: {} });
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toMatchObject({
+      href: "/",
+      event: { kind: "DATE_OWN" },
+    });
+    await expect(projectNotification(row, defaults, "email", now)).resolves.toMatchObject({ href: "/" });
+  });
+
   it("turns a reminder off by its own type switch, not only by the channel", async function reminderTypes() {
     expect(notificationChannelEnabled("DATE_OWN", defaults, "inApp")).toBe(true);
     expect(notificationChannelEnabled("DATE_OWN", defaults, "email")).toBe(true);
@@ -891,7 +900,11 @@ describe("email notification queue", function mailTests() {
     const message = send.mock.calls[0]![0];
     const page = /^Отписаться: (https:\/\/\S+)$/m.exec(message.text)?.[1];
     expect(page).toBeDefined();
-    expect(message.text).toContain("Скоро ваш день рождения");
+    expect(message.subject).toBe(`Скоро ваш день рождения — обновите вишлист — ${getBrandName()}`);
+    expect(message.text.split("\n")[0]).toBe("Скоро ваш день рождения — обновите вишлист");
+    // Story 7.4: the letter opens «Мой вишлист», the app's main owner screen.
+    expect(message.text).toContain("https://example.test/\n\nОтписаться: ");
+    expect(message.html).toContain('<a href="https://example.test/">Обновить вишлист</a>');
     expect(message.html).toContain(`<a href="${page}">Отписаться</a>`);
     expect(message.headers).toEqual({
       "List-Unsubscribe": `<${page}/one-click>`,
@@ -1028,6 +1041,9 @@ describe("email notification queue", function mailTests() {
     const message = send.mock.calls[0]![0];
     expect(message.text).toContain("У Аня день рождения 14.03");
     expect(message.text).toContain("Скоро ваш день рождения — обновите вишлист");
+    // Story 7.4: the own reminder inside the digest leads to «Мой вишлист».
+    expect(message.text).toContain("Скоро ваш день рождения — обновите вишлист\nhttps://example.test/");
+    expect(message.html).toContain('<a href="https://example.test/">Обновить вишлист</a>');
     const friendPage = /^Отписаться от напоминаний о днях рождения и датах друзей: (https:\/\/\S+)$/m
       .exec(message.text)?.[1];
     const ownPage = /^Отписаться от напоминания обновить вишлист: (https:\/\/\S+)$/m.exec(message.text)?.[1];

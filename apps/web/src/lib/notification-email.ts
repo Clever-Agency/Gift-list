@@ -8,6 +8,7 @@ import {
   notificationDetails,
   notificationEmailSubject,
   notificationText,
+  type Messages,
   type NotificationItem,
 } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
@@ -175,20 +176,28 @@ async function retireEmail(rowId: string, lease: Date, clock: Clock) {
 }
 
 /**
+ * Story 7.3 (FR-34): a birthday letter leads to the Friend's profile.
+ * Story 7.4 (FR-35): the owner's own reminder leads to «Мой вишлист» (`/`),
+ * which the App Link opens in the app. Every other letter keeps its link.
+ */
+function reminderLetterTarget(item: NotificationItem, baseUrl: string, copy: Messages["notifications"]) {
+  if (item.event.kind === "DATE_FRIEND" && item.href !== null) {
+    return { href: publicLetterUrl(baseUrl, item.href), label: copy.openFriend };
+  }
+  if (item.event.kind === "DATE_OWN") {
+    return { href: publicLetterUrl(baseUrl, item.href ?? "/"), label: copy.openOwnList };
+  }
+  return { href: notificationEmailLink(baseUrl, item.id), label: copy.open };
+}
+
+/**
  * One letter about one notification: the ordinary queue path and the digest
  * of a single reminder share it.
  */
 function notificationLetter(current: EmailRow, item: NotificationItem, baseUrl: string): Message {
   const locale = negotiateLocale([current.recipient.locale]);
   const copy = getMessages(locale).notifications;
-  // Story 7.3 (FR-34): a birthday letter leads to the Friend's profile, not to
-  // the notification page; every other letter keeps its link.
-  const href = item.event.kind === "DATE_FRIEND" && item.href !== null
-    ? publicLetterUrl(baseUrl, item.href)
-    : notificationEmailLink(baseUrl, item.id);
-  const openLabel = item.event.kind === "DATE_FRIEND" && item.href !== null
-    ? copy.openFriend
-    : copy.open;
+  const { href, label: openLabel } = reminderLetterTarget(item, baseUrl, copy);
   // CLE-124/D-49: no line names the holder to the owner; the projection
   // already drops a legacy `holderName` from the payload.
   const lines = [
@@ -238,12 +247,7 @@ function digestLetter(entries: DigestEntry[], baseUrl: string): Message {
       notificationChangedFields(entry.item.event, locale),
       ...notificationDetails(entry.item.event, locale),
     ].filter((line): line is string => line !== null);
-    const href = entry.item.event.kind === "DATE_FRIEND" && entry.item.href !== null
-      ? publicLetterUrl(baseUrl, entry.item.href)
-      : notificationEmailLink(baseUrl, entry.item.id);
-    const label = entry.item.event.kind === "DATE_FRIEND" && entry.item.href !== null
-      ? copy.openFriend
-      : copy.open;
+    const { href, label } = reminderLetterTarget(entry.item, baseUrl, copy);
     return { lines, href, label };
   });
   const kinds = new Set(entries.map(entry => entry.item.event.kind));

@@ -221,10 +221,11 @@ describe("Story 6.6: wish-expiry copy", () => {
     );
   });
 
-  it("gives each wish-expiry kind its own letter subject and keeps the general one", () => {
+  it("gives each wish-expiry kind its own letter subject and a date reminder its own", () => {
     expect(notificationEmailSubject(soon, "ru")).toBe("Срок желания истекает через 3 дня — {brand}");
     expect(notificationEmailSubject(released, "ru")).toBe("Срок желания вышел — {brand}");
-    expect(notificationEmailSubject({ kind: "DATE_OWN" }, "ru")).toBe("Новое уведомление — {brand}");
+    expect(notificationEmailSubject({ kind: "DATE_OWN" }, "ru"))
+      .toBe("Скоро ваш день рождения — обновите вишлист — {brand}");
   });
 });
 
@@ -280,5 +281,20 @@ describe("Story 7.3: friend birthday copy", () => {
     expect(parsed).toEqual(friend);
     expect(JSON.stringify(parsed)).not.toContain("Даниэль");
     expect(JSON.stringify(parsed)).not.toContain("RESERVED");
+  });
+});
+
+/**
+ * Story 7.4 (FR-35, AD-27): the owner's own reminder asks to update the
+ * wishlist. The text is shared by the feed and the first letter line; the
+ * subject names the same action.
+ */
+describe("Story 7.4: own birthday reminder copy", () => {
+  const own = { kind: "DATE_OWN" } satisfies NotificationItem["event"];
+
+  it("asks the owner to update the wishlist in the feed and in the letter", () => {
+    expect(notificationText(own, "ru")).toBe("Скоро ваш день рождения — обновите вишлист");
+    expect(notificationEmailSubject(own, "ru")).toBe("Скоро ваш день рождения — обновите вишлист — {brand}");
+    expect(notificationDetails(own, "ru")).toEqual([]);
   });
 });

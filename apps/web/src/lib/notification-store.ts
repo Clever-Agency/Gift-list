@@ -355,6 +355,10 @@ export async function projectNotification(
     } else if (gift && sameReservation && gift.status === "RESERVED" && gift.reservedById === row.recipientId) {
       href = "/reservations";
     }
+  } else if (row.kind === "DATE_OWN") {
+    // Story 7.4 (FR-35): the owner's own birthday reminder opens «Мой вишлист»,
+    // the app's main owner screen (`/`). The payload stays empty.
+    href = "/";
   } else if (row.kind === "DATE_FRIEND") {
     // Story 7.3 (FR-34, AD-7, AD-29): the birthday is visible only to an
     // accepted Friend whose profile switch is still on. A block, a lost

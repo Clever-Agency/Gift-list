@@ -110,6 +110,8 @@ export function notificationEmailSubject(event: NotificationItem["event"], local
   const copy = getMessages(resolved).notifications;
   if (event.kind === "WISH_EXPIRY_SOON") return copy.emailSubjectWishExpirySoon;
   if (event.kind === "WISH_EXPIRY") return copy.emailSubjectWishExpiry;
+  // Story 7.4 (FR-35): the owner's own birthday reminder says what to do.
+  if (event.kind === "DATE_OWN") return copy.emailSubjectDateOwn;
   if (event.kind === "DATE_FRIEND") {
     return copy.emailSubjectDateFriend
       .replace("{person}", event.personName)

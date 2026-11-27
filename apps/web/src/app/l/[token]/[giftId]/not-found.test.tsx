@@ -1,6 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTHOR_MAILTO, getMessages } from "@gift-list/contracts";
+import { AUTHOR_MAILTO } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 
 const { headers, buildWishMetadata, getBrandName } = vi.hoisted(() => ({
@@ -37,7 +38,7 @@ beforeEach(() => {
 
 describe("app/l/[token]/[giftId]/not-found.tsx", () => {
   it("renders the one «Желание не найдено.» sentence and the public footer", async () => {
-    const messages = getMessages("ru");
+    const messages = getWebMessages("ru");
     const html = await render();
 
     expect(messages.web.wishlist.wishNotFound).toBe("Желание не найдено.");

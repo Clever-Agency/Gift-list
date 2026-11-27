@@ -2,6 +2,7 @@ import { renderToString } from "react-dom/server";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { AUTHOR_MAILTO, getMessages, type GiftCard } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { InvitePreviewView } from "@/app/i/[token]/invite-preview-view";
 import { PublicWishlistView } from "@/app/l/[token]/public-wishlist-view";
@@ -89,7 +90,7 @@ describe("PublicPageFooter", () => {
   });
 
   it("is the same full footer on /i and /l in every page state, including both 404 pages", () => {
-    const messages = getMessages("ru");
+    const messages = getWebMessages("ru");
     const pages = [
       page(<InvitePreviewView view={invite} locale="ru" brand="WishMoon" />),
       page(<PublicWishlistView view={{ kind: "gifts", owner, gifts: [card()] }} locale="ru" listPath="/l/tok-1" wishlistPath="/wishlist/tok-1" />),

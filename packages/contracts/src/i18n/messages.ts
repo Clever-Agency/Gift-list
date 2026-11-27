@@ -1,14 +1,18 @@
 import app from "./ru/app.json";
 import common from "./ru/common.json";
-import email from "./ru/email.json";
 import notifications from "./ru/notifications.json";
 import web from "./ru/web.json";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type SupportedLocale } from "./locale";
 
 const { messages: notificationMessages, ...notificationUi } = notifications;
 
+/**
+ * Catalogs of the client apps. The Next-only `email` catalog is not here: it
+ * would ride in the SPA bundle of `apps/mobile` unused. Web pages and letters
+ * read `getWebMessages` from `@gift-list/contracts/web-messages`.
+ */
 const catalogs = {
-  ru: { common: { ...common, notifications: notificationMessages }, app, web, email, notifications: notificationUi },
+  ru: { common: { ...common, notifications: notificationMessages }, app, web, notifications: notificationUi },
 } as const;
 
 export type Messages = (typeof catalogs)[SupportedLocale];

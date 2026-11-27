@@ -1,6 +1,7 @@
 import "server-only";
 
-import { AUTHOR_EMAIL, getMessages, negotiateLocale } from "@gift-list/contracts";
+import { AUTHOR_EMAIL, negotiateLocale } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { createTranslator } from "next-intl";
 import { Resend } from "resend";
 import { getBrandName, getEnv } from "@/lib/env";
@@ -17,7 +18,7 @@ function translator(locale: string | null) {
   const resolved = negotiateLocale(locale ? [locale] : []);
   const t = createTranslator({
     locale: resolved,
-    messages: getMessages(resolved),
+    messages: getWebMessages(resolved),
     namespace: "email",
   });
   return { resolved, t };

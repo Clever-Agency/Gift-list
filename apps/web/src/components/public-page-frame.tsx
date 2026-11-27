@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { getMessages, type SupportedLocale } from "@gift-list/contracts";
+import { type SupportedLocale } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { Screen } from "@gift-list/ui";
 import { PublicPageFooter } from "./public-page-footer";
 import styles from "./public-page-frame.module.css";
@@ -34,7 +35,7 @@ export type PublicPageFrameProps = {
  * `role="main"` box the views used to draw.
  */
 export function PublicPageFrame({ locale, header, children }: PublicPageFrameProps) {
-  const messages = getMessages(locale);
+  const messages = getWebMessages(locale);
 
   return (
     <Screen>

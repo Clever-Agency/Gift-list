@@ -4,7 +4,8 @@ import { cache } from "react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { createTranslator } from "next-intl";
-import { getMessages, type GiftCard, type SupportedLocale } from "@gift-list/contracts";
+import { type GiftCard, type SupportedLocale } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { readPublicWishlist } from "@/actions/public-wishlist";
 import { canOpenPublicWishlist } from "@/actions/wishlist-read";
 import { auth } from "@/lib/auth";
@@ -91,7 +92,7 @@ export const getLinkPage = cache(loadLinkPage);
  * closed `Список не найден — {brand}` title; Next injects `noindex` itself.
  */
 export function buildLinkMetadata(page: LinkPage, brand: string): Metadata {
-  const messages = getMessages(page.locale);
+  const messages = getWebMessages(page.locale);
   const t = createTranslator({ locale: page.locale, messages, namespace: "web.wishlist" });
   const web = createTranslator({ locale: page.locale, messages, namespace: "web" });
   const description = web("description");

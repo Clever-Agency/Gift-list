@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { getMessages } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { PublicNotFound } from "@/components/public-not-found";
 import { getBrandName } from "@/lib/env";
 import { requestLocale } from "@/lib/request-locale";
@@ -32,7 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function WishNotFound() {
   const locale = requestLocale((await headers()).get("accept-language"));
 
-  return <PublicNotFound locale={locale} message={getMessages(locale).web.wishlist.wishNotFound} />;
+  return <PublicNotFound locale={locale} message={getWebMessages(locale).web.wishlist.wishNotFound} />;
 }
 
 WishNotFound.displayName = "WishNotFound";

@@ -1,6 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AUTHOR_MAILTO, getMessages } from "@gift-list/contracts";
+import { AUTHOR_MAILTO } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { PublicNotFound } from "./public-not-found";
 
@@ -24,7 +25,7 @@ function levelOneHeadings(html: string): number {
 
 describe("PublicNotFound: shared page-level 404", () => {
   it("renders the catalog sentence as the only h1 and the full public footer", () => {
-    const messages = getMessages("ru");
+    const messages = getWebMessages("ru");
     const html = render(messages.web.wishlist.notFound);
 
     expect(messages.web.wishlist.notFound).toBe("Список не найден.");
@@ -42,7 +43,7 @@ describe("PublicNotFound: shared page-level 404", () => {
   });
 
   it("shows exactly the sentence it is given and no owner, wishes or actions", () => {
-    const messages = getMessages("ru");
+    const messages = getWebMessages("ru");
     const html = render(messages.web.invite.notFound);
 
     expect(messages.web.invite.notFound).toBe("Приглашение не найдено.");

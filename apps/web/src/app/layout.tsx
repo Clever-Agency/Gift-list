@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import localFont from "next/font/local";
 import { createTranslator } from "next-intl";
-import { DEFAULT_LOCALE, getMessages } from "@gift-list/contracts";
+import { DEFAULT_LOCALE } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { getBrandName } from "@/lib/env";
 import { pageLocale } from "@/lib/request-locale";
 import "./globals.css";
@@ -10,7 +11,7 @@ import { TamaguiRegistry } from "./tamagui-registry";
 
 const webCopy = createTranslator({
   locale: DEFAULT_LOCALE,
-  messages: getMessages(DEFAULT_LOCALE),
+  messages: getWebMessages(DEFAULT_LOCALE),
   namespace: "web",
 });
 

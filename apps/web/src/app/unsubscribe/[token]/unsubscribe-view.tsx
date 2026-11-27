@@ -1,6 +1,7 @@
 "use client";
 
-import { getMessages, type Messages, type SupportedLocale } from "@gift-list/contracts";
+import { type SupportedLocale } from "@gift-list/contracts";
+import { getWebMessages, type WebMessages } from "@gift-list/contracts/web-messages";
 import { Button, Column, Heading, Text, YStack } from "@gift-list/ui";
 import { PublicPageFrame } from "@/components/public-page-frame";
 import type { UnsubscribeView as UnsubscribeViewState } from "./unsubscribe-page";
@@ -14,7 +15,7 @@ export type UnsubscribeViewProps = {
 
 function messageFor(
   view: UnsubscribeViewState,
-  copy: Messages["web"]["unsubscribe"],
+  copy: WebMessages["web"]["unsubscribe"],
 ): string {
   if (view.kind === "invalid") return copy.invalid;
   if (view.kind === "restored") return copy.restored;
@@ -32,7 +33,7 @@ function messageFor(
  * heading — the reading order moves to it without client JavaScript.
  */
 export function UnsubscribeView({ view, locale, token }: UnsubscribeViewProps) {
-  const copy = getMessages(locale).web.unsubscribe;
+  const copy = getWebMessages(locale).web.unsubscribe;
   const message = messageFor(view, copy);
   const restoreHref = `/unsubscribe/${encodeURIComponent(token)}/restore`;
 

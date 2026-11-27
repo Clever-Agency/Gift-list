@@ -17,6 +17,13 @@ enum Gender {
   FEMALE
 }
 
+/// AD-22: only an ADMIN opens `/admin` (web only). The role is assigned by hand
+/// in the database; it never travels to the app clients.
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id             String   @id @default(cuid(2))
   name           String // displayName
@@ -40,6 +47,8 @@ model User {
   about          String?  @db.Text
   /// Friends see the profile fields only while this is true (AD-29).
   profileVisibleToFriends Boolean @default(true)
+  /// AD-22: `ADMIN` only grants `/admin` on the web; the app ignores the role.
+  role           UserRole @default(USER)
   /// Set once from Accept-Language at registration (AD-27).
   locale         String   @default("ru")
   datesInApp     Boolean  @default(true)
@@ -520,4 +529,46 @@ model ReminderLog {
   createdAt   DateTime     @default(now()) @db.Timestamptz(3)
 
   @@unique([recipientId, subjectId, year, kind])
+}
+
+// Editorial collection of gift ideas (AD-22, FR-49, D-32, Story 10.1). The
+// editor fills it by hand in `/admin`; there is no AI and no recommendation
+// source. `publishedAt = null` is a draft: the app never sees it. Publishing an
+// empty collection is refused by the server (a blank screen for users).
+model EditorialCollection {
+  id            String    @id @default(cuid(2))
+  /// At most 120 characters after trimming (CHECK in the migration).
+  title         String    @db.VarChar(120)
+  description   String?   @db.Text
+  /// Cover is a URL only: the admin panel uploads no files (Story 10.1).
+  coverImageUrl String?
+  /// `null` while the collection is a draft; the app reads only published rows.
+  publishedAt   DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  items EditorialItem[]
+
+  /// The app reads the published collections newest first (Story 10.1).
+  @@index([publishedAt])
+}
+
+// One idea inside an editorial collection (AD-22, Story 10.1). `position` is
+// the manual order the editor sets; every field is optional except the title.
+model EditorialItem {
+  id           String   @id @default(cuid(2))
+  collectionId String
+  /// At most 120 characters after trimming (CHECK in the migration).
+  title        String   @db.VarChar(120)
+  description  String?  @db.Text
+  linkUrl      String?
+  imageUrl     String?
+  /// Sort key inside one collection; the read orders by it.
+  position     Int
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  collection EditorialCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId, position])
 }

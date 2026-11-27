@@ -32,6 +32,13 @@ export const ERROR_REASONS = [
   "NICK_TAKEN",
   "DUE_OUT_OF_RANGE",
   "DATES_LIMIT",
+  /**
+   * An editor tried to publish an editorial collection with no ideas (Story
+   * 10.1, CLE-143). Always rides with `code: "VALIDATION"`; users would get a
+   * blank collection screen, so the server refuses. The client shows
+   * `errors.reason.COLLECTION_EMPTY`.
+   */
+  "COLLECTION_EMPTY",
   "RESET_LINK_STALE",
   /**
    * A rejected invite is still cooling down (Story 4.2.2, AD-10 step 3, A-16).
@@ -581,6 +588,30 @@ export {
   type ReservationCard,
   type ReservationList,
 } from "./gift";
+
+export {
+  EDITORIAL_DESCRIPTION_MAX,
+  EDITORIAL_LINK_URL_MAX,
+  EDITORIAL_TITLE_MAX,
+  editorialCollectionAdminDetailSchema,
+  editorialCollectionAdminSummarySchema,
+  editorialCollectionDetailSchema,
+  editorialCollectionInputSchema,
+  editorialCollectionSummarySchema,
+  editorialItemAdminSchema,
+  editorialItemInputSchema,
+  editorialItemOrderSchema,
+  editorialItemSchema,
+  type EditorialCollectionAdminDetail,
+  type EditorialCollectionAdminSummary,
+  type EditorialCollectionDetail,
+  type EditorialCollectionInput,
+  type EditorialCollectionSummary,
+  type EditorialItem,
+  type EditorialItemAdmin,
+  type EditorialItemInput,
+  type EditorialItemOrder,
+} from "./collection";
 
 export {
   isWishVisibleToEveryone,

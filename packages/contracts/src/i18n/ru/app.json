@@ -111,6 +111,16 @@
     "search": "Поиск",
     "friends": "Друзья"
   },
+  "collections": {
+    "title": "Подборки",
+    "pageTitle": "Подборки — {brand}",
+    "emptyTitle": "Подборок пока нет",
+    "emptyText": "Скоро здесь появятся идеи подарков.",
+    "addToWishlist": "Добавить в мой вишлист",
+    "added": "Добавлено",
+    "addedToast": "Добавлено в вишлист",
+    "viewCollections": "Посмотреть подборки"
+  },
   "settings": {
     "title": "Настройки",
     "pageTitle": "Настройки — {brand}",

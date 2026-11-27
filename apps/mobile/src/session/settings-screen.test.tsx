@@ -598,7 +598,7 @@ describe("настройки: напоминания (Story 7.2)", () => {
   it("выключение сразу шлёт PATCH только своего ключа и берёт ответ сервера", async () => {
     signedIn();
     const saved = { ...preferences, remindFriendDates: false };
-    notifications.saveNotificationPreferences.mockResolvedValue({ success: true, data: saved });
+    notifications.saveNotificationPreferences.mockResolvedValue({ ok: true, data: saved });
     await mount();
     await settle(10);
 
@@ -613,7 +613,7 @@ describe("настройки: напоминания (Story 7.2)", () => {
 
   it("ошибка: переключатель откатывается и приходит тост", async () => {
     signedIn();
-    notifications.saveNotificationPreferences.mockResolvedValue(null);
+    notifications.saveNotificationPreferences.mockResolvedValue({ ok: false, network: false });
     await mount();
     await settle(10);
 
@@ -624,6 +624,19 @@ describe("настройки: напоминания (Story 7.2)", () => {
     });
     expect(switchNode("Напомнить обновить мой список")?.getAttribute("aria-checked")).toBe("true");
     expect(text()).toContain("Не удалось сохранить настройки уведомлений");
+  });
+
+  it("без сети переключатель откатывается и тост говорит о потере сети", async () => {
+    signedIn();
+    notifications.saveNotificationPreferences.mockResolvedValue({ ok: false, network: true });
+    await mount();
+    await settle(10);
+
+    await flipSwitch("Дни рождения и даты друзей");
+
+    expect(switchNode("Дни рождения и даты друзей")?.getAttribute("aria-checked")).toBe("true");
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(text()).not.toContain("Не удалось сохранить настройки уведомлений");
   });
 
   it("пока PATCH идёт, второй тап не шлёт второй запрос", async () => {

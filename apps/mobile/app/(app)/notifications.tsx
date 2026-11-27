@@ -34,6 +34,7 @@ NotificationsScreen.displayName = "NotificationsScreen";
 
 function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; timeZone: string }) {
   const t = useTranslations("notifications");
+  const app = useTranslations("app");
   const common = useTranslations("common");
   const gift = useTranslations("app.gift");
   const auth = useAuth();
@@ -121,6 +122,9 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
       } else if ("code" in result && result.code === "UNAUTHENTICATED") {
         await auth.signOut();
         return;
+      } else if ("network" in result) {
+        setActionError(app("form.network"));
+        return;
       } else {
         setActionError(common("errors.generic"));
         return;
@@ -147,6 +151,10 @@ function NotificationsContent({ selectedId, timeZone }: { selectedId?: string; t
     }
     if ("code" in result && result.code === "UNAUTHENTICATED") {
       await auth.signOut();
+      return;
+    }
+    if ("network" in result) {
+      setActionError(app("form.network"));
       return;
     }
     if ("code" in result && result.code === "CONFLICT") {

@@ -13,6 +13,7 @@ export function NotificationSettings({
   onToast?: (message: string, tone: "info" | "error") => void;
 } = {}) {
   const t = useTranslations("notifications");
+  const app = useTranslations("app");
   const refresh = useNotificationBadge()?.refresh;
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -42,13 +43,13 @@ export function NotificationSettings({
     const result = await saveNotificationPreferences({ [key]: checked });
     inFlight.current = false;
     setBusy(false);
-    if (result?.success) {
+    if (result.ok) {
       setPreferences(result.data);
       refresh?.();
     } else {
       setPreferences(snapshot);
       setError(true);
-      onToast?.(t("settingsError"), "error");
+      onToast?.(result.network ? app("form.network") : t("settingsError"), "error");
     }
   }
 

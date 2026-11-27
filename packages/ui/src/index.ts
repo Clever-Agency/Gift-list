@@ -64,17 +64,10 @@ export {
   Users,
 } from "./icons";
 export { Photo, type PhotoProps } from "./photo";
+// Catalog-only drafts (`CollectionCard`, `PartnerStoreCard`, `PartnerStoreRail`,
+// `FriendsTwoPane`): stories import them by path, so the app barrel stays free
+// of modules no screen uses (web bundle budget, CLE-141/S0-1).
 export { PhotoPlaceholder, type PhotoPlaceholderProps } from "./photo-placeholder";
-export {
-  PartnerStoreCard,
-  type PartnerStoreCardProps,
-} from "./partner-store-card";
-export {
-  PartnerStoreRail,
-  type PartnerStoreRailProps,
-} from "./partner-store-rail";
-export { CollectionCard, type CollectionCardProps } from "./collection-card";
-export { FriendsTwoPane, type FriendsTwoPaneProps } from "./friends-two-pane";
 export { Avatar } from "./avatar";
 export {
   avatarInitials,
@@ -107,13 +100,7 @@ export {
 } from "./tag-chip";
 export { StatusPill, type StatusPillProps, type StatusPillStatus } from "./status-pill";
 export { RelationshipChip, type RelationshipChipProps } from "./relationship-chip";
-export {
-  VisibilityChip,
-  visibilityChipColors,
-  useVisibilityChipColors,
-  type VisibilityChipProps,
-  type VisibilityTone,
-} from "./visibility-chip";
+// `VisibilityChip` is catalog-only as well: the app shows its own rows.
 export { WishCard, type WishCardProps } from "./wish-card";
 export { Skeleton, WishCardSkeleton, type WishCardSkeletonProps } from "./skeleton";
 export { LoadingCards, type LoadingCardsProps } from "./loading-cards";

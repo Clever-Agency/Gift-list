@@ -681,4 +681,42 @@ describe("поток: архив из списка", () => {
     expect(text()).toContain("Выберите сегодняшнюю дату или более позднюю.");
     expect(text()).toContain("Архив (1)");
   });
+
+  it("без сети копирование архивного желания говорит о потере соединения", async () => {
+    signedIn();
+    gifts.fetchMyGifts.mockResolvedValue(listAnswer([gift()], [archived]));
+    gifts.createGift.mockResolvedValue({ ok: false, network: true });
+
+    await mount();
+    await press("Архив (1)");
+    const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
+    await act(async () => {
+      menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+    await pressInDialog("Скопировать");
+
+    expect(gifts.createGift).toHaveBeenCalledOnce();
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
+  it("без сети возврат из архива говорит о потере соединения и оставляет желание в архиве", async () => {
+    signedIn();
+    gifts.fetchMyGifts.mockResolvedValue(listAnswer([gift()], [archived]));
+    gifts.restoreGift.mockResolvedValue({ ok: false, network: true });
+
+    await mount();
+    await press("Архив (1)");
+    const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
+    await act(async () => {
+      menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+    await pressInDialog("Вернуть в вишлист");
+    await pressInDialog("Сохранить");
+
+    expect(gifts.restoreGift).toHaveBeenCalledWith("g-arch", null);
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(text()).toContain("Архив (1)");
+  });
 });

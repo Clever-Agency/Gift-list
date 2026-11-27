@@ -513,6 +513,62 @@ it("показывает напоминание о своём ДР и откры
   }
 });
 
+it("не открывает уведомление без сети и говорит о потере соединения", async function markReadNetwork() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "unread", createdAt: "2026-11-24T13:30:00.000Z", readAt: null,
+      href: "/gifts/gift", event: { kind: "UNKNOWN" },
+    }],
+    nextCursor: null,
+  });
+  mocks.mark.mockResolvedValue({ ok: false, network: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    const row = container.querySelector<HTMLElement>('[role="button"][aria-label^="Новое"]');
+    expect(row).not.toBeNull();
+    await act(async function openWithoutNetwork() { row?.click(); });
+    expect(container.textContent).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(container.textContent).not.toContain("Не получилось. Попробуйте ещё раз.");
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
+it("без сети действие в уведомлении говорит о потере соединения, а не «даритель ответил»", async function actionNetwork() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "due", createdAt: "2026-11-24T13:30:00.000Z", readAt: null, href: null,
+      event: {
+        kind: "RESERVATION_DUE", giftId: "gift", titleSnapshot: "Плед", actionable: true,
+        dueAt: "2020-01-01T21:00:00.000Z", timeZone: "UTC",
+      },
+    }],
+    nextCursor: null,
+  });
+  mocks.submit.mockResolvedValue({ ok: false, network: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    await press("Подарил");
+    expect(container.textContent).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(container.textContent).not.toContain("Даритель уже ответил");
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
 async function press(label: string) {
   const button = actionButton(label);
   expect(button).toBeDefined();

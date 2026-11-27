@@ -131,7 +131,17 @@ import { gzipSync } from "node:zlib";
 // минимальными шагами; запас 2 679 байт. Идеи, как вернуть запас, — в
 // F-1-opencode-report.md (`C:\Users\Evgeniy\agent-tools\night-27-11`).
 export const BASE_GZIP_BYTES = 487_792;
-export const BUDGET_GROWTH_BYTES = 237_568;
+// 236 КиБ (241 664) — CLE-136 / Story 6.5, день 27.11: прирост
+// 237 223 → 240 373 байт (+3 150, превышение 2 805 байт над 232 КиБ).
+// Замер — сборка ветки feature/cle-136-browser-app на cb9a539. Новых
+// зависимостей и целых библиотек нет: package.json и package-lock.json не
+// менялись. Файлов JS 26 вместо 25: новый чанк — экран «Найти знакомых»
+// в браузере (/friends/contacts). Остальной рост — подсказка «Установите
+// приложение» (только веб), ключи i18n и чтение флага/адресов стора
+// из env. Безопасную экономию не искал: запас после CLE-141/140 был
+// 345 байт, а задача добавляет новый экран. Потолок +4 КиБ минимальными
+// шагами; запас 1 291 байт.
+export const BUDGET_GROWTH_BYTES = 241_664;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 

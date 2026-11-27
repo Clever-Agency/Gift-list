@@ -36,6 +36,8 @@ const navigation = vi.hoisted(() => ({
   back: vi.fn(),
   canGoBack: vi.fn(),
 }));
+/** A JS width a test hands the screens instead of the one `clientWidth` reports. */
+const dimensions = vi.hoisted(() => ({ width: null as number | null }));
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/circle", () => circle);
@@ -44,6 +46,15 @@ vi.mock("@/api/subscription", () => subscription);
 vi.mock("@/api/block", () => block);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  // Only a test that sets `dimensions.width` changes what the hook returns.
+  function useWindowDimensions() {
+    const size = actual.useWindowDimensions();
+    return dimensions.width === null ? size : { ...size, width: dimensions.width };
+  }
+  return { ...actual, useWindowDimensions };
+});
 // The confirm dialog draws its close cross with `expo-symbols`, which loads a
 // symbol font at runtime; the icon is decorative here.
 vi.mock("expo-symbols", async () => {
@@ -281,6 +292,7 @@ async function openMenu(name: string) {
 beforeEach(() => {
   vi.resetAllMocks();
   window.localStorage.clear();
+  dimensions.width = null;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
   answers();
@@ -302,6 +314,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("друзья: гейт сессии", () => {
@@ -418,6 +431,36 @@ describe("друзья: вкладки и входящие", () => {
   });
 });
 
+describe("друзья: подсказка установки", () => {
+  beforeEach(() => {
+    vi.stubEnv("EXPO_PUBLIC_ANDROID_STORE_URL", "");
+    vi.stubEnv("EXPO_PUBLIC_IOS_STORE_URL", "");
+    vi.stubEnv("EXPO_PUBLIC_IOS_APP_PUBLISHED", "");
+  });
+
+  /** UX-DR11: on a wide browser window the hint is the right column of the root. */
+  it("на wide показывает подсказку в правой колонке рядом с содержимым", async () => {
+    dimensions.width = 1440;
+    signedIn();
+    await mount();
+
+    const aside = testId("friends-aside");
+    expect(aside).not.toBeNull();
+    expect(aside?.textContent).toContain("Установите приложение: поиск друзей по контактам");
+    expect(aside?.querySelector('[data-testid="install-hint"]')).not.toBeNull();
+  });
+
+  /** Below wide the hint belongs to «Найти знакомых» and «Профиль», not here. */
+  it("уже wide подсказки на «Друзьях» нет", async () => {
+    dimensions.width = 1024;
+    signedIn();
+    await mount();
+
+    expect(testId("friends-aside")).toBeNull();
+    expect(text()).not.toContain("Установите приложение");
+  });
+});
+
 describe("друзья: поиск среди друзей", () => {
   it("ждёт паузу 300 мс, показывает «N из M» и ищет по всему кругу", async () => {
     vi.useFakeTimers();
@@ -493,7 +536,7 @@ describe("друзья: поиск среди друзей", () => {
     });
   });
 
-  it("в пустом списке друзей «Найти знакомых» ведёт в /search", async () => {
+  it("в пустом списке друзей «Найти знакомых» ведёт на свой экран", async () => {
     signedIn();
     circle.fetchFriends.mockResolvedValue(page([]));
     await mount();
@@ -501,7 +544,7 @@ describe("друзья: поиск среди друзей", () => {
     expect(text()).toContain("Пока нет друзей");
     expect(testId("friends-find-contacts")).toBeNull();
     await press(controlByText("Найти знакомых"));
-    expect(navigation.push).toHaveBeenLastCalledWith("/search");
+    expect(navigation.push).toHaveBeenLastCalledWith("/friends/contacts");
   });
 
   it("холодная загрузка — скелеты, ошибка — «Повторить» с тем же запросом", async () => {

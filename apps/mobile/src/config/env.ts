@@ -38,6 +38,42 @@ export function getApiBaseUrl(): string {
 }
 
 /**
+ * A store address is an absolute `https` URL with a host: the install hint links
+ * to it as-is, and a plain `http` or a relative value must not become a link.
+ * A trailing slash and a long query stay — the store owns its own URL shape.
+ */
+const HTTPS_URL = /^https:\/\/[^\s/?#]+(?:[/?#][^\s]*)?$/i;
+
+/** ` https://play.google.com/... ` → the URL; anything that is not `https` → "". */
+export function normalizeStoreUrl(value: string | undefined): string {
+  const url = readPublic(value);
+  return HTTPS_URL.test(url) ? url : "";
+}
+
+/**
+ * Google Play is the first store (UX-DR11): the link exists only when the build
+ * hands an address, so a missing value never invents a listing.
+ */
+export function getAndroidStoreUrl(): string {
+  return normalizeStoreUrl(process.env.EXPO_PUBLIC_ANDROID_STORE_URL);
+}
+
+/** The App Store address; the hint shows it only with {@link isIosAppPublished}. */
+export function getIosStoreUrl(): string {
+  return normalizeStoreUrl(process.env.EXPO_PUBLIC_IOS_STORE_URL);
+}
+
+/**
+ * The iOS release switch (UX-DR11, AD-26): the App Store link appears without a
+ * code change once the app is published. `true` and `1` are the accepted values;
+ * everything else, including a missing variable, means "not published yet".
+ */
+export function isIosAppPublished(): boolean {
+  const value = readPublic(process.env.EXPO_PUBLIC_IOS_APP_PUBLISHED).toLowerCase();
+  return value === "true" || value === "1";
+}
+
+/**
  * Origin of the page that runs the web build. The site and the API share that
  * domain (AD-26), so it is the same public origin without a configured value.
  * React Native defines `window` as the global object, so the platform check

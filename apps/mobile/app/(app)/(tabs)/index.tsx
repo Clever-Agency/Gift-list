@@ -683,6 +683,10 @@ export default function MyWishlistScreen() {
       return;
     }
     if (await handleArchiveSessionLoss(result)) return;
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
     setToast({ message: giftForm("error.form"), tone: "error" });
   }
 
@@ -718,6 +722,10 @@ export default function MyWishlistScreen() {
       return;
     }
     if (await handleArchiveSessionLoss(result)) return;
+    if ("network" in result) {
+      setToast({ message: t("form.network"), tone: "error" });
+      return;
+    }
     if ("code" in result && result.code === "NOT_FOUND") {
       const missingId = archiveMenu.id;
       setState(function dropMissing(current) {

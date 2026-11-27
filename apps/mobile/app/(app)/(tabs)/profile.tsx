@@ -47,6 +47,8 @@ import {
 import { paramValue } from "@/session/return-path";
 import { MONTH_DAYS, dayOptions, monthOptions } from "@/ui/date-options";
 import { NotificationBell } from "@/ui/notification-bell";
+import { InstallHint, useInstallHint } from "@/ui/install-hint";
+import { useInstallHintPlacement } from "@/ui/install-hint-placement";
 import { OptionField, type PickerOption } from "@/ui/option-field";
 import { ProfileMenu } from "@/ui/profile-menu";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
@@ -85,6 +87,10 @@ export default function MyProfileScreen() {
     emailChanged?: string | string[];
     error?: string | string[];
   }>();
+  // UX-DR11: the browser hint sits at the top of «Профиль» below wide; on a wide
+  // window its one place is the right column of a root screen, not this screen.
+  const installHint = useInstallHint();
+  const hintPlacement = useInstallHintPlacement();
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   // One sign-out request at a time: the row is disabled while it is in flight.
@@ -273,6 +279,9 @@ export default function MyProfileScreen() {
                 <Heading level={1}>{nav("profile")}</Heading>
                 <NotificationBell />
               </XStack>
+              {hintPlacement === "card" && installHint.visible ? (
+                <InstallHint onClose={installHint.dismiss} testID="install-hint" />
+              ) : null}
               <YStack
                 flexGrow={1}
                 paddingTop="$2"

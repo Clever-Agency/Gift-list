@@ -45,6 +45,7 @@ import { subscribeToNick, unsubscribeFromNick } from "@/api/subscription";
 import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
 import { appendCirclePage, focusNeighbour, isNearListEnd } from "@/friends/circle-list";
+import { findContactsRoute } from "@/friends/find-contacts-route";
 import {
   DEFAULT_SUBSCRIPTION_VIEW,
   type SubscriptionView,
@@ -58,6 +59,8 @@ import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
 import { mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { InstallHint, useInstallHint } from "@/ui/install-hint";
+import { useInstallHintPlacement } from "@/ui/install-hint-placement";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
 import { SiteFooter } from "@/ui/site-footer";
@@ -163,6 +166,10 @@ function FriendsContent({
   const common = useTranslations("common");
   const brand = getBrandName();
   const auth = useAuth();
+  // UX-DR11: on a wide browser window the install hint is the right column of
+  // this root screen; below wide it lives on «Найти знакомых» and «Профиль».
+  const installHint = useInstallHint();
+  const hintPlacement = useInstallHintPlacement();
   // Story 6.2: the «Друзья» badge of the shell reads the same `incomingCount`. The
   // screen asks for a fresh count after its own answer on a request; the optional
   // accessor keeps the screen mountable without the shell (unit tests).
@@ -983,10 +990,9 @@ function FriendsContent({
   }
 
   function openFindContacts() {
-    // NOTE FOR UX: «Найти знакомых» (`/friends/contacts`) is outside Story 4.3
-    // and awaits its own story; until it exists the empty friends list opens
-    // `/search`, like the temporary «Поиск» entry of Story 3.5.
-    openSearch();
+    // Story 6.5: the browser explains the missing contacts sync first; the phone
+    // keeps its current shortcut to the search (`find-contacts-route.native.ts`).
+    router.push(findContactsRoute());
   }
 
   function selectSubscriptionView(next: string) {
@@ -1113,97 +1119,117 @@ function FriendsContent({
           scrollEventThrottle={16}
         >
           <PageContainer>
-            <Column
-              size="content"
-              flexGrow={1}
-              paddingHorizontal="$page-gutter medium:$page-gutter-lg"
-              paddingTop="$page-gutter"
-              gap="$2"
-            >
-              <Text kind="display-sm" tone="primary" textAlign="center">
-                {common("brandName", { brand })}
-              </Text>
-              {/*
-                D-51: no visible page title over the tabs. The `h1` stays for the
-                screen reader only and keeps the focus target of «Куда уходит фокус».
-              */}
-              <View
-                ref={headingNode as never}
-                tabIndex={-1}
-                alignSelf="flex-start"
-                outlineWidth={0}
-                position="absolute"
-                width={1}
-                height={1}
-                overflow="hidden"
-                opacity={0}
-                pointerEvents="none"
-              >
-                <Heading level={1}>{friends("title")}</Heading>
-              </View>
-              <XStack justifyContent="flex-end" alignItems="center">
-                <NotificationBell />
-              </XStack>
-              <SegmentTabs
-                label={friends("tabs.label")}
-                value={tab}
-                onChange={function selectTab(next) {
-                  if (next === "friends" || next === "subscriptions" || next === "requests") {
-                    changeTab(next);
-                  }
-                }}
-                testID="friends-tabs"
-                tabs={[
-                  { key: "friends", label: friends("tabs.friends") },
-                  { key: "subscriptions", label: friends("tabs.subscriptions") },
-                  { key: "requests", label: friends("tabs.requests"), badge },
-                ]}
-              />
-              <YStack paddingTop="$2" paddingBottom="$section-gap" gap="$grid-gap" flexGrow={1}>
-                {tab === "friends" ? (
-                  <FriendsPanel
-                    list={friendsList}
-                    totalFriends={
-                      prepared === "" && friendsList.status === "ready"
-                        ? friendsList.total
-                        : allFriendsTotal.current
-                    }
-                    query={query}
-                    prepared={prepared}
-                    onQueryChange={changeQuery}
-                    onRetry={retryFriends}
-                    onOpenFindContacts={openFindContacts}
-                    onOpenSearch={openSearch}
-                    menuFor={profileItems}
-                    onMenuNode={registerMenuNode}
+            <XStack flexGrow={1} width="100%" alignItems="stretch">
+              <YStack flex={1} minWidth={0}>
+                <Column
+                  size="content"
+                  flexGrow={1}
+                  paddingHorizontal="$page-gutter medium:$page-gutter-lg"
+                  paddingTop="$page-gutter"
+                  gap="$2"
+                >
+                  <Text kind="display-sm" tone="primary" textAlign="center">
+                    {common("brandName", { brand })}
+                  </Text>
+                  {/*
+                    D-51: no visible page title over the tabs. The `h1` stays for the
+                    screen reader only and keeps the focus target of «Куда уходит фокус».
+                  */}
+                  <View
+                    ref={headingNode as never}
+                    tabIndex={-1}
+                    alignSelf="flex-start"
+                    outlineWidth={0}
+                    position="absolute"
+                    width={1}
+                    height={1}
+                    overflow="hidden"
+                    opacity={0}
+                    pointerEvents="none"
+                  >
+                    <Heading level={1}>{friends("title")}</Heading>
+                  </View>
+                  <XStack justifyContent="flex-end" alignItems="center">
+                    <NotificationBell />
+                  </XStack>
+                  <SegmentTabs
+                    label={friends("tabs.label")}
+                    value={tab}
+                    onChange={function selectTab(next) {
+                      if (next === "friends" || next === "subscriptions" || next === "requests") {
+                        changeTab(next);
+                      }
+                    }}
+                    testID="friends-tabs"
+                    tabs={[
+                      { key: "friends", label: friends("tabs.friends") },
+                      { key: "subscriptions", label: friends("tabs.subscriptions") },
+                      { key: "requests", label: friends("tabs.requests"), badge },
+                    ]}
                   />
-                ) : tab === "subscriptions" ? (
-                  <SubscriptionsPanel
-                    view={subscriptionView}
-                    subscribed={subscribedList}
-                    subscribers={subscribersList}
-                    onViewChange={selectSubscriptionView}
-                    onRetrySubscribed={retrySubscribed}
-                    onRetrySubscribers={retrySubscribers}
-                    subscribedMenuFor={subscribedItems}
-                    subscriberMenuFor={subscriberItems}
-                    onMenuNode={registerMenuNode}
-                  />
-                ) : (
-                  <RequestsPanel
-                    invites={invites}
-                    onRetry={retryInvites}
-                    onAccept={acceptInvite}
-                    onReject={rejectInvite}
-                    onCancel={cancelInvite}
-                    onBlock={askBlock}
-                    pendingNick={pendingNick}
-                    onRowNode={registerMenuNode}
-                  />
-                )}
+                  <YStack paddingTop="$2" paddingBottom="$section-gap" gap="$grid-gap" flexGrow={1}>
+                    {tab === "friends" ? (
+                      <FriendsPanel
+                        list={friendsList}
+                        totalFriends={
+                          prepared === "" && friendsList.status === "ready"
+                            ? friendsList.total
+                            : allFriendsTotal.current
+                        }
+                        query={query}
+                        prepared={prepared}
+                        onQueryChange={changeQuery}
+                        onRetry={retryFriends}
+                        onOpenFindContacts={openFindContacts}
+                        onOpenSearch={openSearch}
+                        menuFor={profileItems}
+                        onMenuNode={registerMenuNode}
+                      />
+                    ) : tab === "subscriptions" ? (
+                      <SubscriptionsPanel
+                        view={subscriptionView}
+                        subscribed={subscribedList}
+                        subscribers={subscribersList}
+                        onViewChange={selectSubscriptionView}
+                        onRetrySubscribed={retrySubscribed}
+                        onRetrySubscribers={retrySubscribers}
+                        subscribedMenuFor={subscribedItems}
+                        subscriberMenuFor={subscriberItems}
+                        onMenuNode={registerMenuNode}
+                      />
+                    ) : (
+                      <RequestsPanel
+                        invites={invites}
+                        onRetry={retryInvites}
+                        onAccept={acceptInvite}
+                        onReject={rejectInvite}
+                        onCancel={cancelInvite}
+                        onBlock={askBlock}
+                        pendingNick={pendingNick}
+                        onRowNode={registerMenuNode}
+                      />
+                    )}
+                  </YStack>
+                  <SiteFooter />
+                </Column>
               </YStack>
-              <SiteFooter />
-            </Column>
+              {hintPlacement === "aside" && installHint.visible ? (
+                <YStack
+                  role="complementary"
+                  testID="friends-aside"
+                  width="$right-column"
+                  flexShrink={0}
+                  marginLeft="$column-gap"
+                  paddingTop="$page-gutter"
+                  paddingRight="$page-gutter-lg"
+                >
+                  <InstallHint
+                    onClose={installHint.dismiss}
+                    testID="install-hint"
+                  />
+                </YStack>
+              ) : null}
+            </XStack>
           </PageContainer>
         </PageScroll>
         <ConfirmDialog

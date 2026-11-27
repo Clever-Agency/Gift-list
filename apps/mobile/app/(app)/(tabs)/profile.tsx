@@ -34,6 +34,7 @@ import { useLocale, useTranslations } from "use-intl";
 import { getMyProfile, updateMyProfile, updateName, updateNick } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { EmailChangeSection, emailChangeLinkError } from "@/profile/email-change";
+import { MyDatesSection } from "@/profile/my-dates";
 import { profileRoute } from "@/profile/profile-route";
 import { useAuth } from "@/session/auth-context";
 import {
@@ -44,6 +45,7 @@ import {
   signOutErrorMessage,
 } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
+import { MONTH_DAYS, dayOptions, monthOptions } from "@/ui/date-options";
 import { NotificationBell } from "@/ui/notification-bell";
 import { OptionField, type PickerOption } from "@/ui/option-field";
 import { ProfileMenu } from "@/ui/profile-menu";
@@ -290,6 +292,7 @@ export default function MyProfileScreen() {
                   onToast={showToast}
                   onExpired={expireSession}
                 />
+                <MyDatesSection onToast={showToast} onExpired={expireSession} />
                 <ProfileMenu
                   onOpenProfile={openOwnProfile}
                   onOpenSettings={openSettings}
@@ -608,28 +611,6 @@ function ProfileDetails({
 }
 
 ProfileDetails.displayName = "ProfileDetails";
-
-/** The last day of each month; the year is never stored, so February stops at 29 (AD-23). */
-const MONTH_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
-
-/** Month names of the interface locale, in calendar order (D-58, AD-29). */
-function monthOptions(locale: string): PickerOption[] {
-  const format = new Intl.DateTimeFormat(locale, { month: "long" });
-  return Array.from({ length: 12 }, function makeMonth(_, index) {
-    return {
-      value: String(index + 1),
-      label: format.format(new Date(Date.UTC(2000, index, 1))),
-    };
-  });
-}
-
-/** Days of the chosen month: 30 February and 31 April are never offered (AD-29). */
-function dayOptions(month: number | null): PickerOption[] {
-  const last = month === null ? 31 : (MONTH_DAYS[month - 1] ?? 31);
-  return Array.from({ length: last }, function makeDay(_, index) {
-    return { value: String(index + 1), label: String(index + 1) };
-  });
-}
 
 /**
  * Country names come from the built-in `Intl.DisplayNames` (D-64.3), sorted by

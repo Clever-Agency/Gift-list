@@ -11,6 +11,10 @@ type TestRecipient = {
   datesInApp?: boolean;
   datesEmail?: boolean;
   remindFriendDates?: boolean;
+  remindOwnList?: boolean;
+  birthDay?: number | null;
+  birthMonth?: number | null;
+  profileVisibleToFriends?: boolean;
 };
 
 type TestFriend = {
@@ -55,6 +59,8 @@ function createDateRemindersDb(input: {
       findMany: vi.fn(async function findMany(args: {
         where: {
           remindFriendDates?: boolean;
+          remindOwnList?: boolean;
+          OR?: { remindFriendDates?: boolean; remindOwnList?: boolean }[];
           id?: { in?: string[]; gt?: string };
           profileVisibleToFriends?: boolean;
           birthDay?: { not: null };
@@ -78,8 +84,10 @@ function createDateRemindersDb(input: {
               birthMonth: friend.birthMonth,
             }));
         }
+        // Mirrors `OR: [{ remindFriendDates: true }, { remindOwnList: true }]`:
+        // a user with both reminder types off is not scanned at all.
         return input.recipients
-          .filter(recipient => recipient.remindFriendDates !== false)
+          .filter(recipient => recipient.remindFriendDates !== false || recipient.remindOwnList !== false)
           .filter(recipient => !args.where.id?.gt || recipient.id > args.where.id.gt)
           .sort((left, right) => left.id.localeCompare(right.id))
           .slice(0, args.take ?? 100)
@@ -88,6 +96,10 @@ function createDateRemindersDb(input: {
             timeZone: recipient.timeZone ?? null,
             datesInApp: recipient.datesInApp !== false,
             datesEmail: recipient.datesEmail !== false,
+            remindFriendDates: recipient.remindFriendDates !== false,
+            remindOwnList: recipient.remindOwnList !== false,
+            birthDay: recipient.birthDay ?? null,
+            birthMonth: recipient.birthMonth ?? null,
           }));
       }),
     },
@@ -181,7 +193,7 @@ describe("Story 7.3: processDateReminders", () => {
       gifts: [wish()],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 1, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 1, sentOwnDates: 0, failed: 0 });
 
     expect(logs.size).toBe(1);
     expect(notifications).toHaveLength(1);
@@ -209,8 +221,8 @@ describe("Story 7.3: processDateReminders", () => {
       gifts: [wish()],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 1, failed: 0 });
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 0, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 1, sentOwnDates: 0, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
     expect(logs.size).toBe(1);
     expect(notifications).toHaveLength(1);
   });
@@ -222,7 +234,7 @@ describe("Story 7.3: processDateReminders", () => {
       friendships: [friendship()],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 0, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
     expect(logs.size).toBe(0);
     expect(notifications).toHaveLength(0);
   });
@@ -240,7 +252,7 @@ describe("Story 7.3: processDateReminders", () => {
       ],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 0, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
     expect(logs.size).toBe(0);
     expect(notifications).toHaveLength(0);
   });
@@ -273,7 +285,7 @@ describe("Story 7.3: processDateReminders", () => {
       gifts: [wish()],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 0, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
     expect(logs.size).toBe(0);
     expect(notifications).toHaveLength(0);
     expect(readWishes).not.toHaveBeenCalled();
@@ -291,7 +303,7 @@ describe("Story 7.3: processDateReminders", () => {
       gifts: [wish()],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 0, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
     expect(notifications).toHaveLength(0);
     expect(readWishes).not.toHaveBeenCalled();
   });
@@ -303,7 +315,7 @@ describe("Story 7.3: processDateReminders", () => {
       gifts: [wish()],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 0, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
     expect(notifications).toHaveLength(0);
   });
 
@@ -315,7 +327,7 @@ describe("Story 7.3: processDateReminders", () => {
       gifts: [wish()],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 0, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
     expect(notifications).toHaveLength(0);
   });
 
@@ -329,7 +341,7 @@ describe("Story 7.3: processDateReminders", () => {
 
     await expect(
       processDateReminders(new Date("2026-11-27T06:59:00.000Z"), db, readWishes),
-    ).resolves.toEqual({ sent: 0, failed: 0 });
+    ).resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
     expect(notifications).toHaveLength(0);
   });
 
@@ -343,7 +355,7 @@ describe("Story 7.3: processDateReminders", () => {
 
     await expect(
       processDateReminders(new Date("2027-02-14T12:00:00.000Z"), db, readWishes),
-    ).resolves.toEqual({ sent: 1, failed: 0 });
+    ).resolves.toEqual({ sentFriendDates: 1, sentOwnDates: 0, failed: 0 });
     expect(notifications[0]).toMatchObject({
       eventKey: "DATE_FRIEND:friend:2027",
       payload: { date: "2027-02-28" },
@@ -360,7 +372,7 @@ describe("Story 7.3: processDateReminders", () => {
 
     await expect(
       processDateReminders(new Date("2026-12-18T12:00:00.000Z"), db, readWishes),
-    ).resolves.toEqual({ sent: 1, failed: 0 });
+    ).resolves.toEqual({ sentFriendDates: 1, sentOwnDates: 0, failed: 0 });
     expect(notifications[0]).toMatchObject({
       eventKey: "DATE_FRIEND:friend:2027",
       payload: { date: "2027-01-01" },
@@ -380,7 +392,7 @@ describe("Story 7.3: processDateReminders", () => {
       failFor: ["friend"],
     });
 
-    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sent: 1, failed: 1 });
+    await expect(processDateReminders(now, db, readWishes)).resolves.toEqual({ sentFriendDates: 1, sentOwnDates: 0, failed: 1 });
     expect(notifications).toHaveLength(1);
     const logged = JSON.stringify(spy.mock.calls);
     expect(logged).toContain("recipient");
@@ -403,5 +415,163 @@ describe("Story 7.3: processDateReminders", () => {
         throw missingTable;
       }),
     ).rejects.toBe(missingTable);
+  });
+});
+
+describe("Story 7.4: the own birthday reminder", () => {
+  /** A birthday of 27 December is exactly 30 days after `now` (27 November). */
+  function ownBirthday(overrides: Partial<TestRecipient> = {}): TestRecipient {
+    return recipient({ birthDay: 27, birthMonth: 12, ...overrides });
+  }
+
+  it("writes one log and one notice, and nothing on a repeated run", async function onceAYear() {
+    const { db, readWishes, notifications, logs } = createDateRemindersDb({
+      recipients: [ownBirthday()],
+      friends: [],
+    });
+
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 1, failed: 0 });
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
+
+    expect(logs.size).toBe(1);
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      eventKey: "DATE_OWN:recipient:2026",
+      kind: "DATE_OWN",
+      recipientId: "recipient",
+      emailRequired: true,
+      payload: {},
+    });
+    // The own notice never reads anyone's wishlist.
+    expect(readWishes).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when the birthday is not 30 days away", async function wrongDay() {
+    const { db, readWishes, notifications } = createDateRemindersDb({
+      recipients: [ownBirthday({ birthDay: 28 })],
+      friends: [],
+    });
+
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
+    expect(notifications).toHaveLength(0);
+  });
+
+  it("waits for 10:00 in the recipient's own zone", async function beforeTen() {
+    const { db, readWishes, notifications } = createDateRemindersDb({
+      recipients: [ownBirthday({ timeZone: "Europe/Minsk" })],
+      friends: [],
+    });
+
+    // 06:59 UTC is 09:59 in Minsk in November.
+    await expect(processDateReminders(new Date("2026-11-27T06:59:00.000Z"), db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
+    expect(notifications).toHaveLength(0);
+
+    await expect(processDateReminders(new Date("2026-11-27T07:00:00.000Z"), db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 1, failed: 0 });
+    expect(notifications).toHaveLength(1);
+  });
+
+  it("sends nothing while the own-list switch is off", async function switchOff() {
+    const { db, readWishes, notifications, logs } = createDateRemindersDb({
+      recipients: [ownBirthday({ remindOwnList: false })],
+      friends: [],
+    });
+
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
+    expect(logs.size).toBe(0);
+    expect(notifications).toHaveLength(0);
+  });
+
+  it("sends nothing without a birthday on the profile", async function noBirthday() {
+    const { db, readWishes, notifications } = createDateRemindersDb({
+      recipients: [recipient()],
+      friends: [],
+    });
+
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
+    expect(notifications).toHaveLength(0);
+  });
+
+  it("sends nothing when both channels are off", async function noChannels() {
+    const { db, readWishes, notifications, logs } = createDateRemindersDb({
+      recipients: [ownBirthday({ datesInApp: false, datesEmail: false })],
+      friends: [],
+    });
+
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 0, failed: 0 });
+    expect(logs.size).toBe(0);
+    expect(notifications).toHaveLength(0);
+  });
+
+  it("sends the notice while the birthday is hidden from Friends", async function hiddenProfile() {
+    const { db, readWishes, notifications } = createDateRemindersDb({
+      recipients: [ownBirthday({ profileVisibleToFriends: false })],
+      friends: [],
+    });
+
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 1, failed: 0 });
+    expect(notifications[0]).toMatchObject({ kind: "DATE_OWN" });
+  });
+
+  it("sends the notice to an empty wishlist", async function emptyList() {
+    const { db, readWishes, notifications } = createDateRemindersDb({
+      recipients: [ownBirthday()],
+      friends: [],
+      gifts: [],
+    });
+
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 1, failed: 0 });
+    expect(notifications).toHaveLength(1);
+  });
+
+  it("observes a 29 February birthday on 28 February in a non-leap year", async function leapDay() {
+    const { db, readWishes, notifications } = createDateRemindersDb({
+      recipients: [recipient({ birthDay: 29, birthMonth: 2 })],
+      friends: [],
+    });
+
+    await expect(processDateReminders(new Date("2027-01-29T12:00:00.000Z"), db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 1, failed: 0 });
+    expect(notifications[0]).toMatchObject({
+      eventKey: "DATE_OWN:recipient:2027",
+      kind: "DATE_OWN",
+    });
+  });
+
+  it("keeps the birthday year across the calendar boundary", async function yearBoundary() {
+    const { db, readWishes, notifications } = createDateRemindersDb({
+      recipients: [recipient({ birthDay: 1, birthMonth: 1 })],
+      friends: [],
+    });
+
+    // 2 December 2026 is 30 days before 1 January 2027.
+    await expect(processDateReminders(new Date("2026-12-02T12:00:00.000Z"), db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 0, sentOwnDates: 1, failed: 0 });
+    expect(notifications[0]).toMatchObject({
+      eventKey: "DATE_OWN:recipient:2027",
+      kind: "DATE_OWN",
+    });
+  });
+
+  it("counts the Friend and own notices of one run separately", async function bothPasses() {
+    const { db, readWishes, notifications } = createDateRemindersDb({
+      recipients: [ownBirthday()],
+      friends: [friend()],
+      friendships: [friendship()],
+      gifts: [wish()],
+    });
+
+    await expect(processDateReminders(now, db, readWishes))
+      .resolves.toEqual({ sentFriendDates: 1, sentOwnDates: 1, failed: 0 });
+    expect(notifications.map(row => row.kind)).toEqual(["DATE_FRIEND", "DATE_OWN"]);
   });
 });

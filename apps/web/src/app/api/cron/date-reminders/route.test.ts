@@ -40,11 +40,14 @@ describe("POST /api/cron/date-reminders", () => {
     expect(processDateReminders).not.toHaveBeenCalled();
   });
 
-  it("returns the sent counter only", async () => {
-    processDateReminders.mockResolvedValue({ sent: 3, failed: 0 });
+  it("returns the sent counters only", async function counters() {
+    processDateReminders.mockResolvedValue({ sentFriendDates: 3, sentOwnDates: 1, failed: 0 });
     const response = await POST(post(`Bearer ${secret}`));
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true, data: { sent: 3 } });
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      data: { sentFriendDates: 3, sentOwnDates: 1 },
+    });
   });
 
   it.each(["P2021", "P2022"] as const)(
@@ -73,7 +76,7 @@ describe("POST /api/cron/date-reminders", () => {
   });
 
   it("answers 500 without a body when some pairs failed", async () => {
-    processDateReminders.mockResolvedValue({ sent: 1, failed: 1 });
+    processDateReminders.mockResolvedValue({ sentFriendDates: 1, sentOwnDates: 0, failed: 1 });
     const response = await POST(post(`Bearer ${secret}`));
     expect(response.status).toBe(500);
     await expect(response.text()).resolves.toBe("");

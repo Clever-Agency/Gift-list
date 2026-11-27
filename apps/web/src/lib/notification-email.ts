@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import {
+  formatDate,
   getMessages,
   negotiateLocale,
   notificationChangedFields,
@@ -11,6 +12,7 @@ import {
   type Messages,
   type NotificationItem,
 } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { prisma } from "@/db/client";
 import type { Notification, NotificationKind, Prisma } from "@/db/generated/client";
 import { getBrandName, getEnv } from "@/lib/env";
@@ -194,6 +196,20 @@ function reminderLetterTarget(item: NotificationItem, baseUrl: string, copy: Mes
 }
 
 /**
+ * Story 7.6 (FR-38): a personal date names the Friend, the owner's label and
+ * the day in the letter subject. The subject lives in the letter catalog only
+ * (`getWebMessages`), so the app bundle never pays for it; every other kind
+ * keeps the shared subject from the client catalog.
+ */
+export function letterSubject(event: NotificationItem["event"], locale: string): string {
+  if (event.kind !== "DATE_CUSTOM") return notificationEmailSubject(event, locale);
+  return getWebMessages(locale).email.notificationDateCustomSubject
+    .replace("{person}", event.personName)
+    .replace("{dateTitle}", event.dateTitle)
+    .replace("{date}", formatDate(event.date, locale, { year: false }));
+}
+
+/**
  * One letter about one notification: the ordinary queue path and the digest
  * of a single reminder share it.
  */
@@ -213,7 +229,7 @@ function notificationLetter(current: EmailRow, item: NotificationItem, baseUrl: 
   const unsubscribe = notificationUnsubscribeLinks(baseUrl, current.recipientId, current.kind);
   return {
     to: current.recipient.email,
-    subject: notificationEmailSubject(item.event, locale).replace("{brand}", getBrandName()),
+    subject: letterSubject(item.event, locale).replace("{brand}", getBrandName()),
     text: [
       ...lines,
       "",

@@ -587,6 +587,20 @@ describe("email change copy", () => {
   });
 });
 
+/**
+ * Story 7.6 (FR-38): the personal-date letter subject is letter-only copy.
+ * It names the Friend, the owner's label and the day, and stays out of the
+ * client catalog (CLE-141/S0-1).
+ */
+describe("personal date letter copy", () => {
+  it("keeps the subject in the email catalog with its placeholders", () => {
+    const { email } = getWebMessages("ru");
+
+    expect(email.notificationDateCustomSubject).toBe("У {person} «{dateTitle}» {date} — {brand}");
+    expect(JSON.stringify(getMessages("ru"))).not.toContain("notificationDateCustomSubject");
+  });
+});
+
 describe("error catalog", () => {
   it("covers every error code and reason with non-empty text", () => {
     const { code, reason } = getMessages("ru").common.errors;

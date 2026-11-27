@@ -301,7 +301,8 @@ describe("Story 7.4: own birthday reminder copy", () => {
 
 /**
  * Story 7.6 (FR-38, AD-27): a personal date reminder names the Friend, the
- * owner's label and the day without a year; the letter subject says the same.
+ * owner's label and the day without a year. The letter subject lives in the
+ * email-only catalog and is checked by the web letter tests.
  */
 describe("Story 7.6: personal date reminder copy", () => {
   const personalDate = {
@@ -315,7 +316,6 @@ describe("Story 7.6: personal date reminder copy", () => {
   it("names the label and the day without a year", () => {
     expect(notificationText(personalDate, "ru")).toBe("У Аня скоро «Годовщина» — 11.12");
     expect(notificationText(personalDate, "ru")).not.toContain("2026");
-    expect(notificationEmailSubject(personalDate, "ru")).toBe("Новое уведомление — {brand}");
   });
 
   it("parses only the personal-date keys and drops a holder or a year", () => {

@@ -87,6 +87,26 @@ function friendBirthdayItem(): NotificationItem {
   };
 }
 
+/**
+ * Story 7.6 (FR-38): the reminder about a Friend's personal date names the
+ * Friend, the owner's label and the day without a year.
+ */
+function personalDateItem(): NotificationItem {
+  return {
+    id: "personal-date",
+    createdAt: "2026-11-24T10:00:00.000Z",
+    readAt: null,
+    href: "/u/anya",
+    event: {
+      kind: "DATE_CUSTOM",
+      personName: "Аня",
+      personNick: "anya",
+      date: "2026-12-11",
+      dateTitle: "Годовщина свадьбы",
+    },
+  };
+}
+
 const meta = {
   title: "App/NotificationsList",
   component: NotificationsList,
@@ -115,3 +135,5 @@ export const WishExpiryReleased: Story = { tags: ["!dev"], args: { items: [wishE
 export const WishExpirySoon: Story = { tags: ["!dev"], args: { items: [wishExpiryItem("soon")] } };
 /** День рождения друга: дата без года, число открытых желаний, до трёх названий. */
 export const FriendBirthday: Story = { args: { items: [friendBirthdayItem()] } };
+/** Личная дата друга: название даты и день без года, открывается профиль. */
+export const FriendPersonalDate: Story = { args: { items: [personalDateItem()] } };

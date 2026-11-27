@@ -67,6 +67,7 @@ import {
 } from "./notification-store";
 import { getBrandName } from "@/lib/env";
 import {
+  letterSubject,
   notificationEmailLink,
   notificationUnsubscribeLinks,
   processNotificationEmails,
@@ -965,6 +966,12 @@ describe("email notification queue", function mailTests() {
     expect(verifyUnsubscribeToken(friend!.page.split("/").pop()!))
       .toEqual({ userId: "owner", type: "friendDates" });
 
+    // Story 7.6: a personal date uses the very same switch, no new token.
+    const personalDate = notificationUnsubscribeLinks("https://example.test", "owner", "DATE_CUSTOM");
+    expect(personalDate?.type).toBe("friendDates");
+    expect(verifyUnsubscribeToken(personalDate!.page.split("/").pop()!))
+      .toEqual({ userId: "owner", type: "friendDates" });
+
     const own = notificationUnsubscribeLinks("https://example.test", "holder", "DATE_OWN");
     expect(own?.type).toBe("ownList");
     expect(verifyUnsubscribeToken(own!.page.split("/").pop()!))
@@ -1043,6 +1050,144 @@ describe("email notification queue", function mailTests() {
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     });
     expect(verifyUnsubscribeToken(page!.split("/").pop()!)).toEqual({ userId: "owner", type: "friendDates" });
+  });
+
+  /**
+   * Story 7.6 (FR-38): the personal-date letter names the Friend, the owner's
+   * label and the day without a year, opens the Friend's profile and uses the
+   * birthday switch for its unsubscribe control.
+   */
+  it("sends a personal date to the friend's profile with the shared unsubscribe switch", async function personalDateMail() {
+    mockEmailQueue([record({
+      id: "personal-date",
+      kind: "DATE_CUSTOM",
+      giftId: null,
+      actorId: "friend",
+      reservationAt: null,
+      phaseAt: null,
+      payload: {
+        personName: "Аня",
+        personNick: "anya",
+        dateId: "date-row",
+        date: "2026-12-11",
+        dateTitle: "Годовщина",
+      },
+    })]);
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockResolvedValue({ name: "Аня", nick: "anya" });
+    db.userDate.findFirst.mockResolvedValue({
+      id: "date-row",
+      kind: "CUSTOM",
+      title: "Годовщина",
+      day: 11,
+      month: 12,
+      year: null,
+      visibility: "FRIENDS",
+      yearVisibility: "ONLY_ME",
+    });
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 1 });
+    const message = send.mock.calls[0]![0];
+    expect(letterSubject(
+      { kind: "DATE_CUSTOM", personName: "Аня", personNick: "anya", date: "2026-12-11", dateTitle: "Годовщина" },
+      "ru",
+    )).toBe("У Аня «Годовщина» 11.12 — {brand}");
+    expect(message.subject).toBe(`У Аня «Годовщина» 11.12 — ${getBrandName()}`);
+    expect(message.text.split("\n")[0]).toBe("У Аня скоро «Годовщина» — 11.12");
+    expect(message.text).not.toContain("2026");
+    expect(message.text).toContain("https://example.test/u/anya");
+    expect(message.html).toContain('<a href="https://example.test/u/anya">Открыть профиль</a>');
+
+    const page = /^Отписаться: (https:\/\/\S+)$/m.exec(message.text)?.[1];
+    expect(page).toBeDefined();
+    expect(message.html).toContain(`<a href="${page}">Отписаться</a>`);
+    expect(verifyUnsubscribeToken(page!.split("/").pop()!)).toEqual({ userId: "owner", type: "friendDates" });
+    expect(message.headers).toEqual({
+      "List-Unsubscribe": `<${page}/one-click>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+  });
+
+  /**
+   * Story 7.6 (FR-38, FR-36): a Friend's birthday and a personal date of
+   * another Friend on one day leave as one digest letter. Each block names its
+   * own date and leads to its own profile, and the single unsubscribe control
+   * turns off the shared `remindFriendDates` switch.
+   */
+  it("joins a birthday and a personal date into one digest letter", async function mixedFriendDates() {
+    const rows = mockEmailQueue([
+      record({
+        id: "anya",
+        kind: "DATE_FRIEND",
+        giftId: null,
+        actorId: "friend-anya",
+        reservationAt: null,
+        phaseAt: null,
+        payload: { personName: "Аня", personNick: "anya", date: "2026-03-14", count: 1, titles: ["Плед"] },
+      }),
+      record({
+        id: "ivan-date",
+        kind: "DATE_CUSTOM",
+        giftId: null,
+        actorId: "friend-ivan",
+        reservationAt: null,
+        phaseAt: null,
+        payload: {
+          personName: "Иван",
+          personNick: "ivan",
+          dateId: "date-row",
+          date: "2026-03-14",
+          dateTitle: "Годовщина свадьбы",
+        },
+      }),
+    ]);
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockImplementation(async function friend(args: { where: { id: string } }) {
+      const people: Record<string, { name: string; nick: string; profileVisibleToFriends?: boolean }> = {
+        "friend-anya": { name: "Аня", nick: "anya", profileVisibleToFriends: true },
+        "friend-ivan": { name: "Иван", nick: "ivan" },
+      };
+      return people[args.where.id] ?? null;
+    });
+    db.userDate.findFirst.mockResolvedValue({
+      id: "date-row",
+      kind: "CUSTOM",
+      title: "Годовщина свадьбы",
+      day: 14,
+      month: 3,
+      year: null,
+      visibility: "FRIENDS",
+      yearVisibility: "ONLY_ME",
+    });
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 1, failed: 0 });
+    expect(send).toHaveBeenCalledOnce();
+    const message = send.mock.calls[0]![0];
+    expect(message.subject).toBe(`Напоминания на сегодня — ${getBrandName()}`);
+    expect(message.text).toContain(
+      "У Аня день рождения 14.03\nОткрытых желаний: 1\n«Плед»\nhttps://example.test/u/anya",
+    );
+    expect(message.text).toContain(
+      "У Иван скоро «Годовщина свадьбы» — 14.03\nhttps://example.test/u/ivan",
+    );
+    expect(message.html).toContain('<a href="https://example.test/u/anya">Открыть профиль</a>');
+    expect(message.html).toContain('<a href="https://example.test/u/ivan">Открыть профиль</a>');
+
+    const friendPage = /^Отписаться от напоминаний о днях рождения и датах друзей: (https:\/\/\S+)$/m
+      .exec(message.text)?.[1];
+    expect(friendPage).toBeDefined();
+    expect(message.text).not.toContain("Отписаться от напоминания обновить вишлист");
+    expect(verifyUnsubscribeToken(friendPage!.split("/").pop()!)).toEqual({ userId: "owner", type: "friendDates" });
+    expect(message.headers).toEqual({
+      "List-Unsubscribe": `<${friendPage}/one-click>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+    expect(rows.map(row => row.emailDoneAt)).toEqual([expect.any(Date), expect.any(Date)]);
+    expect(send.mock.calls[0]![1]).toMatch(/^notification-digest\//);
   });
 
   /**

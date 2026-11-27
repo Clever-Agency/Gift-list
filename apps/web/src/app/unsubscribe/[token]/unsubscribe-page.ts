@@ -4,7 +4,8 @@ import { cache } from "react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { createTranslator } from "next-intl";
-import { getMessages, type SupportedLocale } from "@gift-list/contracts";
+import { type SupportedLocale } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { applyUnsubscribe } from "@/actions/unsubscribe";
 import { requestLocale } from "@/lib/request-locale";
 import { verifyUnsubscribeToken, type UnsubscribeType } from "@/lib/unsubscribe-token";
@@ -55,7 +56,7 @@ const NO_INDEX = { index: false, follow: false } as const;
  * product and the purpose: no type, no user, no account data.
  */
 export function buildUnsubscribeMetadata(locale: SupportedLocale, brand: string): Metadata {
-  const messages = getMessages(locale);
+  const messages = getWebMessages(locale);
   const t = createTranslator({ locale, messages, namespace: "web.unsubscribe" });
   const web = createTranslator({ locale, messages, namespace: "web" });
 

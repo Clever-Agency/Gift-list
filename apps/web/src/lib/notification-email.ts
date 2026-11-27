@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import {
+  formatDate,
   getMessages,
   negotiateLocale,
   notificationChangedFields,
@@ -11,6 +12,7 @@ import {
   type Messages,
   type NotificationItem,
 } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { prisma } from "@/db/client";
 import type { Notification, NotificationKind, Prisma } from "@/db/generated/client";
 import { getBrandName, getEnv } from "@/lib/env";
@@ -70,7 +72,8 @@ export function notificationEmailLink(baseUrl: string, id: string) {
  * such control (R-3), so anything else answers `null`.
  */
 export function notificationUnsubscribeType(kind: NotificationKind): UnsubscribeType | null {
-  if (kind === "DATE_FRIEND") return "friendDates";
+  // Story 7.6: a personal date is unsubscribed by the same switch as a birthday.
+  if (kind === "DATE_FRIEND" || kind === "DATE_CUSTOM") return "friendDates";
   if (kind === "DATE_OWN") return "ownList";
   return null;
 }
@@ -101,9 +104,9 @@ type Candidate = Pick<
 >;
 const BATCH_SIZE = 50;
 
-/** Story 7.3: the two reminder kinds share one letter when they land together. */
+/** Story 7.3/7.6: the date-reminder kinds share one letter when they land together. */
 function isDateReminder(kind: NotificationKind) {
-  return kind === "DATE_FRIEND" || kind === "DATE_OWN";
+  return kind === "DATE_FRIEND" || kind === "DATE_OWN" || kind === "DATE_CUSTOM";
 }
 
 function availableAt(now: Date): Prisma.NotificationWhereInput {
@@ -183,13 +186,27 @@ async function retireEmail(rowId: string, lease: Date, clock: Clock) {
  * link.
  */
 function reminderLetterTarget(item: NotificationItem, baseUrl: string, copy: Messages["notifications"]) {
-  if (item.event.kind === "DATE_FRIEND" && item.href !== null) {
+  if ((item.event.kind === "DATE_FRIEND" || item.event.kind === "DATE_CUSTOM") && item.href !== null) {
     return { href: publicLetterUrl(baseUrl, item.href), label: copy.openFriend };
   }
   if (item.event.kind === "DATE_OWN") {
     return { href: publicLetterUrl(baseUrl, item.href ?? "/"), label: copy.openOwnList };
   }
   return { href: notificationEmailLink(baseUrl, item.id), label: copy.open };
+}
+
+/**
+ * Story 7.6 (FR-38): a personal date names the Friend, the owner's label and
+ * the day in the letter subject. The subject lives in the letter catalog only
+ * (`getWebMessages`), so the app bundle never pays for it; every other kind
+ * keeps the shared subject from the client catalog.
+ */
+export function letterSubject(event: NotificationItem["event"], locale: string): string {
+  if (event.kind !== "DATE_CUSTOM") return notificationEmailSubject(event, locale);
+  return getWebMessages(locale).email.notificationDateCustomSubject
+    .replace("{person}", event.personName)
+    .replace("{dateTitle}", event.dateTitle)
+    .replace("{date}", formatDate(event.date, locale, { year: false }));
 }
 
 /**
@@ -212,7 +229,7 @@ function notificationLetter(current: EmailRow, item: NotificationItem, baseUrl: 
   const unsubscribe = notificationUnsubscribeLinks(baseUrl, current.recipientId, current.kind);
   return {
     to: current.recipient.email,
-    subject: notificationEmailSubject(item.event, locale).replace("{brand}", getBrandName()),
+    subject: letterSubject(item.event, locale).replace("{brand}", getBrandName()),
     text: [
       ...lines,
       "",
@@ -253,7 +270,8 @@ function digestLetter(entries: DigestEntry[], baseUrl: string): Message {
     return { lines, href, label };
   });
   const kinds = new Set(entries.map(entry => entry.item.event.kind));
-  const friendDates = kinds.has("DATE_FRIEND")
+  // Story 7.6: a personal date shares the birthday unsubscribe switch.
+  const friendDates = kinds.has("DATE_FRIEND") || kinds.has("DATE_CUSTOM")
     ? notificationUnsubscribeLinks(baseUrl, first.recipientId, "DATE_FRIEND")
     : null;
   const ownList = kinds.has("DATE_OWN")

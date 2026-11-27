@@ -4,6 +4,7 @@ import {
   type ProfileDetails,
   type ProfileInviteCooldown,
   type ProfileRelationship,
+  type VisiblePersonalDate,
 } from "@gift-list/contracts";
 import {
   Avatar,
@@ -36,6 +37,7 @@ import {
 } from "@/profile/relationship-action";
 import { RelationshipActions } from "@/profile/relationship-actions";
 import { profileRoute } from "@/profile/profile-route";
+import { ProfileDatesBlock } from "@/profile/profile-dates-block";
 import {
   requestSubscriptionAction,
   type SubscriptionAction,
@@ -88,6 +90,11 @@ type ScreenState =
        * viewer. `null` is a hidden block — the screen renders nothing of it.
        */
       details: ProfileDetails | null;
+      /**
+       * CLE-141/Story 7.5 (AD-23): the dates the server allowed this viewer.
+       * The server sends only visible rows; an empty list draws no block.
+       */
+      dates: VisiblePersonalDate[];
     }
   | { status: "missing"; nick: string | null; viewerId: string | null }
   | { status: "error"; kind: "network" | "generic" };
@@ -260,6 +267,7 @@ export default function ProfileScreen() {
                 inviteCooldown: result.inviteCooldown ?? null,
                 subscribed: result.subscribed ?? false,
                 details: result.details ?? null,
+                dates: result.dates ?? [],
               },
         );
         return;
@@ -833,6 +841,7 @@ export default function ProfileScreen() {
                     {view.details !== null ? (
                       <ProfileDetailsBlock details={view.details} />
                     ) : null}
+                    <ProfileDatesBlock dates={view.dates} />
                     <XStack flexWrap="wrap" alignItems="center" gap="$2">
                       <RelationshipActions
                         relationship={view.relationship}

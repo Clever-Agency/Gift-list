@@ -67,6 +67,7 @@ type DbState = {
   gifts: GiftRow[];
   notifications: Where[];
   reminderLogs: ReminderLogRow[];
+  dates: { id: string; userId: string }[];
 };
 
 /** AD-23: one sent date reminder; the fake only needs the recipient to delete. */
@@ -246,6 +247,17 @@ function transactionFor(database: DbState) {
       }),
     },
     inviteLink: { deleteMany: deleteManyMock("inviteLink") },
+    userDate: {
+      deleteMany: vi.fn(async function deleteMany(args: { where: Where }) {
+        calls.push("userDate");
+        const userId = text(args.where.userId);
+        const before = database.dates.length;
+        if (userId !== null) {
+          database.dates = database.dates.filter((row) => row.userId !== userId);
+        }
+        return { count: before - database.dates.length };
+      }),
+    },
     reminderLog: {
       deleteMany: vi.fn(async function deleteMany(args: { where: Where }) {
         calls.push("reminderLog");
@@ -277,6 +289,7 @@ beforeEach(() => {
     gifts: [],
     notifications: [],
     reminderLogs: [],
+    dates: [],
   };
   calls = [];
   casLosses = 0;
@@ -469,6 +482,7 @@ describe("deleteAccount: the rows of the account", () => {
       "subscription",
       "inviteCooldown",
       "notification",
+      "userDate",
       "reminderLog",
       "session",
       "account",
@@ -499,6 +513,7 @@ describe("deleteAccount: the rows of the account", () => {
       },
     });
     expect(tx.notification.deleteMany).toHaveBeenCalledWith({ where: { recipientId: OWNER } });
+    expect(tx.userDate.deleteMany).toHaveBeenCalledWith({ where: { userId: OWNER } });
     expect(tx.reminderLog.deleteMany).toHaveBeenCalledWith({ where: { recipientId: OWNER } });
     expect(tx.session.deleteMany).toHaveBeenCalledWith({ where: { userId: OWNER } });
     expect(tx.account.deleteMany).toHaveBeenCalledWith({ where: { userId: OWNER } });
@@ -529,6 +544,19 @@ describe("deleteAccount: the rows of the account", () => {
     expect(db.reminderLogs).toEqual([
       { recipientId: "u2", subjectId: OWNER, year: 2026, kind: "BIRTHDAY_FRIEND" },
     ]);
+  });
+
+  it("deletes the personal dates of the account and keeps other people's", async () => {
+    db.dates = [
+      { id: "d1", userId: OWNER },
+      { id: "d2", userId: OWNER },
+      { id: "d3", userId: "u2" },
+    ];
+
+    const outcome = await deleteAccount(OWNER, { now: NOW });
+
+    expect(outcome).toBe("deleted");
+    expect(db.dates).toEqual([{ id: "d3", userId: "u2" }]);
   });
 
   it("answers already-deleted and writes nothing on a repeated call", async () => {

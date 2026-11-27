@@ -5,6 +5,7 @@ import {
   type ProfileDetails,
   type ProfileInviteCooldown,
   type ProfileRelationship,
+  type VisiblePersonalDate,
 } from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
 import { profileRoute } from "@/profile/profile-route";
@@ -43,6 +44,11 @@ export type ProfileResult =
        * never rebuilds a hidden field from any other source.
        */
       details?: ProfileDetails;
+      /**
+       * Story 7.5 (AD-23): the dates the server allowed this viewer. Absence
+       * means none were visible; the screen draws no block then.
+       */
+      dates?: VisiblePersonalDate[];
     }
   | { ok: true; access: "not_found" }
   | { ok: false; invalid: true }
@@ -97,5 +103,7 @@ export async function fetchProfile(nick: string): Promise<ProfileResult> {
     // CLE-129/T8.4: the optional `details` block of `/u/:nick` (AD-7, AD-29). A
     // key that is absent is a hidden block: the screen must not invent fields.
     ...(parsed.data.details === undefined ? {} : { details: parsed.data.details }),
+    // CLE-141/Story 7.5: the optional visible dates. Absence means none.
+    ...(parsed.data.dates === undefined ? {} : { dates: parsed.data.dates }),
   };
 }

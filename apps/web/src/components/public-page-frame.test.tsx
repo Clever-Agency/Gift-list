@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { getMessages } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { PUBLIC_MAIN_ID, PublicPageFrame } from "./public-page-frame";
 
@@ -35,7 +35,7 @@ describe("PublicPageFrame: общий каркас /l и /i", () => {
     const html = body(render());
     const skipAt = at(html, `href="#${PUBLIC_MAIN_ID}"`);
 
-    expect(getMessages("ru").web.skipToContent).toBe("Перейти к содержимому");
+    expect(getWebMessages("ru").web.skipToContent).toBe("Перейти к содержимому");
     expect(html).toContain("Перейти к содержимому");
     expect(skipAt).toBeGreaterThan(-1);
     // First in the Tab order: no link or button is painted before the skip link.

@@ -9,8 +9,10 @@ import {
 import { readWishlist } from "@/actions/wishlist-read";
 import { prisma } from "@/db/client";
 import { isValidNick, normalizeNick } from "@/domain/nick";
+import { visiblePersonalDates } from "@/domain/personal-dates";
 import { profileDetailsFor } from "@/domain/profile-details";
 import { auth } from "@/lib/auth";
+import { readPersonalDates } from "@/lib/personal-dates-store";
 import { requestLocale } from "@/lib/request-locale";
 import {
   profileRelationFacts,
@@ -67,6 +69,14 @@ const unauthenticated = {
  * all. A Block is already the closed 404, so it never reaches the block. The
  * relation is taken from the raw relationship read, not from the cooldown-adjusted
  * button facts: a live rejection cooldown is a button state, not a lost friendship.
+ *
+ * CLE-141/Story 7.5 (AD-23) adds the visible personal dates through the same
+ * one profile read. The stored rows come from `readPersonalDates`, and
+ * `visiblePersonalDates` decides with the same relation facts as the fields:
+ * the owner gets every own date, an accepted friend also `FRIENDS`, a
+ * subscriber only `EVERYONE` (AD-15-10), and a blocked pair already answered the
+ * closed 404 before this block. `viaListToken` is false here by construction —
+ * `/l/:token` never reaches this use-case and never carries dates.
  */
 export async function getProfileByNick(
   nick: string,
@@ -112,6 +122,11 @@ export async function getProfileByNick(
   // the relationship and the cooldown are discarded with the rest of the profile.
   if (data === null) return notFoundError();
 
+  // AD-23: at most ten rows; the policy below drops the ones this viewer may
+  // not see and hides a year the owner did not open. The read happens after the
+  // closed 404, so a blocked pair never even asks for the dates.
+  const dates = await readPersonalDates(owner.id);
+
   // AD-7 / AD-29: `undefined` keeps the key out of the answer entirely.
   const details = profileDetailsFor(
     { id: session.user.id },
@@ -120,6 +135,19 @@ export async function getProfileByNick(
     // before the cooldown composition; a pending invite never is a friendship.
     { friend: relationship === "FRIENDS" },
     owner,
+  );
+  const visibleDates = visiblePersonalDates(
+    { id: session.user.id },
+    {
+      // A Block was already the closed 404 above, before any date could travel.
+      blocked: false,
+      friend: relationship === "FRIENDS",
+      subscriber: subscribed,
+      contactMatch: false,
+      // `/u/:nick` is not a link visit; `viaListToken` is always false here.
+      viaListToken: false,
+    },
+    dates,
   );
 
   return {
@@ -130,6 +158,7 @@ export async function getProfileByNick(
       ...profileRelationFacts(relationship, inviteCooldown),
       subscribed,
       ...(details === undefined ? {} : { details }),
+      ...(visibleDates.length === 0 ? {} : { dates: visibleDates }),
     }),
   };
 }

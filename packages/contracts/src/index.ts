@@ -11,6 +11,7 @@ import {
   VISIBILITIES,
 } from "./enums";
 import { PROFILE_RELATIONSHIPS, profileInviteCooldownSchema } from "./friendship";
+import { visiblePersonalDateSchema } from "./personal-dates";
 import { profileDetailsSchema, profileFieldsSchema } from "./profile";
 
 export const ERROR_CODES = [
@@ -218,6 +219,30 @@ export {
   VISIBILITIES,
 } from "./enums";
 
+export {
+  DATE_VISIBILITIES,
+  DEFAULT_DATE_VISIBILITY,
+  DEFAULT_DATE_YEAR_VISIBILITY,
+  PERSONAL_DATES_MAX,
+  PERSONAL_DATE_MIN_YEAR,
+  PERSONAL_DATE_TITLE_MAX,
+  USER_DATE_KINDS,
+  dateVisibilitySchema,
+  isPersonalDateYearAllowed,
+  isValidPersonalDate,
+  personalDateCreateBodySchema,
+  personalDateSchema,
+  personalDateUpdateBodySchema,
+  userDateKindSchema,
+  visiblePersonalDateSchema,
+  type DateVisibility,
+  type PersonalDate,
+  type PersonalDateCreateBody,
+  type PersonalDateUpdateBody,
+  type UserDateKind,
+  type VisiblePersonalDate,
+} from "./personal-dates";
+
 // Closed set: unknown keys are rejected so nothing extra (e.g. `bought`) leaks to the owner (AD-15).
 export const giftCardSchema = z.strictObject({
   id: z.string(),
@@ -342,6 +367,14 @@ export const listDataSchema = z.strictObject({
    * answer can tell that the fields even exist.
    */
   details: profileDetailsSchema.optional(),
+  /**
+   * AD-23 (Story 7.5): the personal dates of the profile as this viewer gets
+   * them — only the visible ones, without the owner's visibility switches and
+   * with `year: null` when the year is hidden or absent. Only `/u/:nick` adds
+   * the key; `/l/:token`, search and `/me` never do, and a profile with no
+   * visible date omits it entirely, like `details`.
+   */
+  dates: z.array(visiblePersonalDateSchema).optional(),
 });
 
 export type ListData = z.infer<typeof listDataSchema>;

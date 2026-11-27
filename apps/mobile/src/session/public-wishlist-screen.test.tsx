@@ -663,9 +663,9 @@ describe("вишлист по ссылке: список", () => {
     });
     expect(dialogElement()).toBeNull();
 
-    // This file's translator stub only loads `app` and `common`, so the web
-    // catalogue key is what the button renders here.
-    await press("buyMyself");
+    // The «Куплю сам» label lives in `common` (CLE-141/S0-1), so the
+    // translator stub of this file renders it from there.
+    await press("Куплю сам");
     expect(navigation.push).toHaveBeenCalledWith({
       pathname: "/gifts/[id]",
       params: { id: "g1", listToken: "tok_1", title: "Наушники", openReserve: "1" },

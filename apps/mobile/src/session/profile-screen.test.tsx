@@ -174,6 +174,7 @@ function giftsAnswer(
   inviteCooldown?: unknown,
   subscribed?: boolean,
   details?: unknown,
+  dates?: unknown,
 ) {
   return {
     ok: true,
@@ -185,6 +186,7 @@ function giftsAnswer(
       ...(inviteCooldown === undefined ? {} : { inviteCooldown }),
       ...(subscribed === undefined ? {} : { subscribed }),
       ...(details === undefined ? {} : { details }),
+      ...(dates === undefined ? {} : { dates }),
     },
   };
 }
@@ -692,6 +694,53 @@ describe("профиль: поля профиля (CLE-129/T8.4)", () => {
     expect(block?.querySelector('[data-testid="profile-gender"]')).toBeNull();
     expect(block?.querySelector('[data-testid="profile-country"]')).toBeNull();
     expect(block?.querySelector('[data-testid="profile-about"]')).toBeNull();
+  });
+});
+
+describe("профиль: личные даты (Story 7.5)", () => {
+  function datesBlock(): HTMLElement | null {
+    return container.querySelector<HTMLElement>('[data-testid="profile-dates-block"]');
+  }
+
+  it("друг видит даты, которые отдал сервер: дата без года и с годом", async () => {
+    respond(
+      giftsAnswer(
+        [],
+        owner,
+        "FRIENDS",
+        undefined,
+        undefined,
+        undefined,
+        [
+          { id: "d1", kind: "CUSTOM", title: "Годовщина свадьбы", day: 14, month: 3, year: null },
+          { id: "d2", kind: "CUSTOM", title: "День рождения мамы", day: 2, month: 9, year: 1958 },
+        ],
+      ),
+    );
+    await mount();
+
+    const block = datesBlock();
+    expect(block).not.toBeNull();
+    expect(block?.textContent).toContain("Даты");
+    expect(block?.textContent).toContain("Годовщина свадьбы");
+    expect(block?.textContent).toContain("14.03");
+    expect(block?.textContent).not.toContain("14.03.2000");
+    expect(block?.textContent).toContain("02.09.1958");
+  });
+
+  it("пустой список дат блок не рисует", async () => {
+    respond(giftsAnswer([], owner, "FRIENDS", undefined, undefined, undefined, []));
+    await mount();
+
+    expect(datesBlock()).toBeNull();
+    expect(text()).not.toContain("Годовщина");
+  });
+
+  it("без поля dates в ответе блока тоже нет", async () => {
+    respond(giftsAnswer([], owner, "NONE"));
+    await mount();
+
+    expect(datesBlock()).toBeNull();
   });
 });
 

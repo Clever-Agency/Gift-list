@@ -104,6 +104,21 @@ export function dueBirthdayReminderYear(
   return birthdayReminderYear(birthDay, birthMonth, daysBefore, now, timeZone);
 }
 
+/**
+ * Story 7.6 (FR-38, AD-23): a personal date goes out on the same T-14 day and
+ * from the same 10:00 local hour as a Friend's birthday, and 29 February is
+ * observed on 28 February in a non-leap year alike. A date without a year is
+ * announced in the year of its occurrence, exactly like a birthday.
+ */
+export function duePersonalDateReminderYear(
+  day: number,
+  month: number,
+  now: Date,
+  timeZone: string | null,
+): number | null {
+  return dueBirthdayReminderYear(day, month, BIRTHDAY_FRIEND_REMINDER_DAYS, now, timeZone);
+}
+
 function twoDigits(value: number): string {
   return String(value).padStart(2, "0");
 }

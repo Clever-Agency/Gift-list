@@ -3,10 +3,10 @@
 import { createTranslator } from "next-intl";
 import {
   formatPrice,
-  getMessages,
   type GiftCard,
   type SupportedLocale,
 } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import {
   Button,
   Column,
@@ -55,7 +55,7 @@ export type PublicWishViewProps = {
  * `/l/{token}`.
  */
 export function PublicWishView({ view, locale, listPath, wishlistPath }: PublicWishViewProps) {
-  const messages = getMessages(locale);
+  const messages = getWebMessages(locale);
   const t = createTranslator({ locale, messages, namespace: "web.wishlist" });
   const tGift = createTranslator({ locale, messages, namespace: "app.gift" });
   const tWishlist = createTranslator({ locale, messages, namespace: "app.myWishlist" });

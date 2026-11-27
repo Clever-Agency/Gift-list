@@ -11,6 +11,7 @@ import {
   normalizeForSearch,
   preferredFromAcceptLanguage,
 } from "./index";
+import { getWebMessages } from "./web-messages";
 
 describe("negotiateLocale", () => {
   it("returns ru for an empty list", () => {
@@ -127,7 +128,7 @@ describe("not-found copy", () => {
    * Patterns: «Список не найден.», «Приглашение не найдено.»).
    */
   it("is the same sentence with a final period on the web and in the app", () => {
-    const { web, app } = getMessages("ru");
+    const { web, app } = getWebMessages("ru");
     const pairs: ReadonlyArray<readonly [string, string]> = [
       [web.wishlist.notFound, app.myWishlist.listNotFound],
       [web.wishlist.wishNotFound, app.gift.giftNotFound],
@@ -142,7 +143,7 @@ describe("not-found copy", () => {
 
   /** A page title is not a sentence: it drops the final period before the brand. */
   it("keeps the document titles without the final period", () => {
-    const { web } = getMessages("ru");
+    const { web } = getWebMessages("ru");
 
     expect(web.wishlist.notFoundTitle).toBe(`${web.wishlist.notFound.slice(0, -1)} — {brand}`);
     expect(web.wishlist.wishNotFoundTitle).toBe(
@@ -159,10 +160,32 @@ describe("public shell copy", () => {
    * the shell never hard-codes the label.
    */
   it("names the skip link «Перейти к содержимому» without a final period", () => {
-    const { skipToContent } = getMessages("ru").web;
+    const { skipToContent } = getWebMessages("ru").web;
 
     expect(skipToContent).toBe("Перейти к содержимому");
     expect(skipToContent.endsWith(".")).toBe(false);
+  });
+});
+
+/**
+ * CLE-141/S0-1: the SPA reads `getMessages`, which must not drag the Next-only
+ * catalogs out of the web bundle. `getWebMessages` adds `web` and `email`.
+ */
+describe("client and Next catalogs", () => {
+  it("keeps the Next-only web and email catalogs out of the app messages", () => {
+    const client = getMessages("ru");
+    const next = getWebMessages("ru");
+
+    expect(client as unknown as Record<string, unknown>).not.toHaveProperty("email");
+    expect(client as unknown as Record<string, unknown>).not.toHaveProperty("web");
+    expect(next.email.writeToSupport).toBe("Написать в техподдержку");
+    expect(next.web.skipToContent).toBe("Перейти к содержимому");
+    expect(client.common.skipToContent).toBe("Перейти к содержимому");
+    expect(client.common.buyMyself).toBe("Куплю сам");
+  });
+
+  it("falls back to ru for an unknown locale", () => {
+    expect(getWebMessages("en").email.writeToSupport).toBe("Написать в техподдержку");
   });
 });
 
@@ -172,7 +195,7 @@ describe("public shell copy", () => {
  */
 describe("support link copy", () => {
   it("is «Написать в техподдержку» in the common and email catalogs", () => {
-    const messages = getMessages("ru");
+    const messages = getWebMessages("ru");
 
     expect(messages.common.writeToSupport).toBe("Написать в техподдержку");
     expect(messages.email.writeToSupport).toBe(messages.common.writeToSupport);
@@ -550,7 +573,7 @@ describe("owner change warning copy", () => {
  */
 describe("email change copy", () => {
   it("names the confirmation and the notice in the letter catalog", () => {
-    const { email } = getMessages("ru");
+    const { email } = getWebMessages("ru");
 
     expect(email.emailChange.subject.endsWith("— {brand}")).toBe(true);
     expect(email.emailChanged.subject.endsWith("— {brand}")).toBe(true);
@@ -561,6 +584,20 @@ describe("email change copy", () => {
     for (const text of [email.emailChange.text, email.emailChanged.text]) {
       expect(text.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * Story 7.6 (FR-38): the personal-date letter subject is letter-only copy.
+ * It names the Friend, the owner's label and the day, and stays out of the
+ * client catalog (CLE-141/S0-1).
+ */
+describe("personal date letter copy", () => {
+  it("keeps the subject in the email catalog with its placeholders", () => {
+    const { email } = getWebMessages("ru");
+
+    expect(email.notificationDateCustomSubject).toBe("У {person} «{dateTitle}» {date} — {brand}");
+    expect(JSON.stringify(getMessages("ru"))).not.toContain("notificationDateCustomSubject");
   });
 });
 

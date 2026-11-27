@@ -23,7 +23,7 @@ export type AppFrameProps = {
  * badge.
  */
 export function AppFrame({ children }: AppFrameProps) {
-  const web = useTranslations("web");
+  const common = useTranslations("common");
   const auth = useAuth();
   const invites = useInviteBadgeOptional();
   // `loading` is not a signed-in screen yet, so a guest who opens the public
@@ -35,7 +35,7 @@ export function AppFrame({ children }: AppFrameProps) {
   return (
     <AppShell
       testID="app-shell"
-      skipLabel={web("skipToContent")}
+      skipLabel={common("skipToContent")}
       sidebar={signedIn ? <SidebarNav friendsCount={friendsCount} /> : undefined}
       tabBar={signedIn ? <AppTabBar friendsCount={friendsCount} /> : undefined}
     >

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { Me, MyProfile } from "@gift-list/contracts";
+import type { Me, MyProfile, PersonalDate } from "@gift-list/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +24,12 @@ const account = vi.hoisted(() => ({
   cancelEmailChange: vi.fn(),
 }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
+const datesApi = vi.hoisted(() => ({
+  listMyDates: vi.fn(),
+  createMyDate: vi.fn(),
+  updateMyDate: vi.fn(),
+  deleteMyDate: vi.fn(),
+}));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
   replace: vi.fn(),
@@ -34,8 +40,19 @@ const route = vi.hoisted(() => ({ params: {} as Record<string, string> }));
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => account);
+vi.mock("@/api/personal-dates", () => datesApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+// The delete confirmation draws its close cross with `expo-symbols`, which loads
+// a symbol font at runtime; the icon is decorative here.
+vi.mock("expo-symbols", async () => {
+  const React = await import("react");
+  return {
+    SymbolView: function SymbolView() {
+      return React.createElement("span", { "aria-hidden": true });
+    },
+  };
+});
 vi.mock("expo-linking", () => ({ openURL: vi.fn(() => Promise.resolve()) }));
 vi.mock("use-intl", async () => {
   const { readFileSync } = await import("node:fs");
@@ -114,6 +131,21 @@ const profile: MyProfile = {
   about: null,
   profileVisibleToFriends: true,
 };
+
+/** Story 7.5: one stored date with its two visibility switches. */
+function storedDate(overrides: Partial<PersonalDate> = {}): PersonalDate {
+  return {
+    id: "d1",
+    kind: "CUSTOM",
+    title: "Годовщина свадьбы",
+    day: 14,
+    month: 3,
+    year: null,
+    visibility: "FRIENDS",
+    yearVisibility: "ONLY_ME",
+    ...overrides,
+  };
+}
 
 /** The month names the form builds with `Intl.DateTimeFormat`. */
 function monthName(month: number): string {
@@ -275,6 +307,10 @@ beforeEach(() => {
   account.updateMyProfile.mockResolvedValue({ ok: true, data: profile });
   account.requestEmailChange.mockResolvedValue({ ok: true });
   account.cancelEmailChange.mockResolvedValue({ ok: true });
+  datesApi.listMyDates.mockResolvedValue({ ok: true, data: [] });
+  datesApi.createMyDate.mockResolvedValue({ ok: true, data: storedDate() });
+  datesApi.updateMyDate.mockResolvedValue({ ok: true, data: storedDate() });
+  datesApi.deleteMyDate.mockResolvedValue({ ok: true });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -943,6 +979,210 @@ describe("профиль: «О себе»", () => {
       pathname: "/login",
       params: { next: "/profile", reason: "session_expired" },
     });
+  });
+});
+
+describe("профиль: мои даты", () => {
+  it("показывает свои даты с датой и видимостью, без года если его нет", async () => {
+    respond({ ok: true, data: user });
+    datesApi.listMyDates.mockResolvedValue({
+      ok: true,
+      data: [
+        storedDate(),
+        storedDate({
+          id: "d2",
+          title: "День рождения мамы",
+          day: 2,
+          month: 9,
+          year: 1958,
+          visibility: "EVERYONE",
+          yearVisibility: "FRIENDS",
+        }),
+      ],
+    });
+    await mount();
+
+    expect(text()).toContain("Мои даты");
+    expect(text()).toContain("Годовщина свадьбы");
+    expect(text()).toContain("14.03");
+    expect(text()).not.toContain("14.03.2000");
+    expect(text()).toContain("02.09.1958");
+    expect(text()).toContain("год: Друзья");
+  });
+
+  it("добавляет дату: поля, умолчания «Друзья» и «Только я»", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Добавить дату");
+    expect(text()).toContain("Новая дата");
+    expect(pickerButton("Кто видит дату")?.textContent).toBe("Друзья");
+    expect(pickerButton("Кто видит год")).toBeUndefined();
+
+    await type("Название", "  Годовщина свадьбы  ");
+    await pickOption("Дата, месяц", monthName(3));
+    await pickOption("Дата, день", "14");
+    await press("Сохранить дату");
+
+    expect(datesApi.createMyDate).toHaveBeenCalledWith({
+      title: "Годовщина свадьбы",
+      day: 14,
+      month: 3,
+      year: null,
+      visibility: "FRIENDS",
+      yearVisibility: "ONLY_ME",
+    });
+    expect(text()).toContain("Дата сохранена.");
+    expect(text()).toContain("Годовщина свадьбы");
+  });
+
+  it("год и его видимость: поле года открывает второй переключатель", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Добавить дату");
+    await pickOption("Дата, месяц", monthName(2));
+    await pickOption("Дата, день", "29");
+    await type("Год (необязательно)", "2024");
+    expect(pickerButton("Кто видит год")?.textContent).toBe("Только я");
+    await pickOption("Кто видит год", "Все");
+
+    await type("Название", "Високосный день");
+    await press("Сохранить дату");
+
+    expect(datesApi.createMyDate).toHaveBeenCalledWith({
+      title: "Високосный день",
+      day: 29,
+      month: 2,
+      year: 2024,
+      visibility: "FRIENDS",
+      yearVisibility: "EVERYONE",
+    });
+  });
+
+  it("29 февраля в невисокосном году больше не предлагается: день сбрасывается", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Добавить дату");
+    await pickOption("Дата, месяц", monthName(2));
+    await pickOption("Дата, день", "29");
+    await type("Год (необязательно)", "2023");
+    await type("Название", "Високосный день");
+    await press("Сохранить дату");
+
+    expect(datesApi.createMyDate).not.toHaveBeenCalled();
+    expect(text()).toContain("Выберите день и месяц.");
+  });
+
+  it("год из будущего не уходит на сервер", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await press("Добавить дату");
+    await pickOption("Дата, месяц", monthName(3));
+    await pickOption("Дата, день", "14");
+    await type("Год (необязательно)", "2999");
+    await type("Название", "Будущая дата");
+    await press("Сохранить дату");
+
+    expect(datesApi.createMyDate).not.toHaveBeenCalled();
+    expect(text()).toContain("Год не может быть в будущем.");
+  });
+
+  it("правит дату: форма заполнена, уходит полное тело", async () => {
+    respond({ ok: true, data: user });
+    datesApi.listMyDates.mockResolvedValue({ ok: true, data: [storedDate()] });
+    datesApi.updateMyDate.mockResolvedValue({
+      ok: true,
+      data: storedDate({ title: "Годовщина" }),
+    });
+    await mount();
+
+    await pressLabel("Изменить дату «Годовщина свадьбы»");
+    expect(field("Название").value).toBe("Годовщина свадьбы");
+    await type("Название", "Годовщина");
+    await press("Сохранить дату");
+
+    expect(datesApi.updateMyDate).toHaveBeenCalledWith("d1", {
+      title: "Годовщина",
+      day: 14,
+      month: 3,
+      year: null,
+      visibility: "FRIENDS",
+      yearVisibility: "ONLY_ME",
+    });
+    expect(text()).toContain("Годовщина");
+    expect(text()).toContain("Дата сохранена.");
+  });
+
+  it("удаляет дату только после подтверждения", async () => {
+    respond({ ok: true, data: user });
+    datesApi.listMyDates.mockResolvedValue({ ok: true, data: [storedDate()] });
+    await mount();
+
+    await pressLabel("Удалить дату «Годовщина свадьбы»");
+    const layer = dialogElement();
+    expect(layer?.textContent).toContain("Удалить дату «Годовщина свадьбы»?");
+    await act(async () => {
+      controls(layer ?? document).find((node) => node.textContent === "Удалить")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    await settle(10);
+
+    expect(datesApi.deleteMyDate).toHaveBeenCalledWith("d1");
+    expect(text()).toContain("Дата удалена.");
+    expect(text()).not.toContain("Годовщина свадьбы");
+  });
+
+  it("десять дат: «Добавить дату» недоступна и объясняет почему", async () => {
+    respond({ ok: true, data: user });
+    datesApi.listMyDates.mockResolvedValue({
+      ok: true,
+      data: Array.from({ length: 10 }, function makeDate(_, index) {
+        return storedDate({ id: `d${index}`, title: `Дата ${index + 1}` });
+      }),
+    });
+    await mount();
+
+    const add = button("Добавить дату");
+    expect(add).toBeDefined();
+    expect((add as HTMLButtonElement).disabled).toBe(true);
+    expect(text()).toContain("Можно добавить до 10 дат. Удалите одну, чтобы добавить новую.");
+  });
+
+  it("одиннадцатая дата от сервера: тост с понятным текстом и перечитывание", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    datesApi.createMyDate.mockResolvedValue({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      reason: "DATES_LIMIT",
+    });
+    await press("Добавить дату");
+    await type("Название", "Ещё одна дата");
+    await pickOption("Дата, месяц", monthName(3));
+    await pickOption("Дата, день", "14");
+    await press("Сохранить дату");
+
+    expect(text()).toContain("Можно добавить до 10 дат. Удалите одну, чтобы добавить новую.");
+    // The list is read back, because the count shown was stale.
+    expect(datesApi.listMyDates).toHaveBeenCalledTimes(2);
+  });
+
+  it("если даты не загрузились, есть «Повторить»", async () => {
+    respond({ ok: true, data: user });
+    datesApi.listMyDates.mockResolvedValueOnce({ ok: false, network: true });
+    await mount();
+
+    expect(text()).toContain("Не получилось загрузить даты. Проверьте сеть.");
+    datesApi.listMyDates.mockResolvedValueOnce({ ok: true, data: [storedDate()] });
+    await press("Повторить");
+
+    expect(text()).toContain("Годовщина свадьбы");
   });
 });
 

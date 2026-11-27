@@ -438,6 +438,47 @@ it("показывает день рождения друга и открыва�
 });
 
 /**
+ * Story 7.6 (FR-38): the personal-date reminder names the Friend, the owner's
+ * label and the day without a year, and opens the Friend's profile.
+ */
+it("показывает личную дату друга и открывает его профиль", async function friendPersonalDate() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "personal-date",
+      createdAt: "2026-11-24T13:30:00.000Z",
+      readAt: "2026-11-24T13:31:00.000Z",
+      href: "/u/anya",
+      event: {
+        kind: "DATE_CUSTOM",
+        personName: "Аня",
+        personNick: "anya",
+        date: "2026-12-11",
+        dateTitle: "Годовщина",
+      },
+    }],
+    nextCursor: null,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    expect(container.textContent).toContain("У Аня скоро «Годовщина» — 11.12");
+
+    const row = container.querySelector<HTMLElement>('[role="button"][aria-label^="У Аня"]');
+    expect(row).not.toBeNull();
+    await act(async function openProfile() { row?.click(); });
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/u/anya");
+    expect(mocks.mark).not.toHaveBeenCalled();
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
+/**
  * Story 7.4 (FR-35): the owner's own birthday reminder asks to update the
  * wishlist and opens «Мой вишлист» (`/`), not the notification page.
  */

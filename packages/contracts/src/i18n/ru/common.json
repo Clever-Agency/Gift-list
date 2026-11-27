@@ -1,6 +1,9 @@
 {
   "brandName": "{brand}",
   "loading": "Загружаем",
+  "skipToContent": "Перейти к содержимому",
+  "buyMyself": "Куплю сам",
+  "buyMyselfLabel": "Куплю сам: {title}",
   "writeToSupport": "Написать в техподдержку",
   "footerTagline": "Сделано с любовью командой cleverAgency",
   "apiUnset": "не задан",
@@ -30,7 +33,7 @@
       "NICK_TAKEN": "Этот ник уже занят.",
       "DUE_OUT_OF_RANGE": "Выберите дату не позже {max}.",
       "RESERVATION_TAKEN": "Кто-то только что забрал этот подарок.",
-      "DATES_LIMIT": "Достигнут лимит дат.",
+      "DATES_LIMIT": "Можно добавить до 10 дат. Удалите одну, чтобы добавить новую.",
       "RESET_LINK_STALE": "Ссылка устарела. Запросите новую.",
       "INVITE_COOLDOWN": "Можно снова через {hours} ч",
       "GIFT_ARCHIVED": "Архивное желание можно только просматривать.",

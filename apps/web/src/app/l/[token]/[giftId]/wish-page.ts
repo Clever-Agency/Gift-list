@@ -4,10 +4,10 @@ import { cache } from "react";
 import type { Metadata } from "next";
 import { createTranslator } from "next-intl";
 import {
-  getMessages,
   type GiftCard,
   type SupportedLocale,
 } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { publicListPathForToken, wishlistPathForToken } from "@/lib/public-token";
 import { loadLinkPage, type LinkOwner } from "../link-page";
 
@@ -98,7 +98,7 @@ const NO_INDEX = { index: false, follow: false } as const;
  * product, and a messenger preview must not quote the wish.
  */
 export function buildWishMetadata(heading: WishHeading, brand: string): Metadata {
-  const messages = getMessages(heading.locale);
+  const messages = getWebMessages(heading.locale);
   const t = createTranslator({ locale: heading.locale, messages, namespace: "web.wishlist" });
   const web = createTranslator({ locale: heading.locale, messages, namespace: "web" });
   const description = web("description");

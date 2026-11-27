@@ -9,25 +9,31 @@ import {
   DATE_REMINDER_HOUR,
   birthdayDayInYear,
   dueBirthdayReminderYear,
+  duePersonalDateReminderYear,
   recipientLocalMoment,
 } from "@/domain/birthday-reminder";
+import { canSeePersonalDate } from "@/domain/personal-dates";
+import type { ViewerRelations } from "@/domain/visibility";
 import { enqueueNotification } from "@/lib/notification-store";
+import { personalDateSelect, storedPersonalDate } from "@/lib/personal-dates-store";
 import { isSchemaNotMigrated } from "@/lib/schema-not-migrated";
 
 /**
- * Story 7.3/7.4 (FR-34, FR-35, AD-23): the hourly cron of
+ * Story 7.3/7.4/7.6 (FR-34, FR-35, FR-38, AD-23): the hourly cron of
  * `api/cron/date-reminders` sends one notice 14 days before a Friend's birthday
- * and one notice 30 days before the recipient's own birthday. The candidate
- * rules are the pure date helpers of `domain/birthday-reminder`; this file is
- * the Prisma adapter that reads the rows and writes `ReminderLog` +
+ * or personal date and one notice 30 days before the recipient's own birthday.
+ * The candidate rules are the pure date helpers of `domain/birthday-reminder`;
+ * this file is the Prisma adapter that reads the rows and writes `ReminderLog` +
  * `Notification` in one transaction. The UNIQUE key of `ReminderLog` is the
  * mechanism that keeps a repeated run to one row, so the transaction writes the
  * notice only when the log row was actually inserted.
  *
- * A Friend's birthday leaves no trace for the owner of the wishes: the payload
- * carries the Friend's name, nick and a machine-readable date, the number of
- * open visible wishes and up to three titles. It never names a holder, and only
- * `OPEN`, unarchived wishes visible to the recipient are counted (AD-7, D-49).
+ * A Friend's birthday or personal date leaves no trace for the owner of the
+ * wishes: the payload carries the Friend's name, nick and a machine-readable
+ * date, the number of open visible wishes and up to three titles. It never
+ * names a holder, and only `OPEN`, unarchived wishes visible to the recipient
+ * are counted (AD-7, D-49). Both passes are written to the recipient alone: the
+ * owner of a personal date learns nothing (D-18).
  *
  * The own-birthday notice depends on nothing but the recipient's own profile:
  * not on `profileVisibleToFriends` (the birthday is always visible to its
@@ -37,7 +43,7 @@ import { isSchemaNotMigrated } from "@/lib/schema-not-migrated";
 
 const BATCH_SIZE = 100;
 
-type RecipientsDb = Pick<PrismaClient, "user" | "friendship" | "block" | "$transaction">;
+type RecipientsDb = Pick<PrismaClient, "user" | "friendship" | "block" | "userDate" | "$transaction">;
 
 type RecipientRow = {
   readonly id: string;
@@ -56,12 +62,35 @@ type FriendRow = {
   readonly nick: string;
   readonly birthDay: number | null;
   readonly birthMonth: number | null;
+  readonly profileVisibleToFriends: boolean;
+};
+
+/** A `UserDate` row of a Friend, as the notification policy reads it (AD-23). */
+type DateRow = {
+  readonly id: string;
+  readonly userId: string;
+  readonly kind: "CUSTOM";
+  readonly title: string;
+  readonly day: number;
+  readonly month: number;
+  readonly year: number | null;
+  readonly visibility: "ONLY_ME" | "FRIENDS" | "EVERYONE";
+  readonly yearVisibility: "ONLY_ME" | "FRIENDS" | "EVERYONE";
 };
 
 type Candidate = {
   readonly recipient: RecipientRow;
   readonly friend: FriendRow;
   /** The birthday occurrence the notice is about (`ReminderLog.year`). */
+  readonly year: number;
+};
+
+/** Story 7.6: a Friend's personal date, `BIRTHDAY_FRIEND_REMINDER_DAYS` ahead. */
+type CustomDateCandidate = {
+  readonly recipient: RecipientRow;
+  readonly friend: FriendRow;
+  readonly date: DateRow;
+  /** The occurrence year the notice is about (`ReminderLog.year`). */
   readonly year: number;
 };
 
@@ -78,6 +107,12 @@ type WishSummary = {
   readonly status: string;
 };
 
+/** What one page of recipients contributes to the run. */
+type PageCandidates = {
+  readonly birthdays: Candidate[];
+  readonly customDates: CustomDateCandidate[];
+};
+
 /**
  * The one gate of AD-7 is `readWishlist`: it applies `VisibilityPolicy`, so a
  * `SECRET` or archived wish and a hidden list never reach this adapter. The
@@ -85,9 +120,25 @@ type WishSummary = {
  */
 type ReadFriendWishes = (viewerId: string, ownerId: string) => Promise<readonly WishSummary[]>;
 
+/**
+ * The recipient of a date reminder is an accepted Friend of the date owner and
+ * the pair is unblocked (the page read drops blocked pairs before this policy
+ * runs). The date itself still decides whether it travels (AD-23).
+ */
+const FRIEND_RELATIONS: ViewerRelations = {
+  blocked: false,
+  friend: true,
+  subscriber: false,
+  contactMatch: false,
+  viaListToken: false,
+};
+
 /** The counters the date-reminders cron reports; only numbers reach the route. */
 export type DateRemindersResult = {
-  /** Story 7.3: T-14 notices about Friends' birthdays queued by this run. */
+  /**
+   * Story 7.3/7.6: T-14 notices about Friends' birthdays and personal dates
+   * queued by this run. Both are the same kind of reminder to the same person.
+   */
   readonly sentFriendDates: number;
   /** Story 7.4: T-30 notices about the recipients' own birthdays queued here. */
   readonly sentOwnDates: number;
@@ -103,20 +154,32 @@ export async function processDateReminders(
   let sentOwnDates = 0;
   let failed = 0;
 
+  // A page may hold a birthday and a personal date of the same Friend; the
+  // list is read once per pair and reused by both passes.
+  const wishCache = new Map<string, readonly WishSummary[]>();
+  async function openWishes(viewerId: string, ownerId: string) {
+    const key = pairKey(viewerId, ownerId);
+    const cached = wishCache.get(key);
+    if (cached !== undefined) return cached;
+    const wishes = await readWishes(viewerId, ownerId);
+    // A reservation or a closed wish is not something to offer as a gift
+    // idea, so only `OPEN` rows are counted (FR-34, AD-9).
+    const visible = wishes.filter(wish => wish.status === "OPEN");
+    wishCache.set(key, visible);
+    return visible;
+  }
+
   let lastId: string | undefined;
   for (;;) {
     const recipients = await scanRecipients(db, lastId);
     if (recipients.length === 0) break;
 
-    const candidates = await readDueCandidates(db, recipients, now);
+    const page = await readDueCandidates(db, recipients, now);
 
-    for (const candidate of candidates) {
+    for (const candidate of page.birthdays) {
       const { recipient, friend, year } = candidate;
       try {
-        const wishes = await readWishes(recipient.id, friend.id);
-        // A reservation or a closed wish is not something to offer as a gift
-        // idea, so only `OPEN` rows are counted (FR-34, AD-9).
-        const visible = wishes.filter(wish => wish.status === "OPEN");
+        const visible = await openWishes(recipient.id, friend.id);
         if (visible.length === 0) continue;
         const created = await queueReminder(db, { recipient, friend, year, visible, now });
         if (created) sentFriendDates += 1;
@@ -128,6 +191,27 @@ export async function processDateReminders(
         console.error("date-reminders: pair failed", {
           recipientId: recipient.id,
           subjectId: friend.id,
+          error: error instanceof Error ? error.name : "unknown",
+        });
+      }
+    }
+
+    // Story 7.6: the same page carries the Friends' personal dates. They are
+    // reminded under the same switch and channels as a birthday, but the row is
+    // keyed by the date, and nothing at all is written for its owner.
+    for (const candidate of page.customDates) {
+      const { recipient, friend, date, year } = candidate;
+      try {
+        const visible = await openWishes(recipient.id, friend.id);
+        if (visible.length === 0) continue;
+        const created = await queueCustomDateReminder(db, { recipient, friend, date, year, visible, now });
+        if (created) sentFriendDates += 1;
+      } catch (error) {
+        if (isSchemaNotMigrated(error)) throw error;
+        failed += 1;
+        console.error("date-reminders: personal date failed", {
+          recipientId: recipient.id,
+          subjectId: date.id,
           error: error instanceof Error ? error.name : "unknown",
         });
       }
@@ -203,18 +287,19 @@ function isReminderWindowOpen(recipient: RecipientRow, now: Date): boolean {
 }
 
 /**
- * One page is read in a fixed number of queries: friendships, Friend profiles
- * and the blocks around the page. A Friend with the profile switch off or
- * without a birthday is not read at all, so no reminder can be built for them.
- * Recipients with the Friend-birthday switch off are not part of this pass.
+ * One page is read in a fixed number of queries: friendships, Friend profiles,
+ * personal dates and the blocks around the page. The birthday half skips a
+ * Friend with the profile switch off or without a birthday; the personal-date
+ * half does not depend on that switch, because a date has its own visibility
+ * (AD-23). Recipients with the Friend-date switch off are not part of this pass.
  */
 async function readDueCandidates(
   db: RecipientsDb,
   recipients: readonly RecipientRow[],
   now: Date,
-): Promise<Candidate[]> {
+): Promise<PageCandidates> {
   const friendsOf = recipients.filter(recipient => recipient.remindFriendDates);
-  if (friendsOf.length === 0) return [];
+  if (friendsOf.length === 0) return { birthdays: [], customDates: [] };
 
   const recipientIds = friendsOf.map(recipient => recipient.id);
   const recipientSet = new Set(recipientIds);
@@ -238,57 +323,80 @@ async function readDueCandidates(
   }
 
   const friendIds = [...new Set([...friendIdsByRecipient.values()].flat())];
-  if (friendIds.length === 0) return [];
+  if (friendIds.length === 0) return { birthdays: [], customDates: [] };
 
-  // AD-29: friends see the birthday only while the profile switch is on. The
-  // same read excludes an absent birthday, so nothing later depends on it.
-  const friends = await db.user.findMany({
-    where: {
-      id: { in: friendIds },
-      profileVisibleToFriends: true,
-      birthDay: { not: null },
-      birthMonth: { not: null },
-    },
-    select: { id: true, name: true, nick: true, birthDay: true, birthMonth: true },
-  });
+  // AD-29: friends see the birthday only while the profile switch is on, so the
+  // birthday pass filters that switch and an absent birthday below. Personal
+  // dates are read for every Friend: each date carries its own visibility.
+  const [friends, dates, blocks] = await Promise.all([
+    db.user.findMany({
+      where: { id: { in: friendIds } },
+      select: { id: true, name: true, nick: true, birthDay: true, birthMonth: true, profileVisibleToFriends: true },
+    }),
+    db.userDate.findMany({
+      where: { userId: { in: friendIds }, visibility: { not: "ONLY_ME" } },
+      select: { ...personalDateSelect, userId: true },
+    }),
+    db.block.findMany({
+      where: {
+        OR: [
+          { blockerId: { in: recipientIds }, blockedId: { in: friendIds } },
+          { blockerId: { in: friendIds }, blockedId: { in: recipientIds } },
+        ],
+      },
+      select: { blockerId: true, blockedId: true },
+    }),
+  ]);
   const friendById = new Map(friends.map(friend => [friend.id, friend]));
 
-  const blocks = await db.block.findMany({
-    where: {
-      OR: [
-        { blockerId: { in: recipientIds }, blockedId: { in: friendIds } },
-        { blockerId: { in: friendIds }, blockedId: { in: recipientIds } },
-      ],
-    },
-    select: { blockerId: true, blockedId: true },
-  });
+  const datesByOwner = new Map<string, DateRow[]>();
+  for (const date of dates) {
+    const rows = datesByOwner.get(date.userId);
+    if (rows) rows.push(date);
+    else datesByOwner.set(date.userId, [date]);
+  }
+
   const blockedPairs = new Set<string>();
   for (const block of blocks) {
     blockedPairs.add(pairKey(block.blockerId, block.blockedId));
     blockedPairs.add(pairKey(block.blockedId, block.blockerId));
   }
 
-  const candidates: Candidate[] = [];
+  const birthdays: Candidate[] = [];
+  const customDates: CustomDateCandidate[] = [];
   for (const recipient of friendsOf) {
     if (!isReminderWindowOpen(recipient, now)) continue;
 
     for (const friendId of friendIdsByRecipient.get(recipient.id) ?? []) {
       const friend = friendById.get(friendId);
-      if (!friend || friend.birthDay === null || friend.birthMonth === null) continue;
+      if (!friend) continue;
       if (blockedPairs.has(pairKey(recipient.id, friend.id))) continue;
-      const year = dueBirthdayReminderYear(
-        friend.birthDay,
-        friend.birthMonth,
-        BIRTHDAY_FRIEND_REMINDER_DAYS,
-        now,
-        recipient.timeZone,
-      );
-      if (year === null) continue;
-      candidates.push({ recipient, friend, year });
+
+      if (friend.profileVisibleToFriends && friend.birthDay !== null && friend.birthMonth !== null) {
+        const year = dueBirthdayReminderYear(
+          friend.birthDay,
+          friend.birthMonth,
+          BIRTHDAY_FRIEND_REMINDER_DAYS,
+          now,
+          recipient.timeZone,
+        );
+        if (year !== null) birthdays.push({ recipient, friend, year });
+      }
+
+      for (const date of datesByOwner.get(friend.id) ?? []) {
+        // AD-23: the date must be visible to this Friend. «Только я» never
+        // reaches here, but the policy stays the one authority.
+        if (!canSeePersonalDate({ id: recipient.id }, FRIEND_RELATIONS, storedPersonalDate(date, friend.id))) {
+          continue;
+        }
+        const year = duePersonalDateReminderYear(date.day, date.month, now, recipient.timeZone);
+        if (year === null) continue;
+        customDates.push({ recipient, friend, date, year });
+      }
     }
   }
 
-  return candidates;
+  return { birthdays, customDates };
 }
 
 /**
@@ -360,6 +468,56 @@ async function queueReminder(
         date: birthdayDayInYear(friend.birthDay!, friend.birthMonth!, year),
         count: visible.length,
         titles,
+      },
+    });
+    return true;
+  });
+}
+
+/**
+ * Story 7.6 (FR-38, AD-23): one `ReminderLog` row per (recipient, date, year)
+ * and, only when that row was inserted, one `DATE_CUSTOM` notice in the same
+ * transaction. The subject is the date itself, so two dates of one Friend on
+ * one day are two reminders, and a repeated hourly run writes nothing. The
+ * notice goes to the Friend alone; the owner of the date is never a recipient.
+ */
+async function queueCustomDateReminder(
+  db: RecipientsDb,
+  { recipient, friend, date, year, visible, now }: CustomDateCandidate & {
+    readonly visible: readonly WishSummary[];
+    readonly now: Date;
+  },
+): Promise<boolean> {
+  return db.$transaction(async function queuePersonalDateReminder(tx) {
+    const { count } = await tx.reminderLog.createMany({
+      data: {
+        recipientId: recipient.id,
+        subjectId: date.id,
+        year,
+        kind: "DATE_CUSTOM",
+      },
+      skipDuplicates: true,
+    });
+    if (count === 0) return false;
+
+    await enqueueNotification(tx, {
+      // Mirrors the ReminderLog key: one notice per recipient, date and year.
+      eventKey: `DATE_CUSTOM:${date.id}:${year}`,
+      kind: "DATE_CUSTOM",
+      actorId: friend.id,
+      recipientId: recipient.id,
+      createdAt: now,
+      deliverAfter: now,
+      emailRequired: recipient.datesEmail,
+      payload: {
+        personName: friend.name,
+        personNick: friend.nick,
+        dateId: date.id,
+        // AD-27: a machine-readable date-only value; the client hides the year.
+        date: birthdayDayInYear(date.day, date.month, year),
+        dateTitle: date.title,
+        count: visible.length,
+        titles: visible.slice(0, 3).map(wish => wish.title),
       },
     });
     return true;

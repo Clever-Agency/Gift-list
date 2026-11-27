@@ -1,6 +1,9 @@
 {
   "brandName": "{brand}",
   "loading": "Загружаем",
+  "skipToContent": "Перейти к содержимому",
+  "buyMyself": "Куплю сам",
+  "buyMyselfLabel": "Куплю сам: {title}",
   "writeToSupport": "Написать в техподдержку",
   "footerTagline": "Сделано с любовью командой cleverAgency",
   "apiUnset": "не задан",

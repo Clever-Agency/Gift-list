@@ -35,7 +35,7 @@ export function PublicGiftCard({
 }) {
   const t = useTranslations("app.myWishlist");
   const tGift = useTranslations("app.gift");
-  const tWeb = useTranslations("web.wishlist");
+  const tCommon = useTranslations("common");
   const locale = useLocale();
   const price =
     gift.priceAmount !== null && gift.priceCurrency !== null
@@ -130,8 +130,8 @@ export function PublicGiftCard({
       </Link>
       {showReserve ? (
         <Button
-          label={tWeb("buyMyself")}
-          ariaLabel={tWeb("buyMyselfLabel", { title: gift.title })}
+          label={tCommon("buyMyself")}
+          ariaLabel={tCommon("buyMyselfLabel", { title: gift.title })}
           variant="reserve"
           onPress={openReserveFlow}
         />

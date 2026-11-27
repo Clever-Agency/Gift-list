@@ -169,17 +169,19 @@ describe("public shell copy", () => {
 
 /**
  * CLE-141/S0-1: the SPA reads `getMessages`, which must not drag the Next-only
- * letter catalog into the web bundle. `getWebMessages` adds `email` on top.
+ * catalogs out of the web bundle. `getWebMessages` adds `web` and `email`.
  */
 describe("client and Next catalogs", () => {
-  it("keeps the Next-only email catalog out of the app messages", () => {
-    const client = getMessages("ru") as unknown as Record<string, unknown>;
+  it("keeps the Next-only web and email catalogs out of the app messages", () => {
+    const client = getMessages("ru");
     const next = getWebMessages("ru");
 
-    expect(client).not.toHaveProperty("email");
+    expect(client as unknown as Record<string, unknown>).not.toHaveProperty("email");
+    expect(client as unknown as Record<string, unknown>).not.toHaveProperty("web");
     expect(next.email.writeToSupport).toBe("Написать в техподдержку");
     expect(next.web.skipToContent).toBe("Перейти к содержимому");
-    expect(next.common.writeToSupport).toBe("Написать в техподдержку");
+    expect(client.common.skipToContent).toBe("Перейти к содержимому");
+    expect(client.common.buyMyself).toBe("Куплю сам");
   });
 
   it("falls back to ru for an unknown locale", () => {

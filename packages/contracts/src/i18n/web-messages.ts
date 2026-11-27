@@ -1,17 +1,18 @@
 import email from "./ru/email.json";
+import web from "./ru/web.json";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type SupportedLocale } from "./locale";
 import { getMessages, type Messages } from "./messages";
 
 /**
- * Next-only catalog on top of the client messages: `email` (letters sent by
- * the server). It lives in a separate entry point on purpose: the SPA of
- * `apps/mobile` reads {@link getMessages} and never pays for the letters in the
- * web bundle (CLE-141/S0-1). `web` stays in the base catalog because the app
- * shell and the public gift card use it too.
+ * Next-only catalogs on top of the client messages: `web` (the public pages of
+ * `apps/web`) and `email` (the letters sent by the server). They live in a
+ * separate entry point on purpose: the SPA of `apps/mobile` reads
+ * {@link getMessages} and never pays for them in the web bundle (CLE-141/S0-1).
+ * The two labels the app shell shares with the web pages live in `common`.
  */
 const catalogs = {
-  ru: { ...getMessages("ru"), email },
-} as const satisfies Record<SupportedLocale, Messages & { email: typeof email }>;
+  ru: { ...getMessages("ru"), web, email },
+} as const satisfies Record<SupportedLocale, Messages & { web: typeof web; email: typeof email }>;
 
 export type WebMessages = (typeof catalogs)[SupportedLocale];
 

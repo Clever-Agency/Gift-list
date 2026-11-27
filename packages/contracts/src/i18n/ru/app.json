@@ -621,5 +621,8 @@
     "retry": "Повторить",
     "giftNotFound": "Желание не найдено.",
     "backToList": "К моему вишлисту"
+  },
+  "smoke": {
+    "wishes": "{count, plural, one {# желание} few {# желания} many {# желаний} other {# желаний}}"
   }
 }

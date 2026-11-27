@@ -88,6 +88,7 @@ export function planAffectedTests(changes) {
       return { fullReason: `${status} ${file}` };
     }
     if (/^(?:docs|_bmad-output)\/.*\.md$|^(?:README|AGENTS)\.md$/.test(file)) continue;
+    if (status === "M" && file === "_bmad-output/implementation-artifacts/sprint-status.yaml") continue;
     const appSource = /^apps\/(web|mobile)\/((?:app|src)\/.*\.(?:[cm]?[jt]sx?|json|css))$/.exec(file);
     if (!appSource || !["A", "M"].includes(status) || file.startsWith("apps/mobile/src/test/")) {
       return { fullReason: `${status} ${file}` };

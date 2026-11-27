@@ -7,7 +7,7 @@ import { listBlocked, unblockUser } from "@/api/block";
 import { changeTimeZone, deleteAccount, updateHideFromSearch } from "@/api/me";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
-import { formIssue, mutationErrorMessage } from "@/session/form-issue";
+import { formIssue, mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { NotificationSettings } from "@/ui/notification-settings";
 import { OptionField } from "@/ui/option-field";
@@ -119,7 +119,7 @@ function SettingsForm({
     const signedOut = await auth.signOut();
     if (!signedOut.ok) {
       onLeave(null);
-      setToast({ message: t("form.network"), tone: "error" });
+      setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error" });
     }
   }
 
@@ -153,7 +153,7 @@ function SettingsForm({
 
     if (result.ok) {
       setHideFromSearch(result.data.hideFromSearch);
-      auth.setUser(result.data);
+      auth.updateUser(result.data);
       setToast({ message: t("settings.hideFromSearchSaved"), tone: "info" });
       return;
     }
@@ -179,7 +179,7 @@ function SettingsForm({
   /**
    * «Выйти» of the account block: `AuthContext` clears the session and the guard
    * above opens login with a return here. A failed request keeps the person on
-   * the screen and reports the one network sentence.
+   * the screen and reports the failure with the matching catalog sentence.
    */
   async function signOut() {
     if (accountInFlight.current || deleting) return;
@@ -188,7 +188,7 @@ function SettingsForm({
     const result = await auth.signOut();
     accountInFlight.current = false;
     setSigningOut(false);
-    if (!result.ok) showToast(t("form.network"), "error");
+    if (!result.ok) showToast(signOutErrorMessage(result, t("form.network"), common), "error");
   }
 
   function handleSignOut() {

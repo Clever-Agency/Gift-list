@@ -31,7 +31,7 @@ import { NotificationBell } from "@/ui/notification-bell";
 import { getBrandName } from "@/config/env";
 import { copyMyInviteLink } from "@/invite/copy-link";
 import { useAuth } from "@/session/auth-context";
-import { mutationErrorMessage } from "@/session/form-issue";
+import { mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { CardGridList } from "@/ui/card-grid-list";
 import { ClosedSection } from "@/ui/closed-section";
@@ -249,14 +249,14 @@ export default function MyWishlistScreen() {
   /**
    * The stored session is dead: `signOut` clears the token and marks the app anonymous,
    * and the guard above opens login with `?next=/&reason=session_expired`. A failed
-   * sign-out leaves the screen mounted and returns `false`, so the caller decides what
+   * sign-out leaves the screen mounted and returns the error, so the caller decides what
    * to show.
    */
-  async function expireSession(): Promise<boolean> {
+  async function expireSession() {
     setSessionExpired(true);
     const signedOut = await auth.signOut();
     if (!signedOut.ok) setSessionExpired(false);
-    return signedOut.ok;
+    return signedOut;
   }
 
   useEffect(function loadGifts() {
@@ -287,9 +287,9 @@ export default function MyWishlistScreen() {
       if ("code" in result && result.code === "UNAUTHENTICATED") {
         const signedOut = await expireSession();
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
-        if (!signedOut && !cancelled && focused.current) {
-          setState({ status: "error", kind: "network" });
-          setToast({ message: t("form.network"), tone: "error" });
+        if (!signedOut.ok && !cancelled && focused.current) {
+          setState({ status: "error", kind: "network" in signedOut ? "network" : "generic" });
+          setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error" });
         }
         return;
       }
@@ -690,7 +690,7 @@ export default function MyWishlistScreen() {
   async function handleArchiveSessionLoss(result: object): Promise<boolean> {
     if (!("code" in result) || result.code !== "UNAUTHENTICATED") return false;
     const signedOut = await expireSession();
-    if (!signedOut) setToast({ message: t("form.network"), tone: "error" });
+    if (!signedOut.ok) setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error" });
     return true;
   }
 

@@ -3,10 +3,11 @@ import { breakpoints, spacing } from "@gift-list/ui";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { act } from "react";
+import { act, useLayoutEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "@/session/auth-context";
+import { openSessionEvents } from "@/platform/session-events";
+import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
@@ -211,11 +212,12 @@ async function press(label: string) {
   await settle(10);
 }
 
-async function mount() {
+async function mount(children?: ReactNode) {
   await act(async () => {
     root.render(
       <AuthProvider>
         <PublicWishlistScreen />
+        {children}
       </AuthProvider>,
     );
   });
@@ -266,34 +268,45 @@ describe("вишлист по ссылке: вход", () => {
     expect(store.clearSessionToken).toHaveBeenCalled();
   });
 
-  it("протухший токен в чтении списка: выходит и сразу повторяет чтение как гость", async () => {
-    let linkReads = 0;
-    function answer(path: string) {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path === "/api/v1/session") {
-        return Promise.resolve({ ok: true, data: { signedOut: true } });
-      }
-      if (String(path).startsWith("/api/v1/l/")) {
-        linkReads += 1;
-        return Promise.resolve(
-          linkReads === 1
-            ? { ok: false, code: "UNAUTHENTICATED", message: "" }
-            : giftsAnswer([gift()]),
-        );
-      }
-      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
-    }
-    api.apiRequest.mockImplementation(answer);
-    await mount();
+  const unauthenticated = { ok: false, code: "UNAUTHENTICATED", message: "" };
 
-    expect(linkReads).toBe(2);
-    expect(store.clearSessionToken).toHaveBeenCalled();
-    expect(text()).toContain("Аня");
-    expect(text()).toContain("Наушники");
-    // The stale session is not a network failure: no network error or toast.
-    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
-    expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
-  });
+  it.each([
+    {
+      outcome: "показывает список",
+      guestAnswer: giftsAnswer([gift()]),
+      expectedText: "Наушники",
+      retryVisible: false,
+    },
+    {
+      outcome: "показывает общую ошибку с «Повторить» при повторном 401",
+      guestAnswer: unauthenticated,
+      expectedText: "Не получилось загрузить. Попробуйте ещё раз.",
+      retryVisible: true,
+    },
+  ])(
+    "после 401 вошедшего выходит один раз и $outcome",
+    async function rereadsAsGuest({ guestAnswer, expectedText, retryVisible }) {
+      api.apiRequest
+        .mockResolvedValueOnce({ ok: true, data: user })
+        .mockResolvedValueOnce(unauthenticated)
+        .mockResolvedValueOnce({ ok: true, data: { signedOut: true } })
+        .mockResolvedValue(guestAnswer);
+      await mount();
+
+      expect(api.apiRequest.mock.calls).toEqual([
+        ["/api/v1/me"],
+        ["/api/v1/l/tok_1"],
+        ["/api/v1/session", { method: "DELETE" }],
+        ["/api/v1/l/tok_1"],
+      ]);
+      expect(store.clearSessionToken).toHaveBeenCalledTimes(1);
+      expect(navigation.replace).not.toHaveBeenCalled();
+      expect(text()).toContain(expectedText);
+      expect(Boolean(button("Повторить"))).toBe(retryVisible);
+      expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+      expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
+    },
+  );
 
   it("сетевая ошибка сессии не уводит на вход: список читается как для гостя", async () => {
     respond(giftsAnswer([gift()]), { ok: false, network: true });
@@ -352,7 +365,244 @@ describe("вишлист по ссылке: вход", () => {
   });
 });
 
+describe("вишлист по той же ссылке при смене зрителя", () => {
+  type Auth = ReturnType<typeof useAuth>;
+
+  const friend = { ...user, id: "u-friend", nick: "oleg", hideFromSearch: false };
+  const anotherUser = { ...user, id: "u-other", nick: "masha", hideFromSearch: false };
+  const friendWish = gift({ id: "g-friend", title: "Подарок для друзей", visibility: "FRIENDS" });
+  const publicWish = gift({ id: "g-public", title: "Подарок для всех" });
+
+  function AuthProbe({ onCommit }: { onCommit: (auth: Auth) => void }) {
+    const auth = useAuth();
+    useLayoutEffect(function observeAuthCommit() {
+      onCommit(auth);
+    }, [auth, onCommit]);
+    return null;
+  }
+  AuthProbe.displayName = "AuthProbe";
+
+  async function mountWithAuth() {
+    let commit: { auth: Auth; pageText: string } | undefined;
+
+    function rememberCommit(auth: Auth) {
+      commit = { auth, pageText: text() };
+    }
+
+    await mount(<AuthProbe onCommit={rememberCommit} />);
+
+    return function readCommit() {
+      if (!commit) throw new Error("AuthProbe не получил состояние сессии");
+      return commit;
+    };
+  }
+
+  function respondToViewerReads(...answers: Promise<unknown>[]) {
+    api.apiRequest.mockImplementation(function answer(path: string) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: friend });
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      if (path === "/api/v1/l/tok_1") {
+        const answer = answers.shift();
+        if (answer) return answer;
+      }
+      throw new Error(`Неожиданный запрос ${path}`);
+    });
+  }
+
+  it("вкладка без BroadcastChannel перечитывает список по storage-сигналу другой вкладки", async function reloadFromStorageEvent() {
+    vi.stubGlobal("BroadcastChannel", undefined);
+    const storage = window.localStorage;
+    const write = vi.spyOn(storage, "setItem");
+    const remove = vi.spyOn(storage, "removeItem");
+    const onOtherChange = vi.fn();
+    const otherTab = openSessionEvents(onOtherChange);
+    try {
+      const next = Promise.withResolvers<unknown>();
+      api.apiRequest
+        .mockResolvedValueOnce({ ok: true, data: friend })
+        .mockResolvedValueOnce(giftsAnswer([publicWish, friendWish]))
+        .mockReturnValueOnce(next.promise)
+        .mockResolvedValueOnce(giftsAnswer([publicWish]));
+      await mount();
+      expect(text()).toContain(friendWish.title);
+
+      otherTab?.publish();
+      expect(write).toHaveBeenCalledExactlyOnceWith("gift-list.session-change", "");
+      expect(remove).toHaveBeenCalledExactlyOnceWith("gift-list.session-change");
+      const [key, marker] = write.mock.calls[0];
+      expect(storage.getItem(key)).toBeNull();
+      otherTab?.close();
+
+      // happy-dom does not deliver localStorage writes across windows.
+      await act(async function deliverStorageEvents() {
+        window.dispatchEvent(new StorageEvent("storage", { key, oldValue: marker, storageArea: storage }));
+        expect(linkReads()).toBe(1);
+        window.dispatchEvent(new StorageEvent("storage", { key, newValue: marker, storageArea: storage }));
+      });
+      expect(onOtherChange).not.toHaveBeenCalled();
+      expect(text()).not.toContain(friendWish.title);
+      expect(loadingRegion()).not.toBeNull();
+      expect(linkReads()).toBe(1);
+
+      await act(async function receiveGuestSession() {
+        next.resolve({ ok: false, code: "UNAUTHENTICATED", message: "" });
+      });
+      expect(text()).toContain(publicWish.title);
+      expect(text()).not.toContain(friendWish.title);
+      expect(linkReads()).toBe(2);
+      expect(write).toHaveBeenCalledTimes(1);
+    } finally {
+      otherTab?.close();
+      write.mockRestore();
+      remove.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    {
+      transition: "смене аккаунта",
+      expectedState: { status: "ready", user: anotherUser },
+      changeViewer: function switchAccount(auth: Auth) {
+        auth.setUser(anotherUser);
+      },
+    },
+    {
+      transition: "выходе",
+      expectedState: { status: "anonymous" },
+      changeViewer: function signOut(auth: Auth) {
+        return auth.signOut();
+      },
+    },
+  ])(
+    "при $transition скрывает старые карточки до ответа для нового зрителя",
+    async function hidesPreviousCards({ expectedState, changeViewer }) {
+      const next = Promise.withResolvers<ReturnType<typeof giftsAnswer>>();
+      respondToViewerReads(Promise.resolve(giftsAnswer([friendWish])), next.promise);
+      const readCommit = await mountWithAuth();
+
+      expect(readCommit().auth.state).toMatchObject({ status: "ready", user: friend });
+      expect(text()).toContain(friendWish.title);
+      expect(linkReads()).toBe(1);
+
+      await act(async function changeSession() {
+        await changeViewer(readCommit().auth);
+      });
+
+      const { auth, pageText } = readCommit();
+      expect(auth.state).toMatchObject(expectedState);
+      // The first commit for the new viewer runs before passive effects can hide the old list.
+      expect(pageText).not.toContain(friendWish.title);
+      expect(text()).not.toContain(friendWish.title);
+      expect(loadingRegion()).not.toBeNull();
+      expect(linkReads()).toBe(2);
+
+      await act(async function receiveNewList() {
+        next.resolve(giftsAnswer([publicWish]));
+      });
+
+      expect(text()).toContain(publicWish.title);
+      expect(text()).not.toContain(friendWish.title);
+      expect(linkReads()).toBe(2);
+    },
+  );
+
+  it("запоздалый ответ для прежнего аккаунта не заменяет актуальный список", async function ignoresLateAnswer() {
+    const previous = Promise.withResolvers<ReturnType<typeof giftsAnswer>>();
+    respondToViewerReads(previous.promise, Promise.resolve(giftsAnswer([publicWish])));
+    const readCommit = await mountWithAuth();
+
+    expect(linkReads()).toBe(1);
+    expect(loadingRegion()).not.toBeNull();
+
+    await act(async function changeAccount() {
+      readCommit().auth.setUser(anotherUser);
+    });
+
+    expect(text()).toContain(publicWish.title);
+    expect(linkReads()).toBe(2);
+
+    await act(async function receiveOldList() {
+      previous.resolve(giftsAnswer([friendWish]));
+    });
+
+    expect(text()).toContain(publicWish.title);
+    expect(text()).not.toContain(friendWish.title);
+    expect(linkReads()).toBe(2);
+  });
+
+  it.each([
+    {
+      giftAccess: "доступно",
+      newList: [gift({ id: friendWish.id, title: "Новое название подарка" })],
+      expectedParams: { openReserve: "1", title: "Новое название подарка" },
+    },
+    {
+      giftAccess: "недоступно",
+      newList: [publicWish],
+      expectedParams: { title: "" },
+    },
+  ])(
+    "тот же reserve ждёт новую выдачу, даже если желание $giftAccess",
+    async function rechecksReserve({ newList, expectedParams }) {
+      search.params = { token: "tok_1", reserve: friendWish.id };
+      const next = Promise.withResolvers<ReturnType<typeof giftsAnswer>>();
+      respondToViewerReads(Promise.resolve(giftsAnswer([friendWish])), next.promise);
+      const readCommit = await mountWithAuth();
+      const target = { id: friendWish.id, listToken: "tok_1" };
+      expect(navigation.replace).toHaveBeenCalledExactlyOnceWith({
+        pathname: "/gifts/[id]",
+        params: { ...target, openReserve: "1", title: friendWish.title },
+      });
+      navigation.replace.mockClear();
+
+      await act(async function changeAccount() {
+        readCommit().auth.setUser(anotherUser);
+      });
+      expect(navigation.replace).not.toHaveBeenCalled();
+      expect(loadingRegion()).not.toBeNull();
+
+      await act(async function receiveNewList() {
+        next.resolve(giftsAnswer(newList));
+      });
+      expect(navigation.replace).toHaveBeenCalledExactlyOnceWith({
+        pathname: "/gifts/[id]",
+        params: { ...target, ...expectedParams },
+      });
+      expect(linkReads()).toBe(2);
+    },
+  );
+});
+
 describe("вишлист по ссылке: список", () => {
+  it("после смены токена запоздалый ответ по старой ссылке не заменяет новый список", async function ignoresOldLinkAnswer() {
+    const previous = Promise.withResolvers<ReturnType<typeof giftsAnswer>>();
+    api.apiRequest
+      .mockResolvedValueOnce({ ok: true, data: user })
+      .mockReturnValueOnce(previous.promise)
+      .mockResolvedValueOnce(giftsAnswer([gift({ id: "g2", title: "Свитер" })]));
+    await mount();
+    expect(loadingRegion()).not.toBeNull();
+
+    search.params = { token: "tok_2" };
+    await mount();
+    expect(text()).toContain("Свитер");
+
+    await act(async function receiveOldLink() {
+      previous.resolve(giftsAnswer([gift()]));
+    });
+
+    expect(text()).toContain("Свитер");
+    expect(text()).not.toContain("Наушники");
+    expect(api.apiRequest.mock.calls).toEqual([
+      ["/api/v1/me"],
+      ["/api/v1/l/tok_1"],
+      ["/api/v1/l/tok_2"],
+    ]);
+  });
+
   it("рисует имя владельца, ник и все карточки, которые вернул сервер", async () => {
     respond(
       giftsAnswer([

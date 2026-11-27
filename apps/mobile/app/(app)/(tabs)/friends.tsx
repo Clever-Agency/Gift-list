@@ -56,7 +56,7 @@ import { BlockConfirm } from "@/profile/block-confirm";
 import { profileRoute } from "@/profile/profile-route";
 import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
-import { mutationErrorMessage } from "@/session/form-issue";
+import { mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
@@ -224,7 +224,7 @@ function FriendsContent({
     const signedOut = await auth.signOut();
     if (!signedOut.ok) {
       onSessionExpired(false);
-      setToast({ message: app("form.network"), tone: "error" });
+      setToast({ message: signOutErrorMessage(signedOut, app("form.network"), common), tone: "error" });
     }
     return signedOut.ok;
   }

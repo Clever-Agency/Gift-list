@@ -42,6 +42,7 @@ import {
 } from "@/profile/subscription-action";
 import { SubscriptionActions } from "@/profile/subscription-actions";
 import { useAuth } from "@/session/auth-context";
+import { signOutErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { CardGridList } from "@/ui/card-grid-list";
 import { ClosedSection } from "@/ui/closed-section";
@@ -206,11 +207,11 @@ export default function ProfileScreen() {
    * The stored session is dead: `signOut` clears the token and marks the app
    * anonymous, and the guard above opens login with the same safe `next`.
    */
-  async function expireSession(): Promise<boolean> {
+  async function expireSession() {
     setSessionExpired(true);
     const signedOut = await auth.signOut();
     if (!signedOut.ok) setSessionExpired(false);
-    return signedOut.ok;
+    return signedOut;
   }
 
   /**
@@ -266,9 +267,9 @@ export default function ProfileScreen() {
       if ("code" in result && result.code === "UNAUTHENTICATED") {
         const signedOut = await expireSession();
         // A failed sign-out leaves the screen mounted: show the retry view, not a skeleton.
-        if (!signedOut && !cancelled) {
-          setState({ status: "error", kind: "network" });
-          setToast({ message: t("form.network"), tone: "error", nick: currentNick });
+        if (!signedOut.ok && !cancelled) {
+          setState({ status: "error", kind: "network" in signedOut ? "network" : "generic" });
+          setToast({ message: signOutErrorMessage(signedOut, t("form.network"), common), tone: "error", nick: currentNick });
         }
         return;
       }
@@ -458,9 +459,9 @@ export default function ProfileScreen() {
 
     if (result.status === "expired") {
       const signedOut = await expireSession();
-      if (!signedOut) {
+      if (!signedOut.ok) {
         setToast({
-          message: profile("relationship.network"),
+          message: signOutErrorMessage(signedOut, profile("relationship.network"), common),
           tone: "error",
           nick: requestedNick,
         });
@@ -557,9 +558,9 @@ export default function ProfileScreen() {
 
     if (result.status === "expired") {
       const signedOut = await expireSession();
-      if (!signedOut) {
+      if (!signedOut.ok) {
         setToast({
-          message: profile("subscription.network"),
+          message: signOutErrorMessage(signedOut, profile("subscription.network"), common),
           tone: "error",
           nick: requestedNick,
         });
@@ -651,9 +652,9 @@ export default function ProfileScreen() {
 
     if (result.status === "expired") {
       const signedOut = await expireSession();
-      if (!signedOut) {
+      if (!signedOut.ok) {
         setToast({
-          message: profile("relationship.network"),
+          message: signOutErrorMessage(signedOut, profile("relationship.network"), common),
           tone: "error",
           nick: requestedNick,
         });
@@ -718,9 +719,9 @@ export default function ProfileScreen() {
     }
     if (result.status === "expired") {
       const signedOut = await expireSession();
-      if (!signedOut) {
+      if (!signedOut.ok) {
         setToast({
-          message: profile("relationship.network"),
+          message: signOutErrorMessage(signedOut, profile("relationship.network"), common),
           tone: "error",
           nick: requestedNick,
         });

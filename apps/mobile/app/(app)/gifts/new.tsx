@@ -6,7 +6,7 @@ import { useTranslations } from "use-intl";
 import { createGift } from "@/api/my-gifts";
 import { getBrandName } from "@/config/env";
 import { useAuth } from "@/session/auth-context";
-import { mutationErrorMessage } from "@/session/form-issue";
+import { mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { useDiscardGuard } from "@/session/use-discard-guard";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
 import {
@@ -126,13 +126,12 @@ export default function NewGiftScreen() {
       guard.allowNextLeave();
       setSessionExpired(true);
       const signedOut = await auth.signOut();
-      // A failed sign-out leaves the screen mounted: report it like any other
-      // network failure instead of silently pretending the session is gone.
+      // A failed sign-out leaves the screen mounted and reports the error.
       if (!signedOut.ok) {
         // No hand-over happened: guard the still mounted form again.
         guard.revokeLeave();
         setSessionExpired(false);
-        setToast(t("form.network"));
+        setToast(signOutErrorMessage(signedOut, t("form.network"), common));
       }
       return;
     }

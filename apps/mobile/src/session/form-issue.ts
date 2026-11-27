@@ -92,6 +92,18 @@ export function mutationErrorMessage(
   return common(`errors.code.${error.code as ErrorCode}`);
 }
 
+export function signOutErrorMessage(
+  error: Exclude<ClientResult<unknown>, { ok: true }>,
+  networkMessage: string,
+  common: Translate,
+): string {
+  if ("network" in error) return networkMessage;
+  if (error.code === "RATE_LIMITED") {
+    return common("errors.code.RATE_LIMITED", rateLimitValues(error.params) ?? { unit: "other" });
+  }
+  return mutationErrorMessage(error, common);
+}
+
 function rateLimitValues(
   params: ActionError["params"],
 ): Record<string, string | number> | undefined {

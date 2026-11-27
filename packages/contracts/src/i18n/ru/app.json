@@ -621,12 +621,5 @@
     "retry": "Повторить",
     "giftNotFound": "Желание не найдено.",
     "backToList": "К моему вишлисту"
-  },
-  "contractsOk": "Контракт на месте",
-  "smoke": {
-    "wishes": "{count, plural, one {# желание} few {# желания} many {# желаний} other {# желаний}}",
-    "prices": "{byn} · {rub}",
-    "date": "{date}",
-    "names": "{a} / {b} / {c}"
   }
 }

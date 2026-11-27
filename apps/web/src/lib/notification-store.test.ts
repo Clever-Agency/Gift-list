@@ -948,6 +948,209 @@ describe("email notification queue", function mailTests() {
     expect(verifyUnsubscribeToken(page!.split("/").pop()!)).toEqual({ userId: "owner", type: "friendDates" });
   });
 
+  /**
+   * Story 7.3 (FR-34): two birthdays of one day arrive as one digest; both
+   * notifications retire together. In-app rows stay separate — this is only
+   * the mail queue.
+   */
+  it("joins two birthday reminders of one recipient into one digest letter", async function birthdayDigest() {
+    const rows = mockEmailQueue([
+      record({
+        id: "anya",
+        kind: "DATE_FRIEND",
+        giftId: null,
+        actorId: "friend-anya",
+        reservationAt: null,
+        phaseAt: null,
+        payload: { personName: "Аня", personNick: "anya", date: "2026-03-14", count: 2, titles: ["Плед"] },
+      }),
+      record({
+        id: "ivan",
+        kind: "DATE_FRIEND",
+        giftId: null,
+        actorId: "friend-ivan",
+        reservationAt: null,
+        phaseAt: null,
+        payload: { personName: "Иван", personNick: "ivan", date: "2026-03-14", count: 1, titles: ["Книга"] },
+      }),
+    ]);
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockImplementation(async function friend(args: { where: { id: string } }) {
+      const people: Record<string, { name: string; nick: string; profileVisibleToFriends: boolean }> = {
+        "friend-anya": { name: "Аня", nick: "anya", profileVisibleToFriends: true },
+        "friend-ivan": { name: "Иван", nick: "ivan", profileVisibleToFriends: true },
+      };
+      return people[args.where.id] ?? null;
+    });
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 1, failed: 0 });
+    expect(send).toHaveBeenCalledOnce();
+    const message = send.mock.calls[0]![0];
+    expect(message.subject).toBe(`Напоминания на сегодня — ${getBrandName()}`);
+    expect(message.text).toContain(
+      "У Аня день рождения 14.03\nОткрытых желаний: 2\n«Плед»\nhttps://example.test/u/anya",
+    );
+    expect(message.text).toContain(
+      "У Иван день рождения 14.03\nОткрытых желаний: 1\n«Книга»\nhttps://example.test/u/ivan",
+    );
+    expect(message.html).toContain('<a href="https://example.test/u/anya">Открыть профиль</a>');
+    expect(message.html).toContain('<a href="https://example.test/u/ivan">Открыть профиль</a>');
+    expect(rows.map(row => row.emailDoneAt)).toEqual([expect.any(Date), expect.any(Date)]);
+    expect(send.mock.calls[0]![1]).toMatch(/^notification-digest\//);
+  });
+
+  /**
+   * Story 7.3 + 7.4: a friend's birthday and the owner's own reminder share
+   * one letter; both unsubscribe switches appear, the header names the main one.
+   */
+  it("keeps two unsubscribe links in a mixed digest with one header target", async function mixedDigest() {
+    mockEmailQueue([
+      record({
+        id: "birthday",
+        kind: "DATE_FRIEND",
+        giftId: null,
+        actorId: "friend",
+        reservationAt: null,
+        phaseAt: null,
+        payload: { personName: "Аня", personNick: "anya", date: "2026-03-14", count: 1, titles: ["Плед"] },
+      }),
+      record({ id: "own", kind: "DATE_OWN", giftId: null, actorId: null, payload: {} }),
+    ]);
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockResolvedValue({ name: "Аня", nick: "anya", profileVisibleToFriends: true });
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 1, failed: 0 });
+    expect(send).toHaveBeenCalledOnce();
+    const message = send.mock.calls[0]![0];
+    expect(message.text).toContain("У Аня день рождения 14.03");
+    expect(message.text).toContain("Скоро ваш день рождения — обновите вишлист");
+    const friendPage = /^Отписаться от напоминаний о днях рождения и датах друзей: (https:\/\/\S+)$/m
+      .exec(message.text)?.[1];
+    const ownPage = /^Отписаться от напоминания обновить вишлист: (https:\/\/\S+)$/m.exec(message.text)?.[1];
+    expect(friendPage).toBeDefined();
+    expect(ownPage).toBeDefined();
+    expect(verifyUnsubscribeToken(friendPage!.split("/").pop()!)).toEqual({ userId: "owner", type: "friendDates" });
+    expect(verifyUnsubscribeToken(ownPage!.split("/").pop()!)).toEqual({ userId: "owner", type: "ownList" });
+    expect(message.html)
+      .toContain(`<a href="${friendPage}">Отписаться от напоминаний о днях рождения и датах друзей</a>`);
+    expect(message.html)
+      .toContain(`<a href="${ownPage}">Отписаться от напоминания обновить вишлист</a>`);
+    expect(message.headers).toEqual({
+      "List-Unsubscribe": `<${friendPage}/one-click>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+  });
+
+  it("does not merge a reservation letter into the digest", async function noReservationMerge() {
+    mockEmailQueue([
+      record({
+        id: "birthday",
+        kind: "DATE_FRIEND",
+        recipientId: "holder",
+        giftId: null,
+        actorId: "friend-anya",
+        reservationAt: null,
+        phaseAt: null,
+        payload: { personName: "Аня", personNick: "anya", date: "2026-03-14", count: 1, titles: ["Плед"] },
+      }),
+      record({
+        id: "birthday2",
+        kind: "DATE_FRIEND",
+        recipientId: "holder",
+        giftId: null,
+        actorId: "friend-ivan",
+        reservationAt: null,
+        phaseAt: null,
+        payload: { personName: "Иван", personNick: "ivan", date: "2026-03-14", count: 1, titles: ["Книга"] },
+      }),
+      record({
+        id: "reservation",
+        kind: "RESERVATION_DUE",
+        recipientId: "holder",
+        actorId: "owner",
+        payload: { role: "holder", titleSnapshot: gift.titleSnapshotOnReserve },
+      }),
+    ]);
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockImplementation(async function friend(args: { where: { id: string } }) {
+      const people: Record<string, { name: string; nick: string; profileVisibleToFriends: boolean }> = {
+        "friend-anya": { name: "Аня", nick: "anya", profileVisibleToFriends: true },
+        "friend-ivan": { name: "Иван", nick: "ivan", profileVisibleToFriends: true },
+      };
+      return people[args.where.id] ?? null;
+    });
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 2, failed: 0 });
+    expect(send.mock.calls.map(call => call[0].subject)).toEqual([
+      `Напоминания на сегодня — ${getBrandName()}`,
+      `Новое уведомление — ${getBrandName()}`,
+    ]);
+    expect(send.mock.calls[0]![0].text).toContain("У Аня день рождения 14.03");
+    expect(send.mock.calls[0]![0].text).toContain("У Иван день рождения 14.03");
+    expect(send.mock.calls[0]![0].text).not.toContain("Срок брони");
+    expect(send.mock.calls[1]![0].text).toContain("Срок брони");
+    expect(send.mock.calls[1]![0].text).not.toContain("день рождения");
+    expect(send.mock.calls[1]![1]).toBe("notification/reservation");
+  });
+
+  it("keeps every digest row in the queue when the send fails and retries them together", async function digestRetry() {
+    const rows = mockEmailQueue([
+      record({
+        id: "anya",
+        kind: "DATE_FRIEND",
+        giftId: null,
+        actorId: "friend-anya",
+        reservationAt: null,
+        phaseAt: null,
+        payload: { personName: "Аня", personNick: "anya", date: "2026-03-14", count: 1, titles: ["Плед"] },
+      }),
+      record({
+        id: "ivan",
+        kind: "DATE_FRIEND",
+        giftId: null,
+        actorId: "friend-ivan",
+        reservationAt: null,
+        phaseAt: null,
+        payload: { personName: "Иван", personNick: "ivan", date: "2026-03-14", count: 1, titles: ["Книга"] },
+      }),
+    ]);
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockImplementation(async function friend(args: { where: { id: string } }) {
+      const people: Record<string, { name: string; nick: string; profileVisibleToFriends: boolean }> = {
+        "friend-anya": { name: "Аня", nick: "anya", profileVisibleToFriends: true },
+        "friend-ivan": { name: "Иван", nick: "ivan", profileVisibleToFriends: true },
+      };
+      return people[args.where.id] ?? null;
+    });
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>()
+      .mockRejectedValue(new Error("provider down"));
+    const log = vi.spyOn(console, "error").mockImplementation(function quiet() {});
+    try {
+      await expect(processNotificationEmails(now, send, "https://example.test"))
+        .resolves.toMatchObject({ sent: 0, failed: 1 });
+      expect(rows.map(row => row.emailDoneAt)).toEqual([null, null]);
+      expect(rows.every(row => row.emailFirstAttemptAt instanceof Date)).toBe(true);
+
+      send.mockResolvedValue("sent");
+      const retryAt = new Date(now.getTime() + 6 * 60_000);
+      await expect(processNotificationEmails(retryAt, send, "https://example.test"))
+        .resolves.toMatchObject({ sent: 1, failed: 0 });
+      expect(send).toHaveBeenCalledTimes(2);
+      // The same set keeps its idempotency key, so a replay never duplicates.
+      expect(send.mock.calls[1]![1]).toBe(send.mock.calls[0]![1]);
+      expect(rows.map(row => row.emailDoneAt)).toEqual([expect.any(Date), expect.any(Date)]);
+      expect(send.mock.calls[1]![0].text).toContain("У Аня день рождения 14.03");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("keeps a reservation letter free of the unsubscribe control", async function reservationNoUnsubscribe() {
     mockEmailQueue([record({
       kind: "RESERVATION_DUE",

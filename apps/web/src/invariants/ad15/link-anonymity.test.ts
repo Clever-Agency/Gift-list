@@ -6,17 +6,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getSession, headers, findUnique, findMany, relationsBetween } = vi.hoisted(() => ({
+const { getSession, headers, findUnique, findMany, userDateFindMany, relationsBetween } = vi.hoisted(() => ({
   getSession: vi.fn(),
   headers: vi.fn(),
   findUnique: vi.fn(),
   findMany: vi.fn(),
+  userDateFindMany: vi.fn(),
   relationsBetween: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ headers }));
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
-vi.mock("@/db/client", () => ({ prisma: { list: { findUnique }, gift: { findMany } } }));
+vi.mock("@/db/client", () => ({
+  prisma: { list: { findUnique }, gift: { findMany }, userDate: { findMany: userDateFindMany } },
+}));
 vi.mock("@/lib/relationships", () => ({ relationshipReader: { relationsBetween } }));
 
 import { getWishlistByToken } from "@/actions/public-wishlist";
@@ -103,6 +106,7 @@ beforeEach(() => {
   headers.mockReset();
   findUnique.mockReset();
   findMany.mockReset();
+  userDateFindMany.mockReset();
   relationsBetween.mockReset();
 
   headers.mockResolvedValue(new Headers({ "accept-language": "ru-RU,ru;q=0.9" }));
@@ -122,6 +126,21 @@ beforeEach(() => {
     subscriber: false,
     contactMatch: false,
   });
+  // AD-23: the owner does have personal dates, including an «все» one; a link
+  // visitor must never receive any of them.
+  userDateFindMany.mockResolvedValue([
+    {
+      id: "d1",
+      kind: "CUSTOM",
+      title: "Годовщина",
+      day: 14,
+      month: 6,
+      year: 2020,
+      visibility: "EVERYONE",
+      yearVisibility: "EVERYONE",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  ]);
 });
 
 describe("AD-15 (2) — аноним по /l/:token видит только PUBLIC", () => {
@@ -170,6 +189,22 @@ describe("AD-15 (2) — аноним по /l/:token видит только PUBL
     expect(answer).not.toHaveProperty("publicToken");
     expect(answer).not.toHaveProperty("archived");
     expect(answer).not.toHaveProperty("archivedTotal");
+  });
+
+  it("не читает и не отдаёт личные даты, даже открытые для всех (AD-23)", async () => {
+    const page = await loadLinkPage("tok-1");
+    const api = await getWishlistByToken(
+      "tok-1",
+      new Headers({ "accept-language": "ru-RU,ru;q=0.9" }),
+    );
+
+    expect(page.view.kind).toBe("gifts");
+    if (api.ok === false) throw new Error("expected an open answer");
+
+    // The database does have a date of «все»; the link read never asks for it.
+    expect(userDateFindMany).not.toHaveBeenCalled();
+    expect(api.data).not.toHaveProperty("dates");
+    expect(JSON.stringify(api.data)).not.toContain("Годовщина");
   });
 
   it("проводит оба чтения через один узкий запрос: только PUBLIC и без архива", async () => {

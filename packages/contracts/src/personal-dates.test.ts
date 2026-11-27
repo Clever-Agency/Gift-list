@@ -9,6 +9,7 @@ import {
   PERSONAL_DATE_TITLE_MAX,
   isPersonalDateYearAllowed,
   isValidPersonalDate,
+  listDataSchema,
   personalDateCreateBodySchema,
   personalDateSchema,
   personalDateUpdateBodySchema,
@@ -283,5 +284,27 @@ describe("personal date answers (AD-23)", () => {
     };
 
     expect(visiblePersonalDateSchema.parse(visible)).toEqual(visible);
+  });
+
+  it("a profile answer carries the visible dates and keeps their switches out", () => {
+    const visible = {
+      id: "d1",
+      kind: "CUSTOM",
+      title: "Годовщина",
+      day: 14,
+      month: 6,
+      year: null,
+    };
+    const answer = { access: "gifts", gifts: [], dates: [visible] };
+
+    expect(listDataSchema.parse(answer)).toEqual(answer);
+    expect(listDataSchema.safeParse({ ...answer, dates: [own] }).success).toBe(false);
+  });
+
+  it("a link answer without dates stays valid, so no date can appear by accident", () => {
+    const answer = { access: "gifts", gifts: [] };
+
+    expect(listDataSchema.parse(answer)).toEqual(answer);
+    expect(listDataSchema.parse(answer)).not.toHaveProperty("dates");
   });
 });

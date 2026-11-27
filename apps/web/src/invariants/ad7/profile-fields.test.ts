@@ -67,6 +67,11 @@ const { state, prisma, getSession } = vi.hoisted(() => {
         return 0;
       },
     },
+    userDate: {
+      async findMany() {
+        return [];
+      },
+    },
     friendship: {
       async findUnique(args: { where: { userLowId_userHighId: FriendPair } }) {
         const key = pairKey(args.where.userLowId_userHighId);

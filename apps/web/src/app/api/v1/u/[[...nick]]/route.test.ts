@@ -20,6 +20,7 @@ vi.mock("@/db/client", () => ({
     user: { findUnique: findUser },
     list: { findUnique: findList },
     gift: { findMany: findManyGifts, count: () => Promise.resolve(0) },
+    userDate: { findMany: () => Promise.resolve([]) },
     $transaction: (operations: Promise<unknown>[]) => Promise.all(operations),
   },
 }));

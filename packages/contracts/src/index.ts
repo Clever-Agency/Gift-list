@@ -11,6 +11,7 @@ import {
   VISIBILITIES,
 } from "./enums";
 import { PROFILE_RELATIONSHIPS, profileInviteCooldownSchema } from "./friendship";
+import { visiblePersonalDateSchema } from "./personal-dates";
 import { profileDetailsSchema, profileFieldsSchema } from "./profile";
 
 export const ERROR_CODES = [
@@ -366,6 +367,14 @@ export const listDataSchema = z.strictObject({
    * answer can tell that the fields even exist.
    */
   details: profileDetailsSchema.optional(),
+  /**
+   * AD-23 (Story 7.5): the personal dates of the profile as this viewer gets
+   * them — only the visible ones, without the owner's visibility switches and
+   * with `year: null` when the year is hidden or absent. Only `/u/:nick` adds
+   * the key; `/l/:token`, search and `/me` never do, and a profile with no
+   * visible date omits it entirely, like `details`.
+   */
+  dates: z.array(visiblePersonalDateSchema).optional(),
 });
 
 export type ListData = z.infer<typeof listDataSchema>;

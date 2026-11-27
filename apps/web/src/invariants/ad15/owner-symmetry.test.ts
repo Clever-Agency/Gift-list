@@ -273,6 +273,12 @@ const {
         return null;
       },
     },
+    // AD-23: the profile read asks for the owner's dates; these scenarios have none.
+    userDate: {
+      async findMany() {
+        return [];
+      },
+    },
   };
 
   const fakePrisma = Object.assign(delegates, {

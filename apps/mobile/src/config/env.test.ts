@@ -1,8 +1,12 @@
 import { PRODUCT_NAME } from "@gift-list/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  getAndroidStoreUrl,
   getBrandName,
+  getIosStoreUrl,
   getPublicWebOrigin,
+  isIosAppPublished,
+  normalizeStoreUrl,
   normalizeWebOrigin,
   resolvePublicWebOrigin,
 } from "@/config/env";
@@ -144,6 +148,38 @@ describe("resolvePublicWebOrigin", () => {
   it("rejects an invalid page origin instead of using it", () => {
     expect(resolvePublicWebOrigin("", "", "gift.example")).toBe("");
     expect(resolvePublicWebOrigin("", "", "null")).toBe("");
+  });
+});
+
+describe("store links of the install hint", () => {
+  it("keeps an absolute https store address and rejects everything else", () => {
+    expect(normalizeStoreUrl(" https://play.google.com/store/apps/details?id=app.giftlist.mobile ")).toBe(
+      "https://play.google.com/store/apps/details?id=app.giftlist.mobile",
+    );
+    expect(normalizeStoreUrl(undefined)).toBe("");
+    expect(normalizeStoreUrl("   ")).toBe("");
+    expect(normalizeStoreUrl("play.google.com/store")).toBe("");
+    expect(normalizeStoreUrl("http://play.google.com/store")).toBe("");
+    expect(normalizeStoreUrl("https://")).toBe("");
+    expect(normalizeStoreUrl("javascript:alert(1)")).toBe("");
+  });
+
+  it("reads the two store variables separately", () => {
+    vi.stubEnv("EXPO_PUBLIC_ANDROID_STORE_URL", "https://play.google.com/store/apps/details?id=one");
+    vi.stubEnv("EXPO_PUBLIC_IOS_STORE_URL", "https://apps.apple.com/app/id000000000");
+    expect(getAndroidStoreUrl()).toBe("https://play.google.com/store/apps/details?id=one");
+    expect(getIosStoreUrl()).toBe("https://apps.apple.com/app/id000000000");
+  });
+
+  it("treats true and 1 as published, and every other value as not published", () => {
+    for (const value of ["true", "TRUE", " 1 "]) {
+      vi.stubEnv("EXPO_PUBLIC_IOS_APP_PUBLISHED", value);
+      expect(isIosAppPublished()).toBe(true);
+    }
+    for (const value of ["", "false", "yes", "0"]) {
+      vi.stubEnv("EXPO_PUBLIC_IOS_APP_PUBLISHED", value);
+      expect(isIosAppPublished()).toBe(false);
+    }
   });
 });
 

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import type { Me, MyProfile, PersonalDate } from "@gift-list/contracts";
-import { act } from "react";
+import { act, cloneElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
@@ -37,12 +37,23 @@ const navigation = vi.hoisted(() => ({
   setParams: vi.fn(),
 }));
 const route = vi.hoisted(() => ({ params: {} as Record<string, string> }));
+/** A JS width a test hands the profile instead of the one `clientWidth` reports. */
+const dimensions = vi.hoisted(() => ({ width: null as number | null }));
 
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => account);
 vi.mock("@/api/personal-dates", () => datesApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+vi.mock("react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-native")>();
+  // Only a test that sets `dimensions.width` changes what the hook returns.
+  function useWindowDimensions() {
+    const size = actual.useWindowDimensions();
+    return dimensions.width === null ? size : { ...size, width: dimensions.width };
+  }
+  return { ...actual, useWindowDimensions };
+});
 // The delete confirmation draws its close cross with `expo-symbols`, which loads
 // a symbol font at runtime; the icon is decorative here.
 vi.mock("expo-symbols", async () => {
@@ -99,6 +110,18 @@ vi.mock("use-intl", async () => {
 vi.mock("expo-router", () => ({
   router: navigation,
   Stack: { Screen: () => null },
+  Link: function Link({
+    href,
+    asChild,
+    children,
+  }: {
+    href: string;
+    asChild?: boolean;
+    children: ReactElement<Record<string, unknown>>;
+  }) {
+    if (!asChild) return <a href={href}>{children}</a>;
+    return cloneElement(children, { href });
+  },
   useLocalSearchParams: () => route.params,
 }));
 vi.mock("react-native-safe-area-context", async () => {
@@ -302,6 +325,8 @@ async function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   route.params = {};
+  dimensions.width = null;
+  window.localStorage.clear();
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   account.getMyProfile.mockResolvedValue({ ok: true, data: profile });
   account.updateMyProfile.mockResolvedValue({ ok: true, data: profile });
@@ -319,6 +344,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.unstubAllEnvs();
 });
 
 describe("профиль: гейт сессии", () => {
@@ -1183,6 +1209,41 @@ describe("профиль: мои даты", () => {
     await press("Повторить");
 
     expect(text()).toContain("Годовщина свадьбы");
+  });
+});
+
+describe("профиль: подсказка установки", () => {
+  /** UX-DR11: below wide the browser hint is a card at the top of «Профиль». */
+  it("на узком окне рисует подсказку вверху экрана", async () => {
+    dimensions.width = 360;
+    respond({ ok: true, data: user });
+    vi.stubEnv("EXPO_PUBLIC_ANDROID_STORE_URL", "https://play.google.com/store/apps/details?id=app.giftlist.mobile");
+    vi.stubEnv("EXPO_PUBLIC_IOS_STORE_URL", "");
+    vi.stubEnv("EXPO_PUBLIC_IOS_APP_PUBLISHED", "");
+    await mount();
+
+    const hint = container.querySelector<HTMLElement>('[data-testid="install-hint"]');
+    expect(hint).not.toBeNull();
+    expect(hint?.textContent).toContain("Установите приложение: поиск друзей по контактам");
+    const heading = container.querySelector<HTMLElement>('[role="heading"][aria-level="1"]');
+    expect(heading).not.toBeNull();
+    expect(
+      (heading as HTMLElement).compareDocumentPosition(hint as HTMLElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
+  /** On wide the one place of the hint is the right column of a root screen. */
+  it("на wide в «Профиле» подсказки нет", async () => {
+    dimensions.width = 1440;
+    respond({ ok: true, data: user });
+    vi.stubEnv("EXPO_PUBLIC_ANDROID_STORE_URL", "");
+    vi.stubEnv("EXPO_PUBLIC_IOS_STORE_URL", "");
+    vi.stubEnv("EXPO_PUBLIC_IOS_APP_PUBLISHED", "");
+    await mount();
+
+    expect(container.querySelector('[data-testid="install-hint"]')).toBeNull();
+    expect(text()).not.toContain("Установите приложение");
   });
 });
 

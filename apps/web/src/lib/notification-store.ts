@@ -11,14 +11,16 @@ import type { Notification, NotificationKind, Prisma } from "@/db/generated/clie
 import { calendarDay } from "@/domain/calendar-day";
 import type { GiftEditEventField } from "@/domain/gift-edit";
 import { GIVABLE_RESERVATION_PHASES, UNDO_WINDOW_MS } from "@/domain/gift-status";
+import { canSeePersonalDate } from "@/domain/personal-dates";
 import { VisibilityPolicy } from "@/domain/visibility";
+import { personalDateSelect, storedPersonalDate } from "@/lib/personal-dates-store";
 import { relationshipReader } from "@/lib/relationships";
 import { canonicalTimeZone } from "@/lib/time-zone";
 import type { UnsubscribeType } from "@/lib/unsubscribe-token";
 
 type Tx = Prisma.TransactionClient;
 type GiftEventKind = Exclude<NotificationKind,
-  "FRIEND_INVITE" | "FRIEND_ACCEPT" | "FRIEND_REJECT" | "DATE_FRIEND" | "DATE_OWN" | "SUGGESTION">;
+  "FRIEND_INVITE" | "FRIEND_ACCEPT" | "FRIEND_REJECT" | "DATE_FRIEND" | "DATE_OWN" | "DATE_CUSTOM" | "SUGGESTION">;
 
 const giftSelect = {
   id: true,
@@ -224,7 +226,7 @@ export function notificationChannelEnabled(
   channel: "inApp" | "email",
 ) {
   const inApp = channel === "inApp";
-  if (kind === "DATE_FRIEND") {
+  if (kind === "DATE_FRIEND" || kind === "DATE_CUSTOM") {
     return prefs.remindFriendDates && (inApp ? prefs.datesInApp : prefs.datesEmail);
   }
   if (kind === "DATE_OWN") {
@@ -390,6 +392,38 @@ export async function projectNotification(
       ...(titles === undefined ? {} : { titles }),
     };
     href = `/u/${friend.nick}`;
+  } else if (row.kind === "DATE_CUSTOM") {
+    // Story 7.6 (FR-38, AD-23): a personal date is reminded only to an accepted
+    // Friend who still sees it. A block, a lost friendship or a date switched
+    // to «только я» hides a row written earlier. The owner never receives one.
+    if (!row.actorId) return null;
+    const relations = await relationshipReader.relationsBetween(row.recipientId, row.actorId);
+    if (relations.blocked || !relations.friend) return null;
+    const values = payload as Record<string, unknown>;
+    if (typeof values.date !== "string" || typeof values.dateId !== "string") return null;
+    const person = await prisma.user.findUnique({
+      where: { id: row.actorId },
+      select: { name: true, nick: true },
+    });
+    if (!person?.nick) return null;
+    const date = await prisma.userDate.findFirst({
+      where: { id: values.dateId, userId: row.actorId },
+      select: personalDateSelect,
+    });
+    if (!date || !canSeePersonalDate(
+      { id: row.recipientId },
+      { ...relations, viaListToken: false },
+      storedPersonalDate(date, row.actorId),
+    )) return null;
+    // Only the summary keys of the payload reach the client: no holder, no
+    // year and no wish status travel with a personal-date reminder.
+    data = {
+      personName: person.name,
+      personNick: person.nick,
+      date: values.date,
+      dateTitle: date.title,
+    };
+    href = `/u/${person.nick}`;
   }
 
   const parsed = notificationPayloadSchema.safeParse({ ...data, kind: row.kind });

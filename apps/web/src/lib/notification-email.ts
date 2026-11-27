@@ -70,7 +70,8 @@ export function notificationEmailLink(baseUrl: string, id: string) {
  * such control (R-3), so anything else answers `null`.
  */
 export function notificationUnsubscribeType(kind: NotificationKind): UnsubscribeType | null {
-  if (kind === "DATE_FRIEND") return "friendDates";
+  // Story 7.6: a personal date is unsubscribed by the same switch as a birthday.
+  if (kind === "DATE_FRIEND" || kind === "DATE_CUSTOM") return "friendDates";
   if (kind === "DATE_OWN") return "ownList";
   return null;
 }
@@ -101,9 +102,9 @@ type Candidate = Pick<
 >;
 const BATCH_SIZE = 50;
 
-/** Story 7.3: the two reminder kinds share one letter when they land together. */
+/** Story 7.3/7.6: the date-reminder kinds share one letter when they land together. */
 function isDateReminder(kind: NotificationKind) {
-  return kind === "DATE_FRIEND" || kind === "DATE_OWN";
+  return kind === "DATE_FRIEND" || kind === "DATE_OWN" || kind === "DATE_CUSTOM";
 }
 
 function availableAt(now: Date): Prisma.NotificationWhereInput {
@@ -183,7 +184,7 @@ async function retireEmail(rowId: string, lease: Date, clock: Clock) {
  * link.
  */
 function reminderLetterTarget(item: NotificationItem, baseUrl: string, copy: Messages["notifications"]) {
-  if (item.event.kind === "DATE_FRIEND" && item.href !== null) {
+  if ((item.event.kind === "DATE_FRIEND" || item.event.kind === "DATE_CUSTOM") && item.href !== null) {
     return { href: publicLetterUrl(baseUrl, item.href), label: copy.openFriend };
   }
   if (item.event.kind === "DATE_OWN") {
@@ -253,7 +254,8 @@ function digestLetter(entries: DigestEntry[], baseUrl: string): Message {
     return { lines, href, label };
   });
   const kinds = new Set(entries.map(entry => entry.item.event.kind));
-  const friendDates = kinds.has("DATE_FRIEND")
+  // Story 7.6: a personal date shares the birthday unsubscribe switch.
+  const friendDates = kinds.has("DATE_FRIEND") || kinds.has("DATE_CUSTOM")
     ? notificationUnsubscribeLinks(baseUrl, first.recipientId, "DATE_FRIEND")
     : null;
   const ownList = kinds.has("DATE_OWN")

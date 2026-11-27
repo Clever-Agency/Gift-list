@@ -28,6 +28,7 @@ const db = vi.hoisted(function database() {
       updateMany: vi.fn(),
     },
     gift: { findUnique: vi.fn(), updateMany: vi.fn() },
+    userDate: { findFirst: vi.fn() },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
     user: {
@@ -506,6 +507,89 @@ describe("Story 7.3: the friend birthday reminder", function birthdayReminder() 
     await expect(projectNotification(row, { ...defaults, datesInApp: false }, "inApp", now)).resolves.toBeNull();
     await expect(projectNotification(row, { ...defaults, datesInApp: false }, "email", now)).resolves.toMatchObject({
       event: { kind: "DATE_FRIEND" },
+    });
+  });
+});
+
+/**
+ * Story 7.6 (FR-38, AD-23): a personal date is projected from the stored row,
+ * opens the Friend's profile, and disappears when the friendship, the block
+ * state or the date's own visibility no longer allows it.
+ */
+describe("Story 7.6: the personal date reminder", function personalDateReminder() {
+  const visibleDate = {
+    id: "date-row",
+    kind: "CUSTOM",
+    title: "Годовщина",
+    day: 11,
+    month: 12,
+    year: null,
+    visibility: "FRIENDS",
+    yearVisibility: "ONLY_ME",
+  };
+
+  function dateRow(payload: Record<string, unknown> = {}) {
+    return record({
+      id: "personal-date",
+      kind: "DATE_CUSTOM",
+      giftId: null,
+      actorId: "friend",
+      reservationAt: null,
+      phaseAt: null,
+      payload: {
+        personName: "Аня",
+        personNick: "anya",
+        dateId: visibleDate.id,
+        date: "2026-12-11",
+        dateTitle: visibleDate.title,
+        ...payload,
+      },
+    });
+  }
+
+  beforeEach(function friendWithVisibleDate() {
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockResolvedValue({ name: "Аня", nick: "anya" });
+    db.userDate.findFirst.mockResolvedValue(visibleDate);
+  });
+
+  it("names the live date title and opens the Friend's profile", async function projected() {
+    const item = await projectNotification(dateRow(), defaults, "inApp", now);
+
+    expect(item?.href).toBe("/u/anya");
+    expect(item?.event).toEqual({
+      kind: "DATE_CUSTOM",
+      personName: "Аня",
+      personNick: "anya",
+      date: "2026-12-11",
+      dateTitle: "Годовщина",
+    });
+    expect(notificationText(item!.event, "ru")).toBe("У Аня скоро «Годовщина» — 11.12");
+    expect(notificationText(item!.event, "ru")).not.toContain("2026");
+  });
+
+  it("hides the row when the date is gone, belongs to someone else or closed itself", async function hiddenDate() {
+    db.userDate.findFirst.mockResolvedValueOnce(null);
+    await expect(projectNotification(dateRow(), defaults, "inApp", now)).resolves.toBeNull();
+
+    db.userDate.findFirst.mockResolvedValueOnce({ ...visibleDate, visibility: "ONLY_ME" });
+    await expect(projectNotification(dateRow(), defaults, "inApp", now)).resolves.toBeNull();
+  });
+
+  it("hides the row for a block or a lost friendship", async function hiddenFriend() {
+    db.relationsBetween.mockResolvedValueOnce({ blocked: true, friend: true, subscriber: false, contactMatch: false });
+    await expect(projectNotification(dateRow(), defaults, "inApp", now)).resolves.toBeNull();
+
+    db.relationsBetween.mockResolvedValueOnce({ blocked: false, friend: false, subscriber: false, contactMatch: false });
+    await expect(projectNotification(dateRow(), defaults, "inApp", now)).resolves.toBeNull();
+  });
+
+  it("still answers the Friend-date switch and the channel", async function channels() {
+    const row = dateRow();
+    await expect(projectNotification(row, { ...defaults, remindFriendDates: false }, "inApp", now)).resolves.toBeNull();
+    await expect(projectNotification(row, { ...defaults, datesInApp: false }, "inApp", now)).resolves.toBeNull();
+    await expect(projectNotification(row, { ...defaults, datesInApp: false }, "email", now)).resolves.toMatchObject({
+      event: { kind: "DATE_CUSTOM" },
     });
   });
 });

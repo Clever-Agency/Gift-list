@@ -53,6 +53,13 @@ export const notificationPayloadSchema = z.discriminatedUnion("kind", [
     titles: z.array(z.string()).optional(),
   }),
   z.object({ kind: z.literal("DATE_OWN") }),
+  /**
+   * Story 7.6 (FR-38, AD-23): the T-14 notice about a Friend's personal date.
+   * `date` is a machine-readable date-only value; the client hides the year.
+   * `dateTitle` is the owner's label for the date («Годовщина»), never a wish
+   * title, and the payload never carries a holder or a year.
+   */
+  z.object({ kind: z.literal("DATE_CUSTOM"), ...person, date: z.string(), dateTitle: z.string() }),
   z.object({ kind: z.literal("SUGGESTION"), senderName: z.string().optional() }),
   z.object({ kind: z.literal("WISH_EXPIRY_SOON"), ...wish }),
   /**

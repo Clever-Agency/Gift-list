@@ -32,7 +32,9 @@ export function notificationChangedFields(event: NotificationItem["event"], loca
  * calendar day in every zone (AD-27).
  */
 function notificationDate(event: NotificationItem["event"], locale: string): string {
-  return event.kind === "DATE_FRIEND" ? formatDate(event.date, locale, { year: false }) : "";
+  return event.kind === "DATE_FRIEND" || event.kind === "DATE_CUSTOM"
+    ? formatDate(event.date, locale, { year: false })
+    : "";
 }
 
 /**
@@ -58,7 +60,9 @@ export function notificationText(event: NotificationItem["event"], locale: strin
   const resolved = negotiateLocale([locale]);
   const messages = getMessages(resolved);
   const copy = messages.common.notifications;
-  const title = "titleSnapshot" in event ? event.titleSnapshot : "";
+  const title = "titleSnapshot" in event
+    ? event.titleSnapshot
+    : "dateTitle" in event ? event.dateTitle : "";
   const person = "personName" in event ? event.personName : "";
   let date = notificationDate(event, resolved);
 
@@ -93,9 +97,10 @@ export function notificationText(event: NotificationItem["event"], locale: strin
   const template = event.kind === "WISH_EXPIRY" && event.released === false
     ? messages.notifications.wishExpiryKept
     : copy[event.kind];
-  return template.replace(/\{(title|person|date)\}/g, function value(_, key: string) {
+  return template.replace(/\{(title|person|date|dateTitle)\}/g, function value(_, key: string) {
     if (key === "title") return title;
     if (key === "person") return person;
+    if (key === "dateTitle") return title;
     return date;
   });
 }
@@ -117,5 +122,7 @@ export function notificationEmailSubject(event: NotificationItem["event"], local
       .replace("{person}", event.personName)
       .replace("{date}", formatDate(event.date, resolved, { year: false }));
   }
+  // Story 7.6 (FR-38): a personal date keeps the generic subject until S2-2
+  // writes its own copy, so no extra catalog key rides in the app bundle.
   return copy.emailSubject;
 }

@@ -461,6 +461,8 @@ enum NotificationKind {
   GIFT_GIVEN
   DATE_FRIEND
   DATE_OWN
+  /// A Friend's personal date, 14 days ahead (Story 7.6, AD-23).
+  DATE_CUSTOM
   SUGGESTION
   WISH_EXPIRY_SOON
   WISH_EXPIRY

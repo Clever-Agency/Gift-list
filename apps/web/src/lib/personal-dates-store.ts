@@ -28,7 +28,7 @@ export const personalDateSelect = {
 } as const;
 
 /** The Prisma row this adapter hands to the domain policy. */
-type PersonalDateRow = {
+export type PersonalDateRow = {
   readonly id: string;
   readonly kind: UserDateKind;
   readonly title: string;
@@ -39,7 +39,12 @@ type PersonalDateRow = {
   readonly yearVisibility: DateVisibility;
 };
 
-function stored(row: PersonalDateRow, ownerId: string): PersonalDateStored {
+/**
+ * Story 7.6: the same row-plus-owner shape is needed by the profile read and by
+ * the date-reminder adapter, so both build it here instead of repeating the
+ * mapping.
+ */
+export function storedPersonalDate(row: PersonalDateRow, ownerId: string): PersonalDateStored {
   return {
     id: row.id,
     kind: row.kind,
@@ -66,7 +71,7 @@ export async function readPersonalDates(userId: string): Promise<PersonalDateSto
     select: personalDateSelect,
   });
   return rows.map(function toStored(row) {
-    return stored(row, userId);
+    return storedPersonalDate(row, userId);
   });
 }
 
@@ -109,7 +114,7 @@ export async function createPersonalDate(
       },
       select: personalDateSelect,
     });
-    return { ok: true, date: stored(row, userId) } as const;
+    return { ok: true, date: storedPersonalDate(row, userId) } as const;
   });
 }
 
@@ -164,7 +169,7 @@ export async function updatePersonalDate(
     select: personalDateSelect,
   });
   if (row === null) return { ok: false, reason: "not-found" } as const;
-  return { ok: true, date: stored(row, userId) } as const;
+  return { ok: true, date: storedPersonalDate(row, userId) } as const;
 }
 
 /** Story 7.5: the owner removes one own date; a foreign id removes nothing. */

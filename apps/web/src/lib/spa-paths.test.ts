@@ -15,6 +15,8 @@ const SPA_ROUTE_PATHS = [
   "/profile",
   "/settings",
   "/notifications",
+  "/collections",
+  "/collections/c-1",
   "/gifts/new",
   "/gifts/g-1",
   "/gifts/g-1/edit",
@@ -83,6 +85,8 @@ describe("isNextOwnedPath", () => {
     "/invite",
     "/reservations",
     "/notifications",
+    "/collections",
+    "/collections/c-1",
   ])("leaves %s to the SPA", (pathname) => {
     expect(isNextOwnedPath(pathname)).toBe(false);
   });

@@ -40,6 +40,8 @@ const SPA_ROUTES: SpaRoute[] = [
   { path: "/profile", leaf: "profile", file: "./(app)/(tabs)/profile.tsx" },
   { path: "/settings", leaf: "settings", file: "./(app)/settings.tsx" },
   { path: "/notifications", leaf: "notifications", file: "./(app)/notifications.tsx" },
+  { path: "/collections", leaf: "collections/index", file: "./(app)/collections/index.tsx" },
+  { path: "/collections/c-1", leaf: "collections/[id]", file: "./(app)/collections/[id].tsx" },
   { path: "/gifts/new", leaf: "gifts/new", file: "./(app)/gifts/new.tsx" },
   { path: "/gifts/g-1", leaf: "gifts/[id]/index", file: "./(app)/gifts/[id]/index.tsx" },
   { path: "/gifts/g-1/edit", leaf: "gifts/[id]/edit", file: "./(app)/gifts/[id]/edit.tsx" },
@@ -146,6 +148,7 @@ describe("глубокая ссылка и обновление страницы
     expect(leafRoute(resolve("/u/anya")).params).toEqual({ nick: "anya" });
     expect(leafRoute(resolve("/invite/tok-1")).params).toEqual({ token: "tok-1" });
     expect(leafRoute(resolve("/wishlist/tok-1")).params).toEqual({ token: "tok-1" });
+    expect(leafRoute(resolve("/collections/c-1")).params).toEqual({ id: "c-1" });
   });
 
   it("неизвестный путь — не пустой экран, а общий not-found", () => {

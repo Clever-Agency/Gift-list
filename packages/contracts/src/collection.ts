@@ -107,6 +107,17 @@ export const editorialCollectionSummarySchema = z.strictObject({
 
 export type EditorialCollectionSummary = z.infer<typeof editorialCollectionSummarySchema>;
 
+/**
+ * The app's «Подборки» answer (Story 10.1): the published cards only. The list is
+ * a named key, like the wishlist gifts and the tag catalog, so an empty answer is
+ * still a closed object the client can check.
+ */
+export const editorialCollectionListSchema = z.strictObject({
+  collections: z.array(editorialCollectionSummarySchema),
+});
+
+export type EditorialCollectionList = z.infer<typeof editorialCollectionListSchema>;
+
 /** The app's one collection screen: the card fields plus its ideas in order. */
 export const editorialCollectionDetailSchema = z.strictObject({
   ...editorialCollectionSummarySchema.shape,

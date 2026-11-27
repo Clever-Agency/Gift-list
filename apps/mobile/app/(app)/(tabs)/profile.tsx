@@ -224,6 +224,11 @@ export default function MyProfileScreen() {
     router.push("/settings");
   }
 
+  /** Story 10.1: «Подборки» is one of the profile rows (`DESIGN.md` → «Профиль»). */
+  function openCollections() {
+    router.push("/collections");
+  }
+
   function openOwnProfile() {
     if (auth.state.status !== "ready") return;
     const route = profileRoute(auth.state.user.nick);
@@ -304,6 +309,7 @@ export default function MyProfileScreen() {
                 <MyDatesSection onToast={showToast} onExpired={expireSession} />
                 <ProfileMenu
                   onOpenProfile={openOwnProfile}
+                  onOpenCollections={openCollections}
                   onOpenSettings={openSettings}
                   onSignOut={handleSignOut}
                   signingOut={signingOut}

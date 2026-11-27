@@ -119,7 +119,15 @@
     "addToWishlist": "Добавить в мой вишлист",
     "added": "Добавлено",
     "addedToast": "Добавлено в вишлист",
-    "viewCollections": "Посмотреть подборки"
+    "viewCollections": "Посмотреть подборки",
+    "itemCount": "{count, plural, one {# идея} few {# идеи} many {# идей} other {# идей}}",
+    "ideasLabel": "Идеи подборки",
+    "link": "Ссылка",
+    "loading": "Загружаем подборки",
+    "detailLoading": "Загружаем подборку",
+    "loadError": "Не получилось загрузить. Проверьте сеть.",
+    "loadErrorGeneric": "Не получилось загрузить. Попробуйте ещё раз.",
+    "retry": "Повторить"
   },
   "settings": {
     "title": "Настройки",

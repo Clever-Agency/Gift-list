@@ -13,6 +13,7 @@ import {
   editorialCollectionAdminSummarySchema,
   editorialCollectionDetailSchema,
   editorialCollectionInputSchema,
+  editorialCollectionListSchema,
   editorialCollectionSummarySchema,
   editorialItemInputSchema,
   editorialItemOrderSchema,
@@ -190,6 +191,22 @@ describe("app answers", () => {
     expect(
       editorialItemSchema.safeParse({ ...item, position: 0 }).success,
     ).toBe(false);
+  });
+
+  it("parses the list answer and refuses a stray top-level key", () => {
+    const summary = {
+      id: "c1",
+      title: "Для рыбалки",
+      description: null,
+      coverImageUrl: null,
+      itemCount: 3,
+    };
+    expect(editorialCollectionListSchema.parse({ collections: [summary] }).collections).toHaveLength(
+      1,
+    );
+    expect(editorialCollectionListSchema.safeParse({ collections: [], draft: summary }).success).toBe(
+      false,
+    );
   });
 });
 

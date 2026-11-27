@@ -575,6 +575,7 @@ export {
   negotiateLocale,
   normalizeForSearch,
   notificationChangedFields,
+  notificationDetails,
   notificationEmailSubject,
   notificationText,
   preferredFromAcceptLanguage,

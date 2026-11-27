@@ -7,7 +7,7 @@ import {
   notificationPreferencesPatchSchema,
   notificationPreferencesSchema,
 } from "./notifications";
-import { notificationEmailSubject, notificationText } from "./i18n/notification-text";
+import { notificationDetails, notificationEmailSubject, notificationText } from "./i18n/notification-text";
 import type { NotificationItem } from "./notifications";
 
 describe("CLE-124/S9b-2: notification payloads", () => {
@@ -225,5 +225,60 @@ describe("Story 6.6: wish-expiry copy", () => {
     expect(notificationEmailSubject(soon, "ru")).toBe("Срок желания истекает через 3 дня — {brand}");
     expect(notificationEmailSubject(released, "ru")).toBe("Срок желания вышел — {brand}");
     expect(notificationEmailSubject({ kind: "DATE_OWN" }, "ru")).toBe("Новое уведомление — {brand}");
+  });
+});
+
+/**
+ * Story 7.3 (FR-34, AD-27): a Friend's birthday is named without its year, the
+ * summary counts open wishes and names up to three of them. A row written before
+ * the summary existed still renders its first line.
+ */
+describe("Story 7.3: friend birthday copy", () => {
+  const friend = {
+    kind: "DATE_FRIEND",
+    personName: "Аня",
+    personNick: "anya",
+    date: "2026-03-14",
+    count: 4,
+    titles: ["Плед", "Книга", "Наушники"],
+  } satisfies NotificationItem["event"];
+
+  it("names the day without a year and keeps the calendar day", () => {
+    expect(notificationText(friend, "ru")).toBe("У Аня день рождения 14.03");
+  });
+
+  it("adds the open-wish count and up to three titles", () => {
+    expect(notificationDetails(friend, "ru")).toEqual([
+      "Открытых желаний: 4",
+      "«Плед», «Книга», «Наушники»",
+    ]);
+    expect(notificationDetails({ ...friend, titles: ["Плед", "Книга", "Наушники", "Худи"] }, "ru")[1])
+      .toBe("«Плед», «Книга», «Наушники»");
+    expect(notificationDetails({ ...friend, titles: [] }, "ru")).toEqual(["Открытых желаний: 4"]);
+  });
+
+  it("renders a row without the summary and names the letter subject", () => {
+    const legacy = {
+      kind: "DATE_FRIEND",
+      personName: "Аня",
+      personNick: "anya",
+      date: "2026-03-14",
+    } satisfies NotificationItem["event"];
+
+    expect(notificationText(legacy, "ru")).toBe("У Аня день рождения 14.03");
+    expect(notificationDetails(legacy, "ru")).toEqual([]);
+    expect(notificationEmailSubject(friend, "ru")).toBe("У Аня день рождения 14.03 — {brand}");
+  });
+
+  it("parses only the birthday keys and drops a holder or a status", () => {
+    const parsed = notificationPayloadSchema.parse({
+      ...friend,
+      holderName: "Даниэль",
+      status: "RESERVED",
+      reservationPhase: "ACTIVE",
+    });
+    expect(parsed).toEqual(friend);
+    expect(JSON.stringify(parsed)).not.toContain("Даниэль");
+    expect(JSON.stringify(parsed)).not.toContain("RESERVED");
   });
 });

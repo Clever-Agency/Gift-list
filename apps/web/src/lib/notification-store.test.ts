@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { notificationText, safeNextPath } from "@gift-list/contracts";
+import { notificationDetails, notificationText, safeNextPath } from "@gift-list/contracts";
 import type { Notification } from "@/db/generated/client";
 
 vi.mock("server-only", () => ({}));
@@ -400,6 +400,108 @@ describe("notification privacy and availability", function privacyTests() {
 });
 
 /**
+ * Story 7.3 (FR-34, AD-7, AD-29): the birthday reminder is projected from its
+ * stored summary, opens the Friend's profile and disappears when the friendship,
+ * the block state or the Friend's profile switch no longer allows it.
+ */
+describe("Story 7.3: the friend birthday reminder", function birthdayReminder() {
+  function birthdayRow(payload: Record<string, unknown> = {}) {
+    return record({
+      id: "birthday",
+      kind: "DATE_FRIEND",
+      giftId: null,
+      actorId: "friend",
+      reservationAt: null,
+      phaseAt: null,
+      payload: {
+        personName: "Аня",
+        personNick: "anya",
+        date: "2026-03-14",
+        count: 4,
+        titles: ["Плед", "Книга", "Наушники"],
+        ...payload,
+      },
+    });
+  }
+
+  beforeEach(function visibleFriend() {
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockResolvedValue({ name: "Аня", nick: "anya", profileVisibleToFriends: true });
+  });
+
+  it("names the day, the open wishes and up to three titles and opens the profile", async function projected() {
+    const item = await projectNotification(birthdayRow(), defaults, "inApp", now);
+
+    expect(item?.href).toBe("/u/anya");
+    expect(item?.event).toEqual({
+      kind: "DATE_FRIEND",
+      personName: "Аня",
+      personNick: "anya",
+      date: "2026-03-14",
+      count: 4,
+      titles: ["Плед", "Книга", "Наушники"],
+    });
+    expect(notificationText(item!.event, "ru")).toBe("У Аня день рождения 14.03");
+    expect(notificationDetails(item!.event, "ru")).toEqual([
+      "Открытых желаний: 4",
+      "«Плед», «Книга», «Наушники»",
+    ]);
+    expect(notificationText(item!.event, "ru")).not.toContain("2026");
+  });
+
+  it("drops a holder, a status and a reservation phase from the payload", async function onlySummary() {
+    const item = await projectNotification(birthdayRow({
+      holderName: "Даниэль",
+      status: "RESERVED",
+      reservationPhase: "ACTIVE",
+    }), defaults, "inApp", now);
+
+    expect(item).not.toBeNull();
+    expect(JSON.stringify(item)).not.toContain("Даниэль");
+    expect(JSON.stringify(item)).not.toContain("RESERVED");
+    expect(JSON.stringify(item)).not.toContain("ACTIVE");
+  });
+
+  it("keeps a row written before the summary and uses the current nick", async function legacyRow() {
+    const row = birthdayRow({ count: undefined, titles: undefined, personNick: "old-nick" });
+    const item = await projectNotification(row, defaults, "inApp", now);
+
+    expect(item?.href).toBe("/u/anya");
+    expect(item?.event).toEqual({
+      kind: "DATE_FRIEND",
+      personName: "Аня",
+      personNick: "anya",
+      date: "2026-03-14",
+    });
+    expect(notificationDetails(item!.event, "ru")).toEqual([]);
+  });
+
+  it("hides the reminder when the friendship, the block state or the profile switch says no", async function hidden() {
+    const row = birthdayRow();
+    db.relationsBetween.mockResolvedValueOnce({ blocked: true, friend: true, subscriber: false, contactMatch: false });
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+
+    db.relationsBetween.mockResolvedValueOnce({ blocked: false, friend: false, subscriber: false, contactMatch: false });
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+
+    db.user.findUnique.mockResolvedValueOnce({ name: "Аня", nick: "anya", profileVisibleToFriends: false });
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+
+    db.user.findUnique.mockResolvedValueOnce(null);
+    await expect(projectNotification(row, defaults, "inApp", now)).resolves.toBeNull();
+  });
+
+  it("still answers the type switch and the channel", async function channels() {
+    const row = birthdayRow();
+    await expect(projectNotification(row, { ...defaults, remindFriendDates: false }, "inApp", now)).resolves.toBeNull();
+    await expect(projectNotification(row, { ...defaults, datesInApp: false }, "inApp", now)).resolves.toBeNull();
+    await expect(projectNotification(row, { ...defaults, datesInApp: false }, "email", now)).resolves.toMatchObject({
+      event: { kind: "DATE_FRIEND" },
+    });
+  });
+});
+
+/**
  * CLE-124/S9b-2 (Story 5.7): «Подарил» writes the owner a general letter and
  * never an in-app row.
  */
@@ -796,6 +898,54 @@ describe("email notification queue", function mailTests() {
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     });
     expect(verifyUnsubscribeToken(page!.split("/").pop()!)).toEqual({ userId: "owner", type: "ownList" });
+  });
+
+  /**
+   * Story 7.3 (FR-34): the birthday letter names the Friend, the day without a
+   * year, the open-wish count and up to three titles, and leads to the profile.
+   * The unsubscribe control and the RFC 8058 headers of S4-4 stay.
+   */
+  it("sends the birthday summary to the friend's profile and keeps the unsubscribe control", async function friendBirthdayMail() {
+    mockEmailQueue([record({
+      id: "birthday",
+      kind: "DATE_FRIEND",
+      giftId: null,
+      actorId: "friend",
+      reservationAt: null,
+      phaseAt: null,
+      payload: {
+        personName: "Аня",
+        personNick: "anya",
+        date: "2026-03-14",
+        count: 4,
+        titles: ["Плед", "Книга", "Наушники"],
+        holderName: "Даниэль",
+        status: "RESERVED",
+      },
+    })]);
+    db.relationsBetween.mockResolvedValue({ blocked: false, friend: true, subscriber: false, contactMatch: false });
+    db.user.findUnique.mockResolvedValue({ name: "Аня", nick: "anya", profileVisibleToFriends: true });
+    const send = vi.fn<NonNullable<Parameters<typeof processNotificationEmails>[1]>>().mockResolvedValue("sent");
+
+    await expect(processNotificationEmails(now, send, "https://example.test"))
+      .resolves.toMatchObject({ sent: 1 });
+    const message = send.mock.calls[0]![0];
+    expect(message.subject).toBe(`У Аня день рождения 14.03 — ${getBrandName()}`);
+    expect(message.text.split("\n")[0]).toBe("У Аня день рождения 14.03");
+    expect(message.text).toContain("Открытых желаний: 4");
+    expect(message.text).toContain("«Плед», «Книга», «Наушники»");
+    expect(message.text).toContain("https://example.test/u/anya");
+    expect(message.html).toContain('<a href="https://example.test/u/anya">Открыть профиль</a>');
+    expect(message.text).not.toContain("Даниэль");
+    expect(message.text).not.toContain("RESERVED");
+
+    const page = /^Отписаться: (https:\/\/\S+)$/m.exec(message.text)?.[1];
+    expect(page).toBeDefined();
+    expect(message.headers).toEqual({
+      "List-Unsubscribe": `<${page}/one-click>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+    expect(verifyUnsubscribeToken(page!.split("/").pop()!)).toEqual({ userId: "owner", type: "friendDates" });
   });
 
   it("keeps a reservation letter free of the unsubscribe control", async function reservationNoUnsubscribe() {

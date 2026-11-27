@@ -4,6 +4,7 @@ import {
   getMessages,
   negotiateLocale,
   notificationChangedFields,
+  notificationDetails,
   notificationEmailSubject,
   notificationText,
 } from "@gift-list/contracts";
@@ -185,12 +186,22 @@ export async function processNotificationEmails(
       if (item && item.event.kind !== "UNKNOWN") {
         const locale = negotiateLocale([current.recipient.locale]);
         const copy = getMessages(locale).notifications;
-        const href = notificationEmailLink(baseUrl, item.id);
+        // Story 7.3 (FR-34): a birthday letter leads to the Friend's profile,
+        // not to the notification page; every other letter keeps its link.
+        const href = item.event.kind === "DATE_FRIEND" && item.href !== null
+          ? publicLetterUrl(baseUrl, item.href)
+          : notificationEmailLink(baseUrl, item.id);
+        const openLabel = item.event.kind === "DATE_FRIEND" && item.href !== null
+          ? copy.openFriend
+          : copy.open;
         const firstLine = notificationText(item.event, locale);
         // CLE-124/D-49: no line names the holder to the owner; the projection
         // already drops a legacy `holderName` from the payload.
-        const lines = [firstLine, notificationChangedFields(item.event, locale)]
-          .filter(line => line !== null);
+        const lines = [
+          firstLine,
+          notificationChangedFields(item.event, locale),
+          ...notificationDetails(item.event, locale),
+        ].filter(line => line !== null);
         // Projection may take time. Keep the last outbound request inside the
         // provider's key lifetime even on a delayed or resumed worker.
         if (current.emailFirstAttemptAt && clock().getTime() - current.emailFirstAttemptAt.getTime() >= RETRY_MS) continue;
@@ -206,7 +217,7 @@ export async function processNotificationEmails(
             href,
             ...(unsubscribe ? ["", `${copy.unsubscribe}: ${unsubscribe.page}`] : []),
           ].join("\n"),
-          html: `${lines.map(line => `<p>${escapeHtml(line)}</p>`).join("")}<p><a href="${escapeHtml(href)}">${escapeHtml(copy.open)}</a></p>` +
+          html: `${lines.map(line => `<p>${escapeHtml(line)}</p>`).join("")}<p><a href="${escapeHtml(href)}">${escapeHtml(openLabel)}</a></p>` +
             (unsubscribe
               ? `<p><a href="${escapeHtml(unsubscribe.page)}">${escapeHtml(copy.unsubscribe)}</a></p>`
               : ""),

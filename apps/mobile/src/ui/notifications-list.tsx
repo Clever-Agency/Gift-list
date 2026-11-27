@@ -1,5 +1,5 @@
 import type { NotificationAction, NotificationItem } from "@gift-list/contracts";
-import { notificationChangedFields, notificationText } from "@gift-list/contracts";
+import { notificationChangedFields, notificationDetails, notificationText } from "@gift-list/contracts";
 import { Bell, Button, CalendarCheck, EmptyState, NotificationRow, restoreFocus, Text, Users, YStack } from "@gift-list/ui";
 import { useRef, type ComponentRef } from "react";
 import { useLocale, useTranslations } from "use-intl";
@@ -49,7 +49,10 @@ export function NotificationsList({ items, selectedId, busyId, onOpen, onAction 
           : "titleSnapshot" in event ? <CalendarCheck size={20} /> : <Bell size={20} />;
         const stale = request && !actionable ? t("stale") : null;
         const fields = notificationChangedFields(event, locale);
-        const subtitle = [stale, fields].filter(Boolean).join(". ");
+        // Story 7.3 (FR-34): a birthday reminder adds the number of open wishes
+        // and up to three titles under its first line.
+        const details = notificationDetails(event, locale);
+        const subtitle = [stale, fields, ...details].filter(Boolean).join(". ");
 
         function open() {
           onOpen(item);

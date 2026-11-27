@@ -7,4 +7,9 @@ export {
 } from "./locale";
 export { compareForSort, formatDate, formatDay, formatPrice, normalizeForSearch } from "./format";
 export { getMessages, type Messages } from "./messages";
-export { notificationChangedFields, notificationEmailSubject, notificationText } from "./notification-text";
+export {
+  notificationChangedFields,
+  notificationDetails,
+  notificationEmailSubject,
+  notificationText,
+} from "./notification-text";

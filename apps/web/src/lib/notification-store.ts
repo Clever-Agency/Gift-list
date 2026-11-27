@@ -356,8 +356,35 @@ export async function projectNotification(
       href = "/reservations";
     }
   } else if (row.kind === "DATE_FRIEND") {
-    // Date sources must implement their read policy before enqueueing this kind.
-    return null;
+    // Story 7.3 (FR-34, AD-7, AD-29): the birthday is visible only to an
+    // accepted Friend whose profile switch is still on. A block, a lost
+    // friendship or a switched-off profile hides a row written earlier.
+    if (!row.actorId) return null;
+    const relations = await relationshipReader.relationsBetween(row.recipientId, row.actorId);
+    if (relations.blocked || !relations.friend) return null;
+    const friend = await prisma.user.findUnique({
+      where: { id: row.actorId },
+      select: { name: true, nick: true, profileVisibleToFriends: true },
+    });
+    if (!friend?.nick || !friend.profileVisibleToFriends) return null;
+    const values = payload as Record<string, unknown>;
+    if (typeof values.date !== "string") return null;
+    // Only the summary keys of the payload reach the client: no holder, no
+    // reservation phase and no status can travel with a birthday reminder.
+    const count = typeof values.count === "number" && Number.isInteger(values.count) && values.count >= 0
+      ? values.count
+      : undefined;
+    const titles = Array.isArray(values.titles)
+      ? values.titles.filter((title): title is string => typeof title === "string").slice(0, 3)
+      : undefined;
+    data = {
+      personName: friend.name,
+      personNick: friend.nick,
+      date: values.date,
+      ...(count === undefined ? {} : { count }),
+      ...(titles === undefined ? {} : { titles }),
+    };
+    href = `/u/${friend.nick}`;
   }
 
   const parsed = notificationPayloadSchema.safeParse({ ...data, kind: row.kind });

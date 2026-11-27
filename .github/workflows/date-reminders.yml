@@ -1,0 +1,90 @@
+name: Date reminders
+
+# Story 7.3 / AD-16: not Vercel Cron. The schedule runs only from the default
+# branch of this repository (staging), but calls both deployments. Production
+# may not have `/api/cron/date-reminders` until `main` is deployed, so a 404 is
+# a normal "not deployed yet" answer and is skipped with a notice instead of a
+# failed run. Any other non-2xx answer stays a failed run.
+#
+# Each job runs in a GitHub Environment that resolves APP_URL and CRON_SECRET:
+# - cron-production has no secrets of its own and falls back to the repository
+#   secrets APP_URL and CRON_SECRET (production);
+# - cron-staging overrides both with the staging values.
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which deployment to remind
+        type: choice
+        options: [all, production, staging]
+        default: all
+
+permissions:
+  contents: read
+
+jobs:
+  date-reminders:
+    name: date-reminders (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      # A staging outage must not cancel the production run.
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.target != 'all' && format('["cron-{0}"]', inputs.target) || '["cron-production","cron-staging"]') }}
+    environment: ${{ matrix.environment }}
+    # A manual run during the scheduled one waits instead of calling twice.
+    concurrency:
+      group: date-reminders-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Send date reminders
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TARGET: ${{ matrix.environment }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::$TARGET: set APP_URL and CRON_SECRET (environment or repository secrets)"
+            exit 1
+          fi
+          # A missing cron-staging secret silently falls back to the production
+          # repository secret; refuse to call production from the staging job.
+          case "$TARGET:$APP_URL" in
+            cron-staging:https://staging.*) ;;
+            cron-staging:*)
+              echo "::error::cron-staging: APP_URL is not the staging host; set the cron-staging environment secrets"
+              exit 1
+              ;;
+            *:https://staging.*)
+              echo "::error::$TARGET: APP_URL points to staging"
+              exit 1
+              ;;
+          esac
+          echo "Calling ${APP_URL%/}/api/cron/date-reminders"
+          # No --fail: the status is needed to tell "not deployed yet" (404) from
+          # a real failure. A transport error is still a failed run.
+          if ! status=$(curl --silent --show-error --max-time 60 \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/cron/date-reminders"); then
+            echo "::error::$TARGET: could not reach ${APP_URL%/}/api/cron/date-reminders"
+            exit 1
+          fi
+          case "$status" in
+            2??)
+              echo "$TARGET: date reminders run ($status)"
+              ;;
+            404)
+              echo "::notice::$TARGET: /api/cron/date-reminders is not deployed yet, skipped"
+              exit 0
+              ;;
+            *)
+              echo "::error::$TARGET: /api/cron/date-reminders returned $status"
+              exit 1
+              ;;
+          esac

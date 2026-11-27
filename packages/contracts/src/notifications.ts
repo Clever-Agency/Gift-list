@@ -39,7 +39,19 @@ export const notificationPayloadSchema = z.discriminatedUnion("kind", [
    * carries nothing but the kind.
    */
   z.object({ kind: z.literal("GIFT_GIVEN") }),
-  z.object({ kind: z.literal("DATE_FRIEND"), ...person, date: z.string() }),
+  /**
+   * Story 7.3 (FR-34): the T-14 notice about a Friend's birthday. `date` is a
+   * machine-readable date-only value; the client hides the year (AD-27). A row
+   * written by the first cron run may carry only the three original keys, so the
+   * wish summary stays optional.
+   */
+  z.object({
+    kind: z.literal("DATE_FRIEND"), ...person, date: z.string(),
+    /** Open wishes visible to the recipient, archived and reserved ones excluded. */
+    count: z.int().nonnegative().optional(),
+    /** Up to three titles of those wishes; never a holder. */
+    titles: z.array(z.string()).optional(),
+  }),
   z.object({ kind: z.literal("DATE_OWN") }),
   z.object({ kind: z.literal("SUGGESTION"), senderName: z.string().optional() }),
   z.object({ kind: z.literal("WISH_EXPIRY_SOON"), ...wish }),

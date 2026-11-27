@@ -22,14 +22,14 @@ describe("well-known app links", () => {
     expect(JSON.stringify(appleBody)).not.toMatch(/[A-Z0-9]{10}\.app\.giftlist/);
   });
 
-  it("advertises the app screens from env only", async () => {
+  it("advertises /l/*, /i/*, /wishlist/*, /reset and /notifications from env only", async () => {
     getEnv.mockReturnValue({
       APPLE_TEAM_ID: "AB12CD34EF",
       ANDROID_SHA256_CERT_FINGERPRINTS: "AA:BB",
     });
     const appleBody = await (await apple()).json();
     const androidBody = await (await assetlinks()).json();
-    expect(appleBody.applinks.details[0].paths).toEqual(["/", "/l/*", "/i/*", "/wishlist/*", "/reset", "/notifications"]);
+    expect(appleBody.applinks.details[0].paths).toEqual(["/l/*", "/i/*", "/wishlist/*", "/reset", "/notifications"]);
     expect(appleBody.applinks.details[0].appID).toBe("AB12CD34EF.app.giftlist.mobile");
     expect(androidBody[0].target.sha256_cert_fingerprints).toEqual(["AA:BB"]);
     expect(androidBody[0].target.package_name).toBe("app.giftlist.mobile");

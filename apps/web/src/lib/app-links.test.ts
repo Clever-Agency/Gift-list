@@ -7,7 +7,7 @@ describe("appleAppSiteAssociation", () => {
     expect(body.applinks.details).toEqual([
       { appID: "AB12CD34EF.app.giftlist.mobile", paths: [...APP_LINK_PATHS] },
     ]);
-    expect(body.applinks.details[0]?.paths).toEqual(["/", "/l/*", "/i/*", "/wishlist/*", "/reset", "/notifications"]);
+    expect(body.applinks.details[0]?.paths).toEqual(["/l/*", "/i/*", "/wishlist/*", "/reset", "/notifications"]);
     expect(body.webcredentials.apps).toEqual(["AB12CD34EF.app.giftlist.mobile"]);
   });
 

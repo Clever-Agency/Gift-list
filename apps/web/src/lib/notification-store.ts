@@ -356,8 +356,9 @@ export async function projectNotification(
       href = "/reservations";
     }
   } else if (row.kind === "DATE_OWN") {
-    // Story 7.4 (FR-35): the owner's own birthday reminder opens «Мой вишлист»,
-    // the app's main owner screen (`/`). The payload stays empty.
+    // Story 7.4 (FR-35): in the app the owner's own birthday reminder opens
+    // «Мой вишлист», the main owner screen (`/`); a letter sends the same root
+    // to the browser (the root is not an App Link path). The payload stays empty.
     href = "/";
   } else if (row.kind === "DATE_FRIEND") {
     // Story 7.3 (FR-34, AD-7, AD-29): the birthday is visible only to an

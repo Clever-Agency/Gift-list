@@ -902,7 +902,7 @@ describe("email notification queue", function mailTests() {
     expect(page).toBeDefined();
     expect(message.subject).toBe(`Скоро ваш день рождения — обновите вишлист — ${getBrandName()}`);
     expect(message.text.split("\n")[0]).toBe("Скоро ваш день рождения — обновите вишлист");
-    // Story 7.4: the letter opens «Мой вишлист», the app's main owner screen.
+    // Story 7.4: the letter leads to the site root, the web build's «Мой вишлист».
     expect(message.text).toContain("https://example.test/\n\nОтписаться: ");
     expect(message.html).toContain('<a href="https://example.test/">Обновить вишлист</a>');
     expect(message.html).toContain(`<a href="${page}">Отписаться</a>`);
@@ -1041,7 +1041,7 @@ describe("email notification queue", function mailTests() {
     const message = send.mock.calls[0]![0];
     expect(message.text).toContain("У Аня день рождения 14.03");
     expect(message.text).toContain("Скоро ваш день рождения — обновите вишлист");
-    // Story 7.4: the own reminder inside the digest leads to «Мой вишлист».
+    // Story 7.4: the own reminder inside the digest leads to the site root (browser).
     expect(message.text).toContain("Скоро ваш день рождения — обновите вишлист\nhttps://example.test/");
     expect(message.html).toContain('<a href="https://example.test/">Обновить вишлист</a>');
     const friendPage = /^Отписаться от напоминаний о днях рождения и датах друзей: (https:\/\/\S+)$/m

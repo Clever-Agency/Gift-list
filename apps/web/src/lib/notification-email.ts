@@ -177,8 +177,10 @@ async function retireEmail(rowId: string, lease: Date, clock: Clock) {
 
 /**
  * Story 7.3 (FR-34): a birthday letter leads to the Friend's profile.
- * Story 7.4 (FR-35): the owner's own reminder leads to «Мой вишлист» (`/`),
- * which the App Link opens in the app. Every other letter keeps its link.
+ * Story 7.4 (FR-35): the owner's own reminder leads to «Мой вишлист» at the
+ * site root (`https://{домен}/`); without App Links on `/` it opens in the
+ * browser as the web build of the same screen. Every other letter keeps its
+ * link.
  */
 function reminderLetterTarget(item: NotificationItem, baseUrl: string, copy: Messages["notifications"]) {
   if (item.event.kind === "DATE_FRIEND" && item.href !== null) {

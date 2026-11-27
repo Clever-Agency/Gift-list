@@ -418,6 +418,13 @@
     "birthMonthLabel": "День рождения, месяц",
     "birthdayPair": "Выберите день и месяц вместе.",
     "birthdayInvalid": "Такой даты нет. Проверьте день и месяц.",
+    "dates": {
+      "titleRequired": "Напишите название даты.",
+      "titleTooLong": "Название — до {max} символов.",
+      "dateInvalid": "Такой даты нет. Проверьте день, месяц и год.",
+      "yearFuture": "Год не может быть в будущем.",
+      "yearTooEarly": "Год — не раньше {min}."
+    },
     "gender": "Пол",
     "genderMale": "Мужской",
     "genderFemale": "Женский",

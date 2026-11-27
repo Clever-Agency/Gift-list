@@ -218,6 +218,30 @@ export {
   VISIBILITIES,
 } from "./enums";
 
+export {
+  DATE_VISIBILITIES,
+  DEFAULT_DATE_VISIBILITY,
+  DEFAULT_DATE_YEAR_VISIBILITY,
+  PERSONAL_DATES_MAX,
+  PERSONAL_DATE_MIN_YEAR,
+  PERSONAL_DATE_TITLE_MAX,
+  USER_DATE_KINDS,
+  dateVisibilitySchema,
+  isPersonalDateYearAllowed,
+  isValidPersonalDate,
+  personalDateCreateBodySchema,
+  personalDateSchema,
+  personalDateUpdateBodySchema,
+  userDateKindSchema,
+  visiblePersonalDateSchema,
+  type DateVisibility,
+  type PersonalDate,
+  type PersonalDateCreateBody,
+  type PersonalDateUpdateBody,
+  type UserDateKind,
+  type VisiblePersonalDate,
+} from "./personal-dates";
+
 // Closed set: unknown keys are rejected so nothing extra (e.g. `bought`) leaks to the owner (AD-15).
 export const giftCardSchema = z.strictObject({
   id: z.string(),

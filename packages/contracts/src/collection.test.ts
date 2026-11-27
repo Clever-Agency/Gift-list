@@ -203,6 +203,7 @@ describe("admin answers", () => {
         coverImageUrl: null,
         itemCount: 0,
         publishedAt: null,
+        updatedAt: "2026-11-28T00:00:00.000Z",
       }).publishedAt,
     ).toBeNull();
   });
@@ -215,6 +216,7 @@ describe("admin answers", () => {
       coverImageUrl: null,
       itemCount: 1,
       publishedAt: "2026-11-28T00:00:00.000Z",
+      updatedAt: "2026-11-28T00:00:00.000Z",
       items: [{ ...item, position: 4 }],
     });
     expect(detail.items[0]?.position).toBe(4);

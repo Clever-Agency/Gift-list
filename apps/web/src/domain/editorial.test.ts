@@ -34,6 +34,7 @@ function collection(
     description: null,
     coverImageUrl: null,
     publishedAt: new Date("2026-11-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-11-02T00:00:00.000Z"),
     items: [idea()],
     ...overrides,
   };

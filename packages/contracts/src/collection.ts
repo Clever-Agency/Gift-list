@@ -117,12 +117,14 @@ export type EditorialCollectionDetail = z.infer<typeof editorialCollectionDetail
 
 /**
  * One row of the `/admin` table (Story 10.1): the same counts as the app plus
- * the publication state. `publishedAt` is an ISO instant and `null` for a
- * draft; the page formats it with `formatDate()`.
+ * the publication state and the moment the collection last changed. Both are
+ * ISO instants (`updatedAt` is always present); the page formats them with
+ * `formatDate()`.
  */
 export const editorialCollectionAdminSummarySchema = z.strictObject({
   ...editorialCollectionSummarySchema.shape,
   publishedAt: z.string().nullable(),
+  updatedAt: z.string(),
 });
 
 export type EditorialCollectionAdminSummary = z.infer<typeof editorialCollectionAdminSummarySchema>;

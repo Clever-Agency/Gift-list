@@ -40,8 +40,21 @@ const adminListSelect = {
   description: true,
   coverImageUrl: true,
   publishedAt: true,
+  updatedAt: true,
   _count: { select: { items: true } },
 } as const;
+
+/**
+ * Story 10.1: the table shows when the collection last changed, and changing
+ * an idea is a change of its collection. Prisma's `@updatedAt` only touches the
+ * row being written, so every idea mutation bumps this stamp explicitly.
+ */
+async function touchCollection(collectionId: string): Promise<void> {
+  await prisma.editorialCollection.updateMany({
+    where: { id: collectionId },
+    data: { updatedAt: new Date() },
+  });
+}
 
 /**
  * Story 10.1: everything `/admin` lists, newest first — drafts and published
@@ -72,6 +85,7 @@ export async function getEditorialCollectionForAdmin(
       description: true,
       coverImageUrl: true,
       publishedAt: true,
+      updatedAt: true,
       items: {
         orderBy: [{ position: "asc" }, { id: "asc" }],
         select: itemSelect,
@@ -98,6 +112,7 @@ export async function createEditorialCollection(
       description: true,
       coverImageUrl: true,
       publishedAt: true,
+      updatedAt: true,
       items: {
         orderBy: [{ position: "asc" }, { id: "asc" }],
         select: itemSelect,
@@ -178,6 +193,7 @@ export async function createEditorialItem(
   });
 
   if (!created) return null;
+  await touchCollection(collectionId);
   return getEditorialCollectionForAdmin(collectionId);
 }
 
@@ -200,6 +216,7 @@ export async function updateEditorialItem(
     },
   });
   if (count === 0) return null;
+  await touchCollection(collectionId);
   return getEditorialCollectionForAdmin(collectionId);
 }
 
@@ -211,7 +228,9 @@ export async function deleteEditorialItem(
   const { count } = await prisma.editorialItem.deleteMany({
     where: { id: itemId, collectionId },
   });
-  return count > 0;
+  if (count === 0) return false;
+  await touchCollection(collectionId);
+  return true;
 }
 
 export type ReorderEditorialItemsResult =
@@ -261,6 +280,7 @@ export async function reorderEditorialItems(
   });
 
   if (!outcome.ok) return outcome;
+  await touchCollection(collectionId);
   const detail = await getEditorialCollectionForAdmin(collectionId);
   if (detail === null) return { ok: false, reason: "not-found" };
   return { ok: true, data: detail };
@@ -340,6 +360,7 @@ export async function listPublishedEditorialCollections(
       description: true,
       coverImageUrl: true,
       publishedAt: true,
+      updatedAt: true,
       _count: { select: { items: true } },
     },
   });
@@ -365,6 +386,7 @@ export async function getPublishedEditorialCollection(
       description: true,
       coverImageUrl: true,
       publishedAt: true,
+      updatedAt: true,
       items: {
         orderBy: [{ position: "asc" }, { id: "asc" }],
         select: itemSelect,

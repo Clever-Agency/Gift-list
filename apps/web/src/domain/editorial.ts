@@ -28,6 +28,7 @@ export type EditorialCollectionStored = {
   readonly description: string | null;
   readonly coverImageUrl: string | null;
   readonly publishedAt: Date | null;
+  readonly updatedAt: Date;
   readonly items: readonly EditorialItemStored[];
 };
 
@@ -147,6 +148,7 @@ export function toAdminSummary(
   return {
     ...toCollectionSummary(collection, itemCount),
     publishedAt: collection.publishedAt === null ? null : collection.publishedAt.toISOString(),
+    updatedAt: collection.updatedAt.toISOString(),
   };
 }
 

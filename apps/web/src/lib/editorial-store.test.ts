@@ -113,6 +113,7 @@ const publishedRow = {
   description: null,
   coverImageUrl: null,
   publishedAt: new Date("2026-11-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-11-02T00:00:00.000Z"),
   _count: { items: 2 },
   items: ideaRows,
 };
@@ -169,6 +170,7 @@ describe("admin list (Story 10.1)", () => {
         coverImageUrl: null,
         itemCount: 2,
         publishedAt: "2026-11-01T00:00:00.000Z",
+        updatedAt: "2026-11-02T00:00:00.000Z",
       },
     ]);
     expect(collectionFindMany).toHaveBeenCalledWith(
@@ -207,6 +209,7 @@ describe("publishing (Story 10.1)", () => {
         coverImageUrl: null,
         itemCount: 2,
         publishedAt: "2026-11-01T00:00:00.000Z",
+        updatedAt: "2026-11-02T00:00:00.000Z",
       },
     });
     const update = collectionUpdate.mock.calls[0]?.[0] as {
@@ -276,6 +279,17 @@ describe("idea order (Story 10.1)", () => {
       data: { position: number; collectionId: string; title: string };
     };
     expect(create.data).toMatchObject({ collectionId: "c1", title: "Фонарь", position: 5 });
+  });
+
+  it("marks the collection as changed when an idea is added", async () => {
+    collectionFindUnique.mockResolvedValue(publishedRow);
+
+    await createEditorialItem("c1", { title: "Фонарь" });
+
+    expect(collectionUpdateMany).toHaveBeenCalledWith({
+      where: { id: "c1" },
+      data: { updatedAt: expect.any(Date) },
+    });
   });
 
   it("puts the first idea at position 0", async () => {

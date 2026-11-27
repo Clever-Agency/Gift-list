@@ -6,7 +6,12 @@ import { fetchNotificationPreferences, saveNotificationPreferences } from "@/api
 import { useNotificationBadge } from "@/navigation/notification-badge";
 import { NotificationSettingsFields } from "./notification-settings-fields";
 
-export function NotificationSettings() {
+export function NotificationSettings({
+  onToast,
+}: {
+  /** The screen's one toast: a failed save is reported there, like the other rows. */
+  onToast?: (message: string, tone: "info" | "error") => void;
+} = {}) {
   const t = useTranslations("notifications");
   const refresh = useNotificationBadge()?.refresh;
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
@@ -27,10 +32,13 @@ export function NotificationSettings() {
   }, [attempt]);
 
   async function change(key: keyof NotificationPreferences, checked: boolean) {
-    if (inFlight.current) return;
+    if (inFlight.current || !preferences) return;
     inFlight.current = true;
     setBusy(true);
     setError(false);
+    // The row flips at once; a failed PATCH puts the server value back.
+    const snapshot = preferences;
+    setPreferences({ ...preferences, [key]: checked });
     const result = await saveNotificationPreferences({ [key]: checked });
     inFlight.current = false;
     setBusy(false);
@@ -38,7 +46,9 @@ export function NotificationSettings() {
       setPreferences(result.data);
       refresh?.();
     } else {
+      setPreferences(snapshot);
       setError(true);
+      onToast?.(t("settingsError"), "error");
     }
   }
 
@@ -51,7 +61,7 @@ export function NotificationSettings() {
     <YStack gap="$2" paddingTop="$grid-gap">
       <Heading level={2}>{t("settingsTitle")}</Heading>
       {preferences ? <NotificationSettingsFields preferences={preferences} disabled={busy} onChange={change} /> : null}
-      {error ? <Text role="alert">{t("settingsError")}</Text> : null}
+      {error && !preferences ? <Text role="alert">{t("settingsError")}</Text> : null}
       {error && !preferences ? <Button label={t("retry")} variant="secondary" onPress={retry} /> : null}
     </YStack>
   );

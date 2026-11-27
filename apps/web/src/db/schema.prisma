@@ -46,7 +46,13 @@ model User {
   datesEmail     Boolean  @default(true)
   wishExpiryInApp Boolean @default(true)
   wishExpiryEmail Boolean @default(true)
+  /// CLE-137 (FR-36): reminder type «Дни рождения и даты друзей».
+  remindFriendDates Boolean @default(true)
+  /// CLE-137 (FR-36): reminder type «Напомнить обновить мой список».
+  remindOwnList     Boolean @default(true)
   notifications Notification[]
+  /// Date reminders already sent to this user (AD-23, Story 7.3/7.4).
+  reminderLogs ReminderLog[]
   /// Null until the client reports an IANA zone. A stored value is not overwritten (Story 1.8).
   timeZone       String?
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
@@ -440,4 +446,31 @@ model Notification {
   @@index([recipientId, createdAt, id])
   @@index([recipientId, readAt, deliverAfter])
   @@index([emailRequired, emailDoneAt, deliverAfter])
+}
+
+/// Kinds of the date reminders of AD-23 (Story 7.3/7.4).
+enum ReminderKind {
+  /// A Friend's birthday, 14 days ahead (`DATE_FRIEND`, FR-34).
+  BIRTHDAY_FRIEND
+  /// The owner's own birthday, 30 days ahead (`DATE_OWN`, FR-35).
+  BIRTHDAY_OWN
+}
+
+// One row per date reminder that actually went out (AD-23, FR-34/FR-35). The
+// hourly cron of `api/cron/date-reminders` inserts the row and the notification
+// in one transaction, and only when the row was inserted; the UNIQUE key is
+// what makes a repeated run write nothing. `subjectId` is the `User.id` whose
+// birthday the notice is about (personal dates will add `UserDate.id` under
+// the same key); `year` is the year of the birthday occurrence, so a December
+// reminder about a 1 January birthday does not collide with the next December.
+model ReminderLog {
+  id          String       @id @default(cuid(2))
+  recipientId String
+  recipient   User         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  subjectId   String
+  year        Int
+  kind        ReminderKind
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@unique([recipientId, subjectId, year, kind])
 }

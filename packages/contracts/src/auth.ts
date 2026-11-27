@@ -192,6 +192,24 @@ export const emailChangeCancelledSchema = z.object({ cancelled: z.literal(true) 
 export type EmailChangeCancelled = z.infer<typeof emailChangeCancelledSchema>;
 
 /**
+ * Story 6.3 (FR-51, AD-20): the guard of `DELETE /api/v1/me`. The body must say
+ * `confirm: true`, so a stray call from a form, a link or a broken client does
+ * not wipe an account; any other value is a `VALIDATION` answer on `confirm`.
+ */
+export const accountDeletionBodySchema = z.object({ confirm: z.literal(true) });
+
+export type AccountDeletionBody = z.infer<typeof accountDeletionBodySchema>;
+
+/**
+ * The answer of the one account-deletion command. The account is gone (or was
+ * already gone, because the command is idempotent), so the client clears its
+ * local session without looking at anything else.
+ */
+export const accountDeletedSchema = z.object({ deleted: z.literal(true) });
+
+export type AccountDeleted = z.infer<typeof accountDeletedSchema>;
+
+/**
  * Story 3.5 (FR-8): the settings switch stores one flag. Any other key is a
  * `VALIDATION` answer on `hideFromSearch` — the route names the field the
  * screen sent, instead of a bare rejection from `z.strictObject` (whose

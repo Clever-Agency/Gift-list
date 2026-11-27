@@ -26,7 +26,10 @@ import {
 } from "@/lib/notification-store";
 
 const AT = new Date("2026-11-24T12:00:00.000Z");
-const PREFS = { datesInApp: true, datesEmail: true, wishExpiryInApp: true, wishExpiryEmail: true };
+const PREFS = {
+  datesInApp: true, datesEmail: true, wishExpiryInApp: true, wishExpiryEmail: true,
+  remindFriendDates: true, remindOwnList: true,
+};
 
 beforeEach(function reset() {
   vi.resetAllMocks();

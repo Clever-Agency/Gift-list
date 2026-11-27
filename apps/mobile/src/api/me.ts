@@ -1,4 +1,5 @@
 import {
+  accountDeletedSchema,
   emailChangeAcceptedSchema,
   emailChangeCancelledSchema,
   meSchema,
@@ -8,6 +9,8 @@ import {
   type ProfileUpdateBody,
 } from "@gift-list/contracts";
 import { apiRequest, type ClientResult } from "@/api/client";
+import { clearSessionToken } from "@/platform/session-token";
+import { forgetAuthEmail } from "@/session/auth-navigation";
 
 /**
  * Story 3.1: the nick change answers with the current user, so the settings
@@ -74,6 +77,29 @@ export async function updateHideFromSearch(hideFromSearch: boolean): Promise<MeR
 }
 
 /**
+ * Story 7.2 (FR-37): the explicit choice of the IANA zone in «Настройки».
+ * `PATCH` overwrites the stored zone, unlike the device report (`PUT`). The
+ * answer is the stored zone only; the screen merges it into the session user.
+ */
+export type TimeZoneChangeResult =
+  | { ok: true; timeZone: string }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
+export async function changeTimeZone(timeZone: string): Promise<TimeZoneChangeResult> {
+  const result = await apiRequest<unknown>("/api/v1/me/time-zone", {
+    method: "PATCH",
+    body: { timeZone },
+  });
+  if (!result.ok) return result;
+
+  const data = result.data as { timeZone?: unknown } | null;
+  if (data == null || typeof data.timeZone !== "string") return { ok: false, invalid: true };
+
+  return { ok: true, timeZone: data.timeZone };
+}
+
+/**
  * CLE-129/T8.3 (D-58, AD-29): the profile fields of the owner come from
  * `GET /api/v1/me/profile` — `Me` plus the birthday pair, the gender, the ISO
  * country code, «Обо мне» and the friends switch. The answer always carries
@@ -135,6 +161,38 @@ export async function requestEmailChange(email: string): Promise<EmailChangeResu
   const parsed = emailChangeAcceptedSchema.safeParse(result.data);
   if (!parsed.success) return { ok: false, invalid: true };
 
+  return { ok: true };
+}
+
+/**
+ * Story 6.3 (FR-51, AD-20, D-33): the one self-serve account deletion. The body
+ * carries `confirm: true`, so a stray call of the same route cannot wipe an
+ * account; the server checks the session and the command itself removes the
+ * lists, wishes, reservations, friends and sessions.
+ *
+ * A success means the account is gone (or was already gone, the command is
+ * idempotent), so the local session is dead too: the bearer token and any
+ * pending email hand-off are dropped here, and the screen moves to the guest
+ * state. A failure keeps everything: `busy` only asks for a retry, and a
+ * network error proves nothing about the account.
+ */
+export type DeleteAccountResult =
+  | { ok: true }
+  | { ok: false; invalid: true }
+  | Exclude<ClientResult<unknown>, { ok: true }>;
+
+export async function deleteAccount(): Promise<DeleteAccountResult> {
+  const result = await apiRequest<unknown>("/api/v1/me", {
+    method: "DELETE",
+    body: { confirm: true },
+  });
+  if (!result.ok) return result;
+
+  const parsed = accountDeletedSchema.safeParse(result.data);
+  if (!parsed.success) return { ok: false, invalid: true };
+
+  await clearSessionToken();
+  forgetAuthEmail();
   return { ok: true };
 }
 

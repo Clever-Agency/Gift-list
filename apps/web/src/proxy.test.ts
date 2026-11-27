@@ -9,8 +9,15 @@ function forwardedLocale(request: NextRequest): string | null {
 }
 
 describe("proxy locale for the public link and invite pages", () => {
-  it("marks /l and /i requests with the negotiated language", () => {
-    for (const path of ["/l/tok-1", "/l", "/i/tok-1", "/i"]) {
+  it("marks /l, /i and /unsubscribe requests with the negotiated language", () => {
+    for (const path of [
+      "/l/tok-1",
+      "/l",
+      "/i/tok-1",
+      "/i",
+      "/unsubscribe/tok-1",
+      "/unsubscribe",
+    ]) {
       expect(
         forwardedLocale(
           new NextRequest(`https://gift.example${path}`, {

@@ -39,11 +39,34 @@ export const notificationPayloadSchema = z.discriminatedUnion("kind", [
    * carries nothing but the kind.
    */
   z.object({ kind: z.literal("GIFT_GIVEN") }),
-  z.object({ kind: z.literal("DATE_FRIEND"), ...person, date: z.string() }),
+  /**
+   * Story 7.3 (FR-34): the T-14 notice about a Friend's birthday. `date` is a
+   * machine-readable date-only value; the client hides the year (AD-27). A row
+   * written by the first cron run may carry only the three original keys, so the
+   * wish summary stays optional.
+   */
+  z.object({
+    kind: z.literal("DATE_FRIEND"), ...person, date: z.string(),
+    /** Open wishes visible to the recipient, archived and reserved ones excluded. */
+    count: z.int().nonnegative().optional(),
+    /** Up to three titles of those wishes; never a holder. */
+    titles: z.array(z.string()).optional(),
+  }),
   z.object({ kind: z.literal("DATE_OWN") }),
   z.object({ kind: z.literal("SUGGESTION"), senderName: z.string().optional() }),
   z.object({ kind: z.literal("WISH_EXPIRY_SOON"), ...wish }),
-  z.object({ kind: z.literal("WISH_EXPIRY"), ...wish }),
+  /**
+   * Story 6.6 (D-26, D-49): the wish-expiry notice reaches the holder only.
+   * `false` — the gift was marked `bought`, so the reservation stays and the
+   * notice suggests «Подарил»; `true` or absent — the reservation was released.
+   * Rows written before the change carry no flag and are shown as released.
+   * `actionable` is computed on projection: the «Подарил» control lives only
+   * while the reservation is the same live one.
+   */
+  z.object({
+    kind: z.literal("WISH_EXPIRY"), ...wish, released: z.boolean().optional(),
+    actionable: z.boolean().optional(),
+  }),
 ]);
 
 const genericEvent = z.object({ kind: z.literal("UNKNOWN") });
@@ -64,6 +87,12 @@ export const notificationPreferencesSchema = z.object({
   datesEmail: z.boolean(),
   wishExpiryInApp: z.boolean(),
   wishExpiryEmail: z.boolean(),
+  /**
+   * CLE-137 (Story 7.2, FR-36): reminder types, not channels. A date reminder
+   * is delivered only while its own type switch and its channel are both on.
+   */
+  remindFriendDates: z.boolean(),
+  remindOwnList: z.boolean(),
 });
 export const notificationPreferencesPatchSchema = notificationPreferencesSchema.partial().strict();
 export const notificationActionSchema = z.discriminatedUnion("action", [

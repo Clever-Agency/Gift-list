@@ -11,6 +11,10 @@
 // counted from `reservationDueAt`, not from the phase moment. CLE-124/S9b-1:
 // neither `bought` nor `GIVEN` protects a reservation from the timer — a holder
 // cannot keep a wish blocked forever by marking it or promising it.
+// Story 6.6: the wish-expiry cron clears an expired reservation and archives the
+// wish in one write unless the holder marked the gift as bought, and reminds the
+// holder three days before the date. Both live in the adapter, next to the timer
+// releases.
 
 import { RESERVATION_PHASES } from "@gift-list/contracts";
 import type { GiftEditEventField } from "./gift-edit";
@@ -218,6 +222,21 @@ export function undoCloseData(from: ClosedFromStatus): {
 }
 
 /**
+ * CLE-134 (Story 5.3 + 6.3): the undo of a wish closed from `RESERVED` whose
+ * holder's account was deleted inside the undo window. The account-deletion
+ * release clears `reservedById`, so restoring `RESERVED` would leave a "ghost"
+ * reservation no holder could release or see. The wish returns to `OPEN`
+ * instead, with every reservation column cleared; the closure columns go as in
+ * any undo. The owner still sees a successful undo and learns nothing about the
+ * reservation (AD-15/D-49).
+ */
+export const UNDO_CLOSE_WITHOUT_HOLDER_DATA = {
+  ...RESERVATION_RELEASE_DATA,
+  closedAt: null,
+  closedFromStatus: null,
+} as const;
+
+/**
  * The moment the owner's card carries as `undoUntil`: `closedAt + UNDO_WINDOW_MS`
  * for a `CLOSED` wish — even when it is already in the past, so the client can
  * order the closed section — and `null` for every other status.
@@ -244,6 +263,14 @@ export function undoUntil(row: {
  * `RESERVED → RESERVED` except the expiry release, so the `kind` is what tells
  * the phase moves apart. CLE-124/D-49 removes the owner's release and keep:
  * the owner never takes part in a reservation of their own wish.
+ *
+ * Story 6.6 adds one transition: an expired reservation is cleared and the wish
+ * archived in one write (`WISH_EXPIRED_AND_ARCHIVED`, `RESERVED → OPEN`).
+ *
+ * Story 6.3 adds the account-deletion release: the reservations of the deleted
+ * account are cleared through the service, and the line says so instead of
+ * pretending the holder pressed «Снять бронь». The owner is never a recipient
+ * (AD-15/D-49) — the wish just returns to `OPEN`.
  */
 export type GiftStatusEventKind =
   | "RESERVATION_RELEASED_BY_HOLDER"
@@ -253,7 +280,9 @@ export type GiftStatusEventKind =
   | "GIFT_DELETED"
   | "RESERVATION_GIVER_DEADLINE_PASSED"
   | "RESERVATION_OWNER_WINDOW_STARTED"
-  | "RESERVATION_RELEASED_BY_EXPIRY";
+  | "RESERVATION_RELEASED_BY_EXPIRY"
+  | "RESERVATION_RELEASED_BY_ACCOUNT_DELETION"
+  | "WISH_EXPIRED_AND_ARCHIVED";
 
 /**
  * The payload of {@link RecordGiftEvent}: identifiers and the transition only —
@@ -296,6 +325,16 @@ export type UndoCloseSnapshot = {
   readonly closedAt: Date;
   readonly closedFromStatus: ClosedFromStatus;
 };
+
+/**
+ * Story 6.6 (FR-42, D-26): the three answers of the wish-expiry write of one
+ * expired `RESERVED` wish. `released` — the reservation was cleared and the wish
+ * archived in one write; `notified` — the gift is marked as bought, so the
+ * status and the reservation stay and only the holder's notice was queued;
+ * `lost` — nothing was written (lost race, moved date, closed or archived wish,
+ * or a repeated run whose notice already exists).
+ */
+export type WishExpiryOutcome = "released" | "notified" | "lost";
 
 /**
  * One `RESERVED → OPEN` write (AD-9). The adapter implements it with Prisma; the
@@ -345,6 +384,22 @@ export interface GiftStatusTransaction {
    */
   remindReservationDue(giftId: string, at: Date): Promise<"success" | "lost">;
   /**
+   * Story 6.6 (FR-42, D-26): the holder's «срок желания через 3 дня» notice. Not
+   * a transition: the status and every reservation column stay. The row is read
+   * inside the caller's transaction and only answers `success` when the notice
+   * was really inserted: the spot must still be the live reservation with the
+   * same `expiresOn`, not archived, and `at` must be the holder's local
+   * `expiresOn − 3` at or after 10:00 in their `User.timeZone`. A repeated run
+   * (or a run on a later day) writes nothing, because `skipDuplicates` keeps one
+   * row per reservation instance and expiry day. Only the holder is addressed
+   * (D-49).
+   */
+  remindWishExpirySoon(
+    giftId: string,
+    expectedExpiresOn: Date,
+    at: Date,
+  ): Promise<"success" | "lost">;
+  /**
    * Story 5.5 (AD-9): CAS on any live reservation of the holder. Only
    * `reservationBought` changes, so clearing the mark in `AWAITING_OWNER` keeps
    * `reservationPhaseAt` and the request to the owner stays as it was.
@@ -376,6 +431,22 @@ export interface GiftStatusTransaction {
     at: Date,
   ): Promise<"success" | "lost">;
   /**
+   * Story 6.3 (FR-51, AD-20, D-49): the account-deletion release. A `RESERVED`
+   * row of the actor is cleared exactly like the holder's own release (same CAS
+   * on the reservation instance) and reports `RESERVATION_RELEASED_BY_ACCOUNT_DELETION`;
+   * the owner is not notified — the wish reads `OPEN` again (AD-15). A `CLOSED`
+   * row keeps its status and closure columns and loses only `reservedById`: the
+   * closure keeps the past holder for audit, but the account is about to
+   * disappear and the `Restrict` on `Gift.reservedById` would block the
+   * deletion. Nothing is emitted for that housekeeping write, because no status
+   * changes (NFR-6). A row of somebody else or one that moved answers `lost`.
+   */
+  releaseReservationByAccountDeletion(
+    giftId: string,
+    actorId: string,
+    at: Date,
+  ): Promise<"success" | "lost">;
+  /**
    * Story 5.3: CAS `from → CLOSED` for the owner of the list. `from` is the
    * status read in the same use-case, so a wish that moved in between is left
    * untouched and answers `lost`. The write keeps `reserved*` and records
@@ -392,6 +463,11 @@ export interface GiftStatusTransaction {
    * undo window is open and only on the closure snapshot the use-case read. A
    * closed-again wish (a different `closedAt`) or one closed from a different
    * status is left untouched and answers `lost`.
+   *
+   * CLE-134: when the origin is `RESERVED`, the undo requires the holder to
+   * still exist. If the account-deletion release already cleared `reservedById`,
+   * the wish goes back to `OPEN` with every reservation column cleared instead
+   * of a `RESERVED` row nobody holds (see `UNDO_CLOSE_WITHOUT_HOLDER_DATA`).
    */
   undoClose(
     giftId: string,
@@ -422,6 +498,18 @@ export interface GiftStatusTransaction {
    * 5.2 release uses.
    */
   releaseReservationByExpiry(giftId: string, at: Date): Promise<"success" | "lost">;
+  /**
+   * Story 6.6 (FR-42, D-26): one expired `RESERVED` wish of the wish-expiry
+   * cron. `bought=false`: CAS `RESERVED → OPEN` with `archivedAt = at` in one
+   * write; the predicate compares the reservation instance, `expiresOn`,
+   * `archivedAt` and `bought=false`, so a holder's release or «Купил», an
+   * owner's close or a moved date in between wins the race and answers `lost`.
+   * `bought=true`: nothing changes — only one `WISH_EXPIRY` (variant
+   * `released: false`) is queued, deduplicated by the reservation instance and
+   * the expiry day, so a repeated run answers `lost` and writes nothing.
+   * Whatever the variant, only the holder is a recipient (D-49).
+   */
+  expireReservedWish(giftId: string, at: Date): Promise<WishExpiryOutcome>;
 }
 
 /** Only a single open wish can be reserved; unlimited gifts are rejected upstream. */

@@ -709,6 +709,49 @@ describe("вишлист по ссылке: список", () => {
     expect(cardLink?.contains(link as Node)).toBe(false);
   });
 
+  /**
+   * Story 5.7 / «Подписи брони»: other guests see the stage «Подарено» (and
+   * «Куплено» since Story 5.5), even when the holder hid their name. The toggle
+   * still decides only the name, never the stage.
+   */
+  it("другие гости видят этап брони, а имя — только по переключателю", async () => {
+    respond(
+      giftsAnswer([
+        gift({
+          id: "g1",
+          title: "Наушники",
+          status: "RESERVED",
+          reservationLabel: "GIVEN",
+          reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+        }),
+        gift({
+          id: "g2",
+          title: "Свитер",
+          status: "RESERVED",
+          reservationLabel: "BOUGHT",
+          reservedBy: null,
+        }),
+      ]),
+    );
+    await mount();
+
+    const items = Array.from(
+      container.querySelectorAll<HTMLElement>('[role="list"] [role="listitem"]'),
+    );
+    const given = items.find(function withHeadphones(node) {
+      return (node.textContent ?? "").includes("Наушники");
+    });
+    const bought = items.find(function withSweater(node) {
+      return (node.textContent ?? "").includes("Свитер");
+    });
+
+    expect(given?.textContent).toContain("Подарено");
+    expect(given?.textContent).toContain("Берёт");
+    expect(bought?.textContent).toContain("Куплено");
+    expect(bought?.textContent).not.toContain("Берёт");
+    expect(bought?.querySelector('a[href^="/u/"]')).toBeNull();
+  });
+
   it("не показывает скрытое желание, которого нет в ответе сервера", async () => {
     respond(giftsAnswer([gift()]));
     await mount();

@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
-import type { Me } from "@gift-list/contracts";
+import type { Me, NotificationPreferences } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
-import { controls } from "@/test/dom";
+import { controls, dialogElement, settle, typeInto } from "@/test/dom";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { pageGutter } from "@/ui/card-grid";
 import SettingsScreen from "../../app/(app)/settings";
@@ -22,8 +22,16 @@ import SettingsScreen from "../../app/(app)/settings";
 const dimensions = vi.hoisted(() => ({ calls: 0 }));
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
-const me = vi.hoisted(() => ({ updateHideFromSearch: vi.fn() }));
+const me = vi.hoisted(() => ({
+  updateHideFromSearch: vi.fn(),
+  deleteAccount: vi.fn(),
+  changeTimeZone: vi.fn(),
+}));
 const blocks = vi.hoisted(() => ({ listBlocked: vi.fn(), unblockUser: vi.fn() }));
+const notifications = vi.hoisted(() => ({
+  fetchNotificationPreferences: vi.fn(),
+  saveNotificationPreferences: vi.fn(),
+}));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
 const zone = vi.hoisted(() => ({ deviceTimeZone: vi.fn() }));
 const navigation = vi.hoisted(() => ({
@@ -35,8 +43,19 @@ const navigation = vi.hoisted(() => ({
 vi.mock("@/api/client", () => api);
 vi.mock("@/api/me", () => me);
 vi.mock("@/api/block", () => blocks);
+vi.mock("@/api/notifications", () => notifications);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
+// The confirm dialog draws its close cross with `expo-symbols`, which loads a
+// symbol font at runtime; the icon is decorative here.
+vi.mock("expo-symbols", async () => {
+  const React = await import("react");
+  return {
+    SymbolView: function SymbolView() {
+      return React.createElement("span", { "aria-hidden": true });
+    },
+  };
+});
 vi.mock("react-native", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-native")>();
   function useWindowDimensions() {
@@ -55,7 +74,11 @@ vi.mock("use-intl", async () => {
       readFileSync(join(root, `packages/contracts/src/i18n/ru/${name}.json`), "utf8"),
     ) as Record<string, unknown>;
   }
-  const catalogs = { app: read("app"), common: read("common") };
+  const catalogs = {
+    app: read("app"),
+    common: read("common"),
+    notifications: read("notifications"),
+  };
 
   function lookup(catalog: unknown, key: string, values?: Record<string, unknown>): string {
     let node = catalog;
@@ -69,7 +92,12 @@ vi.mock("use-intl", async () => {
 
   function catalogFor(namespace: string): unknown {
     const [head, ...rest] = namespace.split(".");
-    const base = head === "common" ? catalogs.common : catalogs.app;
+    const base =
+      head === "common"
+        ? catalogs.common
+        : head === "notifications"
+          ? catalogs.notifications
+          : catalogs.app;
     return rest.reduce<unknown>(
       (node, part) =>
         typeof node === "object" && node !== null
@@ -102,6 +130,9 @@ vi.mock("react-native-safe-area-context", async () => {
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+/** Story 7.2: a short IANA list keeps the picker test fast and the order fixed. */
+const ZONES = ["Europe/Minsk", "Asia/Tokyo", "UTC"];
+
 const user: Me = {
   id: "u1",
   email: "a@b.test",
@@ -109,6 +140,16 @@ const user: Me = {
   nick: "anya",
   timeZone: "Europe/Minsk",
   hideFromSearch: false,
+};
+
+/** Story 7.2: both reminder types on, as the server defaults them. */
+const preferences: NotificationPreferences = {
+  datesInApp: true,
+  datesEmail: false,
+  wishExpiryInApp: false,
+  wishExpiryEmail: true,
+  remindFriendDates: true,
+  remindOwnList: true,
 };
 
 type Auth = ReturnType<typeof useAuth>;
@@ -159,6 +200,22 @@ async function pressLabel(label: string) {
   });
 }
 
+/**
+ * The dialog is portalled to `document.body`, outside the test container, and
+ * exact labels keep «Удалить» apart from the «Удалить аккаунт» row.
+ */
+function pageButton(label: string): HTMLElement | undefined {
+  return controls(document).find((node) => (node.textContent ?? "").trim() === label);
+}
+
+async function pressPage(label: string) {
+  const target = pageButton(label);
+  expect(target, `кнопка «${label}»`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
 /** The name and the @nick of a row, as the reader announces them together. */
 function blockedRow(nick: string): HTMLElement | null {
   return container.querySelector<HTMLElement>(`[data-testid="blocked-row-${nick}"]`);
@@ -197,11 +254,18 @@ beforeEach(() => {
   vi.resetAllMocks();
   dimensions.calls = 0;
   delete probe.auth;
+  vi.spyOn(Intl as unknown as { supportedValuesOf: (key: string) => string[] }, "supportedValuesOf")
+    .mockReturnValue([...ZONES]);
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   navigation.canGoBack.mockReturnValue(false);
   blocks.listBlocked.mockResolvedValue({
     ok: true,
     page: { items: [], nextCursor: null, total: 0 },
+  });
+  notifications.fetchNotificationPreferences.mockResolvedValue(preferences);
+  notifications.saveNotificationPreferences.mockResolvedValue({
+    success: true,
+    data: preferences,
   });
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -211,6 +275,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.restoreAllMocks();
 });
 
 describe("настройки: гейт сессии", () => {
@@ -264,6 +329,163 @@ describe("настройки: только настройки", () => {
     // The real settings stay: the search switch and the blocked section.
     expect(hideSwitch()).not.toBeNull();
     expect(text()).toContain("Заблокированные");
+  });
+});
+
+describe("настройки: аккаунт (Story 6.3, D-59)", () => {
+  it("внизу «Аккаунт»: «Выйти» и destructive «Удалить аккаунт»", async () => {
+    signedIn();
+    await mount();
+
+    const section = container.querySelector<HTMLElement>('[data-testid="account-section"]');
+    expect(section).not.toBeNull();
+    expect(section?.textContent).toContain("Аккаунт");
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="settings-sign-out"]')?.textContent,
+    ).toBe("Выйти");
+    expect(
+      container.querySelector<HTMLElement>('[data-testid="settings-delete-account"]')
+        ?.textContent,
+    ).toBe("Удалить аккаунт");
+  });
+
+  it("«Выйти» завершает сессию и уводит на вход с возвратом в настройки", async () => {
+    signedIn();
+    await mount();
+
+    await press("Выйти");
+
+    expect(api.apiRequest).toHaveBeenLastCalledWith("/api/v1/session", { method: "DELETE" });
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(probe.auth?.state).toEqual({ status: "anonymous" });
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/settings" },
+    });
+  });
+
+  it("«Удалить аккаунт» спрашивает подтверждение с именем и предупреждает о потере", async () => {
+    signedIn();
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+
+    const dialog = dialogElement();
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("Удалить аккаунт «Аня»?");
+    expect(dialog?.textContent).toContain(
+      "Вишлист, желания, друзья, брони и подписки удалятся навсегда. Отменить это нельзя.",
+    );
+    expect(pageButton("Отмена")).toBeDefined();
+    expect(pageButton("Удалить")).toBeDefined();
+    expect(me.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it("«Отмена» закрывает подтверждение и ничего не удаляет", async () => {
+    signedIn();
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Отмена");
+    await settle(300);
+
+    expect(me.deleteAccount).not.toHaveBeenCalled();
+    expect(dialogElement()).toBeNull();
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+  });
+
+  it("успех: один запрос, локальная сессия погашена, вход с тостом «Аккаунт удалён»", async () => {
+    signedIn();
+    me.deleteAccount.mockResolvedValue({ ok: true });
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+    await settle();
+
+    expect(me.deleteAccount).toHaveBeenCalledTimes(1);
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(probe.auth?.state).toEqual({ status: "anonymous" });
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { reason: "account_deleted" },
+    });
+  });
+
+  it("во время запроса «Удалить» занята и второй тап не шлёт второй запрос", async () => {
+    signedIn();
+    me.deleteAccount.mockReturnValue(new Promise(() => {}));
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+
+    expect(me.deleteAccount).toHaveBeenCalledTimes(1);
+    expect(dialogElement()?.textContent).toContain("Удаляем…");
+    expect(pageButton("Удаляем…")?.getAttribute("aria-disabled")).toBe("true");
+
+    await pressPage("Удаляем…");
+    expect(me.deleteAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("сеть: тост, аккаунт и сессия на месте — можно повторить", async () => {
+    signedIn();
+    me.deleteAccount.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+    await settle();
+
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("409 (удаление идёт) — понятный тост ошибки, ничего не потеряно", async () => {
+    signedIn();
+    me.deleteAccount.mockResolvedValue({
+      ok: false,
+      code: "CONFLICT",
+      message: "Account deletion is in progress, retry",
+    });
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+    await settle();
+
+    expect(text()).toContain("Не получилось удалить аккаунт. Попробуйте ещё раз.");
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("401 при удалении: сессия закончилась, вход с возвратом в настройки", async () => {
+    signedIn();
+    me.deleteAccount.mockResolvedValue({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    await mount();
+
+    await press("Удалить аккаунт");
+    await settle();
+    await pressPage("Удалить");
+    await settle();
+
+    expect(store.clearSessionToken).toHaveBeenCalled();
+    expect(navigation.replace).toHaveBeenCalledWith({
+      pathname: "/login",
+      params: { next: "/settings", reason: "session_expired" },
+    });
   });
 });
 
@@ -345,6 +567,158 @@ describe("настройки: скрыть из поиска", () => {
       pathname: "/login",
       params: { next: "/settings", reason: "session_expired" },
     });
+  });
+});
+
+describe("настройки: напоминания (Story 7.2)", () => {
+  /** A switch of the reminders block, found by its visible (accessible) label. */
+  function switchNode(label: string): HTMLElement | null {
+    return container.querySelector<HTMLElement>(`[role="switch"][aria-label="${label}"]`);
+  }
+
+  async function flipSwitch(label: string) {
+    const node = switchNode(label);
+    expect(node, `переключатель «${label}»`).not.toBeNull();
+    await act(async () => {
+      node?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+  }
+
+  it("блок «Напоминания»: оба переключателя включены по умолчанию", async () => {
+    signedIn();
+    await mount();
+    await settle(10);
+
+    expect(text()).toContain("Напоминания");
+    expect(switchNode("Дни рождения и даты друзей")?.getAttribute("aria-checked")).toBe("true");
+    expect(switchNode("Напомнить обновить мой список")?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("выключение сразу шлёт PATCH только своего ключа и берёт ответ сервера", async () => {
+    signedIn();
+    const saved = { ...preferences, remindFriendDates: false };
+    notifications.saveNotificationPreferences.mockResolvedValue({ success: true, data: saved });
+    await mount();
+    await settle(10);
+
+    await flipSwitch("Дни рождения и даты друзей");
+
+    expect(notifications.saveNotificationPreferences).toHaveBeenCalledWith({
+      remindFriendDates: false,
+    });
+    expect(switchNode("Дни рождения и даты друзей")?.getAttribute("aria-checked")).toBe("false");
+    expect(switchNode("Напомнить обновить мой список")?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("ошибка: переключатель откатывается и приходит тост", async () => {
+    signedIn();
+    notifications.saveNotificationPreferences.mockResolvedValue(null);
+    await mount();
+    await settle(10);
+
+    await flipSwitch("Напомнить обновить мой список");
+
+    expect(notifications.saveNotificationPreferences).toHaveBeenCalledWith({
+      remindOwnList: false,
+    });
+    expect(switchNode("Напомнить обновить мой список")?.getAttribute("aria-checked")).toBe("true");
+    expect(text()).toContain("Не удалось сохранить настройки уведомлений");
+  });
+
+  it("пока PATCH идёт, второй тап не шлёт второй запрос", async () => {
+    signedIn();
+    notifications.saveNotificationPreferences.mockReturnValue(new Promise(() => {}));
+    await mount();
+    await settle(10);
+
+    await flipSwitch("Дни рождения и даты друзей");
+    await flipSwitch("Напомнить обновить мой список");
+
+    expect(notifications.saveNotificationPreferences).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("настройки: часовой пояс (Story 7.2)", () => {
+  /** The opener of the zone picker: «Часовой пояс: Europe/Minsk (UTC+3)». */
+  function zoneButton(): HTMLElement | undefined {
+    return controls(container).find((node) =>
+      (node.getAttribute("aria-label") ?? "").startsWith("Часовой пояс:"),
+    );
+  }
+
+  async function openZonePicker(): Promise<HTMLElement> {
+    const opener = zoneButton();
+    expect(opener, "поле «Часовой пояс»").toBeDefined();
+    await act(async () => {
+      opener?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+    const layer = dialogElement();
+    expect(layer, "слой выбора пояса").not.toBeNull();
+    return layer as HTMLElement;
+  }
+
+  it("строка показывает сохранённый пояс и смещение UTC", async () => {
+    signedIn();
+    await mount();
+
+    expect(container.querySelector('[data-testid="time-zone-section"]')).not.toBeNull();
+    expect(zoneButton()?.getAttribute("aria-label")).toBe(
+      "Часовой пояс: Europe/Minsk (UTC+3)",
+    );
+  });
+
+  it("выбор из списка с поиском сохраняет пояс, обновляет сессию и показывает тост", async () => {
+    signedIn();
+    me.changeTimeZone.mockResolvedValue({ ok: true, timeZone: "Asia/Tokyo" });
+    await mount();
+
+    const layer = await openZonePicker();
+    const search = layer.querySelector<HTMLInputElement>("input");
+    expect(search, "поле поиска пояса").not.toBeNull();
+    await typeInto(search as HTMLInputElement, "Tokyo");
+
+    const option = Array.from(layer.querySelectorAll<HTMLElement>('[role="radio"]')).find(
+      (node) => (node.textContent ?? "").trim() === "Asia/Tokyo (UTC+9)",
+    );
+    expect(option, "вариант «Asia/Tokyo»").toBeDefined();
+    await act(async () => {
+      option?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+
+    expect(me.changeTimeZone).toHaveBeenCalledWith("Asia/Tokyo");
+    expect(probe.auth?.state).toEqual({
+      status: "ready",
+      user: { ...user, timeZone: "Asia/Tokyo" },
+    });
+    expect(zoneButton()?.getAttribute("aria-label")).toBe("Часовой пояс: Asia/Tokyo (UTC+9)");
+    expect(text()).toContain("Часовой пояс изменён.");
+  });
+
+  it("ошибка сети: пояс остаётся прежним и приходит тост", async () => {
+    signedIn();
+    me.changeTimeZone.mockResolvedValue({ ok: false, network: true });
+    await mount();
+
+    const layer = await openZonePicker();
+    const search = layer.querySelector<HTMLInputElement>("input");
+    expect(search, "поле поиска пояса").not.toBeNull();
+    await typeInto(search as HTMLInputElement, "Tokyo");
+    const option = Array.from(layer.querySelectorAll<HTMLElement>('[role="radio"]')).find(
+      (node) => (node.textContent ?? "").trim() === "Asia/Tokyo (UTC+9)",
+    );
+    await act(async () => {
+      option?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+
+    expect(zoneButton()?.getAttribute("aria-label")).toBe(
+      "Часовой пояс: Europe/Minsk (UTC+3)",
+    );
+    expect(probe.auth?.state).toEqual({ status: "ready", user });
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
   });
 });
 

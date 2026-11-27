@@ -7,9 +7,9 @@ import { PUBLIC_LOCALE_HEADER, requestLocale } from "@/lib/request-locale";
 /**
  * Story 3.3 / AD-27: the language of a public link document is negotiated from
  * `Accept-Language` and forwarded to the root layout through an internal request
- * header. Only `/l/*` and `/i/*` are marked, so every other page keeps the
- * default `ru` and its own caching behaviour. The header is not exposed to the
- * client.
+ * header. Only `/l/*`, `/i/*` and (CLE-137) `/unsubscribe/*` are marked, so every
+ * other page keeps the default `ru` and its own caching behaviour. The header is
+ * not exposed to the client.
  */
 function publicPageRequest(request: NextRequest): NextResponse | null {
   const { pathname } = request.nextUrl;
@@ -17,7 +17,10 @@ function publicPageRequest(request: NextRequest): NextResponse | null {
     pathname === "/l" ||
     pathname.startsWith("/l/") ||
     pathname === "/i" ||
-    pathname.startsWith("/i/");
+    pathname.startsWith("/i/") ||
+    // CLE-137: the unsubscribe letter link is read by anyone, like `/l` and `/i`.
+    pathname === "/unsubscribe" ||
+    pathname.startsWith("/unsubscribe/");
   if (!isPublicPage) return null;
 
   const requestHeaders = new Headers(request.headers);
@@ -56,5 +59,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/v1/:path*", "/l/:path*", "/i/:path*"],
+  matcher: ["/api/v1/:path*", "/l/:path*", "/i/:path*", "/unsubscribe/:path*"],
 };

@@ -87,21 +87,35 @@ export function PublicWishlistView({
     const tagLabels = gift.tags.map(function labelOfTag(tag) {
       return tag.label;
     });
-    // CLE-129, T4.2 / D-55: the holder's name is a link to `/u/{nick}`, and the
-    // card draws it as a sibling of its link, so no anchor is nested in an anchor.
-    const reservation = gift.reservedBy ? (
-      <XStack gap="$1" alignItems="center" flexWrap="wrap">
-        <Text kind="label" tone="reserved">
-          {tWishlist("reservedByPrefix")}
-        </Text>
-        <a
-          href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}
-          style={{ textDecoration: "none" }}
-        >
-          <LinkText>{gift.reservedBy.displayName}</LinkText>
-        </a>
-      </XStack>
-    ) : null;
+    // Story 5.7 / «Подписи брони»: the guest sees the stage «Подарено» (and
+    // «Куплено» since Story 5.5) by `reservationLabel`; the shared holder name is
+    // a separate line and follows the «Показывать другим гостям, что дарю я» toggle.
+    const stage = gift.reservationLabel
+      ? messages.app.gift.detail.reservationLabel[gift.reservationLabel]
+      : null;
+    const reservation =
+      stage !== null || gift.reservedBy !== null ? (
+        <YStack gap="$1">
+          {stage !== null ? (
+            <Text kind="label" tone="reserved">
+              {stage}
+            </Text>
+          ) : null}
+          {gift.reservedBy ? (
+            <XStack gap="$1" alignItems="center" flexWrap="wrap">
+              <Text kind="label" tone="reserved">
+                {tWishlist("reservedByPrefix")}
+              </Text>
+              <a
+                href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}
+                style={{ textDecoration: "none" }}
+              >
+                <LinkText>{gift.reservedBy.displayName}</LinkText>
+              </a>
+            </XStack>
+          ) : null}
+        </YStack>
+      ) : null;
     const href =
       gift.quantity === "SINGLE" && gift.status === "OPEN" && wishlistPath
         ? `${wishlistPath}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`

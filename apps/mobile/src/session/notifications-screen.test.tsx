@@ -16,6 +16,7 @@ const mocks = vi.hoisted(function makeMocks() {
     params: { id: "emailed-item" as string | undefined },
     focus: { run: undefined as React.EffectCallback | undefined },
     replace: vi.fn(),
+    navigate: vi.fn(),
     mark: vi.fn(),
     fetchFeed: vi.fn(),
     fetchItem: vi.fn(),
@@ -45,7 +46,7 @@ vi.mock("react-native-safe-area-context", async function safeArea() {
 vi.mock("expo-router", async function routerModule() {
   const { useEffect } = await import("react");
   return {
-    router: { replace: mocks.replace },
+    router: { replace: mocks.replace, navigate: mocks.navigate },
     useLocalSearchParams: function params() { return mocks.params; },
     useFocusEffect: function useFocusEffect(effect: React.EffectCallback) {
       useEffect(function focused() {
@@ -308,6 +309,56 @@ it("«Подарил» из уведомления отправляет дейс
   }
 });
 
+/**
+ * Story 6.6 (D-26, D-49): the wish-expiry notice has two variants — the released
+ * one only states the fact, the kept one offers the same «Подарил» action.
+ */
+it("показывает срок желания и предлагает «Подарил» только при сохранённой брони", async function wishExpiryNotices() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.submit.mockResolvedValue({ ok: true, data: { id: "kept" } });
+  function feed(event: NotificationItem["event"], id = "notice") {
+    return { items: [{ id, createdAt: "2026-11-24T13:30:00.000Z", readAt: null, href: null, event }], nextCursor: null };
+  }
+  mocks.fetchFeed.mockResolvedValue(feed({
+    kind: "WISH_EXPIRY_SOON", giftId: "gift", titleSnapshot: "Плед",
+  }));
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    expect(container.textContent).toContain("Срок желания «Плед» через 3 дня");
+    expect(actionButton("Подарил")).toBeUndefined();
+
+    mocks.fetchFeed.mockResolvedValue(feed({
+      kind: "WISH_EXPIRY", giftId: "gift", titleSnapshot: "Плед", released: true, actionable: false,
+    }));
+    await act(async function refocus() { mocks.focus.run?.(); });
+    expect(container.textContent).toContain("Срок желания «Плед» вышел, бронь снята");
+    expect(actionButton("Подарил")).toBeUndefined();
+    expect(container.textContent).not.toContain("Даритель уже ответил");
+
+    mocks.fetchFeed.mockResolvedValue(feed({
+      kind: "WISH_EXPIRY", giftId: "gift", titleSnapshot: "Плед", released: false, actionable: true,
+    }, "kept"));
+    await act(async function kept() { mocks.focus.run?.(); });
+    expect(container.textContent).toContain("Если уже подарили — отметьте «Подарил»");
+    await press("Подарил");
+    expect(mocks.submit).toHaveBeenCalledExactlyOnceWith("kept", { action: "given" });
+
+    mocks.fetchFeed.mockResolvedValue(feed({
+      kind: "WISH_EXPIRY", giftId: "gift", titleSnapshot: "Плед", released: false, actionable: false,
+    }, "stale"));
+    await act(async function stale() { mocks.focus.run?.(); });
+    expect(actionButton("Подарил")).toBeUndefined();
+    expect(container.textContent).toContain("Даритель уже ответил");
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
 it("позднее продление из уведомления называет срок, а не «даритель ответил»", async function lateExtend() {
   mocks.session.ready = true;
   mocks.params.id = undefined;
@@ -336,6 +387,85 @@ it("позднее продление из уведомления называе
     await press("Подтвердить");
     expect(container.textContent).toContain("Срок брони прошёл — продлить уже нельзя.");
     expect(container.textContent).not.toContain("Даритель уже ответил");
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
+/**
+ * Story 7.3 (FR-34): the birthday reminder names the Friend and the day without
+ * a year, shows the open-wish summary and opens the Friend's profile.
+ */
+it("показывает день рождения друга и открывает его профиль", async function friendBirthday() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "birthday",
+      createdAt: "2026-11-24T13:30:00.000Z",
+      readAt: "2026-11-24T13:31:00.000Z",
+      href: "/u/anya",
+      event: {
+        kind: "DATE_FRIEND",
+        personName: "Аня",
+        personNick: "anya",
+        date: "2026-03-14",
+        count: 4,
+        titles: ["Плед", "Книга", "Наушники"],
+      },
+    }],
+    nextCursor: null,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    expect(container.textContent).toContain("У Аня день рождения 14.03");
+    expect(container.textContent).toContain("Открытых желаний: 4");
+    expect(container.textContent).toContain("«Плед», «Книга», «Наушники»");
+
+    const row = container.querySelector<HTMLElement>('[role="button"][aria-label^="У Аня"]');
+    expect(row).not.toBeNull();
+    await act(async function openProfile() { row?.click(); });
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/u/anya");
+    expect(mocks.mark).not.toHaveBeenCalled();
+  } finally {
+    await act(async function remove() { root.unmount(); });
+    container.remove();
+  }
+});
+
+/**
+ * Story 7.4 (FR-35): the owner's own birthday reminder asks to update the
+ * wishlist and opens «Мой вишлист» (`/`), not the notification page.
+ */
+it("показывает напоминание о своём ДР и открывает «Мой вишлист»", async function ownBirthday() {
+  mocks.session.ready = true;
+  mocks.params.id = undefined;
+  mocks.fetchFeed.mockResolvedValue({
+    items: [{
+      id: "own-birthday",
+      createdAt: "2026-11-24T13:30:00.000Z",
+      readAt: "2026-11-24T13:31:00.000Z",
+      href: "/",
+      event: { kind: "DATE_OWN" },
+    }],
+    nextCursor: null,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async function show() { root.render(render()); });
+    expect(container.textContent).toContain("Скоро ваш день рождения — обновите вишлист");
+
+    const row = container.querySelector<HTMLElement>('[role="button"][aria-label^="Скоро ваш день рождения"]');
+    expect(row).not.toBeNull();
+    await act(async function openWishlist() { row?.click(); });
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/");
+    expect(mocks.mark).not.toHaveBeenCalled();
   } finally {
     await act(async function remove() { root.unmount(); });
     container.remove();

@@ -28,6 +28,65 @@ function dueItem(reminder: boolean): NotificationItem {
   };
 }
 
+/**
+ * Story 6.6 (D-26, D-49): the wish-expiry notice of the holder. The soon notice
+ * has no controls; the released one states the removal; the kept one offers the
+ * same «Подарил» action as the deadline notice.
+ */
+function wishExpiryItem(variant: "soon" | "released" | "kept"): NotificationItem {
+  if (variant === "soon") {
+    return {
+      id: "wish-soon",
+      createdAt: "2026-11-24T10:00:00.000Z",
+      readAt: null,
+      href: "/reservations",
+      event: {
+        kind: "WISH_EXPIRY_SOON",
+        giftId: "example",
+        titleSnapshot: "Абонемент на экскурсии по историческим паркам и садам",
+      },
+    };
+  }
+  return {
+    id: variant === "kept" ? "wish-kept" : "wish-released",
+    createdAt: "2026-11-24T10:00:00.000Z",
+    readAt: null,
+    href: variant === "kept" ? "/reservations" : null,
+    event: {
+      kind: "WISH_EXPIRY",
+      giftId: "example",
+      titleSnapshot: "Абонемент на экскурсии по историческим паркам и садам",
+      released: variant !== "kept",
+      actionable: variant === "kept",
+    },
+  };
+}
+
+/**
+ * Story 7.3 (FR-34): the reminder about a Friend's birthday names the day
+ * without a year, the number of open wishes and up to three titles.
+ */
+function friendBirthdayItem(): NotificationItem {
+  return {
+    id: "birthday",
+    createdAt: "2026-11-24T10:00:00.000Z",
+    readAt: null,
+    href: "/u/anya",
+    event: {
+      kind: "DATE_FRIEND",
+      personName: "Аня",
+      personNick: "anya",
+      date: "2026-03-14",
+      count: 4,
+      titles: [
+        "Абонемент на экскурсии по историческим паркам и садам",
+        "Книга о путешествиях",
+        "Наушники",
+      ],
+    },
+  };
+}
+
 const meta = {
   title: "App/NotificationsList",
   component: NotificationsList,
@@ -48,3 +107,11 @@ export const Busy: Story = { tags: ["!dev"], args: { busyId: "1" } };
 export const Empty: Story = { args: { items: [] } };
 /** `Срок истёк`: «Продлить до…» больше нет, «Подарил» / «Купил» / «Снять бронь» есть. */
 export const DueExpired: Story = { tags: ["!dev"], args: { items: [dueItem(false)] } };
+/** Срок желания с сохранённой бронью: одна кнопка «Подарил». */
+export const WishExpiryKept: Story = { args: { items: [wishExpiryItem("kept")] } };
+/** Срок желания вышел: бронь снята, кнопок нет. */
+export const WishExpiryReleased: Story = { tags: ["!dev"], args: { items: [wishExpiryItem("released")] } };
+/** Срок желания через 3 дня: кнопок нет. */
+export const WishExpirySoon: Story = { tags: ["!dev"], args: { items: [wishExpiryItem("soon")] } };
+/** День рождения друга: дата без года, число открытых желаний, до трёх названий. */
+export const FriendBirthday: Story = { args: { items: [friendBirthdayItem()] } };

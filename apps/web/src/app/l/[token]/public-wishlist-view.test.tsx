@@ -110,6 +110,8 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("Берёт");
     expect(html).toContain('href="/u/oleg"');
     expect(html).toContain("Олег");
+    // Story 5.5/5.7: the guest also sees the stage «Куплено» of the reservation.
+    expect(html).toContain("Куплено");
     // The name link is a sibling of the card link, never its content: the card
     // anchor closes before the profile link starts.
     const cardStart = html.indexOf('href="/l/tok-1/g-reserved"');
@@ -145,6 +147,29 @@ describe("PublicWishlistView: link page HTML", () => {
       gifts: [card({ id: "g-reserved", title: "Свитер", status: "RESERVED" })],
     });
 
+    expect(html).not.toContain("Берёт");
+    expect(html).not.toContain('href="/u/');
+  });
+
+  /**
+   * Story 5.7 / «Подписи брони»: the stage «Подарено» is visible to other guests
+   * even when the holder hid their name; the toggle only hides the name.
+   */
+  it("показывает этап «Подарено» без имени, когда даритель его скрыл", () => {
+    const html = render({
+      kind: "gifts",
+      owner,
+      gifts: [
+        card({
+          id: "g-given",
+          title: "Свитер",
+          status: "RESERVED",
+          reservationLabel: "GIVEN",
+        }),
+      ],
+    });
+
+    expect(html).toContain("Подарено");
     expect(html).not.toContain("Берёт");
     expect(html).not.toContain('href="/u/');
   });

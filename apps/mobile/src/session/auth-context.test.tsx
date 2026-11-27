@@ -376,4 +376,21 @@ describe("AuthProvider", () => {
     expect(auth().state).toEqual({ status: "anonymous" });
     expect(sessionEvents.publish).not.toHaveBeenCalled();
   });
+
+  it("signOutLocally: гасит сессию без запроса к API (аккаунт уже удалён)", async () => {
+    api.apiRequest.mockResolvedValue({ ok: true, data: user });
+    await mount();
+    rememberAuthEmail("/login", "next@example.test");
+    api.apiRequest.mockClear();
+
+    await act(async () => {
+      await auth().signOutLocally();
+    });
+
+    expect(api.apiRequest).not.toHaveBeenCalled();
+    expect(store.clearSessionToken).toHaveBeenCalledTimes(1);
+    expect(consumeAuthEmail("/login")).toBe("");
+    expect(auth().state).toEqual({ status: "anonymous" });
+    expect(sessionEvents.publish).toHaveBeenCalledExactlyOnceWith();
+  });
 });

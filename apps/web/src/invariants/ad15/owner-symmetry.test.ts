@@ -162,7 +162,18 @@ const {
       if (filter.in !== undefined && !filter.in.includes(row.visibility)) return false;
     }
     if (typeof where.quantity === "string" && row.quantity !== where.quantity) return false;
-    if (where.reservedById !== undefined && row.reservedById !== where.reservedById) return false;
+    // Prisma's null filters: a plain value/null compares, `{ not: null }` (the
+    // CLE-134 undo CAS) requires the column to be set.
+    if (where.reservedById !== undefined) {
+      const expected = where.reservedById as string | null | { not?: string | null };
+      if (expected === null) {
+        if (row.reservedById !== null) return false;
+      } else if (typeof expected === "string") {
+        if (row.reservedById !== expected) return false;
+      } else if (expected.not === null && row.reservedById === null) {
+        return false;
+      }
+    }
     if (where.closedFromStatus !== undefined && row.closedFromStatus !== where.closedFromStatus) {
       return false;
     }

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelEmailChange,
+  changeTimeZone,
+  deleteAccount,
   getMyProfile,
   requestEmailChange,
   updateHideFromSearch,
@@ -13,6 +15,7 @@ const rn = vi.hoisted(() => ({ OS: "web" }));
 const store = vi.hoisted(() => ({
   readSessionToken: vi.fn(),
   writeSessionToken: vi.fn(),
+  clearSessionToken: vi.fn(),
 }));
 
 vi.mock("react-native", () => ({
@@ -61,6 +64,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   store.readSessionToken.mockReset();
   store.writeSessionToken.mockReset();
+  store.clearSessionToken.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -398,6 +402,72 @@ describe("requestEmailChange", () => {
   });
 });
 
+describe("deleteAccount", () => {
+  it("DELETEs /api/v1/me with an explicit confirmation and clears the local session", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { deleted: true } }));
+
+    await expect(deleteAccount()).resolves.toEqual({ ok: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://api.test/api/v1/me");
+    expect(init.method).toBe("DELETE");
+    expect(init.body).toBe(JSON.stringify({ confirm: true }));
+    expect(init.credentials).toBe("include");
+    const headers = init.headers as Headers;
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.get("accept-language")).toBe("ru-RU");
+    expect(store.clearSessionToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the session when the command answers busy", async () => {
+    fetchMock.mockResolvedValue(
+      respond(
+        {
+          ok: false,
+          code: "CONFLICT",
+          message: "Account deletion is in progress, retry",
+        },
+        409,
+      ),
+    );
+
+    await expect(deleteAccount()).resolves.toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "Account deletion is in progress, retry",
+    });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session on a dead or foreign session, so the screen can sign out itself", async () => {
+    fetchMock.mockResolvedValue(
+      respond({ ok: false, code: "UNAUTHENTICATED", message: "Authentication required" }, 401),
+    );
+
+    await expect(deleteAccount()).resolves.toEqual({
+      ok: false,
+      code: "UNAUTHENTICATED",
+      message: "Authentication required",
+    });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("rejects a success without the deleted flag instead of clearing the session", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: {} }));
+
+    await expect(deleteAccount()).resolves.toEqual({ ok: false, invalid: true });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+
+  it("reports a network failure and keeps the session", async () => {
+    fetchMock.mockRejectedValue(new TypeError("offline"));
+
+    await expect(deleteAccount()).resolves.toEqual({ ok: false, network: true });
+    expect(store.clearSessionToken).not.toHaveBeenCalled();
+  });
+});
+
 describe("cancelEmailChange", () => {
   it("DELETEs the pending request and returns the cancelled answer", async () => {
     fetchMock.mockResolvedValue(respond({ ok: true, data: { cancelled: true } }));
@@ -426,6 +496,53 @@ describe("cancelEmailChange", () => {
     fetchMock.mockResolvedValue(respond({ ok: true, data: { accepted: true } }));
 
     await expect(cancelEmailChange()).resolves.toEqual({ ok: false, invalid: true });
+  });
+});
+
+/** Story 7.2 (FR-37): the explicit zone choice of «Настройки» overwrites the stored one. */
+describe("changeTimeZone", () => {
+  it("PATCHes the IANA zone and returns the stored one", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { timeZone: "Asia/Tokyo" } }));
+
+    await expect(changeTimeZone("Asia/Tokyo")).resolves.toEqual({
+      ok: true,
+      timeZone: "Asia/Tokyo",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://api.test/api/v1/me/time-zone");
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(JSON.stringify({ timeZone: "Asia/Tokyo" }));
+    expect(init.credentials).toBe("include");
+  });
+
+  it("rejects an answer without a string zone", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: { timeZone: 3 } }));
+
+    await expect(changeTimeZone("Asia/Tokyo")).resolves.toEqual({
+      ok: false,
+      invalid: true,
+    });
+  });
+
+  it("passes a validation error and a dead session through", async () => {
+    fetchMock.mockResolvedValueOnce(
+      respond({ ok: false, code: "VALIDATION", message: "Invalid input", field: "timeZone" }, 400),
+    );
+    await expect(changeTimeZone("Nowhere/Land")).resolves.toMatchObject({
+      ok: false,
+      code: "VALIDATION",
+      field: "timeZone",
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      respond({ ok: false, code: "UNAUTHENTICATED", message: "Authentication required" }, 401),
+    );
+    await expect(changeTimeZone("UTC")).resolves.toMatchObject({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
   });
 });
 

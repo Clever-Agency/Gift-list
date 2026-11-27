@@ -18,6 +18,8 @@ import {
   passwordForgotBodySchema,
   emailChangeAcceptedSchema,
   emailChangeCancelledSchema,
+  accountDeletedSchema,
+  accountDeletionBodySchema,
   passwordResetBodySchema,
   registerBodySchema,
   safeNextPath,
@@ -204,6 +206,25 @@ describe("email change answers", () => {
   it("accepts only the «request cancelled» answer", () => {
     expect(emailChangeCancelledSchema.parse({ cancelled: true })).toEqual({ cancelled: true });
     expect(emailChangeCancelledSchema.safeParse({ cancelled: false }).success).toBe(false);
+  });
+});
+
+describe("account deletion (Story 6.3)", () => {
+  it("accepts only an explicit confirmation", () => {
+    expect(accountDeletionBodySchema.parse({ confirm: true })).toEqual({ confirm: true });
+    for (const body of [{}, { confirm: false }, { confirm: "true" }, { confirm: 1 }, null]) {
+      const parsed = accountDeletionBodySchema.safeParse(body);
+      expect(parsed.success, JSON.stringify(body)).toBe(false);
+      if (!parsed.success && body !== null && typeof body === "object") {
+        expect(parsed.error.issues[0]?.path).toEqual(["confirm"]);
+      }
+    }
+  });
+
+  it("accepts only the «account deleted» answer", () => {
+    expect(accountDeletedSchema.parse({ deleted: true })).toEqual({ deleted: true });
+    expect(accountDeletedSchema.safeParse({ deleted: false }).success).toBe(false);
+    expect(accountDeletedSchema.safeParse({}).success).toBe(false);
   });
 });
 

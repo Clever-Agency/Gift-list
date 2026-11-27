@@ -37,6 +37,12 @@ type AuthContextValue = {
   setUser: (user: Me, revision?: number) => void;
   updateUser: (user: Me) => void;
   signOut: () => Promise<{ ok: true } | { ok: false; network: true } | ActionError>;
+  /**
+   * The session is already dead on the server (the account was just deleted):
+   * drop the local token and pending hand-offs, then turn the app anonymous
+   * without a second request.
+   */
+  signOutLocally: () => Promise<void>;
   /** Reread `/api/v1/me` after a network failure; also used by retry views. */
   retry: () => void;
 };
@@ -149,6 +155,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    /**
+     * Drops the local session: the token and the pending hand-offs go, and the
+     * app turns anonymous. `publish` is set only when the server already
+     * confirmed the change, so the other tabs learn about it.
+     */
+    async function forgetSession(revision: number, publish: boolean): Promise<void> {
+      await clearSessionToken();
+      forgetAuthEmail();
+      attempted.current = null;
+      completeSessionChange({ status: "anonymous" }, revision, publish);
+    }
+
+    /**
+     * The session is already dead on the server (the account was just deleted):
+     * drop it locally without a second request.
+     */
+    async function signOutLocally(): Promise<void> {
+      await forgetSession(getSessionRevision(), true);
+    }
+
     async function signOut(): ReturnType<AuthContextValue["signOut"]> {
       const revision = getSessionRevision();
       const result = await apiRequest<{ signedOut: true }>("/api/v1/session", {
@@ -157,14 +183,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!result.ok && ("network" in result || result.code !== "UNAUTHENTICATED")) {
         return result;
       }
-      await clearSessionToken();
-      forgetAuthEmail();
-      attempted.current = null;
-      completeSessionChange({ status: "anonymous" }, revision, result.ok);
+      await forgetSession(revision, result.ok);
       return { ok: true };
     }
 
-    return { state, getSessionRevision, setUser, updateUser, signOut, retry };
+    return { state, getSessionRevision, setUser, updateUser, signOut, signOutLocally, retry };
   }, [state, retry]);
 
   return (

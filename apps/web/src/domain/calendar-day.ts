@@ -36,6 +36,22 @@ export function localCalendarDay(now: Date, timeZone: string | null): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Local wall-clock hour (0–23) of `now` in an IANA zone. A missing or unknown
+ * zone is UTC, the same fallback `localCalendarDay` uses.
+ */
+export function localHour(now: Date, timeZone: string | null): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: usableTimeZone(timeZone),
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const hour = parts.find(function hourPart(part) {
+    return part.type === "hour";
+  })?.value;
+  return Number(hour);
+}
+
 /** True when `day` is strictly before the owner's local today. Today itself is kept. */
 export function isBeforeLocalToday(day: string, now: Date, timeZone: string | null): boolean {
   return day < localCalendarDay(now, timeZone);

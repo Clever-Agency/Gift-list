@@ -68,19 +68,35 @@ export function PublicWishView({ view, locale, listPath, wishlistPath }: PublicW
   const tagLabels = gift.tags.map(function labelOfTag(tag) {
     return tag.label;
   });
-  const reservation = gift.reservedBy ? (
-    <XStack gap="$1" alignItems="center" flexWrap="wrap">
-      <Text kind="label" tone="reserved">
-        {tWishlist("reservedByPrefix")}
-      </Text>
-      <a
-        href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}
-        style={{ textDecoration: "none" }}
-      >
-        <LinkText>{gift.reservedBy.displayName}</LinkText>
-      </a>
-    </XStack>
-  ) : null;
+  // Story 5.7 / «Подписи брони»: a link visitor sees the stage «Подарено» (and
+  // «Куплено» since Story 5.5) from `reservationLabel`; the shared holder name is
+  // a separate line and follows the «Показывать другим гостям, что дарю я» toggle.
+  const stage = gift.reservationLabel
+    ? messages.app.gift.detail.reservationLabel[gift.reservationLabel]
+    : null;
+  const reservation =
+    stage !== null || gift.reservedBy !== null ? (
+      <YStack gap="$1">
+        {stage !== null ? (
+          <Text kind="label" tone="reserved">
+            {stage}
+          </Text>
+        ) : null}
+        {gift.reservedBy ? (
+          <XStack gap="$1" alignItems="center" flexWrap="wrap">
+            <Text kind="label" tone="reserved">
+              {tWishlist("reservedByPrefix")}
+            </Text>
+            <a
+              href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}
+              style={{ textDecoration: "none" }}
+            >
+              <LinkText>{gift.reservedBy.displayName}</LinkText>
+            </a>
+          </XStack>
+        ) : null}
+      </YStack>
+    ) : null;
   const buyHref =
     gift.quantity === "SINGLE" && gift.status === "OPEN" && wishlistPath
       ? `${wishlistPath}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`

@@ -22,7 +22,7 @@ describe("well-known app links", () => {
     expect(JSON.stringify(appleBody)).not.toMatch(/[A-Z0-9]{10}\.app\.giftlist/);
   });
 
-  it("advertises /l/*, /i/*, /wishlist/* and /reset from env only", async () => {
+  it("advertises /l/*, /i/*, /wishlist/*, /reset and /notifications from env only", async () => {
     getEnv.mockReturnValue({
       APPLE_TEAM_ID: "AB12CD34EF",
       ANDROID_SHA256_CERT_FINGERPRINTS: "AA:BB",

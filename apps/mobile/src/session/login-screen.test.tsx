@@ -156,6 +156,14 @@ describe("вход: сообщение об истёкшей сессии", () =
     expect(text()).not.toContain(expiredText);
   });
 
+  it("с reason=account_deleted показывает «Аккаунт удалён», а не «Сессия закончилась»", async () => {
+    search.params = { reason: "account_deleted" };
+    await mount();
+
+    expect(text()).toContain("Аккаунт удалён");
+    expect(text()).not.toContain(expiredText);
+  });
+
   it("без reason toast не показывается", async () => {
     await mount();
 

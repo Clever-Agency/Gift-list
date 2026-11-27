@@ -118,6 +118,8 @@ describe("PublicWishView: страница желания по ссылке", ()
     expect(html).toContain('href="/u/oleg"');
     expect(html).toContain("Олег");
     expect(html).toContain("Забронирован");
+    // Story 5.5/5.7: the page also names the stage «Куплено» of the reservation.
+    expect(html).toContain("Куплено");
     // The name link is not nested in the «Куплю сам» link of another wish.
     expect(html.indexOf('href="/u/oleg"')).toBeGreaterThan(html.indexOf("Берёт"));
   });

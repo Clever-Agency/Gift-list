@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalTimeZone, storedTimeZone } from "./time-zone";
+import { canonicalTimeZone, knownTimeZone, storedTimeZone } from "./time-zone";
 
 describe("canonicalTimeZone", () => {
   it("keeps a known IANA zone and UTC", () => {
@@ -11,6 +11,17 @@ describe("canonicalTimeZone", () => {
     expect(canonicalTimeZone("")).toBe("UTC");
     expect(canonicalTimeZone("Not/AZone")).toBe("UTC");
     expect(canonicalTimeZone(undefined)).toBe("UTC");
+  });
+});
+
+describe("knownTimeZone", () => {
+  it("returns a known IANA zone and nothing otherwise", () => {
+    expect(knownTimeZone("Europe/Minsk")).toBe("Europe/Minsk");
+    expect(knownTimeZone("UTC")).toBe("UTC");
+    expect(knownTimeZone("Not/AZone")).toBeNull();
+    expect(knownTimeZone("")).toBeNull();
+    expect(knownTimeZone(undefined)).toBeNull();
+    expect(knownTimeZone(42)).toBeNull();
   });
 });
 

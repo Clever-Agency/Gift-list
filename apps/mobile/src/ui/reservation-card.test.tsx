@@ -192,6 +192,30 @@ describe("ReservationCard", () => {
     expect(onBoughtChange).toHaveBeenCalledWith(false);
   });
 
+  /**
+   * Story 5.7: «Подарил» is available in every live phase and with any `bought`,
+   * so it is drawn in both passed-deadline phases even with the «Куплено» mark.
+   */
+  it.each(["AWAITING_GIVER", "AWAITING_OWNER"] as const)(
+    "«Подарил» доступен в фазе %s и при отметке «Куплено»",
+    async (phase) => {
+      const onGiven = vi.fn();
+      await render(
+        <ReservationCard
+          card={card({ phase, bought: true })}
+          onGiven={onGiven}
+          onBoughtChange={noop}
+          onVisibilityChange={noop}
+        />,
+      );
+
+      expect(text()).toContain("Срок истёк");
+      expect(text()).toContain("Куплено");
+      await click(control("Подарил"));
+      expect(onGiven).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("в GIVEN нет «Продлить до…» и «Подарил», остальные действия на месте", async () => {
     const onExtend = vi.fn();
     const onGiven = vi.fn();

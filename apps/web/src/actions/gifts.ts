@@ -23,9 +23,11 @@ import {
   type GiftStatusEvent,
 } from "@/domain/gift-status";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
+import { normalizeCustomTagText } from "@/domain/tag";
 import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
 import { firstIssueField } from "@/lib/api-v1";
 import { auth } from "@/lib/auth";
+import { readCustomTagDecisions } from "@/lib/custom-tag-store";
 import { giftStatusTransaction, recordGiftEvent } from "@/lib/gift-status-store";
 import { enqueueGiftNotification, notificationGiftSnapshot } from "@/lib/notification-store";
 import { relationshipReader } from "@/lib/relationships";
@@ -89,7 +91,11 @@ const visibilityRaceConflict = {
   message: "The wish changed while saving",
 };
 
-/** Columns the owner card reads; the same shape the list read selects (AD-12). */
+/**
+ * Columns the owner card reads; the same shape the list read selects (AD-12).
+ * D-49: the owner never sees a reservation, so the reservation columns
+ * (`reservedBy`, phase, toggles) are not read here at all.
+ */
 export const ownerGiftSelect = {
   id: true,
   title: true,
@@ -102,11 +108,8 @@ export const ownerGiftSelect = {
   expiresOn: true,
   archivedAt: true,
   status: true,
-  reservationPhase: true,
-  holderVisibleToOwner: true,
   // Story 5.3: read only to compute the owner's `undoUntil`.
   closedAt: true,
-  reservedBy: { select: { id: true, nick: true, name: true } },
   // Story 2.5/AD-22: only what the card shows. `slug` is fetched for the card's
   // deterministic display order (2.5.7); it never reaches the client.
   tags: {
@@ -129,7 +132,6 @@ const formGiftSelect = {
  */
 const storedGiftSelect = {
   updatedAt: true,
-  reservedAt: true,
   title: true,
   description: true,
   linkUrl: true,
@@ -144,12 +146,14 @@ const storedGiftSelect = {
   list: { select: { owner: { select: { timeZone: true } } } },
 } satisfies Prisma.GiftSelect;
 
-/** What the visibility preflight reads; nothing else is needed to answer it. */
+/**
+ * What the visibility preflight reads: ownership, the archive and the closed
+ * state. D-49: the reservation columns are not read at all, because the answer
+ * cannot depend on a reservation.
+ */
 const previewGiftSelect = {
   status: true,
-  visibility: true,
   archivedAt: true,
-  reservedById: true,
 } satisfies Prisma.GiftSelect;
 
 export function validation(field?: string): ActionResult<GiftCard> {
@@ -178,19 +182,63 @@ export function requestLocale(headers: Headers): SupportedLocale {
 
 /**
  * A `GiftTag` row a writer may create. Fixed tags are aggregate-eligible right
- * away; custom text stays out until ADMIN approval (AD-22, Story 10.2). The
- * client cannot influence either flag — the input schema has no such field.
+ * away; custom text stays out until ADMIN approval (AD-22, Story 10.2), unless
+ * the same text was already approved — then the row carries both the catalog
+ * link and the original text and is eligible. The client cannot influence
+ * either flag — the input schema has no such field.
  */
 type GiftTagCreate =
   | { tagId: string; aggregateEligible: true }
+  | { tagId: string; customText: string; aggregateEligible: true }
   | { customText: string; aggregateEligible: false };
 
-function toTagRows(tags: readonly GiftTagInput[]): GiftTagCreate[] {
-  return tags.map(function toTagRow(tag) {
-    return "catalogId" in tag
-      ? { tagId: tag.catalogId, aggregateEligible: true as const }
-      : { customText: tag.text, aggregateEligible: false as const };
+/**
+ * Story 10.2: a new or edited wish respects earlier moderation decisions. A
+ * custom text approved earlier is written already linked to the catalog tag
+ * (`tagId`, `aggregateEligible = true`) and keeps its text; a rejected text is
+ * written as an ordinary custom tag. An unmoderated text stays out of aggregates.
+ *
+ * The moderation read runs only when the body carries custom text, so a wish
+ * with fixed tags does not pay for it. When a body lists both a catalog tag and
+ * a custom text that was approved into that same tag, the custom row is dropped:
+ * the wish already carries the tag, and two rows would violate
+ * `(giftId, tagId)`.
+ */
+async function toTagRows(
+  db: Prisma.TransactionClient,
+  tags: readonly GiftTagInput[],
+): Promise<GiftTagCreate[]> {
+  const customTexts = tags.flatMap(function customTextOf(tag) {
+    return "text" in tag ? [tag.text] : [];
   });
+  const decisions = await readCustomTagDecisions(db, customTexts);
+  const catalogIds = new Set(
+    tags.flatMap(function catalogIdOf(tag) {
+      return "catalogId" in tag ? [tag.catalogId] : [];
+    }),
+  );
+
+  const rows: GiftTagCreate[] = [];
+  for (const tag of tags) {
+    if ("catalogId" in tag) {
+      rows.push({ tagId: tag.catalogId, aggregateEligible: true });
+      continue;
+    }
+
+    const decision = decisions.get(normalizeCustomTagText(tag.text));
+    const approvedTagId =
+      decision?.decision === "APPROVED" && decision.tagId !== null ? decision.tagId : null;
+    if (approvedTagId === null) {
+      rows.push({ customText: tag.text, aggregateEligible: false });
+      continue;
+    }
+
+    if (catalogIds.has(approvedTagId)) continue;
+    catalogIds.add(approvedTagId);
+    rows.push({ tagId: approvedTagId, customText: tag.text, aggregateEligible: true });
+  }
+
+  return rows;
 }
 
 /**
@@ -421,7 +469,7 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   const missingTagIndex = await firstMissingFixedTagIndex(prisma, tags);
   if (missingTagIndex !== null) return validation(catalogTagField(missingTagIndex));
 
-  const tagRows = toTagRows(tags);
+  const tagRows = await toTagRows(prisma, tags);
   try {
     const row = await prisma.gift.create({
       data: {
@@ -479,31 +527,33 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
  * is `OPEN` **or** `RESERVED`; sending the stored value back is not a change. If
  * a narrowing takes the holder's AD-7 access away, the reservation is released
  * through `GiftStatusService` (`RESERVED → OPEN`, columns cleared) in the same
- * transaction as the visibility write; widening it later does not bring the
- * reservation back. The release is silent: notification infrastructure does not
- * exist yet (`deferred-work.md`). The AD-7 evaluation deliberately does not use
- * the A-14 reservation-card exception, and it counts the list link as available.
+ * transaction as the visibility write, and the holder gets their
+ * `RESERVATION_RELEASED` line; widening it later does not bring the reservation
+ * back. The AD-7 evaluation deliberately does not use the A-14 reservation-card
+ * exception, and it counts the list link as available.
  *
- * CLE-82/S23.2b: the write is a CAS on the snapshot the decision was taken from
- * (`status` and `reservedById`), not the wider «not CLOSED» reader. A
- * reservation committed between the read and the `UPDATE` therefore fails the
- * CAS instead of being silently overwritten; the transaction is repeated
- * (`MAX_UPDATE_ATTEMPTS`) and the rule is re-evaluated against the holder the
- * row actually has — released if the new visibility hides the wish from them,
- * kept otherwise. `quantity` keeps its own answer: a change that meets a
- * reservation is VALIDATION on `quantity`, never a retry.
+ * D-49 (CLE-124): the owner never learns about a reservation, so the write no
+ * longer guards `OPEN` vs `RESERVED` — it writes the snapshot it read and lets
+ * `updatedAt` catch any change made in between. A reservation that lands while
+ * the owner edits therefore leads to a fresh read and a repeated attempt
+ * (`MAX_UPDATE_ATTEMPTS`), never to a CONFLICT or a VALIDATION the owner could
+ * read as a reservation. The release decision is taken on the row of that
+ * attempt, so a holder who keeps access keeps the reservation.
  *
- * Story 2.5 (FR-41, D-25): `quantity` stays `OPEN`-only — a changed value on a
- * `RESERVED` or `CLOSED` wish is VALIDATION, and a PATCH that carries both a
- * changed `quantity` and a visibility change on a reserved wish is rejected on
- * `quantity` without writing anything.
+ * Story 2.5 (FR-41, D-25): `quantity` names how many times a wish may be given.
+ * A change is allowed while the wish is editable (`OPEN` or `RESERVED`, D-49:
+ * решение 3) and is written without touching the reservation; `CLOSED` and an
+ * archived wish stay read-only through the VALIDATION above. Changing only
+ * `quantity` is not a significant field, so it reports nothing to the holder; a
+ * reservation may also stay live on an `UNLIMITED` wish, while a new reservation
+ * of an `UNLIMITED` wish is still refused (`canReserveGift`).
  *
  * Story 5.4 (FR-31): an edit of a `RESERVED` wish reports one `GIFT_EDITED` event
  * after the commit, carrying only the names of the significant fields that really
- * changed (`title`, `description`, `linkUrl`, `price`). A resent value, a tag or
- * `expiresOn` change and an `OPEN` wish give no event; a PATCH that takes the
- * holder's access away releases the reservation silently and gives no event
- * either, even when it changed a significant field in the same write.
+ * changed (`title`, `description`, `linkUrl`, `price`). A resent value, a tag, an
+ * `expiresOn` or `quantity` change and an `OPEN` wish give no event; a PATCH that
+ * takes the holder's access away releases the reservation and gives no edit
+ * event either, even when it changed a significant field in the same write.
  *
  * Story 2.5 (AD-22): `tags` is a full replacement. An omitted key preserves the
  * stored tags; an explicit empty array clears them (the form removes a chip);
@@ -532,16 +582,9 @@ export async function updateGift(
     input.priceCurrency === undefined;
   const setsCurrencyAlone = input.priceCurrency !== undefined && input.priceAmount === undefined;
 
-  /**
-   * Set inside the transaction when a changed `quantity` requires the wish to
-   * stay `OPEN`. A fresh read only rejects the change if the status also moved.
-   */
-  let quantityRequiresOpen = false;
-
   for (let attempt = 1; ; attempt += 1) {
-    quantityRequiresOpen = false;
     // Story 5.4: the significant fields the current attempt really changes. It is
-    // reassigned only by a committed attempt and reset here, so a lost CAS never
+    // reassigned only by a committed attempt and reset here, so a lost write never
     // leaves a stale list for the retry to report twice.
     let editedFields: GiftEditEventField[] = [];
 
@@ -578,22 +621,21 @@ export async function updateGift(
           fields.priceCurrency = stored.priceCurrency ?? "USD";
         }
 
-        // Story 2.5/AD-8: `quantity` is checked before the visibility rule, so a
-        // combined PATCH on a reserved wish names `quantity` and writes nothing.
-        if (fields.quantity !== undefined) {
-          if (stored.quantity === fields.quantity) {
-            // The form of a reserved wish resends the stored value: not a change.
-            delete fields.quantity;
-          } else if (stored.status !== "OPEN") {
-            return validation("quantity");
-          } else {
-            quantityRequiresOpen = true;
-          }
+        // Story 2.5/FR-41 (D-49, решение 3): `quantity` is writable while the wish
+        // is editable, so a reserved wish may switch «Один раз» ↔ «Можно дарить
+        // снова». The reservation is not touched and a change of `quantity` alone
+        // is not a significant field (see `changedGiftFields`). The form of the
+        // same wish resends the stored value; that is not a change.
+        if (fields.quantity !== undefined && stored.quantity === fields.quantity) {
+          delete fields.quantity;
         }
 
         // FR-10 ред. 2026-11-11: visibility is writable at OPEN and RESERVED. A
         // narrowing that drops the holder's AD-7 access releases the reservation
         // in this same transaction; the preflight of S23.3 repeats this rule.
+        // D-49: the decision is taken on the row this attempt read — a reservation
+        // that landed in between is seen by the fresh read of the retry, and the
+        // holder gets their own line only when the release really happens.
         let dropsReservation = false;
         if (fields.visibility !== undefined) {
           if (stored.visibility === fields.visibility) {
@@ -614,9 +656,8 @@ export async function updateGift(
         // comparison is on the values the write will store — an absent key keeps
         // the stored one, so a resent value is not a change — and it is skipped
         // when this same PATCH releases the reservation by narrowing visibility:
-        // the holder then loses access, so an «owner changed the wish» line would
-        // speak about something they can no longer see (the silent release of
-        // Story 2.3, `deferred-work.md`).
+        // the holder then gets the release line instead, and an «owner changed the
+        // wish» line would speak about something they can no longer see.
         const editFields =
           hasActiveReservation(stored) && !dropsReservation
             ? changedGiftFields(
@@ -662,21 +703,17 @@ export async function updateGift(
           if (missingTagIndex !== null) throw new MissingCatalogTagError(missingTagIndex);
         }
 
-        // AD-8/AD-9 + CLE-82/S23.2b: the write lands only on the snapshot the
-        // decision above was taken from. `status` and the holder are part of the
-        // `where`, so a reservation (or a release) committed between the read and
-        // this `UPDATE` fails the CAS instead of being overwritten with a
-        // visibility the holder may no longer see. An archive or close still
-        // keeps its own answer; `quantityRequiresOpen` reads the same failed CAS
-        // as a reservation and names `quantity`. A changed quantity also requires
-        // the wish to stay `OPEN`, which the snapshot carries.
+        // AD-8/AD-9 + D-49: the write lands only on the snapshot the decision
+        // above was taken from, and the snapshot is `updatedAt` alone — not the
+        // status or the holder. A reservation that landed in between changes
+        // `updatedAt` too, so the write fails, the transaction is repeated and the
+        // fresh read decides again; the owner's answer never depends on whether
+        // the wish is open or reserved. An archive or a close also moves
+        // `updatedAt`, and the retry then answers with their own VALIDATION.
         const updated = await tx.gift.update({
           where: {
             id: giftId,
             archivedAt: null,
-            status: stored.status,
-            reservedById: stored.reservedById,
-            reservedAt: stored.reservedAt,
             updatedAt: stored.updatedAt,
           },
           data: toStoredGiftFields(fields),
@@ -700,8 +737,10 @@ export async function updateGift(
 
         // Story 2.5: the tag set is replaced atomically with the field write.
         if (tags !== undefined) {
+          // Story 10.2: read the decisions before deleting anything, so the write
+          // orders (`tagId`, `customText`) follow the moderation state.
+          const tagRows = await toTagRows(tx, tags);
           await tx.giftTag.deleteMany({ where: { giftId: updated.id } });
-          const tagRows = toTagRows(tags);
           if (tagRows.length > 0) {
             await tx.giftTag.createMany({
               data: tagRows.map(function withGiftId(tag) {
@@ -749,10 +788,11 @@ export async function updateGift(
       }
 
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-        // A CAS guard lost the race. Re-read to tell a wish that is now
-        // read-only from one that merely needs a fresh snapshot: an archive or
-        // close is VALIDATION, a quantity change that met a reservation is
-        // VALIDATION on `quantity`, and a deleted or foreign id is NOT_FOUND.
+        // The snapshot moved under the write. Re-read to tell a wish that is now
+        // read-only from one that merely needs a fresh snapshot: an archive or a
+        // close is VALIDATION, a deleted or foreign id is NOT_FOUND, and anything
+        // else — a reservation, a release, another edit — repeats the attempt
+        // (D-49: the owner's answer never depends on the reservation).
         const current = await prisma.gift.findFirst({
           where: { id: giftId, list: { ownerId } },
           select: { status: true, archivedAt: true },
@@ -760,13 +800,11 @@ export async function updateGift(
         if (current === null) return notFound;
         if (current.archivedAt !== null) return archivedValidation;
         if (current.status === "CLOSED") return closedValidation;
-        if (quantityRequiresOpen && current.status !== "OPEN") return validation("quantity");
 
-        // The wish is still editable. Its status, holder or other fields
-        // changed since the snapshot, so repeat the checks.
-        // Re-run the transaction so the visibility rule meets the reservation
-        // that actually exists (CLE-82/S23.2b). A reservation is not a reason to
-        // answer NOT_FOUND — the wish is there.
+        // The wish is still editable. Its status, holder or other fields changed
+        // since the snapshot, so re-run the transaction and let the visibility
+        // rule meet the reservation that actually exists. A reservation is never
+        // a reason to answer NOT_FOUND or VALIDATION — the wish is there.
         if (attempt < MAX_UPDATE_ATTEMPTS) continue;
         return visibilityRaceConflict;
       }
@@ -776,21 +814,24 @@ export async function updateGift(
 }
 
 /**
- * CLE-82/S23.2 (FR-10 ред. 2026-11-11, AD-7): preflight of a visibility change on
- * the owner's wish. It answers whether the change would release the reservation,
- * so the client can show the confirm «Бронирующий потеряет доступ, бронь
- * снимется». It writes nothing and runs the same `VisibilityPolicy` rule as
- * `updateGift`; the write repeats the check inside its transaction, so this
- * answer may be stale without becoming unsafe.
+ * CLE-82/S23.2 (FR-10 ред. 2026-11-11, AD-7, D-49): preflight of a visibility
+ * change on the owner's wish. It writes nothing and reads no reservation: the
+ * owner never learns that a reservation exists, so the field of the closed
+ * `GiftVisibilityPreview` contract is always `false` and the reservation is never
+ * mentioned. The write still repeats the AD-7 rule inside its transaction.
  *
  * Ownership masks a foreign or missing wish as NOT_FOUND; the owner's own
- * archived or closed wish answers VALIDATION with its reason, like the write.
+ * archived or closed wish answers VALIDATION with its reason, like the write —
+ * those are facts the owner already knows.
  */
 export async function previewGiftVisibility(
   headers: Headers,
   giftId: string,
   visibility: GiftVisibilityValue,
 ): Promise<ActionResult<GiftVisibilityPreview>> {
+  // The value is part of the route contract and is deliberately not read: the
+  // answer is the same for every change (D-49).
+  void visibility;
   const session = await auth.api.getSession({ headers });
   if (!session) return unauthenticated;
 
@@ -803,37 +844,13 @@ export async function previewGiftVisibility(
   if (stored.archivedAt !== null) return archivedValidation;
   if (stored.status === "CLOSED") return closedValidation;
 
-  const holderId = stored.reservedById;
-  if (
-    !hasActiveReservation(stored) ||
-    holderId === null ||
-    stored.visibility === visibility
-  ) {
-    return { ok: true, data: { wouldCancelReservation: false } };
-  }
-
-  return {
-    ok: true,
-    data: {
-      wouldCancelReservation: visibilityChangeDropsReservation({
-        status: stored.status,
-        ownerId,
-        holderId,
-        previousVisibility: stored.visibility,
-        nextVisibility: visibility,
-        // The same relation facts the write uses; friendship may change between
-        // the preflight and the write, which is why the write checks again.
-        relations: await relationshipReader.relationsBetween(holderId, ownerId),
-      }),
-    },
-  };
+  return { ok: true, data: { wouldCancelReservation: false } };
 }
 
 /**
- * Story 5.4: the row moved under the delete — a reservation landed on it or it
- * changed in another window. No `reason`: the client reloads the wish and
- * repeats the delete, now with the preflight and its warning. The alternative
- * would be deleting a reservation nobody confirmed.
+ * Story 5.4 / D-49: the row kept moving under the delete for every attempt. No
+ * `reason`: the client reloads the wish. A reservation is never the reason — it
+ * is released and the delete retried inside the transaction (CLE-124).
  */
 const deleteConflict = {
   ok: false as const,
@@ -863,33 +880,42 @@ class DeleteGiftRollback extends Error {
 }
 
 /**
- * Story 2.3 (FR-10), Story 5.3 (FR-32), Story 5.4 (FR-17, AD-9): the owner
+ * D-49 (CLE-124): how many times the delete re-reads and repeats when a
+ * reservation lands between its release and the `DELETE`. The attempt is
+ * internal: the owner never sees a CONFLICT born of a reservation.
+ */
+const MAX_DELETE_ATTEMPTS = 3;
+
+/** The gift row a `GIFT_DELETED` line is enqueued from; it is gone by then. */
+type GiftSnapshot = NonNullable<Awaited<ReturnType<typeof notificationGiftSnapshot>>>;
+
+/**
+ * Story 2.3 (FR-10), Story 5.3 (FR-32), Story 5.4 (FR-17, AD-9), D-49: the owner
  * deletes a wish of their own list that is not archived — `OPEN`, `RESERVED` or
  * `CLOSED` (a received wish can be removed from the list too).
  *
- * Everything happens in one transaction (`Design Notes`): (1) the row is read
- * inside the owner's list, so a foreign, missing or archived id matches nothing;
- * (2) a `RESERVED` row is taken off through `GiftStatusService`
- * (`releaseReservation`, CAS `status = RESERVED`), which is the only writer of
- * the reservation columns; (3) `deleteMany` carries ownership, "not archived" and
- * a deletable status, so the reservation cannot be re-made between the release and
- * the `DELETE` — the first `UPDATE` locks the row until the commit.
+ * Everything happens in one transaction (`Design Notes`): the row is read inside
+ * the owner's list, so a foreign, missing or archived id matches nothing; a
+ * `RESERVED` row is taken off through `GiftStatusService` (`releaseReservation`,
+ * CAS `status = RESERVED`), which is the only writer of the reservation columns;
+ * then `deleteMany` carries ownership, "not archived" and a deletable status.
  *
- * A lost release CAS is not an error by itself: the holder released it, another
- * window closed the wish or the timers of Story 5.6 moved it. The use-case re-reads
- * in the same list: no row is NOT_FOUND, `OPEN`/`CLOSED` continue the delete, a
- * row that is still `RESERVED` is the protective CONFLICT. A lost `deleteMany`
- * (a reservation landed between the read and the `DELETE`) is re-read the same
- * way: no row or archived is NOT_FOUND, anything else is CONFLICT — deleting a
- * reservation silently is never allowed.
+ * D-49: the owner never learns about a reservation, so a reservation that lands
+ * between the release and the `DELETE` (or between the read and the release) is
+ * not a CONFLICT. The transaction re-reads the row and repeats
+ * (`MAX_DELETE_ATTEMPTS`): the new holder is released too and the wish is
+ * deleted. Only a row that keeps moving under the delete for every attempt is a
+ * CONFLICT, and that is the same answer an unreadable race gives without a
+ * reservation.
  *
  * Story 5.4 (NFR-6): after the commit exactly one `GIFT_DELETED` event is written,
- * and only when this transaction really made the `RESERVED → OPEN` transition. A
+ * and only when this transaction really made a `RESERVED → OPEN` transition. A
  * release somebody else made leaves no line: the deletion did not make that
- * transition. `OPEN` and `CLOSED` never write one — the closure of 5.3 is
- * already recorded. The event carries identifiers only (FR-31).
+ * transition. `OPEN` and `CLOSED` never write one — the closure of 5.3 is already
+ * recorded. The event carries identifiers only (FR-31). The holder of every
+ * reservation this delete removed gets their own `GIFT_DELETED` line and email.
  *
- * A `DELETE` that matched nothing after this transaction released the reservation
+ * A `DELETE` that matched nothing after this transaction released a reservation
  * throws {@link DeleteGiftRollback} instead of returning: the release must not
  * survive a delete that did not happen (Story 5.4, R1). No release was made on the
  * `OPEN`/`CLOSED` path, so there the answer is simply returned.
@@ -905,75 +931,74 @@ export async function deleteGift(
 
   const deleteRun = prisma.$transaction(
     async function deleteOwnGift(tx): Promise<DeleteGiftOutcome> {
-      const stored = await tx.gift.findFirst({
-        where: { id: giftId, archivedAt: null, list: { ownerId } },
-        select: { status: true, reservedById: true },
-      });
-      if (!stored) return { kind: "not-found" };
-
-      // The holder is read before the release: the released row no longer knows
-      // it, and the event of a successful delete needs it (FR-31: id only).
-      let released = false;
+      // Every holder whose reservation this transaction removed, with its
+      // snapshot for the line and the email. The released row no longer knows
+      // them, so the snapshot is taken before the release (FR-31: id only).
+      const released: { snapshot: GiftSnapshot; at: Date }[] = [];
       let recipientId: string | null = null;
-      let snapshot: Awaited<ReturnType<typeof notificationGiftSnapshot>> = null;
-      if (stored.status === "RESERVED") {
-        recipientId = stored.reservedById;
-        snapshot = await notificationGiftSnapshot(tx, giftId);
-        released = await giftStatusTransaction(tx).releaseReservation(giftId, snapshot?.reservedAt);
-        recipientId = snapshot?.reservedById ?? recipientId;
-        if (!released) {
-          const raced = await tx.gift.findFirst({
-            where: { id: giftId, archivedAt: null, list: { ownerId } },
-            select: { status: true },
-          });
-          if (!raced) return { kind: "not-found" };
-          // Still RESERVED means the release was lost against another writer
-          // without the row leaving the status: do not delete what is still held.
-          if (raced.status === "RESERVED") return { kind: "conflict" };
-          // OPEN or CLOSED: somebody else made the transition, so no line.
-          recipientId = null;
-        }
-      }
 
-      const { count } = await tx.gift.deleteMany({
-        where: {
-          id: giftId,
-          archivedAt: null,
-          status: { in: ["OPEN", "CLOSED"] },
-          list: { ownerId },
-        },
-      });
-      if (count !== 1) {
-        // The row moved between the read and the DELETE — most often a
-        // reservation landed on it. A silent delete of that reservation is not
-        // an option, so the client reloads and repeats with the warning.
-        const current = await tx.gift.findFirst({
+      for (let attempt = 1; attempt <= MAX_DELETE_ATTEMPTS; attempt += 1) {
+        const stored = await tx.gift.findFirst({
           where: { id: giftId, archivedAt: null, list: { ownerId } },
-          select: { status: true },
+          select: { status: true, reservedById: true },
         });
-        const refused: "not-found" | "conflict" = current ? "conflict" : "not-found";
-        // The release above is the only change this transaction made so far, and
-        // a return would commit it: throw so the release rolls back together with
-        // the DELETE that did not happen. Without a release nothing needs undoing.
-        if (released) throw new DeleteGiftRollback(refused);
-        return { kind: refused };
+        if (!stored) {
+          // The row is gone: an earlier release of this transaction must not
+          // survive it, so the answer is produced outside the rolled-back work.
+          if (released.length > 0) throw new DeleteGiftRollback("not-found");
+          return { kind: "not-found" };
+        }
+
+        if (stored.status === "RESERVED") {
+          const snapshot = await notificationGiftSnapshot(tx, giftId);
+          const done = await giftStatusTransaction(tx).releaseReservation(
+            giftId,
+            snapshot?.reservedAt,
+          );
+          // Released or moved by somebody else in the meantime: read the row that
+          // is actually there and decide again.
+          if (!done) continue;
+          if (snapshot !== null) released.push({ snapshot, at: new Date() });
+          recipientId = snapshot?.reservedById ?? stored.reservedById;
+        }
+
+        const { count } = await tx.gift.deleteMany({
+          where: {
+            id: giftId,
+            archivedAt: null,
+            status: { in: ["OPEN", "CLOSED"] },
+            list: { ownerId },
+          },
+        });
+        // A reservation landed between the release and the `DELETE` (D-49): the
+        // row is read again, its holder released and the delete repeated. The
+        // reservation is never deleted without its holder's line.
+        if (count !== 1) continue;
+
+        for (const release of released) {
+          await enqueueGiftNotification(tx, release.snapshot, {
+            kind: "GIFT_DELETED", role: "holder", email: true, at: release.at,
+          });
+        }
+        if (recipientId === null) return { kind: "deleted", event: null };
+        return {
+          kind: "deleted",
+          event: {
+            giftId,
+            actorId: ownerId,
+            from: "RESERVED",
+            to: "OPEN",
+            at: new Date(),
+            kind: "GIFT_DELETED",
+            recipientId,
+          },
+        };
       }
 
-      if (!released || recipientId === null) return { kind: "deleted", event: null };
-      const at = new Date();
-      await enqueueGiftNotification(tx, snapshot, { kind: "GIFT_DELETED", role: "holder", email: true, at });
-      return {
-        kind: "deleted",
-        event: {
-          giftId,
-          actorId: ownerId,
-          from: "RESERVED",
-          to: "OPEN",
-          at,
-          kind: "GIFT_DELETED",
-          recipientId,
-        },
-      };
+      // The row kept moving under every attempt. If a release was made, it must
+      // not commit with a CONFLICT answer.
+      if (released.length > 0) throw new DeleteGiftRollback("conflict");
+      return { kind: "conflict" };
     },
   );
   /**

@@ -8,9 +8,9 @@ import { ConfirmDialog } from "@/ui/confirm-dialog";
  * → Colors прямо исключает «закрыт» из `destructive` — закрытие ничего не
  * теряет, подарок остаётся в списке и его можно вернуть в окне отмены.
  *
- * Тело «Бронь будет закрыта, бронировавший получит уведомление» — только у
- * `RESERVED`: у открытого желания закрывать нечего. Остальной механизм — общий
- * `ConfirmDialog`: фокус на безопасной «Отмене», одно нажатие на открытие,
+ * D-49 (CLE-124): текст один для всех желаний. Владелец не знает о брони, так
+ * что отдельного тела «Бронь будет закрыта» больше нет. Остальной механизм —
+ * общий `ConfirmDialog`: фокус на безопасной «Отмене», одно нажатие на открытие,
  * `busy` на время запроса.
  */
 export function CloseGiftConfirm({
@@ -36,7 +36,6 @@ export function CloseGiftConfirm({
       variant="confirm"
       visible={gift !== null}
       title={gift ? t("title", { title: gift.title }) : ""}
-      body={gift?.status === "RESERVED" ? t("reservedBody") : undefined}
       confirmTone="primary"
       confirmLabel={t("confirm")}
       cancelLabel={t("cancel")}

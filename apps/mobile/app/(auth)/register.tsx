@@ -175,6 +175,7 @@ export default function RegisterScreen() {
       return;
     }
     setPending(true);
+    const sessionRevision = auth.getSessionRevision();
     const result = await apiRequest<{ user: Me; next: string }>("/api/v1/register", {
       method: "POST",
       body: parsed.data,
@@ -199,7 +200,7 @@ export default function RegisterScreen() {
       return;
     }
     landing.current = safeNextPath(result.data.next);
-    auth.setUser(result.data.user);
+    auth.setUser(result.data.user, sessionRevision);
     router.replace(landing.current as "/");
   }
 
@@ -247,7 +248,7 @@ export default function RegisterScreen() {
           <Text kind="body">{t("register.forReserve", { title: reserveTitle })}</Text>
         ) : null}
         {issue && !issue.field ? (
-          <Text role="alert" aria-live="polite">
+          <Text role="alert">
             {issue.text}
           </Text>
         ) : null}

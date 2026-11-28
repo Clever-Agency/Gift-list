@@ -4,6 +4,7 @@ import {
   isBeforeLocalToday,
   isCalendarDay,
   localCalendarDay,
+  localHour,
 } from "./calendar-day";
 
 describe("localCalendarDay", () => {
@@ -27,6 +28,17 @@ describe("isBeforeLocalToday", () => {
     expect(isBeforeLocalToday("2026-11-10", now, "UTC")).toBe(false);
     expect(isBeforeLocalToday("2026-11-09", now, "UTC")).toBe(true);
     expect(isBeforeLocalToday("2026-11-11", now, "UTC")).toBe(false);
+  });
+});
+
+describe("localHour", () => {
+  it("reads the wall-clock hour of the zone and falls back to UTC", () => {
+    const now = new Date("2026-11-25T07:00:00.000Z");
+    expect(localHour(now, "Europe/Minsk")).toBe(10);
+    expect(localHour(now, null)).toBe(7);
+    expect(localHour(now, "Not/AZone")).toBe(7);
+    // 23:30 UTC is already 02:30 of the next day in Minsk.
+    expect(localHour(new Date("2026-11-10T23:30:00.000Z"), "Europe/Minsk")).toBe(2);
   });
 });
 

@@ -16,8 +16,8 @@ type NotificationRowCatalogProps = NotificationRowProps & { withActions: boolean
 
 const BELL = <Bell size={20} />;
 
-/** The ready-made action of the «есть действие» handle: the waiting booking. */
-const WAITING_ACTION = <Button variant="secondary" label="Не получал, оставить бронь" busy />;
+/** The ready-made action of the «есть действие» handle: a reservation notice. */
+const WAITING_ACTION = <Button variant="secondary" label="Подарил" busy />;
 
 /**
  * One row of the notifications list: the unread dot, the section glyph, the
@@ -103,7 +103,7 @@ What is not a prop:
     withActions: {
       name: "есть действие",
       description:
-        "Ручка каталога: показать в слоте `actions` готовую кнопку ожидающей брони.",
+        "Ручка каталога: показать в слоте `actions` готовую кнопку действия брони «Подарил».",
       control: "boolean",
       table: {
         category: "Ручки каталога",
@@ -113,7 +113,7 @@ What is not a prop:
     },
   },
   args: {
-    message: "Срок брони «Абонемент в ботанический сад» истёк. Подарок уже у вас?",
+    message: "Срок брони «Абонемент в ботанический сад» истёк. Если ничего не сделать, бронь снимется 3 декабря",
     time: "Сегодня, 10:24",
     newLabel: "Новое",
     unread: true,

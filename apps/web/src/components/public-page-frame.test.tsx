@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
+import { readFileSync } from "node:fs";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { getMessages } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { PUBLIC_MAIN_ID, PublicPageFrame } from "./public-page-frame";
 
@@ -35,7 +36,7 @@ describe("PublicPageFrame: общий каркас /l и /i", () => {
     const html = body(render());
     const skipAt = at(html, `href="#${PUBLIC_MAIN_ID}"`);
 
-    expect(getMessages("ru").web.skipToContent).toBe("Перейти к содержимому");
+    expect(getWebMessages("ru").web.skipToContent).toBe("Перейти к содержимому");
     expect(html).toContain("Перейти к содержимому");
     expect(skipAt).toBeGreaterThan(-1);
     // First in the Tab order: no link or button is painted before the skip link.
@@ -44,7 +45,7 @@ describe("PublicPageFrame: общий каркас /l и /i", () => {
     expect(beforeSkip).not.toContain("<button");
     expect(beforeSkip).not.toContain('tabindex="0"');
     expect(skipAt).toBeLessThan(at(html, "<main"));
-    expect(skipAt).toBeLessThan(at(html, "Написать автору"));
+    expect(skipAt).toBeLessThan(at(html, "Написать в техподдержку"));
   });
 
   it("puts the header after the skip link and before the one main landmark", () => {
@@ -66,9 +67,26 @@ describe("PublicPageFrame: общий каркас /l и /i", () => {
   it("keeps the shared footer and the Tamagui CSS of the server render", () => {
     const html = render();
 
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
     expect(html).toContain("<style");
+  });
+
+  /**
+   * CLE-135 (Story 6.4): the Tab stop of a raw `<a>` around `LinkText` is the
+   * anchor itself, so the ring of `LinkText` inside never paints. The shell CSS
+   * gives that anchor the same `DESIGN.md` → «Кольцо фокуса» state — `$ring`,
+   * 2 px, offset 2 px, keyboard only (`:focus-visible`).
+   */
+  it("даёт сырой ссылке кольцо фокуса из общего стиля каркаса", () => {
+    const css = readFileSync(
+      new URL("./public-page-frame.module.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(css).toMatch(
+      /\.link:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--c-ring\);[^}]*outline-offset:\s*2px;/,
+    );
   });
 });

@@ -154,6 +154,62 @@ export const nickUpdateBodySchema = z.object({
 export type NickUpdateBody = z.infer<typeof nickUpdateBodySchema>;
 
 /**
+ * CLE-129/D-59: `/profile` edits the display name. The rule is the registration
+ * one (AD-24: a name is written as given and never declined), so the trimmed
+ * value is 1..{@link DISPLAY_NAME_MAX} code points and the route names the
+ * `name` field for the screen.
+ */
+export const nameUpdateBodySchema = z.object({
+  name: z.string().trim().min(1).max(DISPLAY_NAME_MAX),
+});
+
+export type NameUpdateBody = z.infer<typeof nameUpdateBodySchema>;
+
+/**
+ * FR-56 (CLE-129/T9.1, D-58): the address a user asks to move the account to.
+ * The rule is the registration one — trimmed, lower-cased and deliverable — so a
+ * value accepted here can actually receive the confirmation link. `User.email`
+ * does not change until that link is opened; the contract only carries the wish.
+ */
+export const emailChangeBodySchema = z.object({
+  email: newEmailSchema,
+});
+
+export type EmailChangeBody = z.infer<typeof emailChangeBodySchema>;
+
+/**
+ * CLE-129/T9.2 (FR-56): the neutral answer of a change request. It is the same
+ * for a free and a taken address — the screen must not learn whether the new
+ * mailbox is free before the link is opened.
+ */
+export const emailChangeAcceptedSchema = z.object({ accepted: z.literal(true) });
+
+export type EmailChangeAccepted = z.infer<typeof emailChangeAcceptedSchema>;
+
+/** The answer of a cancelled request: the letter is no longer expected. */
+export const emailChangeCancelledSchema = z.object({ cancelled: z.literal(true) });
+
+export type EmailChangeCancelled = z.infer<typeof emailChangeCancelledSchema>;
+
+/**
+ * Story 6.3 (FR-51, AD-20): the guard of `DELETE /api/v1/me`. The body must say
+ * `confirm: true`, so a stray call from a form, a link or a broken client does
+ * not wipe an account; any other value is a `VALIDATION` answer on `confirm`.
+ */
+export const accountDeletionBodySchema = z.object({ confirm: z.literal(true) });
+
+export type AccountDeletionBody = z.infer<typeof accountDeletionBodySchema>;
+
+/**
+ * The answer of the one account-deletion command. The account is gone (or was
+ * already gone, because the command is idempotent), so the client clears its
+ * local session without looking at anything else.
+ */
+export const accountDeletedSchema = z.object({ deleted: z.literal(true) });
+
+export type AccountDeleted = z.infer<typeof accountDeletedSchema>;
+
+/**
  * Story 3.5 (FR-8): the settings switch stores one flag. Any other key is a
  * `VALIDATION` answer on `hideFromSearch` — the route names the field the
  * screen sent, instead of a bare rejection from `z.strictObject` (whose

@@ -11,7 +11,7 @@ const { getSession, findUnique, update } = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ auth: { api: { getSession } } }));
 vi.mock("@/db/client", () => ({ prisma: { user: { findUnique, update } } }));
 
-import { setTimeZone } from "./set-time-zone";
+import { changeTimeZone, setTimeZone } from "./set-time-zone";
 
 const headers = new Headers();
 
@@ -56,5 +56,58 @@ describe("setTimeZone", () => {
       ok: false,
       code: "UNAUTHENTICATED",
     });
+  });
+});
+
+describe("changeTimeZone", () => {
+  it("overwrites a stored zone with the explicit choice", async () => {
+    findUnique.mockResolvedValue({ id: "u1" });
+    const result = await changeTimeZone({ timeZone: "Europe/Minsk" }, headers);
+    expect(result).toEqual({ ok: true, data: { timeZone: "Europe/Minsk" } });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { timeZone: "Europe/Minsk" },
+    });
+  });
+
+  it("overwrites even when the stored zone is UTC", async () => {
+    findUnique.mockResolvedValue({ id: "u1" });
+    const result = await changeTimeZone({ timeZone: "Asia/Tokyo" }, headers);
+    expect(result).toEqual({ ok: true, data: { timeZone: "Asia/Tokyo" } });
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [{}],
+    [{ timeZone: "" }],
+    [{ timeZone: "Not/AZone" }],
+    [{ timeZone: 42 }],
+  ])("answers VALIDATION on timeZone for %j", async (body) => {
+    const result = await changeTimeZone(body as { timeZone?: string }, headers);
+    expect(result).toEqual({
+      ok: false,
+      code: "VALIDATION",
+      message: "Invalid input",
+      field: "timeZone",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("requires a session", async () => {
+    getSession.mockResolvedValue(null);
+    expect(await changeTimeZone({ timeZone: "UTC" }, headers)).toMatchObject({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("answers UNAUTHENTICATED when the user row is gone", async () => {
+    findUnique.mockResolvedValue(null);
+    expect(await changeTimeZone({ timeZone: "UTC" }, headers)).toMatchObject({
+      ok: false,
+      code: "UNAUTHENTICATED",
+    });
+    expect(update).not.toHaveBeenCalled();
   });
 });

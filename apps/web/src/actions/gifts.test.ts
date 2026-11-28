@@ -9,12 +9,15 @@ const {
   create,
   findFirst,
   txFindFirst,
+  txFindUnique,
   update,
   releaseMany,
   deleteMany,
+  notificationCreateMany,
   tagFindMany,
   tagDeleteMany,
   tagCreateMany,
+  moderationFindMany,
   transaction,
   relationsBetween,
   PrismaClientKnownRequestError,
@@ -37,12 +40,15 @@ const {
       create: vi.fn(),
       findFirst: vi.fn(),
       txFindFirst: vi.fn(),
+      txFindUnique: vi.fn(),
       update: vi.fn(),
       releaseMany: vi.fn(),
       deleteMany: vi.fn(),
+      notificationCreateMany: vi.fn(),
       tagFindMany: vi.fn(),
       tagDeleteMany: vi.fn(),
       tagCreateMany: vi.fn(),
+      moderationFindMany: vi.fn(),
       transaction: vi.fn(),
       relationsBetween: vi.fn(),
       PrismaClientKnownRequestError,
@@ -54,8 +60,10 @@ vi.mock("@/db/client", () => ({
   prisma: {
     list: { findUnique },
     gift: { create, findFirst, update, updateMany: releaseMany, deleteMany },
+    notification: { createMany: notificationCreateMany },
     tag: { findMany: tagFindMany },
     giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
+    customTagModeration: { findMany: moderationFindMany },
     $transaction: transaction,
   },
 }));
@@ -88,6 +96,8 @@ type Row = {
   reservedBy: { id: string; nick: string; name: string } | null;
   /** A stored read carries it; the card read does not, and the mapper ignores it. */
   reservedById: string | null;
+  /** The snapshot guard of the edit write; the card mapper ignores it (D-49). */
+  updatedAt: Date;
   list: { ownerId: string; owner?: { timeZone: string | null } };
   tags: { tagId: string | null; customText: string | null; tag: { slug: string; labels: unknown } | null }[];
 };
@@ -111,6 +121,7 @@ function giftRow(overrides: Partial<Row> = {}): Row {
     closedAt: null,
     reservedBy: null,
     reservedById: null,
+    updatedAt: STORED_UPDATED_AT,
     list: { ownerId: "u1" },
     tags: [],
     ...overrides,
@@ -130,8 +141,12 @@ type Stored = {
   archivedAt: Date | null;
   reservedById: string | null;
   expiresOn: Date | null;
+  updatedAt: Date;
   list: { owner: { timeZone: string | null } };
 };
+
+/** The snapshot every write guards: D-49 no longer puts `status` in the `where`. */
+const STORED_UPDATED_AT = new Date("2026-11-01T00:00:00.000Z");
 
 function stored(overrides: Partial<Stored> = {}): Stored {
   return {
@@ -148,7 +163,36 @@ function stored(overrides: Partial<Stored> = {}): Stored {
     archivedAt: null,
     reservedById: null,
     expiresOn: null,
+    updatedAt: STORED_UPDATED_AT,
     list: { owner: { timeZone: null } },
+    ...overrides,
+  };
+}
+
+/** The `where` of the snapshot write: own, not archived, the same `updatedAt`. */
+function snapshot(id = "g1") {
+  return { id, archivedAt: null, updatedAt: STORED_UPDATED_AT };
+}
+
+/** The gift row `enqueueGiftNotification` reads before it writes a holder line. */
+function holderSnapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "g1",
+    title: "Книга",
+    titleSnapshotOnReserve: "Книга",
+    archivedAt: null,
+    reservedAt: new Date("2026-11-01T00:00:00.000Z"),
+    reservedById: "u2",
+    reservationPhase: "ACTIVE",
+    reservationPhaseAt: new Date("2026-11-01T00:00:00.000Z"),
+    reservationDueAt: null,
+    reservationTimeZone: null,
+    reservationBought: false,
+    status: "RESERVED",
+    visibility: "PUBLIC",
+    holderVisibleToOwner: false,
+    reservedBy: null,
+    list: { ownerId: "u1", owner: { nick: "u1" } },
     ...overrides,
   };
 }
@@ -169,14 +213,6 @@ function holderRelations(overrides: Record<string, boolean> = {}) {
   };
 }
 
-/**
- * CLE-82/S23.2b: the write is a CAS on the snapshot the transaction read, so the
- * `where` carries the `status` and the holder of that read, not «not CLOSED».
- */
-function snapshot(status: "OPEN" | "RESERVED" = "OPEN", reservedById: string | null = null) {
-  return { status, reservedById };
-}
-
 function okData(result: Awaited<ReturnType<typeof createGift>>) {
   if (!result.ok) throw new Error(`unexpected error: ${result.code}`);
   return result.data;
@@ -195,12 +231,15 @@ beforeEach(() => {
   create.mockReset();
   findFirst.mockReset();
   txFindFirst.mockReset();
+  txFindUnique.mockReset();
   update.mockReset();
   releaseMany.mockReset();
   deleteMany.mockReset();
+  notificationCreateMany.mockReset();
   tagFindMany.mockReset();
   tagDeleteMany.mockReset();
   tagCreateMany.mockReset();
+  moderationFindMany.mockReset();
   transaction.mockReset();
   relationsBetween.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
@@ -209,21 +248,27 @@ beforeEach(() => {
   findFirst.mockResolvedValue(null);
   // The in-transaction read serves both the stored row and the final card.
   txFindFirst.mockResolvedValue(giftRow());
+  // The notification snapshot: `null` unless a test proves the holder's line.
+  txFindUnique.mockResolvedValue(null);
   update.mockResolvedValue({ id: "g1" });
   releaseMany.mockResolvedValue({ count: 1 });
   deleteMany.mockResolvedValue({ count: 0 });
+  notificationCreateMany.mockResolvedValue({ count: 1 });
   tagFindMany.mockResolvedValue([]);
   tagDeleteMany.mockResolvedValue({ count: 0 });
   tagCreateMany.mockResolvedValue({ count: 0 });
+  moderationFindMany.mockResolvedValue([]);
   relationsBetween.mockResolvedValue(holderRelations());
   // A stand-in for an interactive transaction: it runs the callback with the
   // same mocked delegates, so the test sees the order of the writes.
   transaction.mockImplementation(
     async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
-        gift: { findFirst: txFindFirst, findUnique: vi.fn().mockResolvedValue(null), update, updateMany: releaseMany, deleteMany },
+        gift: { findFirst: txFindFirst, findUnique: txFindUnique, update, updateMany: releaseMany, deleteMany },
+        notification: { createMany: notificationCreateMany },
         tag: { findMany: tagFindMany },
         giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
+        customTagModeration: { findMany: moderationFindMany },
       }),
   );
 });
@@ -307,9 +352,9 @@ describe("getGift", () => {
       id: "g7",
       title: "Наушники",
       visibility: "FRIENDS",
-      status: "RESERVED",
+      status: "OPEN",
       reservedBy: null,
-      ownerAction: "CONFIRM_GIVEN",
+      ownerAction: null,
     });
   });
 
@@ -590,14 +635,13 @@ describe("updateGift", () => {
         quantity: true,
         archivedAt: true,
         reservedById: true,
-        reservedAt: true,
         updatedAt: true,
         expiresOn: true,
         list: { select: { owner: { select: { timeZone: true } } } },
       },
     });
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g7", archivedAt: null, ...snapshot() },
+      where: snapshot("g7"),
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -642,7 +686,7 @@ describe("updateGift", () => {
     await updateGift(headers, "g1", { description: null, linkUrl: null, priceAmount: null });
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot() },
+      where: snapshot(),
       data: { description: null, linkUrl: null, priceAmount: null, priceCurrency: null },
       select: { id: true },
     });
@@ -802,9 +846,9 @@ describe("updateGift", () => {
       title: "Наушники",
       priceAmount: 19900,
       priceCurrency: "BYN",
-      status: "RESERVED",
+      status: "OPEN",
       reservedBy: null,
-      ownerAction: "CONFIRM_GIVEN",
+      ownerAction: null,
     });
   });
 
@@ -828,7 +872,7 @@ describe("updateGift", () => {
     const card = okData(await updateGift(headers, "g1", { visibility: "SECRET" }));
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot() },
+      where: snapshot(),
       data: { visibility: "SECRET" },
       select: { id: true },
     });
@@ -852,12 +896,12 @@ describe("updateGift", () => {
 
     expect(relationsBetween).toHaveBeenCalledWith("u2", "u1");
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED", "u2") },
+      where: snapshot(),
       data: { visibility: "FRIENDS" },
       select: { id: true },
     });
     expect(releaseMany).not.toHaveBeenCalled();
-    expect(card).toMatchObject({ status: "RESERVED", visibility: "FRIENDS" });
+    expect(card).toMatchObject({ status: "OPEN", visibility: "FRIENDS" });
   });
 
   /**
@@ -875,11 +919,12 @@ describe("updateGift", () => {
       giftRow({ status: "OPEN", visibility: "FRIENDS", reservedBy: null }),
     );
     relationsBetween.mockResolvedValue(holderRelations(relations));
+    txFindUnique.mockResolvedValue(holderSnapshot());
 
     const card = okData(await updateGift(headers, "g1", { visibility: "FRIENDS" }));
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED", "u2") },
+      where: snapshot(),
       data: { visibility: "FRIENDS" },
       select: { id: true },
     });
@@ -898,6 +943,16 @@ describe("updateGift", () => {
         titleSnapshotOnReserve: null,
       }),
     });
+    // The holder is the one who must hear about it (D-49), not the owner.
+    expect(notificationCreateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: "RESERVATION_RELEASED",
+          recipientId: "u2",
+          emailRequired: true,
+        }),
+      }),
+    );
     expect(card).toMatchObject({ status: "OPEN", visibility: "FRIENDS", reservedBy: null });
   });
 
@@ -906,6 +961,7 @@ describe("updateGift", () => {
       { status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" },
       giftRow({ status: "OPEN", visibility: "SECRET" }),
     );
+    txFindUnique.mockResolvedValue(holderSnapshot());
 
     const card = okData(await updateGift(headers, "g1", { visibility: "SECRET" }));
 
@@ -913,6 +969,7 @@ describe("updateGift", () => {
       where: { id: "g1", status: "RESERVED" },
       data: expect.objectContaining({ reservedById: null }),
     });
+    expect(notificationCreateMany).toHaveBeenCalledTimes(1);
     expect(card.status).toBe("OPEN");
   });
 
@@ -927,6 +984,7 @@ describe("updateGift", () => {
     await updateGift(headers, "g1", { visibility: "SECRET" });
 
     expect(releaseMany).not.toHaveBeenCalled();
+    expect(notificationCreateMany).not.toHaveBeenCalled();
   });
 
   /** Widening after a release does not bring the reservation back. */
@@ -963,7 +1021,7 @@ describe("updateGift", () => {
     );
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED") },
+      where: snapshot(),
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -1013,12 +1071,12 @@ describe("updateGift", () => {
 
     expect(transaction).toHaveBeenCalledTimes(2);
     expect(update).toHaveBeenNthCalledWith(1, {
-      where: { id: "g1", archivedAt: null, ...snapshot() },
+      where: snapshot(),
       data: { visibility: "SECRET" },
       select: { id: true },
     });
     expect(update).toHaveBeenLastCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED", "u2") },
+      where: snapshot(),
       data: { visibility: "SECRET" },
       select: { id: true },
     });
@@ -1056,12 +1114,12 @@ describe("updateGift", () => {
 
     expect(transaction).toHaveBeenCalledTimes(2);
     expect(update).toHaveBeenLastCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED", "u2") },
+      where: snapshot(),
       data: { visibility: "FRIENDS" },
       select: { id: true },
     });
     expect(releaseMany).not.toHaveBeenCalled();
-    expect(card).toMatchObject({ status: "RESERVED", visibility: "FRIENDS" });
+    expect(card).toMatchObject({ status: "OPEN", visibility: "FRIENDS" });
   });
 
   /**
@@ -1149,7 +1207,7 @@ describe("updateGift", () => {
     const card = okData(await updateGift(headers, "g1", { quantity: "UNLIMITED" }));
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot() },
+      where: snapshot(),
       data: { quantity: "UNLIMITED" },
       select: { id: true },
     });
@@ -1165,23 +1223,51 @@ describe("updateGift", () => {
     await updateGift(headers, "g1", { quantity: "UNLIMITED", visibility: "SECRET" });
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot() },
+      where: snapshot(),
       data: { quantity: "UNLIMITED", visibility: "SECRET" },
       select: { id: true },
     });
   });
 
-  /** Story 2.5/AD-8: a reserved wish keeps its quantity. CLOSED is read-only entirely. */
-  it("answers VALIDATION when changing the quantity of a RESERVED wish", async () => {
-    withStored({ status: "RESERVED", quantity: "SINGLE" });
+  /**
+   * Story 2.5/FR-41 (D-49, решение 3): a reserved wish may switch «Один раз» ↔
+   * «Можно дарить снова». The write lands, the reservation is not touched and
+   * the holder gets no new line.
+   */
+  it("changes the quantity of a RESERVED wish and keeps the reservation", async () => {
+    withStored(
+      { status: "RESERVED", reservedById: "u2", quantity: "SINGLE" },
+      giftRow({ status: "RESERVED", quantity: "UNLIMITED" }),
+    );
 
-    expect(await updateGift(headers, "g1", { quantity: "UNLIMITED" })).toMatchObject({
-      ok: false,
-      code: "VALIDATION",
-      message: "Invalid input",
-      field: "quantity",
+    const card = okData(await updateGift(headers, "g1", { quantity: "UNLIMITED" }));
+
+    expect(update).toHaveBeenCalledWith({
+      where: snapshot(),
+      data: { quantity: "UNLIMITED" },
+      select: { id: true },
     });
-    expect(update).not.toHaveBeenCalled();
+    expect(releaseMany).not.toHaveBeenCalled();
+    expect(notificationCreateMany).not.toHaveBeenCalled();
+    // The owner card stays neutral: the wish still reads as open (D-49).
+    expect(card).toMatchObject({ status: "OPEN", quantity: "UNLIMITED", reservedBy: null });
+  });
+
+  it("changes the quantity back from UNLIMITED to SINGLE on a reserved wish", async () => {
+    withStored(
+      { status: "RESERVED", reservedById: "u2", quantity: "UNLIMITED" },
+      giftRow({ status: "RESERVED", quantity: "SINGLE" }),
+    );
+
+    await updateGift(headers, "g1", { quantity: "SINGLE" });
+
+    expect(update).toHaveBeenCalledWith({
+      where: snapshot(),
+      data: { quantity: "SINGLE" },
+      select: { id: true },
+    });
+    expect(releaseMany).not.toHaveBeenCalled();
+    expect(notificationCreateMany).not.toHaveBeenCalled();
   });
 
   /** A reserved wish's form resends the stored quantity; that is not a change. */
@@ -1196,7 +1282,7 @@ describe("updateGift", () => {
     );
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED") },
+      where: snapshot(),
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -1226,37 +1312,60 @@ describe("updateGift", () => {
   });
 
   /**
-   * Story 2.5 stays intact: a changed `quantity` on a reserved wish is rejected
-   * even when a visibility change arrives in the same PATCH, and nothing is
-   * written — the visibility is not applied "half-way".
+   * D-49 (решение 3): quantity and a narrowing that takes the holder's access away
+   * are written together; the reservation is released and the holder gets the
+   * release line, not a VALIDATION about `quantity`.
    */
-  it("names quantity when both quantity and visibility change on a RESERVED wish", async () => {
-    withStored({ status: "RESERVED", visibility: "PUBLIC", quantity: "SINGLE" });
+  it("writes quantity and visibility together on a RESERVED wish and releases it", async () => {
+    withStored(
+      { status: "RESERVED", visibility: "PUBLIC", quantity: "SINGLE", reservedById: "u2" },
+      giftRow({ status: "OPEN", visibility: "SECRET", quantity: "UNLIMITED" }),
+    );
+    txFindUnique.mockResolvedValue(holderSnapshot());
 
-    expect(
+    const card = okData(
       await updateGift(headers, "g1", { quantity: "UNLIMITED", visibility: "SECRET" }),
-    ).toMatchObject({
-      ok: false,
-      code: "VALIDATION",
-      field: "quantity",
+    );
+
+    expect(update).toHaveBeenCalledWith({
+      where: snapshot(),
+      data: { quantity: "UNLIMITED", visibility: "SECRET" },
+      select: { id: true },
     });
-    expect(update).not.toHaveBeenCalled();
-    expect(releaseMany).not.toHaveBeenCalled();
+    expect(releaseMany).toHaveBeenCalledTimes(1);
+    expect(notificationCreateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: "RESERVATION_RELEASED",
+          recipientId: "u2",
+          emailRequired: true,
+        }),
+      }),
+    );
+    expect(card).toMatchObject({ status: "OPEN", quantity: "UNLIMITED" });
   });
 
-  /** AD-8: the write's `status: "OPEN"` loses to a reservation made after the read. */
-  it("answers VALIDATION when the wish is reserved before the guarded quantity write lands", async () => {
-    withStored({ status: "OPEN", quantity: "SINGLE" });
-    update.mockRejectedValue(
+  /**
+   * D-49: a reservation landing while the owner edits is not an answer. The write
+   * loses on the snapshot, the transaction repeats and the edit lands; the owner
+   * sees the same success as on an open wish.
+   */
+  it("retries a quantity change when a reservation landed before the write", async () => {
+    txFindFirst
+      .mockResolvedValueOnce(stored({ status: "OPEN", quantity: "SINGLE" }))
+      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2", quantity: "SINGLE" }))
+      .mockResolvedValueOnce(giftRow({ status: "RESERVED", quantity: "UNLIMITED" }));
+    update.mockRejectedValueOnce(
       new PrismaClientKnownRequestError("Record to update not found.", { code: "P2025" }),
     );
     findFirst.mockResolvedValue({ status: "RESERVED", archivedAt: null });
 
-    expect(await updateGift(headers, "g1", { quantity: "UNLIMITED" })).toMatchObject({
-      ok: false,
-      code: "VALIDATION",
-      field: "quantity",
-    });
+    const result = await updateGift(headers, "g1", { quantity: "UNLIMITED" });
+
+    expect(result).toMatchObject({ ok: true, data: { quantity: "UNLIMITED" } });
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(releaseMany).not.toHaveBeenCalled();
   });
 
   it("retries a quantity change after a concurrent edit leaves the wish OPEN", async function retryOpenQuantity() {
@@ -1292,7 +1401,10 @@ describe("updateGift", () => {
     expect(releaseMany).not.toHaveBeenCalled();
   });
 
-  /** No notification infrastructure exists yet (`deferred-work.md`): the release is silent. */
+  /**
+   * CLE-124: the holder's release line is written by the store; the use-case
+   * imports no email transport of its own and the domain stays pure.
+   */
   it("imports no notification transport on the visibility release path", () => {
     const sources = [
       new URL("./gifts.ts", import.meta.url),
@@ -1573,63 +1685,45 @@ describe("previewGiftVisibility", () => {
     expect(relationsBetween).not.toHaveBeenCalled();
   });
 
-  it("answers false for the stored value", async () => {
+  it("answers false for a reserved wish and reads no relation facts", async () => {
     findFirst.mockResolvedValue(
       stored({ status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" }),
     );
 
-    expect(await previewGiftVisibility(headers, "g1", "PUBLIC")).toEqual({
+    expect(await previewGiftVisibility(headers, "g1", "SECRET")).toEqual({
       ok: true,
       data: { wouldCancelReservation: false },
     });
+    // D-49: even a narrowing that would release the reservation answers false —
+    // the owner must not learn that a reservation exists.
     expect(relationsBetween).not.toHaveBeenCalled();
+    expect(releaseMany).not.toHaveBeenCalled();
   });
 
-  it("answers false when the accepted-friend holder keeps FRIENDS access", async () => {
-    findFirst.mockResolvedValue(
-      stored({ status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" }),
-    );
-    relationsBetween.mockResolvedValue(holderRelations({ friend: true }));
+  it("reads only the archive and closed state, never the reservation", async () => {
+    findFirst.mockResolvedValue(stored({ status: "OPEN" }));
 
-    expect(await previewGiftVisibility(headers, "g1", "FRIENDS")).toEqual({
-      ok: true,
-      data: { wouldCancelReservation: false },
-    });
-    expect(relationsBetween).toHaveBeenCalledWith("u2", "u1");
-  });
+    await previewGiftVisibility(headers, "g1", "SECRET");
 
-  it.each([
-    ["a link visitor", {}],
-    ["a subscriber", { subscriber: true }],
-    ["a contact match", { contactMatch: true }],
-  ])("answers true for %s narrowed from PUBLIC to FRIENDS", async (_label, relations) => {
-    findFirst.mockResolvedValue(
-      stored({ status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" }),
-    );
-    relationsBetween.mockResolvedValue(holderRelations(relations));
-
-    expect(await previewGiftVisibility(headers, "g1", "FRIENDS")).toEqual({
-      ok: true,
-      data: { wouldCancelReservation: true },
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: "g1", list: { ownerId: "u1" } },
+      select: { status: true, archivedAt: true },
     });
   });
 
-  it("answers true for SECRET and false for a blocked holder", async () => {
-    findFirst.mockResolvedValue(
-      stored({ status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" }),
-    );
+  it.each(["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER", "GIVEN"] as const)(
+    "answers false for a reservation in %s",
+    async () => {
+      findFirst.mockResolvedValue(
+        stored({ status: "RESERVED", visibility: "PUBLIC", reservedById: "u2" }),
+      );
 
-    expect(await previewGiftVisibility(headers, "g1", "SECRET")).toEqual({
-      ok: true,
-      data: { wouldCancelReservation: true },
-    });
-
-    relationsBetween.mockResolvedValue(holderRelations({ blocked: true }));
-    expect(await previewGiftVisibility(headers, "g1", "SECRET")).toEqual({
-      ok: true,
-      data: { wouldCancelReservation: false },
-    });
-  });
+      expect(await previewGiftVisibility(headers, "g1", "SECRET")).toEqual({
+        ok: true,
+        data: { wouldCancelReservation: false },
+      });
+    },
+  );
 
   /** The preflight is a read: no transaction, no field write, no status write. */
   it("writes nothing", async () => {
@@ -1652,6 +1746,93 @@ describe("gift tags", () => {
     tag: { slug: "dream", labels: { ru: "мечта" } },
   };
   const customRow = { tagId: null, customText: "своё", tag: null };
+
+  /**
+   * Story 10.2: a text approved earlier is written already linked to the catalog
+   * tag, so a new wish does not wait for moderation again.
+   */
+  it("links an already approved custom text to its catalog tag on create", async () => {
+    moderationFindMany.mockResolvedValue([
+      { normalizedText: "айфон", decision: "APPROVED", tagId: "tag_phone" },
+    ]);
+    create.mockResolvedValue(
+      giftRow({
+        tags: [
+          {
+            tagId: "tag_phone",
+            customText: "Айфон",
+            tag: { slug: "iphone", labels: { ru: "айфон" } },
+          },
+        ],
+      }),
+    );
+
+    const card = okData(
+      await createGift(headers, { title: "Книга", tags: [{ text: "Айфон" }] }),
+    );
+
+    expect(moderationFindMany).toHaveBeenCalledWith({
+      where: { normalizedText: { in: ["айфон"] } },
+      select: { normalizedText: true, decision: true, tagId: true },
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tags: {
+            create: [{ tagId: "tag_phone", customText: "Айфон", aggregateEligible: true }],
+          },
+        }),
+      }),
+    );
+    expect(card.tags).toEqual([{ catalogId: "tag_phone", label: "айфон" }]);
+  });
+
+  /** A rejected text is an ordinary custom tag: on the wish, out of aggregates. */
+  it("keeps a rejected custom text as an unapproved custom tag", async () => {
+    moderationFindMany.mockResolvedValue([
+      { normalizedText: "айфон", decision: "REJECTED", tagId: null },
+    ]);
+    create.mockResolvedValue(
+      giftRow({ tags: [{ tagId: null, customText: "Айфон", tag: null }] }),
+    );
+
+    const card = okData(
+      await createGift(headers, { title: "Книга", tags: [{ text: "Айфон" }] }),
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tags: { create: [{ customText: "Айфон", aggregateEligible: false }] },
+        }),
+      }),
+    );
+    expect(card.tags).toEqual([{ catalogId: null, label: "Айфон" }]);
+  });
+
+  /**
+   * `(giftId, tagId)` is unique: a body that lists the catalog tag and a text
+   * approved into it creates one row, not a failed write.
+   */
+  it("does not write the same catalog tag twice on create", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_phone" }]);
+    moderationFindMany.mockResolvedValue([
+      { normalizedText: "айфон", decision: "APPROVED", tagId: "tag_phone" },
+    ]);
+
+    await createGift(headers, {
+      title: "Книга",
+      tags: [{ catalogId: "tag_phone" }, { text: "Айфон" }],
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tags: { create: [{ tagId: "tag_phone", aggregateEligible: true }] },
+        }),
+      }),
+    );
+  });
 
   it("creates fixed and custom tags with server-side eligibility", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
@@ -1903,7 +2084,7 @@ describe("gift tags", () => {
     expect(tagDeleteMany).not.toHaveBeenCalled();
     expect(tagCreateMany).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot() },
+      where: snapshot(),
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -1923,7 +2104,7 @@ describe("gift tags", () => {
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot() },
+      where: snapshot(),
       data: {},
       select: { id: true },
     });
@@ -1941,6 +2122,36 @@ describe("gift tags", () => {
       { catalogId: null, label: "своё" },
       { catalogId: "tag_dream", label: "мечта" },
     ]);
+  });
+
+  /**
+   * Story 10.2: an edit that re-sends an approved custom text links it right
+   * away; the old rows were replaced, so the new row carries the catalog tag.
+   */
+  it("links an already approved text when an edit replaces the tags", async () => {
+    moderationFindMany.mockResolvedValue([
+      { normalizedText: "айфон", decision: "APPROVED", tagId: "tag_phone" },
+    ]);
+    txFindFirst
+      .mockResolvedValueOnce(stored())
+      .mockResolvedValueOnce(
+        giftRow({
+          tags: [
+            {
+              tagId: "tag_phone",
+              customText: "Айфон",
+              tag: { slug: "iphone", labels: { ru: "айфон" } },
+            },
+          ],
+        }),
+      );
+
+    const card = okData(await updateGift(headers, "g1", { tags: [{ text: "Айфон" }] }));
+
+    expect(tagCreateMany).toHaveBeenCalledWith({
+      data: [{ tagId: "tag_phone", customText: "Айфон", aggregateEligible: true, giftId: "g1" }],
+    });
+    expect(card.tags).toEqual([{ catalogId: "tag_phone", label: "айфон" }]);
   });
 
   /** Q-10/F4: the catalog row disappeared after the in-transaction check. */
@@ -2055,15 +2266,17 @@ describe("gift tags", () => {
     const card = okData(await updateGift(headers, "g1", { tags: [{ text: "своё" }] }));
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot("RESERVED") },
+      where: snapshot(),
       data: {},
       select: { id: true },
     });
-    expect(card.status).toBe("RESERVED");
+    expect(card.status).toBe("OPEN");
+    expect(card.reservedBy).toBeNull();
+    expect(card.ownerAction).toBeNull();
     expect(card.tags).toEqual([{ catalogId: null, label: "своё" }]);
   });
 
-  it("keeps the quantity and visibility gates unchanged when tags change too", async () => {
+  it("keeps the visibility write with the tags when both change", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
     txFindFirst
       .mockResolvedValueOnce(stored({ status: "OPEN", visibility: "PUBLIC" }))
@@ -2077,7 +2290,7 @@ describe("gift tags", () => {
     );
 
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, ...snapshot() },
+      where: snapshot(),
       data: { visibility: "SECRET" },
       select: { id: true },
     });
@@ -2085,7 +2298,7 @@ describe("gift tags", () => {
     expect(card.tags).toEqual([{ catalogId: "tag_dream", label: "мечта" }]);
   });
 
-  /** A tag replacement on a reserved wish that also narrows visibility releases once, atomically. */
+  /** D-49: a tag edit and a narrowing release the reservation once, atomically. */
   it("releases the reservation once when a tag edit also narrows the visibility", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
     txFindFirst
@@ -2170,6 +2383,7 @@ describe("deleteGift", () => {
   it("releases the reservation and deletes it in one transaction, then writes one line", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     txFindFirst.mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    txFindUnique.mockResolvedValue(holderSnapshot());
     releaseMany.mockResolvedValue({ count: 1 });
     deleteMany.mockResolvedValue({ count: 1 });
 
@@ -2177,10 +2391,20 @@ describe("deleteGift", () => {
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(releaseMany).toHaveBeenCalledWith({
-      where: { id: "g1", status: "RESERVED" },
+      where: { id: "g1", status: "RESERVED", reservedAt: holderSnapshot().reservedAt },
       data: RESERVATION_RELEASE_DATA,
     });
     expect(deleteMany).toHaveBeenCalledTimes(1);
+    // The holder is the one who must hear about it (D-49).
+    expect(notificationCreateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: "GIFT_DELETED",
+          recipientId: "u2",
+          emailRequired: true,
+        }),
+      }),
+    );
     // Identifiers and the transition only — no title, no nick (FR-31).
     expect(auditLines(info)).toEqual([
       {
@@ -2251,14 +2475,13 @@ describe("deleteGift", () => {
   });
 
   /**
-   * DELETE_STILL_RESERVED: the release lost without the row leaving `RESERVED`.
-   * Deleting a reservation nobody confirmed is never allowed.
+   * DELETE_STILL_RESERVED: the release keeps losing without the row leaving
+   * `RESERVED`. Nothing is deleted and the answer is the same CONFLICT an
+   * unreadable race gives without a reservation.
    */
-  it("answers CONFLICT and keeps the row when it is still RESERVED after a lost release", async () => {
+  it("answers CONFLICT and keeps the row when the release keeps losing", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    txFindFirst
-      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }))
-      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    txFindFirst.mockResolvedValue(stored({ status: "RESERVED", reservedById: "u2" }));
     releaseMany.mockResolvedValue({ count: 0 });
 
     expect(await deleteGift(headers, "g1")).toMatchObject({
@@ -2266,6 +2489,7 @@ describe("deleteGift", () => {
       code: "CONFLICT",
       message: "The wish changed while deleting",
     });
+    expect(txFindFirst).toHaveBeenCalledTimes(3);
     expect(deleteMany).not.toHaveBeenCalled();
     expect(info).not.toHaveBeenCalled();
     info.mockRestore();
@@ -2282,23 +2506,39 @@ describe("deleteGift", () => {
   });
 
   /**
-   * DELETE_RACE_RESERVE_OPEN: the read saw `OPEN`, a reservation landed before
-   * the DELETE. The guarded `deleteMany` matches nothing and the re-read tells
-   * the client to reload — the reservation is never deleted silently.
+   * D-49 (CLE-124): the read saw `OPEN`, a reservation landed before the
+   * `DELETE`. The owner gets no CONFLICT: the transaction re-reads the row,
+   * releases the new holder with their own line and deletes the wish.
    */
-  it("answers CONFLICT when a reservation landed between the read and the DELETE", async () => {
+  it("releases a reservation that landed before the DELETE and still deletes the wish", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     txFindFirst
       .mockResolvedValueOnce(stored({ status: "OPEN" }))
       .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
-    deleteMany.mockResolvedValue({ count: 0 });
+    txFindUnique.mockResolvedValue(holderSnapshot());
+    deleteMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 });
+    releaseMany.mockResolvedValue({ count: 1 });
 
-    expect(await deleteGift(headers, "g1")).toMatchObject({
-      ok: false,
-      code: "CONFLICT",
-    });
-    expect(releaseMany).not.toHaveBeenCalled();
-    expect(info).not.toHaveBeenCalled();
+    expect(await deleteGift(headers, "g1")).toEqual({ ok: true, data: { id: "g1" } });
+
+    expect(releaseMany).toHaveBeenCalledTimes(1);
+    expect(deleteMany).toHaveBeenCalledTimes(2);
+    expect(notificationCreateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ kind: "GIFT_DELETED", recipientId: "u2" }),
+      }),
+    );
+    expect(auditLines(info)).toEqual([
+      {
+        event: "gift.deleted",
+        giftId: "g1",
+        actorId: "u1",
+        from: "RESERVED",
+        to: "OPEN",
+        recipientId: "u2",
+        at: expect.any(String),
+      },
+    ]);
     info.mockRestore();
   });
 
@@ -2311,20 +2551,20 @@ describe("deleteGift", () => {
 
   /**
    * R1/F1: the release is the only write of this transaction so far, so a DELETE
-   * that matched nothing must roll it back instead of committing it. The answer
+   * that never matches must roll it back instead of committing it. The answer
    * stays the CONFLICT the client already handles.
    */
-  it("rolls the release back and answers CONFLICT when the DELETE fails after it", async () => {
+  it("rolls the release back and answers CONFLICT when the DELETE keeps failing", async () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const rejections: unknown[] = [];
-    txFindFirst
-      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }))
-      .mockResolvedValueOnce(stored({ status: "RESERVED", reservedById: "u2" }));
+    txFindFirst.mockResolvedValue(stored({ status: "RESERVED", reservedById: "u2" }));
+    txFindUnique.mockResolvedValue(holderSnapshot());
     transaction.mockImplementation(
       async function rollback(callback: (tx: unknown) => Promise<unknown>) {
         try {
           return await callback({
-            gift: { findFirst: txFindFirst, findUnique: vi.fn().mockResolvedValue(null), update, updateMany: releaseMany, deleteMany },
+            gift: { findFirst: txFindFirst, findUnique: txFindUnique, update, updateMany: releaseMany, deleteMany },
+            notification: { createMany: notificationCreateMany },
           });
         } catch (error) {
           rejections.push(error);
@@ -2341,8 +2581,8 @@ describe("deleteGift", () => {
       message: "The wish changed while deleting",
     });
 
-    expect(releaseMany).toHaveBeenCalledTimes(1);
-    expect(deleteMany).toHaveBeenCalledTimes(1);
+    expect(releaseMany).toHaveBeenCalledTimes(3);
+    expect(deleteMany).toHaveBeenCalledTimes(3);
     // The transaction really rejected, so the release did not commit with the answer.
     expect(rejections).toHaveLength(1);
     expect(rejections[0]).toMatchObject({ name: "DeleteGiftRollback" });

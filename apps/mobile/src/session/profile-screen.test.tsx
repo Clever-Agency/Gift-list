@@ -11,7 +11,7 @@ import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
-import ProfileScreen from "../../app/u/[nick]";
+import ProfileScreen from "../../app/(app)/u/[nick]";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -58,8 +58,29 @@ vi.mock("expo-router", async () => {
   return {
     router: navigation,
     Stack: { Screen: () => null },
-    Link: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, null, children),
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child (the wish card is the anchor) and draws nothing of its own.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href?: unknown;
+      asChild?: boolean;
+      children?: React.ReactElement<Record<string, unknown>>;
+    }) {
+      const target =
+        typeof href === "string"
+          ? href
+          : (href as { pathname?: string } | null | undefined)?.pathname;
+      if (!asChild) return React.createElement("a", { href: target }, children);
+      return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        href: target,
+        onPress: function onPress() {
+          navigation.push(href);
+        },
+      });
+    },
     useLocalSearchParams: () => search.params,
   };
 });
@@ -152,6 +173,8 @@ function giftsAnswer(
   relationship: string | undefined = "NONE",
   inviteCooldown?: unknown,
   subscribed?: boolean,
+  details?: unknown,
+  dates?: unknown,
 ) {
   return {
     ok: true,
@@ -162,6 +185,8 @@ function giftsAnswer(
       ...(relationship === undefined ? {} : { relationship }),
       ...(inviteCooldown === undefined ? {} : { inviteCooldown }),
       ...(subscribed === undefined ? {} : { subscribed }),
+      ...(details === undefined ? {} : { details }),
+      ...(dates === undefined ? {} : { dates }),
     },
   };
 }
@@ -556,6 +581,169 @@ describe("профиль: карточка и желания", () => {
   });
 });
 
+describe("профиль: поля профиля (CLE-129/T8.4)", () => {
+  const details = {
+    birthDay: 12,
+    birthMonth: 3,
+    gender: "MALE",
+    country: "BY",
+    about: "Люблю горы.\nИ кофе.",
+  };
+
+  function detailsBlock(): HTMLElement | null {
+    return container.querySelector<HTMLElement>('[data-testid="profile-details"]');
+  }
+
+  it("друг видит день рождения, пол, страну и «Обо мне»", async () => {
+    respond(giftsAnswer([], owner, "FRIENDS", undefined, undefined, details));
+    await mount();
+
+    const block = detailsBlock();
+    expect(block).not.toBeNull();
+    expect(block?.textContent).toContain("День рождения");
+    // «12 марта»: a day and a month, never a year (AD-29).
+    expect(block?.textContent).toContain("12 марта");
+    expect(block?.textContent).not.toContain("2000");
+    expect(block?.textContent).toContain("Пол");
+    expect(block?.textContent).toContain("Мужской");
+    expect(block?.textContent).toContain("Страна");
+    expect(block?.textContent).toContain("Беларусь");
+    expect(block?.textContent).toContain("Обо мне");
+    // The line break of plain «Обо мне» stays as written.
+    expect(block?.querySelector('[data-testid="profile-about"]')?.textContent).toContain(
+      "Люблю горы.\nИ кофе.",
+    );
+    // The avatar circle holds the initials; the name is written next to it.
+    const avatar = container.querySelector('[data-testid="profile-avatar"]');
+    expect(avatar?.textContent).toBe("Б");
+    expect(avatar?.getAttribute("aria-hidden")).toBe("true");
+    // Not the own profile: there is no «Изменить» link.
+    expect(container.querySelector('[data-testid="profile-edit"]')).toBeNull();
+  });
+
+  it("не-друг не видит блока деталей", async () => {
+    respond(giftsAnswer([], owner, "NONE"));
+    await mount();
+
+    expect(detailsBlock()).toBeNull();
+    expect(text()).not.toContain("12 марта");
+    expect(text()).not.toContain("Обо мне");
+  });
+
+  it("свой профиль показывает те же детали и ведёт в /profile по «Изменить»", async () => {
+    search.params = { nick: "anya" };
+    respond(
+      giftsAnswer(
+        [],
+        { displayName: "Аня", nick: "anya" },
+        "NONE",
+        undefined,
+        undefined,
+        { ...details, profileVisibleToFriends: true },
+      ),
+    );
+    await mount();
+
+    const block = detailsBlock();
+    expect(block?.textContent).toContain("12 марта");
+    expect(block?.textContent).toContain("Мужской");
+
+    const edit = container.querySelector<HTMLElement>('[data-testid="profile-edit"]');
+    expect(edit, "ссылка «Изменить»").not.toBeNull();
+    expect(edit?.textContent).toBe("Изменить");
+    expect(edit?.getAttribute("aria-label")).toBe("Изменить профиль");
+
+    await act(async () => {
+      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+
+    expect(navigation.push).toHaveBeenCalledWith("/profile");
+  });
+
+  it("пустые поля блока не рендерятся", async () => {
+    respond(
+      giftsAnswer([], owner, "FRIENDS", undefined, undefined, {
+        birthDay: null,
+        birthMonth: null,
+        gender: null,
+        country: null,
+        about: null,
+      }),
+    );
+    await mount();
+
+    expect(detailsBlock()).toBeNull();
+    expect(text()).not.toContain("День рождения");
+    expect(text()).not.toContain("Обо мне");
+  });
+
+  it("из блока показываются только заполненные поля", async () => {
+    respond(
+      giftsAnswer([], owner, "FRIENDS", undefined, undefined, {
+        ...details,
+        gender: null,
+        country: null,
+        about: null,
+      }),
+    );
+    await mount();
+
+    const block = detailsBlock();
+    expect(block?.textContent).toContain("12 марта");
+    expect(block?.querySelector('[data-testid="profile-gender"]')).toBeNull();
+    expect(block?.querySelector('[data-testid="profile-country"]')).toBeNull();
+    expect(block?.querySelector('[data-testid="profile-about"]')).toBeNull();
+  });
+});
+
+describe("профиль: личные даты (Story 7.5)", () => {
+  function datesBlock(): HTMLElement | null {
+    return container.querySelector<HTMLElement>('[data-testid="profile-dates-block"]');
+  }
+
+  it("друг видит даты, которые отдал сервер: дата без года и с годом", async () => {
+    respond(
+      giftsAnswer(
+        [],
+        owner,
+        "FRIENDS",
+        undefined,
+        undefined,
+        undefined,
+        [
+          { id: "d1", kind: "CUSTOM", title: "Годовщина свадьбы", day: 14, month: 3, year: null },
+          { id: "d2", kind: "CUSTOM", title: "День рождения мамы", day: 2, month: 9, year: 1958 },
+        ],
+      ),
+    );
+    await mount();
+
+    const block = datesBlock();
+    expect(block).not.toBeNull();
+    expect(block?.textContent).toContain("Даты");
+    expect(block?.textContent).toContain("Годовщина свадьбы");
+    expect(block?.textContent).toContain("14.03");
+    expect(block?.textContent).not.toContain("14.03.2000");
+    expect(block?.textContent).toContain("02.09.1958");
+  });
+
+  it("пустой список дат блок не рисует", async () => {
+    respond(giftsAnswer([], owner, "FRIENDS", undefined, undefined, undefined, []));
+    await mount();
+
+    expect(datesBlock()).toBeNull();
+    expect(text()).not.toContain("Годовщина");
+  });
+
+  it("без поля dates в ответе блока тоже нет", async () => {
+    respond(giftsAnswer([], owner, "NONE"));
+    await mount();
+
+    expect(datesBlock()).toBeNull();
+  });
+});
+
 describe("профиль: принятие и отказ (Story 4.2.3)", () => {
   it("входящий pending: рядом «Принять приглашение», «Отклонить», «Подписаться» и блок", async () => {
     respond(giftsAnswer([], owner, "INCOMING_PENDING"));
@@ -634,11 +822,15 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
               ],
               owner,
               "FRIENDS",
+              undefined,
+              undefined,
+              { birthDay: null, birthMonth: null, gender: null, country: null, about: "Люблю горы" },
             )
           : giftsAnswer([], owner, "INCOMING_PENDING"),
       );
     });
     await mount();
+    expect(text()).not.toContain("Люблю горы");
 
     await press("Принять приглашение");
 
@@ -647,6 +839,7 @@ describe("профиль: принятие и отказ (Story 4.2.3)", () => {
     expect(text()).toContain("Друзья");
     expect(text()).toContain("Наушники");
     expect(text()).toContain("Свитер");
+    expect(text()).toContain("Люблю горы");
     expect(text()).not.toContain("Зовёт в друзья");
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(button("Отклонить")).toBeUndefined();
@@ -1059,11 +1252,15 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
         return removal;
       }
       return Promise.resolve(
-        friendAnswer(
+        giftsAnswer(
           removed
             ? [gift()]
             : [gift(), gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" })],
+          owner,
           removed ? "NONE" : "FRIENDS",
+          undefined,
+          undefined,
+          removed ? undefined : { birthDay: null, birthMonth: null, gender: null, country: null, about: "Люблю горы" },
         ),
       );
     });
@@ -1071,6 +1268,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
 
     expect(text()).toContain("Друзья");
     expect(text()).toContain("Свитер");
+    expect(text()).toContain("Люблю горы");
 
     await openRemoveConfirm();
     await pressInDialog("Удалить");
@@ -1078,6 +1276,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
     expect(friendRemoveCalls()).toBe(1);
     expect(text()).toContain("Наушники");
     expect(text()).not.toContain("Свитер");
+    expect(text()).not.toContain("Люблю горы");
     expect(text()).not.toContain("Друзья");
     expect(button("Добавить в друзья")).toBeDefined();
     expect(button("Удалить из друзей")).toBeUndefined();
@@ -1120,7 +1319,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
     expect(text()).not.toContain("Нет доступа");
   });
 
-  it("сеть: chip и желания откатываются, профиль не перечитывается, toast «Нет сети»", async () => {
+  it("при ошибке сети восстанавливаются дружба, желания и «Обо мне» без перечитывания профиля", async function () {
     let resolveRemove: (value: unknown) => void = () => {};
     const removal = new Promise((resolve) => {
       resolveRemove = resolve;
@@ -1129,18 +1328,24 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/friend") return removal;
       return Promise.resolve(
-        friendAnswer(
+        giftsAnswer(
           [gift(), gift({ id: "g2", title: "Свитер", visibility: "FRIENDS" })],
+          owner,
           "FRIENDS",
+          undefined,
+          undefined,
+          { birthDay: null, birthMonth: null, gender: null, country: null, about: "Люблю горы" },
         ),
       );
     });
     await mount();
 
+    expect(text()).toContain("Люблю горы");
     await openRemoveConfirm();
     await pressInDialog("Удалить");
 
     expect(text()).not.toContain("Свитер");
+    expect(text()).not.toContain("Люблю горы");
 
     await act(async () => resolveRemove({ ok: false, network: true }));
     await settle(10);
@@ -1148,6 +1353,7 @@ describe("профиль: удаление из друзей (Story 4.4)", () =>
     expect(text()).toContain("Нет сети. Попробуйте ещё раз.");
     expect(text()).toContain("Друзья");
     expect(text()).toContain("Свитер");
+    expect(text()).toContain("Люблю горы");
     expect(button("Удалить из друзей")).toBeDefined();
     expect(button("Добавить в друзья")).toBeUndefined();
     expect(profileReads()).toBe(1);
@@ -1226,8 +1432,9 @@ describe("профиль: блокировка (Story 4.5)", () => {
 
     const dialog = dialogElement();
     expect(dialog?.textContent).toContain(
-      "Вы перестанете видеть друг друга, дружба и подписки удалятся. Его бронь ваших желаний останется.",
+      "Вы перестанете видеть друг друга, дружба и подписки удалятся.",
     );
+    expect(dialog?.textContent).not.toContain("бронь");
     expect(dialog?.querySelectorAll("button")).toHaveLength(2);
 
     await pressInDialog("Отмена");
@@ -1464,13 +1671,14 @@ describe("профиль: устаревший cooldown сервера (Story 4.
 describe("профиль: подписка (Story 4.6)", () => {
   it("нет подписки: «Подписаться» шлёт POST, сразу меняет на «Отписаться» и говорит тост", async () => {
     let resolveSubscribe: (value: unknown) => void = () => {};
+    let subscribed = false;
     const subscribe = new Promise((resolve) => {
       resolveSubscribe = resolve;
     });
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/subscription") return subscribe;
-      return Promise.resolve(giftsAnswer([]));
+      return Promise.resolve(giftsAnswer(subscribed ? [gift()] : [], owner, "NONE", undefined, subscribed));
     });
     await mount();
 
@@ -1482,47 +1690,55 @@ describe("профиль: подписка (Story 4.6)", () => {
     expect(subscriptionCalls("POST")).toBe(1);
     expect(button("Отписаться")).toBeDefined();
     expect(button("Подписаться")).toBeUndefined();
-    // A subscription opens PUBLIC only, so the wishlist is not refetched.
     expect(profileReads()).toBe(1);
+    expect(text()).not.toContain("Наушники");
 
+    subscribed = true;
     await act(async () => resolveSubscribe(subscriptionAnswer("SUBSCRIBED")));
     await settle(10);
 
     expect(text()).toContain("Вы подписались");
+    expect(text()).toContain("Наушники");
     expect(button("Отписаться")).toBeDefined();
-    expect(profileReads()).toBe(1);
+    expect(profileReads()).toBe(2);
   });
 
   it("уже подписан: «Отписаться» шлёт DELETE и возвращает «Подписаться»", async () => {
+    let subscribed = true;
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/subscription") {
+        subscribed = false;
         return Promise.resolve(subscriptionAnswer("UNSUBSCRIBED"));
       }
-      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, true));
+      return Promise.resolve(giftsAnswer(subscribed ? [gift()] : [], owner, "NONE", undefined, subscribed));
     });
     await mount();
 
     expect(button("Отписаться")).toBeDefined();
     expect(button("Подписаться")).toBeUndefined();
+    expect(text()).toContain("Наушники");
 
     await press("Отписаться");
 
     expect(subscriptionCalls("DELETE")).toBe(1);
     expect(subscriptionCalls("POST")).toBe(0);
     expect(text()).toContain("Вы отписались");
+    expect(text()).not.toContain("Наушники");
     expect(button("Подписаться")).toBeDefined();
     expect(button("Отписаться")).toBeUndefined();
-    expect(profileReads()).toBe(1);
+    expect(profileReads()).toBe(2);
   });
 
   it("повторная подписка — успешный no-op, без ошибки и с тем же тостом", async () => {
+    let subscribed = false;
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/subscription") {
+        subscribed = true;
         return Promise.resolve(subscriptionAnswer("ALREADY_SUBSCRIBED"));
       }
-      return Promise.resolve(giftsAnswer([]));
+      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, subscribed));
     });
     await mount();
 
@@ -1535,12 +1751,14 @@ describe("профиль: подписка (Story 4.6)", () => {
   });
 
   it("повторная отписка — успешный no-op, без ошибки", async () => {
+    let subscribed = true;
     api.apiRequest.mockImplementation((path: string) => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/subscription") {
+        subscribed = false;
         return Promise.resolve(subscriptionAnswer("NOT_SUBSCRIBED"));
       }
-      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, true));
+      return Promise.resolve(giftsAnswer([], owner, "NONE", undefined, subscribed));
     });
     await mount();
 
@@ -1610,6 +1828,8 @@ describe("профиль: подписка (Story 4.6)", () => {
 
   it("подписка и дружба не отменяют друг друга: ответ приглашения не теряется", async () => {
     let resolveInvite: (value: unknown) => void = () => {};
+    let inviteSent = false;
+    let subscribed = false;
     const invite = new Promise((resolve) => {
       resolveInvite = resolve;
     });
@@ -1617,9 +1837,12 @@ describe("профиль: подписка (Story 4.6)", () => {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
       if (path === "/api/v1/u/boris/invite") return invite;
       if (path === "/api/v1/u/boris/subscription") {
+        subscribed = true;
         return Promise.resolve(subscriptionAnswer("SUBSCRIBED"));
       }
-      return Promise.resolve(giftsAnswer([]));
+      return Promise.resolve(
+        giftsAnswer(subscribed ? [gift()] : [], owner, inviteSent ? "OUTGOING_PENDING" : "NONE", undefined, subscribed),
+      );
     });
     await mount();
 
@@ -1628,13 +1851,45 @@ describe("профиль: подписка (Story 4.6)", () => {
 
     await press("Подписаться");
     expect(text()).toContain("Вы подписались");
+    expect(text()).toContain("Ожидает ответа");
+    expect(profileReads()).toBe(1);
 
+    inviteSent = true;
     await act(async () => resolveInvite(inviteAnswer("INVITED")));
     await settle(10);
 
     expect(text()).toContain("Приглашение отправлено");
     expect(text()).toContain("Ожидает ответа");
+    expect(text()).toContain("Наушники");
     expect(button("Отписаться")).toBeDefined();
+    expect(profileReads()).toBe(2);
+  });
+
+  it("ответ профиля до NOT_FOUND от заявки не возвращает устаревшие желания", async () => {
+    let resolveRead: (value: unknown) => void = () => {};
+    const refresh = new Promise((resolve) => {
+      resolveRead = resolve;
+    });
+    let subscribed = false;
+    api.apiRequest.mockImplementation((path: string) => {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/u/boris/invite") return Promise.resolve(notFoundAnswer());
+      if (path === "/api/v1/u/boris/subscription") {
+        subscribed = true;
+        return Promise.resolve(subscriptionAnswer("SUBSCRIBED"));
+      }
+      return subscribed ? refresh : Promise.resolve(giftsAnswer([]));
+    });
+    await mount();
+    await press("Подписаться");
+    expect(profileReads()).toBe(2);
+
+    await press("Добавить в друзья");
+    await act(async () => resolveRead(giftsAnswer([gift()], owner, "NONE", undefined, true)));
+    await settle(10);
+
+    expect(text()).toContain("Пользователь не найден.");
+    expect(text()).not.toContain("Наушники");
   });
 });
 
@@ -1827,7 +2082,7 @@ describe("W12.20: экран профиля на медиа-пропсах", () 
 
   it("экран не импортирует pageGutter: отступ приходит из CSS", () => {
     const source = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../app/u/[nick].tsx"),
+      join(dirname(fileURLToPath(import.meta.url)), "../../app/(app)/u/[nick].tsx"),
       "utf8",
     );
 
@@ -1861,6 +2116,31 @@ describe("W12.20: экран профиля на медиа-пропсах", () 
     expect(paintedSpace(body as Element, "padding-top", 360)).toBe(spacing["grid-gap"] / 2);
     expect(paintedSpace(body as Element, "padding-bottom", 360)).toBe(spacing["section-gap"]);
     expect(paintedSpace(body as Element, "gap", 360)).toBe(spacing["grid-gap"]);
+  });
+
+  /**
+   * CLE-129, T4.4 (D-63): a wish card of somebody else's profile is a real link
+   * to the wish page; the profile has no list token, and no dialog opens.
+   */
+  it("карточка желания ведёт на страницу /gifts/{id} без токена списка", async () => {
+    await mountAt(1024);
+
+    const card = container.querySelector<HTMLElement>(
+      '[role="list"] [role="listitem"] [role="link"]',
+    );
+    expect(card, "ссылка карточки").not.toBeNull();
+    expect(card?.getAttribute("aria-label")).toContain("Наушники");
+
+    await act(async () => {
+      card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]",
+      params: { id: "g1", title: "Наушники" },
+    });
+    expect(dialogElement()).toBeNull();
   });
 
   /**

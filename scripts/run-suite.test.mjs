@@ -7,6 +7,7 @@ import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { planAffectedTests } from "./run-suite.mjs";
 
+const sprintStatusFile = "_bmad-output/implementation-artifacts/sprint-status.yaml";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const suite = path.join(root, "scripts/run-suite.mjs");
 const dirs = [];
@@ -52,6 +53,7 @@ describe("выбор затронутых тестов", function affectedTests(
       { status: "M", file: "apps/web/src/lib/auth.ts" },
       { status: "A", file: "apps/mobile/app/(app)/gifts/[id]/index.tsx" },
       { status: "M", file: "docs/deployment-environments.md" },
+      { status: "M", file: sprintStatusFile },
     ]), {
       filesByApp: { web: ["src/lib/auth.ts"], mobile: ["app/(app)/gifts/[id]/index.tsx"] },
     });
@@ -63,6 +65,9 @@ describe("выбор затронутых тестов", function affectedTests(
       ["M", "_bmad-output/planning-artifacts/ux-designs/ux-gift-list-2026-09-30/DESIGN.md"],
       ["M", "apps/mobile/src/test/setup.tsx"],
       ["D", "apps/web/src/lib/auth.ts"],
+      ["M", ".github/workflows/ci.yml"],
+      ["M", "_bmad-output/implementation-artifacts/other-status.yaml"],
+      ["D", sprintStatusFile],
     ]) {
       assert.deepEqual(planAffectedTests([{ status, file }]), { fullReason: `${status} ${file}` });
     }
@@ -72,5 +77,20 @@ describe("выбор затронутых тестов", function affectedTests(
     assert.deepEqual(planAffectedTests([{ status: "M", file: "docs/deployment-environments.md" }]), {
       filesByApp: { web: [], mobile: [] },
     });
+  });
+
+  it("при обновлении только статусов спринта оставляет проверки скриптов", function skipsSprintStatus() {
+    assert.deepEqual(planAffectedTests([{ status: "M", file: sprintStatusFile }]), {
+      filesByApp: { web: [], mobile: [] },
+    });
+  });
+
+  it("сохраняет полный прогон для общего пакета в смешанном PR", function keepsFullSuiteForMixedChanges() {
+    const sharedFile = "packages/contracts/src/index.ts";
+    assert.deepEqual(planAffectedTests([
+      { status: "M", file: sprintStatusFile },
+      { status: "M", file: "apps/web/src/lib/auth.ts" },
+      { status: "M", file: sharedFile },
+    ]), { fullReason: `M ${sharedFile}` });
   });
 });

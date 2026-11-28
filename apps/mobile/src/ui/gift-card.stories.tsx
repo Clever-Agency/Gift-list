@@ -5,12 +5,16 @@ import { Pressable, Text, XStack } from "@gift-list/ui";
 import { WishCard } from "./gift-card";
 
 /**
- * The owner's gift card (AD-12, `DESIGN.md` → WishCard): title, price, status pill,
- * up to three tags with «+N», the reservation line and the interactive visibility
- * chip. Only an `onPress` makes the card a button; the chip is pressable on an
- * `OPEN` or `RESERVED` wish and read-only on a closed or archived one. The stories
- * use a fixture card: the server owns which fields a viewer may see
- * (`VisibilityPolicy`, AD-7), and the card just draws them.
+ * The owner's gift card (AD-12, `DESIGN.md` → WishCard): title, price, status pill and
+ * up to three tags with «+N». Only an `onPress` or `href` makes the card a target:
+ * the app hands it the wish page `/gifts/{id}`, a real `<a href>` on the web
+ * (CLE-129, T4.4). The stories use a fixture card: the server owns which fields a
+ * viewer may see (`VisibilityPolicy`, AD-7).
+ *
+ * D-54: the card has no visibility chip: visibility changes only in the wish form.
+ *
+ * D-49 (CLE-124): the owner never sees a reservation, so the card has no
+ * «Забронирован» pill, holder line or phase strip to show.
  */
 const meta = {
   title: "App/WishCard",
@@ -60,9 +64,9 @@ function CardList({ children }: { children: ReactNode }) {
 
 CardList.displayName = "CardList";
 
-/** An open wish of the owner: the card is a button, the chip opens the picker. */
+/** An open wish of the owner: the whole card opens the details. */
 export const OwnerOpen: Story = {
-  args: { onPress: noop, onVisibilityPress: noop },
+  args: { onPress: noop },
   render: function OwnerOpenStory(args) {
     return (
       <CardList>
@@ -72,88 +76,11 @@ export const OwnerOpen: Story = {
   },
 };
 
-/**
- * A reserved wish of the owner: the card is a button, the chip opens the picker
- * (CLE-82/S23.3), and the reservation line names the holder.
- */
-export const ReservedWithHolder: Story = {
-  tags: ["!dev"],
-  args: {
-    gift: giftCard({
-      status: "RESERVED",
-      visibility: "FRIENDS",
-      reservedBy: { id: "user-2", nick: "masha", displayName: "Маша" },
-    }),
-    onPress: noop,
-    onVisibilityPress: noop,
-  },
-  render: function ReservedWithHolderStory(args) {
-    return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
-    );
-  },
-};
-
-/** The holder marked it given: the phase label replaces the holder's name. */
-export const AwaitingConfirmation: Story = {
-  tags: ["!dev"],
-  args: { gift: giftCard({ status: "RESERVED", ownerAction: "CONFIRM_GIVEN" }) },
-  render: function AwaitingConfirmationStory(args) {
-    return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
-    );
-  },
-};
-
-/**
- * The reservation ran out (Story 5.6): the strip under the card replaces the
- * reservation line, and the answers are buttons of their own.
- */
-export const ExpiredReservation: Story = {
-  tags: ["!dev"],
-  args: {
-    gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }),
-    onOwnerReceived: noop,
-    onOwnerKeep: noop,
-  },
-  render: function ExpiredReservationStory(args) {
-    return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
-    );
-  },
-};
-
-/** The keep request is in flight: both answers of the strip are busy. */
-export const ExpiredReservationBusy: Story = {
-  tags: ["!dev"],
-  args: {
-    gift: giftCard({ status: "RESERVED", ownerAction: "EXPIRED_NO_REPLY" }),
-    onOwnerReceived: noop,
-    onOwnerKeep: noop,
-    ownerBusy: true,
-  },
-  render: function ExpiredReservationBusyStory(args) {
-    return (
-      <CardList>
-        <WishCard {...args} />
-      </CardList>
-    );
-  },
-  globals: { viewport: { value: "w360" } },
-};
-
-/** A received wish: the card is muted, and the chip stays read-only even with a handler. */
+/** A received wish: the card is muted and read-only. */
 export const Received: Story = {
   tags: ["!dev"],
   args: {
     gift: giftCard({ status: "CLOSED", visibility: "PUBLIC" }),
-    onVisibilityPress: noop,
   },
   render: function ReceivedStory(args) {
     return (
@@ -165,14 +92,13 @@ export const Received: Story = {
 };
 
 /**
- * An archived wish (`archivedAt` set): read-only as a whole (CLE-82/S23.3), so the chip
- * only shows the stored visibility, exactly like a received one.
+ * An archived wish (`archivedAt` set): read-only as a whole (CLE-82/S23.3), with no
+ * visibility chip, exactly like a received one.
  */
 export const Archived: Story = {
   tags: ["!dev"],
   args: {
     gift: giftCard({ archivedAt: "2026-10-01T00:00:00.000Z", visibility: "SECRET" }),
-    onVisibilityPress: noop,
   },
   render: function ArchivedStory(args) {
     return (
@@ -232,7 +158,6 @@ export const LongCopyNarrow: Story = {
       ],
     }),
     onPress: noop,
-    onVisibilityPress: noop,
   },
   render: function LongCopyNarrowStory(args) {
     return (
@@ -249,7 +174,7 @@ function menuTrigger(): ReactNode {
   return (
     <Pressable
       role="button"
-      aria-label="Меню"
+      aria-label="Меню: Плед из шерсти мериноса"
       onPress={noop}
       width="$touch-target"
       height="$touch-target"
@@ -263,7 +188,7 @@ function menuTrigger(): ReactNode {
 
 /** An open wish with the owner's ⋯ (Story 5.3): «Отметить полученным» lives there. */
 export const OwnerOpenWithMenu: Story = {
-  args: { onPress: noop, onVisibilityPress: noop, menu: menuTrigger() },
+  args: { onPress: noop, menu: menuTrigger() },
   render: function OwnerOpenWithMenuStory(args) {
     return (
       <CardList>

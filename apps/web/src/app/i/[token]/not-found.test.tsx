@@ -1,6 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTHOR_MAILTO, getMessages } from "@gift-list/contracts";
+import { AUTHOR_MAILTO } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 
 const { headers, buildInviteMetadata, getBrandName } = vi.hoisted(() => ({
@@ -37,14 +38,14 @@ beforeEach(() => {
 
 describe("app/i/[token]/not-found.tsx", () => {
   it("renders the catalog sentence and the full public footer for every hidden cause", async () => {
-    const messages = getMessages("ru");
+    const messages = getWebMessages("ru");
     const html = await render();
 
     expect(messages.web.invite.notFound).toBe("Приглашение не найдено.");
     expect(html.match(/aria-level="1"/g)?.length).toBe(1);
     expect(html).toContain("Приглашение не найдено.");
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
-    expect(html).toContain("Написать автору");
+    expect(html).toContain("Написать в техподдержку");
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
     // No inviter, action or wishlist copy reaches the 404.

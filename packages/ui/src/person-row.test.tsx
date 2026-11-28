@@ -2,7 +2,7 @@
 import { act, createRef, type ComponentRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { PersonRow } from "./person-row";
-import { createMount, declarationsFor } from "./test-utils";
+import { createMount, declarationsFor, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -110,5 +110,23 @@ describe("PersonRow", () => {
 
     expect(container.querySelectorAll("a")).toHaveLength(1);
     expect(container.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  /**
+   * CLE-129: the row is the «Открыть профиль @ник» link, so it answers the pointer
+   * with the `$muted` fill — the page `$background` was invisible on the page — and
+   * the fill changes with the `quick` preset. The plain row is not a control.
+   */
+  it("ссылка-строка: hover muted и плавный переход, у простой строки hover нет", async () => {
+    const { container, render } = mounted();
+    await render(<PersonRow displayName="Алёна" nick="alena" href="/u/alena" pressLabel="Профиль" />);
+
+    const link = container.querySelector("a") as HTMLElement;
+    expect(stateValues(link, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(link.style.transition).toContain("160ms");
+
+    await render(<PersonRow displayName="Алёна" nick="alena" />);
+    const plain = container.querySelector<HTMLElement>("[name='GLPersonRow']") as HTMLElement;
+    expect(stateValues(plain, "hover", "background-color")).toEqual([]);
   });
 });

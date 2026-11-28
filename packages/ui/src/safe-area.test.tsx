@@ -51,11 +51,17 @@ describe("SafeArea", () => {
     expect(declarationsFor(frame, "padding-bottom")).toHaveLength(0);
   });
 
-  it("bottom={false} на телефоне снимает только нижнюю грань", () => {
+  it("на телефоне нижнюю грань держит либо кадр, либо панель вкладок — не обе", () => {
     expect(safeAreaNativeSource).toContain(
       'const edgesWithoutBottom: readonly Edge[] = ["top", "right", "left"];',
     );
-    expect(safeAreaNativeSource).toContain("edges={bottom ? edgesWithBottom : edgesWithoutBottom}");
+    // The shell publishes the bar through `useTabBarInset`: with a bar the frame
+    // drops the bottom edge, without one (0) it keeps the home indicator.
+    expect(safeAreaNativeSource).toContain('import { useTabBarInset } from "./shell-inset";');
+    expect(safeAreaNativeSource).toContain("const holdBottom = bottom && tabBarInset === 0;");
+    expect(safeAreaNativeSource).toContain(
+      "edges={holdBottom ? edgesWithBottom : edgesWithoutBottom}",
+    );
   });
 
   it("displayName совпадает с именем компонента", () => {

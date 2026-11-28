@@ -24,6 +24,7 @@ vi.mock("@/api/client", () => api);
 vi.mock("@/session/auth-context", () => ({
   useAuth: () => ({
     state: { status: "anonymous" as const },
+    getSessionRevision: vi.fn(() => 0),
     setUser: vi.fn(),
     signOut: vi.fn(async () => ({ ok: true as const })),
   }),

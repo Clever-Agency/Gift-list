@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { PRODUCT_NAME, formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
-import { act, type ReactNode } from "react";
+import { act, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
-import { controls, dialogElement, pressScrim, settle } from "@/test/dom";
+import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
@@ -26,6 +26,11 @@ const navigation = vi.hoisted(() => ({
  * over in `?toast=`, and `setParams` is where the list drops it again.
  */
 const search = vi.hoisted(() => ({ params: {} as Record<string, string | undefined> }));
+/**
+ * The `hint` of every `Button`: the phone reads it as `accessibilityHint`, which
+ * react-native-web correctly drops from the DOM, so the prop is captured here.
+ */
+const copyHints = vi.hoisted(() => ({ values: [] as (string | undefined)[] }));
 
 /**
  * `useFocusEffect` stand-in: expo-router runs the callback while the screen is focused
@@ -55,17 +60,26 @@ const focusStore = vi.hoisted(() => {
 });
 
 vi.mock("@/api/client", () => api);
+vi.mock("@gift-list/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gift-list/ui")>();
+  function ButtonWithHint(props: ComponentProps<typeof actual.Button>) {
+    copyHints.values.push(props.hint);
+    return <actual.Button {...props} />;
+  }
+  ButtonWithHint.displayName = "ButtonWithHint";
+  return { ...actual, Button: ButtonWithHint };
+});
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/platform/clipboard", () => clipboard);
 vi.mock("@/invite/copy-link", () => copier);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
-// The visibility chip draws its icon with `expo-symbols`, which loads a symbol font
-// at runtime; the icon is decorative, so a stub is enough on the wishlist screen.
+// The confirm dialog draws its close cross with `expo-symbols`, which loads a symbol
+// font at runtime; the icon is decorative, so a stub is enough on the wishlist screen.
 vi.mock("expo-symbols", async () => {
   const React = await import("react");
   return {
-    SymbolView: () => React.createElement("span", { "data-testid": "visibility-icon" }),
+    SymbolView: () => React.createElement("span", { "data-testid": "symbol" }),
   };
 });
 vi.mock("use-intl", async () => {
@@ -116,6 +130,28 @@ vi.mock("expo-router", async () => {
     router: navigation,
     Stack: { Screen: () => null },
     useLocalSearchParams: () => search.params,
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child and draws nothing of its own — the wish card itself is the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href: unknown;
+      asChild?: boolean;
+      children: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href: String(href) }, children);
+      return React.cloneElement(children, {
+        href:
+          typeof href === "string"
+            ? href
+            : (href as { pathname?: string } | null | undefined)?.pathname,
+        onPress: function onPress() {
+          navigation.push(href);
+        },
+      });
+    },
     useFocusEffect: (effect: () => void | (() => void)) => {
       const focused = React.useSyncExternalStore(
         focusStore.subscribe,
@@ -296,48 +332,6 @@ function listReads(): number {
   return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
 }
 
-/**
- * The visibility chip is a button on an open or a reserved wish (CLE-82/S23.3); its
- * accessible name starts with `app.gift.visibilityChipLabel` and the visible word is
- * the chip value. A closed or archived wish has no such control at all.
- */
-function chip(value: string): HTMLElement | undefined {
-  return controls(document).find(
-    (node) =>
-      (node.getAttribute("aria-label") ?? "").startsWith("Видимость:") &&
-      (node.textContent ?? "").includes(value),
-  );
-}
-
-/** The PATCH calls to the first wish, so an optimistic save is countable. */
-function patchCalls(): unknown[][] {
-  return api.apiRequest.mock.calls.filter(
-    ([path, init]) =>
-      path === "/api/v1/me/gifts/g1" &&
-      typeof init === "object" &&
-      init !== null &&
-      (init as { method?: string }).method === "PATCH",
-  );
-}
-
-/** The preflight reads of the first wish: a confirm may only follow one of these. */
-function previewCalls(): unknown[][] {
-  return api.apiRequest.mock.calls.filter(
-    ([path]) =>
-      typeof path === "string" &&
-      path.startsWith("/api/v1/me/gifts/g1/visibility?"),
-  );
-}
-
-async function chooseInDialog(label: string) {
-  const option = document.querySelector<HTMLElement>(`[role="radio"][aria-label="${label}"]`);
-  expect(option).not.toBeNull();
-  await act(async () => {
-    option?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  await settle(10);
-}
-
 async function mount(extra?: ReactNode) {
   await act(async () => {
     root.render(
@@ -395,6 +389,7 @@ beforeEach(() => {
   copier.copyMyInviteLink.mockResolvedValue("copied");
   focusStore.reset();
   search.params = {};
+  copyHints.values.length = 0;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -568,13 +563,13 @@ describe("мой вишлист: заголовок и действия в од�
 });
 
 describe("мой вишлист: список", () => {
-  it("шапка, заголовок и «Написать автору» на месте, без smoke", async () => {
+  it("шапка и заголовок на месте, без smoke; ссылки техподдержки в футере нет (D-53)", async () => {
     respond(giftsAnswer([]));
     await mount();
 
     expect(text()).toContain(PRODUCT_NAME);
     expect(text()).toContain("Мой вишлист");
-    expect(text()).toContain("Написать автору");
+    expect(text()).not.toContain("Написать в техподдержку");
     expectNoSmoke();
   });
 
@@ -602,7 +597,7 @@ describe("мой вишлист: список", () => {
     expect(region?.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(3);
   });
 
-  it("показывает все свои желания, включая «секрет», с чипом видимости и статусом", async () => {
+  it("показывает все свои желания, включая «секрет», со статусом", async () => {
     respond(
       giftsAnswer([
         gift(),
@@ -612,8 +607,8 @@ describe("мой вишлист: список", () => {
           priceAmount: 1050,
           priceCurrency: "BYN",
           visibility: "FRIENDS",
+          // D-49: a stale reserved response with the holder name still reads as open.
           status: "RESERVED",
-          // ACTIVE phase (no ownerAction) with the holder name shared (FR-31).
           reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
         }),
         gift({
@@ -635,13 +630,10 @@ describe("мой вишлист: список", () => {
     expect(text()).toContain("Свитер");
     expect(text()).toContain(formatPrice(1050, "BYN", "ru"));
     expect(text()).toContain("Книга");
-    expect(text()).toContain("Всем");
-    expect(text()).toContain("Друзьям");
-    expect(text()).toContain("Секрет");
     expect(text()).toContain("Открыт");
-    expect(text()).toContain("Забронирован");
     expect(text()).toContain("Получен");
-    expect(text()).toContain("Берёт Олег");
+    expect(text()).not.toContain("Забронирован");
+    expect(text()).not.toContain("Берёт Олег");
     expect(text()).not.toContain("Пока пусто");
     expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
   });
@@ -665,108 +657,53 @@ describe("мой вишлист: список", () => {
   });
 
   /**
-   * CLE-84: the owner card opens details. «Изменить желание» inside the dialog
-   * is the way into the edit form (Story 2.2). The pressable lives
-   * inside the listitem, so the list semantics above stay exactly as they were.
-   * CLE-65: the press zone is the whole card, and the chip is a sibling layer over
-   * the reserved footer, not a nested button.
+   * CLE-129, T4.4 (D-63): the owner card is a real link to the wish page
+   * `/gifts/{id}`, and the detail dialog is gone. The link lives inside the
+   * listitem, so the list semantics above stay exactly as they were.
+   * D-54: the card has no visibility chip next to it.
    */
-  it("нажатие на карточку открывает подробности, listitem остаётся", async () => {
+  it("карточка — ссылка на страницу желания, listitem остаётся, диалога нет", async () => {
     respond(giftsAnswer([gift(), gift({ id: "g2", title: "Свитер" })]));
     await mount();
 
     const items = container.querySelectorAll('[role="list"] [role="listitem"]');
     expect(items).toHaveLength(2);
 
-    // The label is the `DESIGN.md` content phrase; the mock renders Pressable as a button.
-    const card = items[0]?.querySelector('[role="button"]') as HTMLElement | null;
+    // The label is the `DESIGN.md` content phrase; the card itself is the link.
+    const card = items[0]?.querySelector('[role="link"]') as HTMLElement | null;
     expect(card?.getAttribute("aria-label")).toContain("Наушники");
     expect(card?.getAttribute("aria-label")).not.toContain("Изменить");
-    // The chip sits next to the card button, never inside it; its layer is
-    // transparent to presses outside the chip.
-    expect(chip("Всем")).toBeDefined();
-    expect(card?.contains(chip("Всем") ?? null)).toBe(false);
-    // `box-none`: the layer itself lets presses through to the card button underneath.
-    const chipLayer = chip("Всем")?.parentElement as HTMLElement;
-    expect(getComputedStyle(chipLayer).pointerEvents).toBe("none");
+    // The link and its ⋯ menu: two controls, and no visibility chip next to them.
+    expect(items[0]?.querySelectorAll('[role="link"]')).toHaveLength(1);
+    expect(items[0]?.querySelectorAll('[role="button"]')).toHaveLength(1);
+    expect(items[0]?.querySelector("[aria-label^='Видимость:']")).toBeNull();
+    // Story 6.4: the ⋯ is named after its wish, and the closed menu says so.
+    const menu = items[0]?.querySelector('[role="button"]') as HTMLElement | null;
+    expect(menu?.getAttribute("aria-label")).toBe("Меню: Наушники");
+    expect(menu?.getAttribute("aria-expanded")).toBe("false");
+
     await act(async () => {
       card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-
     await settle();
-    const dialog = dialogElement();
-    expect(dialog).not.toBeNull();
-    expect(dialog?.textContent).toContain("Наушники");
-    expect(dialog?.textContent).toContain("Изменить желание");
-    expect(navigation.push).not.toHaveBeenCalled();
-    const edit = controls(document).find((node) => (node.textContent ?? "").includes("Изменить желание"));
-    await act(async () => {
-      edit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+
     expect(navigation.push).toHaveBeenCalledWith({
-      pathname: "/gifts/[id]/edit",
+      pathname: "/gifts/[id]",
       params: { id: "g1" },
     });
-  });
-
-  it("подробности берут описание из чтения одного желания и возвращают фокус на карточку", async () => {
-    const card = gift();
-    respond(giftsAnswer([card]));
-    api.apiRequest.mockImplementation((path: string) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path === "/api/v1/me/gifts/g1") {
-        return Promise.resolve({
-          ok: true,
-          data: { ...card, description: "Синие, с шумоподавлением." },
-        });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-    await mount();
-
-    const cardButton = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-
-    expect(dialogElement()?.textContent).toContain("Синие, с шумоподавлением.");
-    expect(api.apiRequest).toHaveBeenCalledWith("/api/v1/me/gifts/g1");
-
-    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
-    await act(async () => {
-      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle(300);
     expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(cardButton);
+    expect(text()).not.toContain("Изменить желание");
   });
 
-  /**
-   * CLE-65 reproduction: a click on the empty footer space next to the «Всем» chip
-   * did nothing. That space is the card's reserved footer spacer — the last box of
-   * the card button — so the press now opens the detail dialog, not the editor.
-   */
-  it("нажатие на пустое место рядом с чипом открывает подробности", async () => {
+  it("«Изменить» живёт на странице желания, а не в списке", async () => {
     respond(giftsAnswer([gift()]));
     await mount();
 
-    const card = container.querySelector(
-      '[role="listitem"] > [role="button"]',
-    ) as HTMLElement | null;
-    expect(card?.getAttribute("aria-label")).toContain("Наушники");
-    const spacer = card?.lastElementChild as HTMLElement | null;
-    expect(spacer).not.toBeNull();
-    expect(spacer?.getAttribute("aria-label")).toBeNull();
-    await act(async () => {
-      spacer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(button("Изменить")).toBeUndefined();
+    expect(navigation.push).not.toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
     });
-
-    await settle();
-    expect(dialogElement()?.textContent).toContain("Наушники");
-    expect(navigation.push).not.toHaveBeenCalled();
   });
 
   it("пустой вишлист: «Пока пусто» и «Добавить желание» ведёт в форму", async () => {
@@ -775,10 +712,14 @@ describe("мой вишлист: список", () => {
 
     expect(text()).toContain("Пока пусто");
     expect(text()).toContain("Добавьте первое желание — название и, по желанию, цену-ориентир.");
-    // Review N4: подборки вне объёма, поэтому в пустом состоянии нет ghost-кнопки —
-    // одна основная CTA (`DESIGN.md` → EmptyState: не больше одной кнопки).
-    expect(button("Посмотреть подборки")).toBeUndefined();
-    expect(text()).not.toContain("Посмотреть подборки");
+    // Story 10.1: the empty wishlist offers the ghost «Посмотреть подборки» next to
+    // the one primary CTA (`EXPERIENCE.md` → «Мой вишлист / Пока пусто»); the
+    // earlier Review N4 note said the area was out of scope.
+    expect(button("Посмотреть подборки")).toBeDefined();
+    await press("Посмотреть подборки");
+    expect(navigation.push).toHaveBeenCalledWith("/collections");
+
+    navigation.push.mockClear();
     await press("Добавить желание");
     expect(navigation.push).toHaveBeenCalledWith("/gifts/new");
   });
@@ -912,8 +853,9 @@ describe("мой вишлист: список", () => {
   /**
    * Story 3.5 creates «Поиск» before Story 6.2 gives it a place in the navigation
    * (вкладка «Поиск»), so the wishlist footer carries a temporary entry point.
+   * D-53: the support link left the footers of signed-in screens for `/profile`.
    */
-  it("в подвале «Моего вишлиста» нет временных разделов и «Выйти», «Написать автору» остаётся", async () => {
+  it("в подвале «Моего вишлиста» нет временных разделов и «Выйти», ссылки техподдержки тоже нет", async () => {
     respond(giftsAnswer([]));
     await mount();
 
@@ -924,7 +866,7 @@ describe("мой вишлист: список", () => {
       expect(footer?.querySelector(`[data-testid="${gone}"]`)).toBeNull();
     }
     expect(footer?.textContent).not.toContain("Выйти");
-    expect(footer?.textContent).toContain("Написать автору");
+    expect(footer?.textContent).not.toContain("Написать в техподдержку");
 
     // Nothing of the footer navigates: the tabs and «Профиль» own the routes now.
     expect(navigation.push).not.toHaveBeenCalled();
@@ -966,6 +908,11 @@ describe("мой вишлист: копирование ссылки", () => {
     expect(copy?.tabIndex).toBe(0);
     copy?.focus();
     expect(document.activeElement).toBe(copy);
+    // The phone has no `aria-describedby`: the same reason goes to `hint` and
+    // reaches the phone as `accessibilityHint` (react-native-web drops it from DOM).
+    expect(copyHints.values).toContain(
+      "Нет желаний, открытых для всех: приватные и архивные не показываются.",
+    );
     expect(container.querySelector("#wishlist-copy-link-reason")?.textContent).toContain(
       "Нет желаний, открытых для всех: приватные и архивные не показываются.",
     );
@@ -1477,31 +1424,28 @@ describe("мой вишлист: весточка об удалении", () => 
 });
 
 /**
- * `EXPERIENCE.md` → State Patterns → «Подписи брони» (owner column): the holder
- * name appears only in an active reservation and only when shared; `ownerAction`
- * replaces it with the phase label. The status pill stays the fallback label.
+ * D-49 (CLE-124): the owner gets no sign of a reservation — no pill, no holder
+ * name, no phase label, and no release action, even if a stale response still
+ * carries `status: "RESERVED"`, `reservedBy` and `ownerAction`.
  */
-describe("мой вишлист: подписи брони у владельца", () => {
+describe("мой вишлист: у владельца нет признаков брони", () => {
   const holder = { id: "u2", nick: "oleg", displayName: "Олег" };
+  const forbidden = [
+    "Забронирован",
+    "Берёт",
+    "Срок брони истёк",
+    "Ждёт вашего подтверждения",
+    "Получил",
+    "Не получал, оставить бронь",
+  ];
 
-  it("ACTIVE с разрешённым именем: «Берёт {имя}»", async () => {
-    respond(giftsAnswer([gift({ status: "RESERVED", reservedBy: holder })]));
-    await mount();
+  async function expectNoReservation(textOnScreen: string) {
+    for (const label of forbidden) {
+      expect(textOnScreen, `«${label}» не должен встречаться`).not.toContain(label);
+    }
+  }
 
-    expect(text()).toContain("Берёт Олег");
-    expect(text()).not.toContain("Ждёт вашего подтверждения");
-    expect(text()).not.toContain("Срок брони истёк");
-  });
-
-  it("ACTIVE без разрешения: pill «Забронирован» и никакого имени", async () => {
-    respond(giftsAnswer([gift({ status: "RESERVED", reservedBy: null })]));
-    await mount();
-
-    expect(text()).toContain("Забронирован");
-    expect(text()).not.toContain("Берёт");
-  });
-
-  it("AWAITING_OWNER (ownerAction EXPIRED_NO_REPLY): «Срок брони истёк»", async () => {
+  it("карточка из старого ответа: «Открыт», без имени, полосы и «Снять бронь»", async () => {
     respond(
       giftsAnswer([
         gift({
@@ -1513,551 +1457,32 @@ describe("мой вишлист: подписи брони у владельца
     );
     await mount();
 
-    expect(text()).toContain("Срок брони истёк");
-    expect(text()).not.toContain("Берёт Олег");
+    expect(text()).toContain("Открыт");
+    await expectNoReservation(text());
+    expect(text()).not.toContain("Снять бронь");
+    expect(container.querySelector("[data-testid='owner-action-label']")).toBeNull();
   });
 
-  it("GIVEN (ownerAction CONFIRM_GIVEN): «Ждёт вашего подтверждения»", async () => {
+  it("карточка из старого ответа: ни факта брони, ни «Снять бронь», ссылка ведёт на страницу", async () => {
     respond(
       giftsAnswer([
         gift({
           status: "RESERVED",
           reservedBy: holder,
           ownerAction: "CONFIRM_GIVEN",
+          reservationLabel: "BOUGHT",
         }),
       ]),
     );
     await mount();
 
-    expect(text()).toContain("Ждёт вашего подтверждения");
-    expect(text()).not.toContain("Берёт Олег");
-  });
-});
-
-/**
- * `EXPERIENCE.md` → Visibility chip: on an open wish the choice is saved at once
- * (optimistic), a failure rolls the chip back, and a reserved wish keeps a plain
- * value chip. The dialog returns focus to the chip it was opened from.
- */
-describe("мой вишлист: смена видимости с чипа", () => {
-  it("выбор «Друзьям» виден сразу, затем toast и ответ сервера", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-
-    await press("Всем");
-    expect(dialogElement()).not.toBeNull();
-    expect(text()).toContain("Кто видит «Наушники»");
-    // The chip is a sibling of the card button: it must not open wish details.
-    expect(text()).not.toContain("Изменить желание");
-
-    // The PATCH hangs until the test resolves it, so the optimistic chip is visible.
-    let answer: (value: unknown) => void = function pendingAnswer() {};
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return new Promise((resolve) => {
-          answer = resolve;
-        });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-
-    expect(chip("Друзьям")).toBeDefined();
-    expect(text()).not.toContain("Кто видит «Наушники»");
-    expect(patchCalls()).toHaveLength(1);
-    expect(patchCalls()[0]?.[1]).toEqual({
-      method: "PATCH",
-      body: { visibility: "FRIENDS" },
-    });
-
-    await act(async () => {
-      answer({ ok: true, data: gift({ visibility: "FRIENDS" }) });
-    });
-
-    expect(text()).toContain("Видимость: друзьям");
-    expect(chip("Друзьям")).toBeDefined();
-  });
-
-  it("последнее PUBLIC, ставшее FRIENDS, сразу выключает копирование", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("false");
-
-    await press("Всем");
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: true, data: gift({ visibility: "FRIENDS" }) });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-
-    expect(button("Скопировать ссылку")?.getAttribute("aria-disabled")).toBe("true");
-    expect(container.querySelector("#wishlist-copy-link-reason")?.textContent).toContain(
-      "Нет желаний, открытых для всех",
-    );
-  });
-
-  it("обрыв сети: чип откатывается ко «Всем» и toast о соединении", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    expect(text()).not.toContain("Видимость: друзьям");
-  });
-
-  it("сеть: откат чипа и тост «Нет соединения»", async () => {
-    respond(giftsAnswer([gift({ visibility: "SECRET" })]));
-    await mount();
-    expect(chip("Секрет")?.getAttribute("aria-label")).toBe("Видимость: секрет. Изменить");
-    await press("Секрет");
-    expect(dialogElement()).not.toBeNull();
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") return Promise.resolve({ ok: false, network: true });
-      return Promise.resolve(giftsAnswer([gift({ visibility: "SECRET" })]));
-    });
-
-    await chooseInDialog("Всем");
-
-    expect(chip("Секрет")).toBeDefined();
-    expect(chip("Всем")).toBeUndefined();
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    // Only the optimistic value changed: a network failure does not refetch the list.
-    expect(listReads()).toBe(reads);
-
-    // The in-flight flag is cleared, so the chip opens the dialog again.
-    await press("Секрет");
-    expect(dialogElement()).not.toBeNull();
-  });
-
-  it("VALIDATION без причины: откат, общий текст проверки и тихая перезагрузка списка", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: false, code: "VALIDATION", message: "" });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(text()).toContain("Проверьте введённые данные.");
-    // The status under the optimistic chip may have changed: the list reloads silently.
-    expect(listReads()).toBe(reads + 1);
-    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
-  });
-
-  /**
-   * CLE-82/S23.3: the wish moved on while its chip was being changed — it was
-   * archived or closed on another device. A known reason has its own sentence, the
-   * chip rolls back and the list re-reads the real card.
-   */
-  it.each(["GIFT_ARCHIVED", "GIFT_CLOSED"] as const)(
-    "VALIDATION %s: архивная подсказка, откат и перезагрузка списка",
-    async (reason) => {
-      respond(giftsAnswer([gift()]));
-      await mount();
-      await press("Всем");
-      const reads = listReads();
-
-      api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-        if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-        if (init?.method === "PATCH") {
-          return Promise.resolve({ ok: false, code: "VALIDATION", message: "", reason });
-        }
-        return Promise.resolve(giftsAnswer([gift()]));
-      });
-
-      await chooseInDialog("Друзьям");
-
-      expect(chip("Всем")).toBeDefined();
-      expect(text()).toContain("Архивное желание можно только просматривать.");
-      expect(text()).not.toContain("Проверьте введённые данные.");
-      expect(listReads()).toBe(reads + 1);
-    },
-  );
-
-  /** S23.2b: the reservation raced the write, so the chip must not keep its guess. */
-  it("CONFLICT: откат, toast и перезагрузка списка", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: false, code: "CONFLICT", message: "" });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
-    expect(listReads()).toBe(reads + 1);
-  });
-
-  it("413: откат, причина «слишком большой запрос» и тихая перезагрузка", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({
-          ok: false,
-          code: "VALIDATION",
-          message: "Payload too large",
-          reason: "PAYLOAD_TOO_LARGE",
-        });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(text()).toContain("Слишком большой запрос. Сократите текст и попробуйте ещё раз.");
-    expect(text()).not.toContain("Payload too large");
-    expect(text()).not.toContain("Проверьте введённые данные.");
-    expect(listReads()).toBe(reads + 1);
-  });
-
-  it("NOT_FOUND: откат, прежний текст ошибки и тихая перезагрузка списка", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-    const reads = listReads();
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-
-    expect(chip("Всем")).toBeDefined();
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(text()).toContain("Не найдено.");
-    expect(listReads()).toBe(reads + 1);
-    expect(container.querySelectorAll('[data-testid="wish-card-skeleton"]')).toHaveLength(0);
-  });
-
-  /**
-   * CLE-82/S23.3: a reserved wish changes its visibility too. The preflight answers
-   * first; a keeping answer needs no question, so the save is the usual optimistic one.
-   */
-  it("RESERVED, держатель сохраняет доступ: preflight, затем обычный optimistic PATCH", async () => {
-    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
-    respond(giftsAnswer([card]));
-    await mount();
-    await press("Друзьям");
-    expect(dialogElement()).not.toBeNull();
-
-    let answer: (value: unknown) => void = function pendingAnswer() {};
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
-        return Promise.resolve({ ok: true, data: { wouldCancelReservation: false } });
-      }
-      if (init?.method === "PATCH") {
-        return new Promise((resolve) => {
-          answer = resolve;
-        });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-
-    await chooseInDialog("Секрет");
-    await settle(10);
-
-    expect(previewCalls()).toHaveLength(1);
-    expect(previewCalls()[0]?.[0]).toBe(
-      "/api/v1/me/gifts/g1/visibility?visibility=SECRET",
-    );
-    expect(patchCalls()).toHaveLength(1);
-    expect(patchCalls()[0]?.[1]).toEqual({
-      method: "PATCH",
-      body: { visibility: "SECRET" },
-    });
-    // No confirm: the answer kept the reservation.
-    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
-    expect(chip("Секрет")).toBeDefined();
-
-    await act(async () => {
-      answer({ ok: true, data: gift({ status: "RESERVED", visibility: "SECRET" }) });
-    });
-
-    expect(text()).toContain("Видимость: секрет");
-    expect(text()).not.toContain("Бронь снята");
-  });
-
-  /**
-   * The product rule (t353u): narrowing a reserved wish may release the booking, so
-   * the chip waits for «Подтвердить». Until then nothing is written.
-   */
-  it("RESERVED, бронь снимается: confirm до PATCH и toast «Бронь снята»", async () => {
-    const holder = { id: "u2", nick: "oleg", displayName: "Олег" };
-    const card = gift({ status: "RESERVED", visibility: "FRIENDS", reservedBy: holder });
-    respond(giftsAnswer([card]));
-    await mount();
-    await press("Друзьям");
-
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
-        return Promise.resolve({ ok: true, data: { wouldCancelReservation: true } });
-      }
-      if (init?.method === "PATCH") {
-        return Promise.resolve({
-          ok: true,
-          data: gift({ status: "OPEN", visibility: "SECRET", reservedBy: null }),
-        });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-
-    await chooseInDialog("Секрет");
-    // The picker fades out before the confirm is the only layer left.
-    await settle(300);
-
-    expect(dialogElement()).not.toBeNull();
-    expect(document.body.textContent).toContain("Бронирующий потеряет доступ, бронь снимется");
-    // No optimistic write before the answer: the chip still shows the stored value.
-    expect(chip("Друзьям")).toBeDefined();
-    expect(chip("Секрет")).toBeUndefined();
-    expect(patchCalls()).toHaveLength(0);
-    expect(previewCalls()).toHaveLength(1);
-    expect(text()).toContain("Берёт Олег");
-
-    await press("Подтвердить");
-    await settle(10);
-
-    expect(patchCalls()).toHaveLength(1);
-    expect(patchCalls()[0]?.[1]).toEqual({
-      method: "PATCH",
-      body: { visibility: "SECRET" },
-    });
-    expect(text()).toContain("Видимость: секрет. Бронь снята");
-    expect(chip("Секрет")).toBeDefined();
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
-  });
-
-  it("RESERVED: «Отмена» в confirm не меняет видимость и не зовёт PATCH", async () => {
-    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
-    respond(giftsAnswer([card]));
-    await mount();
-    await press("Друзьям");
-
-    api.apiRequest.mockImplementation((path: string) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
-        return Promise.resolve({ ok: true, data: { wouldCancelReservation: true } });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-
-    await chooseInDialog("Секрет");
-    await settle(300);
-    expect(dialogElement()).not.toBeNull();
-
-    await press("Отмена");
-    await settle(10);
-
-    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
-    expect(chip("Друзьям")).toBeDefined();
-    expect(chip("Секрет")).toBeUndefined();
-    expect(patchCalls()).toHaveLength(0);
-    expect(text()).not.toContain("Видимость: секрет");
-  });
-
-  it("RESERVED: сеть на preflight — toast, без PATCH и без confirm «наугад»", async () => {
-    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
-    respond(giftsAnswer([card]));
-    await mount();
-    await press("Друзьям");
-
-    api.apiRequest.mockImplementation((path: string) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
-        return Promise.resolve({ ok: false, network: true });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-
-    await chooseInDialog("Секрет");
-    await settle(300);
-
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    expect(previewCalls()).toHaveLength(1);
-    expect(patchCalls()).toHaveLength(0);
-    expect(document.body.textContent).not.toContain("Бронирующий потеряет доступ");
-    expect(chip("Друзьям")).toBeDefined();
-  });
-
-  it("RESERVED: 404 на preflight — toast «Не найдено.» и перезагрузка списка", async () => {
-    const card = gift({ status: "RESERVED", visibility: "FRIENDS" });
-    respond(giftsAnswer([card]));
-    await mount();
-    const reads = listReads();
-    await press("Друзьям");
-
-    api.apiRequest.mockImplementation((path: string) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path.startsWith("/api/v1/me/gifts/g1/visibility")) {
-        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
-      }
-      return Promise.resolve(giftsAnswer([card]));
-    });
-
-    await chooseInDialog("Секрет");
-    await settle(300);
-
-    expect(text()).toContain("Не найдено.");
-    expect(patchCalls()).toHaveLength(0);
-    expect(listReads()).toBe(reads + 1);
-  });
-
-  it("у CLOSED и архивного чип не кнопка: выбор не открывается", async () => {
-    respond(
-      giftsAnswer([
-        gift({ id: "g2", status: "CLOSED", visibility: "FRIENDS" }),
-        gift({
-          id: "g3",
-          archivedAt: "2026-10-01T00:00:00.000Z",
-          visibility: "SECRET",
-        }),
-      ]),
-    );
-    await mount();
-    // Story 5.3: the closed wish lives in «Получено (1)»; the archived one stays in the grid.
-    await press("Получено (1)");
-
-    expect(text()).toContain("Друзьям");
-    expect(text()).toContain("Секрет");
-    expect(chip("Друзьям")).toBeUndefined();
-    expect(chip("Секрет")).toBeUndefined();
-    expect(patchCalls()).toHaveLength(0);
-  });
-
-  it("«Отмена» в диалоге не меняет видимость и не зовёт API", async () => {
-    respond(giftsAnswer([gift()]));
-    await mount();
-    await press("Всем");
-
-    await press("Отмена");
-
-    expect(dialogElement()).toBeNull();
-    expect(chip("Всем")).toBeDefined();
-    expect(patchCalls()).toHaveLength(0);
-    expect(text()).not.toContain("Видимость: друзьям");
-  });
-});
-
-/**
- * CLE-51: focus returns to the chip the dialog was opened from, and it does so only
- * after the layer has really left the tree — react-native-web keeps it mounted while
- * it fades out, and its focus trap pulls an early `focus()` back into the dialog.
- */
-describe("мой вишлист: возврат фокуса на чип", () => {
-  /** Opens the picker on the only wish and returns the chip that opened it. */
-  async function openPicker(): Promise<HTMLButtonElement> {
-    respond(giftsAnswer([gift()]));
-    await mount();
-
-    const trigger = chip("Всем");
-    expect(trigger).toBeDefined();
-    await press("Всем");
-    expect(dialogElement()).not.toBeNull();
-    // The dialog opens on the selected radio, not on the trigger behind it.
-    expect(document.activeElement).not.toBe(trigger);
-    return trigger as HTMLButtonElement;
-  }
-
-  it("«Отмена»: фокус на чипе, который открыл диалог", async () => {
-    const trigger = await openPicker();
-
-    await press("Отмена");
-    // Фокус возвращается после exit-fade диалога (160 мс).
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("Esc: фокус на чипе, который открыл диалог", async () => {
-    const trigger = await openPicker();
-
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("тап по подложке: фокус на чипе, который открыл диалог", async () => {
-    const trigger = await openPicker();
-
-    await pressScrim("visibility-picker-scrim");
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  });
-
-  it("выбор другого значения тоже возвращает фокус на чип", async () => {
-    const trigger = await openPicker();
-    api.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: true, data: gift({ visibility: "FRIENDS" }) });
-      }
-      return Promise.resolve(giftsAnswer([gift()]));
-    });
-
-    await chooseInDialog("Друзьям");
-    // Фокус возвращается после exit-fade диалога (160 мс).
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-    // Never `<body>`: the layer hands focus back instead of dropping it.
-    expect(document.activeElement).not.toBe(document.body);
+    expect(text()).toContain("Открыт");
+    await expectNoReservation(text());
+    expect(text()).not.toContain("Снять бронь");
+    // The card reads as open, and the page it links to has no reservation either:
+    // that is `gift-detail-screen.test` (AD-15 (14)).
+    const card = container.querySelector('[role="listitem"] [role="link"]') as HTMLElement;
+    expect(card.getAttribute("aria-label")).not.toContain("Забронирован");
   });
 });
 
@@ -2572,507 +1997,6 @@ describe("W12.19: главный экран на медиа-пропсах", () 
 });
 
 /**
- * Story 5.2 (UI_OWNER): владелец снимает чужую бронь. «Снять бронь» — коралловая,
- * потому что действие чужое (`DESIGN.md` → Colors → Destructive). Нажатие сначала
- * читает preflight (`warning`), шаг подтверждения живёт в том же диалоге детали,
- * после DELETE список перечитывается — ответ снятия несёт только `{ id }`.
- */
-describe("мой вишлист: снятие чужой брони", () => {
-  function reservedCard(overrides: Partial<GiftCard> = {}): GiftCard {
-    return gift({
-      status: "RESERVED",
-      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
-      reservationLabel: "BOUGHT",
-      ownerAction: "CONFIRM_GIVEN",
-      ...overrides,
-    });
-  }
-
-  function preflightCalls(): unknown[][] {
-    return api.apiRequest.mock.calls.filter(
-      ([path]) => path === "/api/v1/me/gifts/g1/reservation",
-    );
-  }
-
-  function releaseCalls(): unknown[][] {
-    return preflightCalls().filter(
-      ([, init]) => (init as { method?: string } | undefined)?.method === "DELETE",
-    );
-  }
-
-  /** The list, the single read and the two reservation routes of the first wish. */
-  function respondOwnerRelease(handlers: {
-    cards: () => GiftCard[];
-    preflight: () => unknown;
-    release: () => unknown;
-  }) {
-    api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path === "/api/v1/me/gifts") return Promise.resolve(giftsAnswer(handlers.cards()));
-      if (path === "/api/v1/me/gifts/g1") {
-        const card = handlers.cards().find(function sameId(item) {
-          return item.id === "g1";
-        });
-        return Promise.resolve(
-          card
-            ? { ok: true, data: card }
-            : { ok: false, code: "NOT_FOUND", message: "Gift not found" },
-        );
-      }
-      if (path === "/api/v1/me/gifts/g1/reservation") {
-        return Promise.resolve(
-          init?.method === "DELETE" ? handlers.release() : handlers.preflight(),
-        );
-      }
-      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
-    });
-  }
-
-  async function openFirstDetail() {
-    const cardButton = container.querySelector(
-      '[role="listitem"] [role="button"]',
-    ) as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    return cardButton;
-  }
-
-  async function pressInDialog(label: string) {
-    const target = Array.from(
-      dialogElement()?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
-    ).find((node) => (node.textContent ?? "").includes(label));
-    expect(target).toBeDefined();
-    await act(async () => {
-      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-  }
-
-  it("шаг показывает предупреждение «Купил», DELETE один и список перечитан", async () => {
-    let cards: GiftCard[] = [reservedCard()];
-    respondOwnerRelease({
-      cards: () => cards,
-      preflight: () => ({ ok: true, data: { warning: "BOUGHT" } }),
-      release: () => {
-        cards = [gift()];
-        return { ok: true, data: { id: "g1" } };
-      },
-    });
-    await mount();
-    await openFirstDetail();
-
-    expect(dialogElement()?.textContent).toContain("Снять бронь");
-    const readsBefore = listReads();
-
-    await pressInDialog("Снять бронь");
-    expect(preflightCalls()).toHaveLength(1);
-    expect(dialogElement()?.textContent).toContain(
-      "Снять бронь? Желание снова станет открытым.",
-    );
-    expect(dialogElement()?.textContent).toContain(
-      "Даритель отметил, что подарок уже куплен. Если снять бронь, его может купить кто-то ещё",
-    );
-    expect(dialogElement()?.textContent).not.toContain("Кто видит");
-
-    await pressInDialog("Снять бронь");
-    expect(releaseCalls()).toHaveLength(1);
-    await settle(300);
-
-    expect(dialogElement()).toBeNull();
-    expect(text()).toContain("Открыт");
-    expect(listReads()).toBe(readsBefore + 1);
-  });
-
-  it("без отметки «Купил» шаг не показывает предупреждение", async () => {
-    respondOwnerRelease({
-      cards: () => [reservedCard({ reservationLabel: null })],
-      preflight: () => ({ ok: true, data: { warning: null } }),
-      release: () => ({ ok: true, data: { id: "g1" } }),
-    });
-    await mount();
-    await openFirstDetail();
-    await pressInDialog("Снять бронь");
-
-    const step = dialogElement()?.textContent ?? "";
-    expect(step).toContain("Снять бронь? Желание снова станет открытым.");
-    expect(step).not.toContain("Даритель отметил");
-  });
-
-  it("«Отмена» в шаге возвращает к деталям и ничего не отправляет", async () => {
-    respondOwnerRelease({
-      cards: () => [reservedCard()],
-      preflight: () => ({ ok: true, data: { warning: "BOUGHT" } }),
-      release: () => ({ ok: true, data: { id: "g1" } }),
-    });
-    await mount();
-    await openFirstDetail();
-    await pressInDialog("Снять бронь");
-
-    await pressInDialog("Отмена");
-
-    expect(releaseCalls()).toHaveLength(0);
-    expect(dialogElement()?.textContent).toContain("Кто видит");
-    expect(dialogElement()?.textContent).not.toContain(
-      "Снять бронь? Желание снова станет открытым.",
-    );
-  });
-
-  it("сеть на preflight: тост, шаг не открывается, бронь на месте", async () => {
-    respondOwnerRelease({
-      cards: () => [reservedCard()],
-      preflight: () => ({ ok: false, network: true }),
-      release: () => ({ ok: true, data: { id: "g1" } }),
-    });
-    await mount();
-    await openFirstDetail();
-    await pressInDialog("Снять бронь");
-
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    expect(dialogElement()?.textContent).toContain("Кто видит");
-    expect(dialogElement()?.textContent).not.toContain(
-      "Снять бронь? Желание снова станет открытым.",
-    );
-    expect(releaseCalls()).toHaveLength(0);
-  });
-
-  it("CONFLICT на DELETE: шаг закрыт, тост и перечитанный список", async () => {
-    respondOwnerRelease({
-      cards: () => [reservedCard()],
-      preflight: () => ({ ok: true, data: { warning: "BOUGHT" } }),
-      release: () => ({ ok: false, code: "CONFLICT", message: "Reservation changed" }),
-    });
-    await mount();
-    await openFirstDetail();
-    const readsBefore = listReads();
-    await pressInDialog("Снять бронь");
-    await pressInDialog("Снять бронь");
-    await settle(300);
-
-    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
-    expect(listReads()).toBe(readsBefore + 1);
-  });
-
-  it("у открытого желания кораллового действия снятия нет", async () => {
-    respondOwnerRelease({
-      cards: () => [gift()],
-      preflight: () => ({ ok: true, data: { warning: null } }),
-      release: () => ({ ok: true, data: { id: "g1" } }),
-    });
-    await mount();
-    await openFirstDetail();
-
-    expect(dialogElement()?.textContent).toContain("Изменить желание");
-    expect(dialogElement()?.textContent).not.toContain("Снять бронь");
-    expect(preflightCalls()).toHaveLength(0);
-  });
-});
-
-/**
- * Story 5.6 (`CARD_LABEL`, `CARD_KEEP`, `CARD_RELEASE_MENU`, `DETAIL_LABEL`):
- * владелец отвечает на истёкшую бронь. «Получил» — существующий confirm 5.3,
- * «Не получал, оставить бронь» — keep без второго подтверждения, «Снять бронь» —
- * третий пункт ⋮, который открывает деталь и тот же preflight 5.2.
- */
-describe("мой вишлист: истёкшая бронь (Story 5.6)", () => {
-  function expiredCard(overrides: Partial<GiftCard> = {}): GiftCard {
-    return gift({
-      status: "RESERVED",
-      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
-      reservationLabel: "BOUGHT",
-      ownerAction: "EXPIRED_NO_REPLY",
-      ...overrides,
-    });
-  }
-
-  function keptCard(overrides: Partial<GiftCard> = {}): GiftCard {
-    return gift({ status: "RESERVED", ...overrides });
-  }
-
-  function callsTo(suffix: string, method?: string): unknown[][] {
-    return api.apiRequest.mock.calls.filter(
-      ([path, init]) =>
-        String(path).endsWith(suffix) &&
-        (method === undefined || (init as { method?: string } | undefined)?.method === method),
-    );
-  }
-
-  function keepCalls(): unknown[][] {
-    return callsTo("/reservation/keep", "POST");
-  }
-
-  function preflightCalls(): unknown[][] {
-    // The preflight sends no `method`: the client defaults to GET, so a DELETE is
-    // the only call on this path that is not the preflight.
-    return callsTo("/reservation").filter(
-      ([, init]) => (init as { method?: string } | undefined)?.method !== "DELETE",
-    );
-  }
-
-  function releaseCalls(): unknown[][] {
-    return callsTo("/reservation", "DELETE");
-  }
-
-  function listReadsNow(): number {
-    return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts").length;
-  }
-
-  function respondExpired(handlers: {
-    cards: () => GiftCard[];
-    keep?: () => unknown;
-    preflight?: () => unknown;
-    release?: () => unknown;
-    close?: () => unknown;
-  }) {
-    api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
-      const method = init?.method ?? "GET";
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path === "/api/v1/me/gifts") return Promise.resolve(giftsAnswer(handlers.cards()));
-      if (path === "/api/v1/me/gifts/g1/reservation/keep" && method === "POST") {
-        return Promise.resolve(
-          handlers.keep ? handlers.keep() : { ok: false, code: "CONFLICT", message: "" },
-        );
-      }
-      if (path === "/api/v1/me/gifts/g1/reservation") {
-        return Promise.resolve(
-          method === "DELETE"
-            ? handlers.release
-              ? handlers.release()
-              : { ok: false, code: "CONFLICT", message: "" }
-            : handlers.preflight
-              ? handlers.preflight()
-              : { ok: true, data: { warning: null } },
-        );
-      }
-      if (path === "/api/v1/me/gifts/g1/close" && method === "POST") {
-        return Promise.resolve(
-          handlers.close ? handlers.close() : { ok: false, code: "CONFLICT", message: "" },
-        );
-      }
-      if (path === "/api/v1/me/gifts/g1") {
-        const card = handlers.cards().find(function sameId(item) {
-          return item.id === "g1";
-        });
-        return Promise.resolve(
-          card ? { ok: true, data: card } : { ok: false, code: "NOT_FOUND", message: "" },
-        );
-      }
-      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
-    });
-  }
-
-  function strip(): HTMLElement | null {
-    return container.querySelector<HTMLElement>("[data-testid='owner-action-label']");
-  }
-
-  async function openFirstDetail() {
-    const cardButton = container.querySelector('[role="listitem"] [role="button"]') as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-  }
-
-  async function pressInDialog(label: string) {
-    const target = Array.from(
-      dialogElement()?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? [],
-    ).find((node) => (node.textContent ?? "").includes(label));
-    expect(target, `кнопка «${label}» в слое`).toBeDefined();
-    await act(async () => {
-      target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle(10);
-  }
-
-  it("карточка: полоса вместо строки брони, «Снять бронь» — в ⋮", async () => {
-    respondExpired({ cards: () => [expiredCard()] });
-    await mount();
-
-    expect(strip()?.textContent).toContain("Срок брони истёк");
-    expect(strip()?.textContent).toContain("Получил");
-    expect(strip()?.textContent).toContain("Не получал, оставить бронь");
-
-    await act(async () => {
-      container
-        .querySelector<HTMLElement>('[data-testid="wishlist-card-menu-g1"]')
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    expect(dialogElement()?.textContent).toContain("Снять бронь");
-    // «Получил» уже на полосе: меню не повторяет закрытие.
-    expect(dialogElement()?.textContent).not.toContain("Отметить полученным");
-  });
-
-  it("«Не получал, оставить бронь»: один POST keep, карточка заменена, полоса исчезла, без тоста", async () => {
-    let cards: GiftCard[] = [expiredCard()];
-    respondExpired({
-      cards: () => cards,
-      keep: function keep() {
-        cards = [keptCard()];
-        return { ok: true, data: cards[0] };
-      },
-    });
-    await mount();
-    const readsBefore = listReadsNow();
-
-    await press("Не получал, оставить бронь");
-    await settle(10);
-
-    expect(keepCalls()).toHaveLength(1);
-    expect(strip()).toBeNull();
-    expect(text()).toContain("Забронирован");
-    expect(text()).not.toContain("Срок брони истёк");
-    // The answer itself is the card: the list is not reread and no toast appears.
-    expect(listReadsNow()).toBe(readsBefore);
-    expect(text()).not.toContain("Отмечено полученным");
-  });
-
-  it("повторное нажатие, пока keep в пути, второй запрос не отправляет", async () => {
-    let resolveKeep!: (value: unknown) => void;
-    const pending = new Promise(function wait(resolve) {
-      resolveKeep = resolve;
-    });
-    respondExpired({ cards: () => [expiredCard()], keep: () => pending });
-    await mount();
-
-    await press("Не получал, оставить бронь");
-    expect(keepCalls()).toHaveLength(1);
-    // Both answers of the strip report the busy state while the answer is in flight.
-    expect(
-      container.querySelector<HTMLElement>("[data-testid='owner-action-keep']")?.getAttribute("aria-busy"),
-    ).toBe("true");
-
-    await act(async () => {
-      container
-        .querySelector<HTMLElement>("[data-testid='owner-action-keep']")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(keepCalls()).toHaveLength(1);
-
-    await act(async () => {
-      resolveKeep({ ok: false, code: "CONFLICT", message: "" });
-    });
-    await settle(10);
-  });
-
-  it("сеть при keep: общая фраза, полоса остаётся, второго запроса нет", async () => {
-    respondExpired({
-      cards: () => [expiredCard()],
-      keep: () => ({ ok: false, network: true }),
-    });
-    await mount();
-
-    await press("Не получал, оставить бронь");
-    await settle(10);
-
-    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
-    expect(strip()?.textContent).toContain("Срок брони истёк");
-    expect(keepCalls()).toHaveLength(1);
-  });
-
-  it("CONFLICT при keep: тост и перечитывание списка", async () => {
-    respondExpired({
-      cards: () => [expiredCard()],
-      keep: () => ({ ok: false, code: "CONFLICT", message: "Reservation changed" }),
-    });
-    await mount();
-    const readsBefore = listReadsNow();
-
-    await press("Не получал, оставить бронь");
-    await settle(10);
-
-    expect(text()).toContain("Конфликт данных. Обновите страницу и повторите.");
-    expect(listReadsNow()).toBe(readsBefore + 1);
-  });
-
-  it("«Получил» на карточке: существующий confirm 5.3 и POST close", async () => {
-    let cards: GiftCard[] = [expiredCard()];
-    respondExpired({
-      cards: () => cards,
-      close: function close() {
-        cards = [gift({ status: "CLOSED", undoUntil: new Date(Date.now() + 600_000).toISOString() })];
-        return { ok: true, data: cards[0] };
-      },
-    });
-    await mount();
-
-    await press("Получил");
-    await settle(300);
-    expect(dialogElement()?.textContent).toContain("Подарок «Наушники» получен?");
-    expect(dialogElement()?.textContent).toContain("Бронь будет закрыта");
-
-    await pressInDialog("Подтвердить");
-    await settle(300);
-
-    expect(callsTo("/close", "POST")).toHaveLength(1);
-    expect(text()).toContain("Отмечено полученным");
-  });
-
-  it("⋮ → «Снять бронь»: деталь и тот же preflight, подтверждение — шаг 5.2", async () => {
-    let cards: GiftCard[] = [expiredCard()];
-    respondExpired({
-      cards: () => cards,
-      preflight: () => ({ ok: true, data: { warning: "BOUGHT" } }),
-      release: function release() {
-        cards = [gift()];
-        return { ok: true, data: { id: "g1" } };
-      },
-    });
-    await mount();
-    const readsBefore = listReadsNow();
-
-    await act(async () => {
-      container
-        .querySelector<HTMLElement>('[data-testid="wishlist-card-menu-g1"]')
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-    await pressInDialog("Снять бронь");
-    // The ⋯ leaves the tree first, then the details open and the preflight runs.
-    await settle(300);
-    await settle(10);
-
-    expect(preflightCalls()).toHaveLength(1);
-    expect(dialogElement()?.textContent).toContain(
-      "Снять бронь? Желание снова станет открытым.",
-    );
-    expect(dialogElement()?.textContent).toContain("Даритель отметил, что подарок уже куплен");
-
-    await pressInDialog("Снять бронь");
-    await settle(300);
-
-    expect(releaseCalls()).toHaveLength(1);
-    expect(listReadsNow()).toBe(readsBefore + 1);
-  });
-
-  it("деталь: полоса над фактами, без «Отметить полученным», keep убирает полосу", async () => {
-    let cards: GiftCard[] = [expiredCard()];
-    respondExpired({
-      cards: () => cards,
-      keep: function keep() {
-        cards = [keptCard()];
-        return { ok: true, data: cards[0] };
-      },
-    });
-    await mount();
-    await openFirstDetail();
-
-    expect(dialogElement()?.textContent).toContain("Срок брони истёк");
-    expect(dialogElement()?.textContent).toContain("Снять бронь");
-    expect(dialogElement()?.textContent).not.toContain("Отметить полученным");
-
-    await pressInDialog("Не получал, оставить бронь");
-    await settle(300);
-    await settle(10);
-
-    expect(keepCalls()).toHaveLength(1);
-    expect(dialogElement()?.textContent).not.toContain("Срок брони истёк");
-    expect(dialogElement()?.textContent).toContain("Снять бронь");
-  });
-});
-
-/**
  * Story 5.3 (FR-32, D-43): владелец отмечает желание полученным, отменяет это в
  * окне, копирует и удаляет закрытое; закрытые карточки лежат в свёрнутой секции
  * «Получено (N)» перед архивом. Окно отмены задаёт сервер (`undoUntil`), клиент
@@ -3195,14 +2119,6 @@ describe("мой вишлист: закрытие желания", () => {
     await settle(10);
   }
 
-  async function openDetailOfFirstCard() {
-    const cardButton = container.querySelector('[role="listitem"] [role="button"]') as HTMLElement;
-    await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    await settle();
-  }
-
   /** The card of the closed wish: expand «Получено» first. */
   async function openClosedMenu(closedTitle = "Получено (1)") {
     await press(closedTitle);
@@ -3223,6 +2139,10 @@ describe("мой вишлист: закрытие желания", () => {
 
     await pressTestId("wishlist-card-menu-g1");
     await settle();
+    // Story 6.4: the ⋯ says its dialog is open, and its name carries the wish.
+    const menu = container.querySelector<HTMLElement>('[data-testid="wishlist-card-menu-g1"]');
+    expect(menu?.getAttribute("aria-expanded")).toBe("true");
+    expect(menu?.getAttribute("aria-label")).toBe("Меню: Наушники");
     expect(dialogElement()?.textContent).toContain("Отметить полученным");
     await pressInDialog("Отметить полученным");
     // The menu leaves the tree first, then the confirmation opens.
@@ -3244,7 +2164,7 @@ describe("мой вишлист: закрытие желания", () => {
     expect(document.activeElement?.textContent).toBe("Отменить");
   });
 
-  it("забронированное желание: тело про бронь и её держателя", async () => {
+  it("забронированное желание: то же подтверждение без брони", async () => {
     respondClose({
       cards: () => [
         gift({
@@ -3261,12 +2181,13 @@ describe("мой вишлист: закрытие желания", () => {
     await pressInDialog("Отметить полученным");
     await settle(300);
 
-    expect(dialogElement()?.textContent).toContain(
-      "Бронь будет закрыта, бронировавший получит уведомление",
-    );
+    const confirm = dialogElement()?.textContent ?? "";
+    expect(confirm).toContain("Подарок «Наушники» получен?");
+    expect(confirm).not.toContain("Бронь");
+    expect(confirm).not.toContain("бронировавший");
   });
 
-  it("шаг в подробностях: «Отметить полученным» → «Подтвердить», диалог закрывается", async () => {
+  it("«Отметить полученным» есть в ⋯ карточки после ухода окна подробностей", async () => {
     let cards: GiftCard[] = [gift()];
     respondClose({
       cards: () => cards,
@@ -3276,15 +2197,12 @@ describe("мой вишлист: закрытие желания", () => {
       },
     });
     await mount();
-    await openDetailOfFirstCard();
 
-    expect(dialogElement()?.textContent).toContain("Изменить желание");
-    await pressInDialog("Отметить полученным");
+    // The card itself only goes to the page; the owner's action stays in the ⋯.
+    await pressTestId("wishlist-card-menu-g1");
     await settle();
-
-    expect(dialogElement()?.textContent).toContain("Подарок «Наушники» получен?");
-    expect(dialogElement()?.textContent).not.toContain("Кто видит");
-
+    await pressInDialog("Отметить полученным");
+    await settle(300);
     await pressInDialog("Подтвердить");
     await settle(300);
 

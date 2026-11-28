@@ -56,6 +56,9 @@ export const Choice = forwardRef<ComponentRef<typeof Pressable>, ChoiceProps>(fu
       disabled={disabled}
       onPress={onPress}
       testID={testID}
+      // The selected option is the state itself (`$muted` / `$primary`); the shared
+      // hover fill would paint over it, so only an unselected one fills (CLE-129).
+      hoverFill={!selected}
       minHeight="$touch-target"
       minWidth={row ? undefined : "$touch-target"}
       borderWidth={1}
@@ -165,7 +168,7 @@ export function ChoiceList({
         </Frame>
       </ChoiceListHintContext.Provider>
       {error ? (
-        <Text id={errorId} kind="caption" tone="destructive" role="alert" aria-live="polite">
+        <Text id={errorId} kind="caption" tone="destructive" role="alert">
           {error}
         </Text>
       ) : null}

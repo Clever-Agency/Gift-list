@@ -39,9 +39,9 @@ The text of both apps (\`DESIGN.md\` → Типографика): every size, li
 What is not a prop:
 
 - \`kind\` is the typography role: Lora for \`display\`, \`display-sm\` and \`heading\`, Manrope for the UI roles. There is no separate font or size prop.
-- \`tone\` carries meaning: \`muted\` for secondary facts, \`destructive\` for errors, \`reserved\` for a booking, \`inverse\` only on \`primary\`. Colour alone never has to carry the meaning, so the copy says it too.
+- \`tone\` carries meaning: \`muted\` for secondary facts, \`destructive\` for errors, \`reserved\` for a booking, \`inverse\` only on \`primary\`. Colour alone never has to carry the meaning, so the copy says it too. The error ink is \`$destructive-hover\`: \`$destructive\` on the page background is 4.31:1, and AA wants 4.5 (CLE-135; the pair is checked in \`tokens-contrast.test.ts\`).
 - \`Heading\` draws no new look: it sets \`role="heading"\` and \`aria-level\` (1 for the page title, 2 for sections and layers) on the same text.
-- Hover, press and focus of \`LinkText\` are real CSS states: the \`$background\` fill on hover, the \`opacity: 0.9\` press and the \`$ring\` ring on \`:focus-visible\` only (a mouse click leaves no ring; a phone paints the same ring on \`focus\`).
+- Hover, press and focus of \`LinkText\` are real CSS states: the \`$muted\` fill on hover (160 ms, instant with «уменьшить движение»), the \`opacity: 0.9\` press and the \`$ring\` ring on \`:focus-visible\` only (a mouse click leaves no ring; a phone paints the same ring on \`focus\`).
         `.trim(),
       },
     },
@@ -94,7 +94,7 @@ export const Playground: Story = {
 };
 
 /**
- * `LinkText` is the router link text: 44 px tall, primary, `$background` on hover,
+ * `LinkText` is the router link text: 44 px tall, primary, `$muted` on hover,
  * dimmed on press, focus ring on Tab. In the app the text sits inside a router
  * `<a>` (`NavLink`), which is what Tab reaches; the standalone span here takes
  * `tabIndex` and `role="link"` in the story only, so the same `:focus-visible`

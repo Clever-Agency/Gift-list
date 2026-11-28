@@ -145,6 +145,30 @@ describe("AppShell (compact и medium)", () => {
   });
 });
 
+function AnonymousStory() {
+  return (
+    <AppShell testID="shell" skipLabel="Перейти к содержимому">
+      <Text>Содержимое без навигации</Text>
+      <InsetProbe />
+    </AppShell>
+  );
+}
+
+AnonymousStory.displayName = "AnonymousStory";
+
+describe("AppShell без навигации (экран без входа)", () => {
+  it("нет ни меню, ни вкладок, и высота панели — 0", async () => {
+    windowMedia.setWidth(360);
+    const { container, render } = mounted();
+    await render(<AnonymousStory />);
+
+    expect(container.querySelector("[data-testid='shell-sidebar']")).toBeNull();
+    expect(container.querySelector("[data-testid='shell-tab-bar']")?.textContent).toBe("");
+    expect(container.querySelector("[data-testid='inset']")?.textContent).toBe("0");
+    expect(container.querySelectorAll("main#main-content")).toHaveLength(1);
+  });
+});
+
 describe("AppShell (expanded)", () => {
   it("от 1024 px: меню 264 слева, вкладки скрыты, но остаются в дереве", async () => {
     windowMedia.setWidth(1280);

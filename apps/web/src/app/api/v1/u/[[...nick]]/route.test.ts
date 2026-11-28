@@ -20,6 +20,7 @@ vi.mock("@/db/client", () => ({
     user: { findUnique: findUser },
     list: { findUnique: findList },
     gift: { findMany: findManyGifts, count: () => Promise.resolve(0) },
+    userDate: { findMany: () => Promise.resolve([]) },
     $transaction: (operations: Promise<unknown>[]) => Promise.all(operations),
   },
 }));
@@ -110,7 +111,24 @@ const anna = {
   email: "anna@example.com",
   // Direct `/u/:nick` must work even when search hides the person (AD-13).
   hideFromSearch: true,
+  birthDay: 14,
+  birthMonth: 6,
+  gender: "FEMALE" as const,
+  country: "BY",
+  about: "Люблю походы и книги.",
+  profileVisibleToFriends: true,
 };
+
+/** The five detail fields of `anna`, without her own switch. */
+const annaDetails = {
+  birthDay: 14,
+  birthMonth: 6,
+  gender: "FEMALE",
+  country: "BY",
+  about: "Люблю походы и книги.",
+};
+
+const DETAIL_KEYS = ["about", "birthDay", "birthMonth", "country", "gender"];
 
 const users = [anna];
 
@@ -170,6 +188,7 @@ beforeEach(() => {
   readProfileSubscription.mockReset();
 
   getSession.mockResolvedValue(null);
+  anna.profileVisibleToFriends = true;
   readProfileRelationship.mockResolvedValue("NONE");
   readProfileInviteCooldown.mockResolvedValue(null);
   readProfileSubscription.mockResolvedValue(false);
@@ -255,9 +274,40 @@ describe("GET /api/v1/u/:nick", () => {
     expect(res.status).toBe(200);
     expect(findUser).toHaveBeenCalledWith({
       where: { nickNormalized: "anna" },
-      select: { id: true, name: true, nick: true },
+      select: {
+        id: true,
+        name: true,
+        nick: true,
+        birthDay: true,
+        birthMonth: true,
+        gender: true,
+        country: true,
+        about: true,
+        profileVisibleToFriends: true,
+      },
     });
     expect(body.data.owner).toEqual({ displayName: "Анна", nick: "Anna" });
+  });
+
+  /** D-49: the owner's own profile is the owner branch, so a reservation stays hidden. */
+  it("shows the owner their own reserved wish as an open one", async () => {
+    signIn("u1");
+    findManyGifts.mockResolvedValue([
+      gift({
+        id: "g-reserved",
+        title: "Забронированное",
+        status: "RESERVED",
+        reservationPhase: "ACTIVE",
+        holderVisibleToOwner: true,
+        reservedBy: { id: "u9", nick: "petr", name: "Пётр" },
+      }),
+    ]);
+
+    const { body } = await callRoute(["Anna"]);
+
+    const card = body.data.gifts[0];
+    expect(card).toMatchObject({ status: "OPEN", reservedBy: null, ownerAction: null });
+    expect(JSON.stringify(body)).not.toContain("Пётр");
   });
 
   it("shows the owner card and no gifts when there is no relation, even with hideFromSearch", async () => {
@@ -367,6 +417,103 @@ describe("GET /api/v1/u/:nick", () => {
     expect(readProfileSubscription).toHaveBeenCalledWith("u1", "u1");
     expect(JSON.stringify(body)).not.toContain("anna@example.com");
     expect(relationsBetween).not.toHaveBeenCalled();
+  });
+
+  describe("profile details (CLE-129/T8.2, AD-7/AD-29)", () => {
+    it("gives the owner their own fields together with the switch", async () => {
+      signIn("u1");
+
+      const { body } = await callRoute(["Anna"]);
+
+      expect(body.data.details).toEqual({ ...annaDetails, profileVisibleToFriends: true });
+      expect(Object.keys(body.data.details).sort()).toEqual(
+        [...DETAIL_KEYS, "profileVisibleToFriends"].sort(),
+      );
+      expect(body.data.owner).toEqual({ displayName: "Анна", nick: "Anna" });
+    });
+
+    it("gives an accepted friend the five fields and never the switch", async () => {
+      signIn();
+      relationsBetween.mockResolvedValue(relations({ friend: true }));
+      readProfileRelationship.mockResolvedValue("FRIENDS");
+
+      const { body } = await callRoute(["Anna"]);
+
+      expect(body.data.details).toEqual(annaDetails);
+      expect(Object.keys(body.data.details).sort()).toEqual(DETAIL_KEYS);
+      expect(body.data).not.toHaveProperty("profileVisibleToFriends");
+      expect(JSON.stringify(body)).not.toContain("profileVisibleToFriends");
+    });
+
+    it("hides the block from a friend when the owner turned the switch off", async () => {
+      anna.profileVisibleToFriends = false;
+      signIn();
+      relationsBetween.mockResolvedValue(relations({ friend: true }));
+      readProfileRelationship.mockResolvedValue("FRIENDS");
+
+      const { body } = await callRoute(["Anna"]);
+
+      expect(body.data).not.toHaveProperty("details");
+      expect(JSON.stringify(body)).not.toContain("Люблю походы");
+      expect(JSON.stringify(body)).not.toContain("profileVisibleToFriends");
+    });
+
+    it("hides the block from a subscriber, a contact match, a stranger and a pending invite", async () => {
+      signIn();
+      const cases: {
+        name: string;
+        facts: { subscriber: boolean; contactMatch: boolean };
+        relationship: string;
+      }[] = [
+        { name: "subscriber", facts: { subscriber: true, contactMatch: false }, relationship: "NONE" },
+        { name: "contact match", facts: { subscriber: false, contactMatch: true }, relationship: "NONE" },
+        { name: "stranger", facts: { subscriber: false, contactMatch: false }, relationship: "NONE" },
+        {
+          name: "outgoing pending invite",
+          facts: { subscriber: false, contactMatch: false },
+          relationship: "OUTGOING_PENDING",
+        },
+        {
+          name: "incoming pending invite",
+          facts: { subscriber: false, contactMatch: false },
+          relationship: "INCOMING_PENDING",
+        },
+      ];
+
+      for (const item of cases) {
+        relationsBetween.mockResolvedValue(relations(item.facts));
+        readProfileRelationship.mockResolvedValue(item.relationship);
+
+        const { body } = await callRoute(["Anna"]);
+
+        expect(body.data, item.name).not.toHaveProperty("details");
+        expect(JSON.stringify(body), item.name).not.toContain("Люблю походы");
+        expect(JSON.stringify(body), item.name).not.toContain("profileVisibleToFriends");
+      }
+    });
+
+    it("never answers the block to an anonymous visitor", async () => {
+      const { res, body } = await callRoute(["Anna"]);
+
+      expect(res.status).toBe(401);
+      expect(JSON.stringify(body)).not.toContain("Люблю походы");
+      expect(JSON.stringify(body)).not.toContain("details");
+      expect(findUser).not.toHaveBeenCalled();
+    });
+
+    it("keeps the block out of a Block answer, like the rest of the profile", async () => {
+      signIn();
+      relationsBetween.mockResolvedValue(relations({ blocked: true }));
+      // A stale accepted friendship must not open the fields through a Block.
+      readProfileRelationship.mockResolvedValue("FRIENDS");
+
+      const { res, body } = await callRoute(["Anna"]);
+
+      expect(res.status).toBe(404);
+      expect(body).toEqual({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      expect(JSON.stringify(body)).not.toContain("Люблю походы");
+      expect(JSON.stringify(body)).not.toContain("details");
+    });
   });
 
   it("answers a Block, an unknown nick and a malformed nick with one byte-identical 404", async () => {

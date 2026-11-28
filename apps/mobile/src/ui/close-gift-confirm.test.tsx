@@ -125,28 +125,29 @@ function baseBackground(node: Element): string | undefined {
 }
 
 /**
- * Story 5.3 (FR-32): «Подарок «Y» получен?» перед закрытием. Тело про бронь —
- * только у `RESERVED`; кнопка подтверждения обычная, не коралловая
- * (`DESIGN.md` → Colors: `destructive` не для «закрыт»).
+ * Story 5.3 (FR-32): «Подарок «Y» получен?» перед закрытием. D-49 (CLE-124): один
+ * текст для всех желаний — владелец не знает о брони, слова «Бронь» нет. Кнопка
+ * подтверждения обычная, не коралловая (`DESIGN.md` → Colors: `destructive` не
+ * для «закрыт»).
  */
 describe("CloseGiftConfirm: подтверждение закрытия желания", () => {
-  it("открытое желание: вопрос с названием, без тела про бронь", async () => {
+  it("открытое желание: вопрос с названием, без слова «Бронь»", async () => {
     await render();
 
     const dialog = dialogElement();
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent).toContain("Подарок «Свитер» получен?");
-    expect(dialog?.textContent).not.toContain("Бронь будет закрыта");
+    expect(dialog?.textContent).not.toContain("Бронь");
     expect(dialog?.textContent).toContain("Подтвердить");
     expect(dialog?.textContent).toContain("Отмена");
   });
 
-  it("забронированное желание: тело про бронь и уведомление", async () => {
+  it("забронированное желание: то же подтверждение, без слова «Бронь»", async () => {
     await render({ target: gift({ status: "RESERVED" }) });
 
-    expect(dialogElement()?.textContent).toContain(
-      "Бронь будет закрыта, бронировавший получит уведомление",
-    );
+    expect(dialogElement()?.textContent).toContain("Подарок «Свитер» получен?");
+    expect(dialogElement()?.textContent).not.toContain("Бронь");
+    expect(dialogElement()?.textContent).not.toContain("бронировавший");
   });
 
   it("кнопка подтверждения обычная (primary), а не коралловая", async () => {

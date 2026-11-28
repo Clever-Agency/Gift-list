@@ -97,7 +97,7 @@ const {
       row.reservationTimeZone = write.reservationTimeZone;
       row.reservationPhase = "ACTIVE";
       row.reservationBought = false;
-      row.holderVisibleToOwner = write.holderVisibleToOwner;
+      row.holderVisibleToOwner = false;
       row.holderVisibleToOthers = write.holderVisibleToOthers;
     }
     store.writes.push({

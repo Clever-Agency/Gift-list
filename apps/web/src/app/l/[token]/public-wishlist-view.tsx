@@ -1,21 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
 import { createTranslator } from "next-intl";
 import {
-  detailCopy,
   formatPrice,
-  getMessages,
-  toDetailFacts,
   type GiftCard,
   type SupportedLocale,
 } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import {
   Column,
-  DetailDialog,
   EmptyState,
-  restoreFocus,
   Heading,
+  joinCardName,
   LinkText,
   StatusPill,
   TagChipList,
@@ -25,6 +21,7 @@ import {
   YStack,
 } from "@gift-list/ui";
 import { PublicPageFrame } from "@/components/public-page-frame";
+import styles from "@/components/public-page-frame.module.css";
 import type { LinkView } from "./link-page";
 
 export type PublicWishlistData = Extract<LinkView, { kind: "gifts" }>;
@@ -39,6 +36,8 @@ const STATUS_PILL = {
 export type PublicWishlistViewProps = {
   view: PublicWishlistData;
   locale: SupportedLocale;
+  /** `/l/{token}` of the validated segment, or null for a bad segment. */
+  listPath: string | null;
   /** `/wishlist/{token}` of the validated segment, or null for a bad segment. */
   wishlistPath: string | null;
 };
@@ -46,27 +45,30 @@ export type PublicWishlistViewProps = {
 /**
  * Story 3.3: the anonymous link page, built from the same `packages/ui` cards as
  * the app screen. The owner is the one `h1`, the nick is a caption, and the grid
- * is plain list content: no visibility chip and no hidden count. The card press
- * opens a detail dialog of the fields this response already allowed (CLE-84).
- * «Куплю сам» is a separate link to the SPA route (AD-26) and does not open the
- * dialog. It is only for a single open wish; the
- * booking and friendship confirm flows belong to Epic 5 and AD-21 forbids
- * creating a friendship from `/l`.
+ * is plain list content: no visibility chip and no hidden count.
+ *
+ * CLE-129, T4.5 / D-63: the press zone of a card is a real link to
+ * `/l/{token}/{giftId}`, the server page of that one wish; the detail dialog of
+ * CLE-84 is gone. «Куплю сам» stays a separate link to the SPA route (AD-26) and
+ * does not open the page. It is only for a single open wish; the booking and
+ * friendship confirm flows belong to Epic 5 and AD-21 forbids creating a
+ * friendship from `/l`.
  *
  * Only a found list reaches this view: an unknown token, a malformed segment and
  * a `Block` are the real 404 of `not-found.tsx` (CLE-103), so the page never
  * renders the closed gate inside a 200 response.
  */
-export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlistViewProps) {
-  const messages = getMessages(locale);
+export function PublicWishlistView({
+  view,
+  locale,
+  listPath,
+  wishlistPath,
+}: PublicWishlistViewProps) {
+  const messages = getWebMessages(locale);
   const t = createTranslator({ locale, messages, namespace: "web.wishlist" });
 
   const tGift = createTranslator({ locale, messages, namespace: "app.gift" });
   const tWishlist = createTranslator({ locale, messages, namespace: "app.myWishlist" });
-  const [selected, setSelected] = useState<GiftCard | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const cardNodes = useRef(new Map<string, { focus?: () => void } | null>());
-  const copy = detailCopy(messages);
 
   function moreTagLabel(hiddenCount: number): string {
     return tGift("tagsMore", { count: hiddenCount });
@@ -87,22 +89,53 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
     const tagLabels = gift.tags.map(function labelOfTag(tag) {
       return tag.label;
     });
-    const reservation = gift.reservedBy
-      ? tWishlist("reservedBy", { name: gift.reservedBy.displayName })
+    // `DESIGN.md` → Доступность: the pressable zone of the card is named by one
+    // phrase — title, price, status and all tags, built by the shared helper of
+    // `@gift-list/ui` (CLE-135). The status is the pill the guest already sees;
+    // the reservation line stays out of the name and adds no new disclosure.
+    const pressLabel = joinCardName([
+      gift.title,
+      price,
+      messages.app.gift.status[gift.status],
+      tagLabels.length > 0 ? tagLabels.join(", ") : null,
+    ]);
+    // Story 5.7 / «Подписи брони»: the guest sees the stage «Подарено» (and
+    // «Куплено» since Story 5.5) by `reservationLabel`; the shared holder name is
+    // a separate line and follows the «Показывать другим гостям, что дарю я» toggle.
+    const stage = gift.reservationLabel
+      ? messages.app.gift.detail.reservationLabel[gift.reservationLabel]
       : null;
+    const reservation =
+      stage !== null || gift.reservedBy !== null ? (
+        <YStack gap="$1">
+          {stage !== null ? (
+            <Text kind="label" tone="reserved">
+              {stage}
+            </Text>
+          ) : null}
+          {gift.reservedBy ? (
+            <XStack gap="$1" alignItems="center" flexWrap="wrap">
+              <Text kind="label" tone="reserved">
+                {tWishlist("reservedByPrefix")}
+              </Text>
+              <a
+                className={styles.link}
+                href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}
+                style={{ textDecoration: "none" }}
+              >
+                <LinkText>{gift.reservedBy.displayName}</LinkText>
+              </a>
+            </XStack>
+          ) : null}
+        </YStack>
+      ) : null;
     const href =
       gift.quantity === "SINGLE" && gift.status === "OPEN" && wishlistPath
         ? `${wishlistPath}?reserve=${encodeURIComponent(gift.id)}&title=${encodeURIComponent(gift.title)}`
         : null;
-
-    function openDetail() {
-      setSelected(gift);
-      setDetailOpen(true);
-    }
-
-    function rememberCard(node: { focus?: () => void } | null) {
-      cardNodes.current.set(gift.id, node);
-    }
+    // CLE-129, T4.5 / D-63: the press zone of the card is a real `<a>` to the
+    // page of this one wish, so the list keeps the same one press as the app.
+    const cardHref = listPath ? `${listPath}/${encodeURIComponent(gift.id)}` : undefined;
 
     return (
       <YStack
@@ -135,12 +168,12 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
           }
           reservation={reservation}
           width="100%"
-          pressLabel={gift.title}
-          pressRef={rememberCard}
-          onPress={openDetail}
+          pressLabel={pressLabel}
+          href={cardHref}
         />
         {href ? (
           <a
+            className={styles.link}
             href={href}
             aria-label={t("buyMyselfLabel", { title: gift.title })}
             style={{ textDecoration: "none", alignSelf: "flex-start" }}
@@ -171,23 +204,6 @@ export function PublicWishlistView({ view, locale, wishlistPath }: PublicWishlis
           </XStack>
         )}
       </Column>
-      {selected ? (
-        <DetailDialog
-          open={detailOpen}
-          title={selected.title}
-          facts={toDetailFacts(selected, "guest", locale, copy)}
-          closeLabel={messages.app.gift.detail.close}
-          onClose={function closeDetail() {
-            setDetailOpen(false);
-          }}
-          onClosed={function detailClosed() {
-            const node = cardNodes.current.get(selected.id) ?? null;
-            setSelected(null);
-            restoreFocus(node);
-          }}
-          testID="public-wish-detail"
-        />
-      ) : null}
     </PublicPageFrame>
   );
 }

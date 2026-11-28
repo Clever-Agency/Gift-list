@@ -2,8 +2,10 @@ import { ButtonFrame as BehaviorFrame, ButtonText as BehaviorText } from "@tamag
 import { View, styled } from "@tamagui/core";
 import { XStack } from "@tamagui/stacks";
 import { forwardRef, type ComponentRef, type ReactNode } from "react";
+import { a11yHintProps } from "./a11y-hint";
 import { fontFor } from "./font-style";
 import { focusRing } from "./focus-ring";
+import { hoverTransition } from "./hover";
 import { layerFade } from "./motion";
 import { Spinner } from "./spinner";
 import { useThemeColor } from "./theme-color";
@@ -333,6 +335,13 @@ export type ButtonProps = {
    * the web DOM as `aria-describedby`.
    */
   ariaDescribedBy?: string;
+  /**
+   * The same explanation for a phone screen reader: it reaches React Native as
+   * `accessibilityHint`, which has no DOM equivalent. The web keeps reading the
+   * visible text through `ariaDescribedBy`; the two are passed together, one per
+   * platform (`a11y-hint.ts` / `a11y-hint.native.ts`).
+   */
+  hint?: string;
   /** Called on a live press only — never while `disabled` or `busy`. */
   onPress?: () => void;
   /**
@@ -409,6 +418,7 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
     shape = "square",
     ariaLabel,
     ariaDescribedBy,
+    hint,
     onPress,
     variant = "primary",
     disabled = false,
@@ -455,6 +465,9 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
   // «Уменьшить движение»: the spinner slot fades in with the project's fade, 100 ms
   // instead of 160 ms (`motion.ts`), the same rule the layers follow.
   const reduce = useReduceMotion();
+  // A live button lifts its fill, frame and opacity on hover with the `quick`
+  // preset (160 ms); a blocked one keeps the resting look (CLE-129).
+  const hover = hoverTransition(reduce);
   // The spinner needs a plain colour on a phone (no `currentColor`); the token is
   // the label's, so the arc matches its text in both themes (v8).
   const spinnerColor = useThemeColor(LABEL_COLOR[variant]);
@@ -470,11 +483,12 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
       role={link ? "link" : "button"}
       tabIndex={native ? -1 : 0}
       aria-label={ariaLabel ?? label}
-      aria-describedby={ariaDescribedBy}
+      {...a11yHintProps({ hint, describedBy: ariaDescribedBy })}
       aria-disabled={blocked}
       aria-busy={busy || undefined}
       data-testid={testID}
       testID={testID}
+      transition={blocked ? null : hover}
       onPress={blocked ? undefined : onPress}
     >
       {/*
@@ -490,6 +504,10 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
           iconSize={iconSize}
           shape={shape}
           opacity={busy ? 0 : undefined}
+          // A blocked button keeps its resting look: the transparent box under the
+          // pointer must not take the hover of the icon box.
+          pointerEvents={blocked ? "none" : undefined}
+          transition={blocked ? null : hover}
           testID="button-icon"
           // A `<button>` may hold phrasing content only: the box is a `span` too.
           render={<span />}

@@ -169,20 +169,6 @@ type GiftFormProps = {
    */
   readOnly?: boolean;
   /**
-   * Story 5.4: one `caption` above the first field, under the screen's heading —
-   * «Желание забронировано — бронировавший получит уведомление». It is plain text:
-   * not a field, not a focus target and no live region, so a screen reader reads it
-   * in order before the fields and the Tab order is unchanged. The screen decides
-   * when it applies and passes the catalog line; without the prop the form renders
-   * exactly as before.
-   */
-  notice?: string;
-  /**
-   * Story 2.5: `quantity` is frozen once the wish is no longer open. The rows show
-   * the stored value, disabled, with a hint why.
-   */
-  quantityLocked?: boolean;
-  /**
    * Story 2.5: the fixed tag catalogue and its request state. The selected tags
    * live in the form, so a failed or empty catalogue never clears them; the
    * prop only decides which fixed tags can still be offered.
@@ -224,11 +210,9 @@ export type GiftFormHandle = {
  * caps live in `@gift-list/contracts` and are checked on submit in the same unit
  * as the schema (code points).
  *
- * CLE-82/S23.3: a reserved wish still edits its visibility (`RESERVED` is not a
- * lock on the owner's side any more); only its quantity stays frozen. A `CLOSED`
- * or archived wish is read-only as a whole (`readOnly`), with one caption for both
- * states. Story 5.4 adds the caption of a reserved wish (`notice`): the screen
- * passes the catalog line and the form only places it above the fields.
+ * CLE-82/S23.3: a closed or archived wish is read-only as a whole (`readOnly`),
+ * with one caption covering both states; every other wish edits the same fields,
+ * including `quantity` (CLE-124/D-49: a reservation is invisible to the owner).
  */
 export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftForm(
   {
@@ -243,8 +227,6 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
     cancelLabel,
     secondaryAction,
     readOnly = false,
-    notice,
-    quantityLocked = false,
     tagCatalog = EMPTY_TAG_CATALOG,
     onRetryTagCatalog,
   },
@@ -732,13 +714,6 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
 
   return (
     <YStack gap="$grid-gap">
-      {notice ? (
-        // Story 5.4: the caption of a reserved wish sits above the fields, under the
-        // screen's heading. Plain text: read in order, never a stop in the Tab order.
-        <Text testID="gift-form-notice" kind="caption" tone="muted">
-          {notice}
-        </Text>
-      ) : null}
       <TextField
         ref={titleRef}
         label={t("field.title")}
@@ -826,10 +801,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         value={quantity}
         onChange={setQuantity}
         error={inlineError("quantity")}
-        disabled={readOnly || quantityLocked}
-        // The read-only caption already explains the whole form; the frozen-quantity
-        // hint only speaks for a reserved wish, which the person can still edit.
-        description={quantityLocked && !readOnly ? t("field.quantityLocked") : undefined}
+        disabled={readOnly}
         autoFocusValue={quantity}
         autoFocusRef={quantityRef}
         options={QUANTITIES.map((code) => ({
@@ -864,7 +836,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         ) : null}
         {tagCatalog.status === "error" ? (
           <YStack gap="$2">
-            <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
+            <Text kind="caption" tone="destructive" role="alert">
               {t("field.tagsError")}
             </Text>
             {onRetryTagCatalog ? (
@@ -1003,7 +975,6 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
             kind="caption"
             tone="destructive"
             role="alert"
-            aria-live="polite"
           >
             {tagServerError}
           </Text>
@@ -1036,7 +1007,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         </Text>
       ) : null}
       {formError ? (
-        <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
+        <Text kind="caption" tone="destructive" role="alert">
           {formError}
         </Text>
       ) : null}
@@ -1116,19 +1087,17 @@ type ChoiceOption<T extends string> = {
  * `SINGLE`/`UNLIMITED` quantity (`DESIGN.md` → Форма: five codes; radio rows with
  * an explanation, «Всем» and «Один раз» by default), built from `ChoiceList` and
  * `Choice` of `@gift-list/ui`. `DESIGN.md` asks for a bottom sheet with radios on
- * a phone; the same rows are reused by `VisibilityPicker` (Story 2.3). Each
- * variant keeps the same `radio` semantics: one choice, the selected one is
- * marked, and the option label is the accessible name.
+ * a phone. Each variant keeps the same `radio` semantics: one choice, the selected
+ * one is marked, and the option label is the accessible name.
  *
  * `labelHidden` keeps the accessible name of the group while the visible heading
- * comes from the surrounding layer (the picker title is a header of its own).
+ * comes from the surrounding layer.
  *
  * `disabled` shows the stored value without letting it change (a read-only closed
- * or archived wish, and the quantity of a wish that is no longer open).
+ * or archived wish).
  *
- * `autoFocusRef` is only set by `VisibilityPicker`: it receives the node of the option
- * holding `autoFocusValue`, so the dialog can put focus there when it opens instead of
- * leaving it on the control the layer was opened from.
+ * `autoFocusRef` receives the node of the option holding `autoFocusValue`, so the
+ * caller can put focus there instead of leaving it on the control it came from.
  */
 export function ChoiceGroup<T extends string>({
   label,

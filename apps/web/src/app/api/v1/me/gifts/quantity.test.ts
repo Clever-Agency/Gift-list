@@ -181,6 +181,8 @@ describe("POST /api/v1/me/gifts quantity", () => {
 });
 
 describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
+  const updatedAt = new Date("2026-11-01T00:00:00.000Z");
+
   it("changes the quantity of an OPEN wish", async () => {
     txFindFirst
       .mockResolvedValueOnce({
@@ -191,6 +193,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
         quantity: "SINGLE",
         archivedAt: null,
         reservedById: null,
+        updatedAt,
       })
       .mockResolvedValueOnce(giftRow({ quantity: "UNLIMITED" }));
 
@@ -199,35 +202,39 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: "OPEN", reservedById: null },
+      where: { id: "g1", archivedAt: null, updatedAt },
       data: { quantity: "UNLIMITED" },
       select: { id: true },
     });
     expect((await res.json()).data.quantity).toBe("UNLIMITED");
   });
 
-  it("rejects a quantity change on a RESERVED wish", async () => {
-    txFindFirst.mockResolvedValueOnce({
-      priceAmount: null,
-      priceCurrency: null,
-      status: "RESERVED",
-      visibility: "PUBLIC",
-      quantity: "SINGLE",
-      archivedAt: null,
-      reservedById: "u2",
-    });
+  /** D-49 (решение 3): a reserved wish switches quantity; the reservation stays. */
+  it("changes the quantity of a RESERVED wish", async () => {
+    txFindFirst
+      .mockResolvedValueOnce({
+        priceAmount: null,
+        priceCurrency: null,
+        status: "RESERVED",
+        visibility: "PUBLIC",
+        quantity: "SINGLE",
+        archivedAt: null,
+        reservedById: "u2",
+        updatedAt,
+      })
+      .mockResolvedValueOnce(giftRow({ status: "RESERVED", quantity: "UNLIMITED" }));
 
     const { PATCH } = await import("./[id]/route");
     const res = await PATCH(patch({ quantity: "UNLIMITED" }), context);
 
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({
-      ok: false,
-      code: "VALIDATION",
-      message: "Invalid input",
-      field: "quantity",
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "g1", archivedAt: null, updatedAt },
+      data: { quantity: "UNLIMITED" },
+      select: { id: true },
     });
-    expect(update).not.toHaveBeenCalled();
+    expect(releaseMany).not.toHaveBeenCalled();
+    expect(await res.json()).toMatchObject({ ok: true, data: { status: "OPEN", quantity: "UNLIMITED" } });
   });
 
   it("rejects any edit of a CLOSED wish with the closed reason", async () => {
@@ -239,6 +246,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
       quantity: "SINGLE",
       archivedAt: null,
       reservedById: null,
+      updatedAt,
     });
 
     const { PATCH } = await import("./[id]/route");
@@ -254,7 +262,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("lets a non-OPEN wish resend its stored quantity with another edit", async () => {
+  it("lets a reserved wish resend its stored quantity with another edit", async () => {
     txFindFirst
       .mockResolvedValueOnce({
         priceAmount: null,
@@ -264,6 +272,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
         quantity: "UNLIMITED",
         archivedAt: null,
         reservedById: "u2",
+        updatedAt,
       })
       .mockResolvedValueOnce(
         giftRow({ title: "Новое название", status: "RESERVED", quantity: "UNLIMITED" }),
@@ -274,7 +283,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: "RESERVED", reservedById: "u2" },
+      where: { id: "g1", archivedAt: null, updatedAt },
       data: { title: "Новое название" },
       select: { id: true },
     });
@@ -290,6 +299,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
         quantity: "SINGLE",
         archivedAt: null,
         reservedById: null,
+        updatedAt,
       })
       .mockResolvedValueOnce(giftRow({ quantity: "UNLIMITED", visibility: "SECRET" }));
 
@@ -301,7 +311,7 @@ describe("PATCH /api/v1/me/gifts/[id] quantity", () => {
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: "OPEN", reservedById: null },
+      where: { id: "g1", archivedAt: null, updatedAt },
       data: { quantity: "UNLIMITED", visibility: "SECRET" },
       select: { id: true },
     });

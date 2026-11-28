@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import type { ReservationCard } from "@gift-list/contracts";
+import { formatDate, formatPrice, type ReservationCard } from "@gift-list/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { click, controlByText, dialogElement, settle } from "@/test/dom";
+import { addCalendarDays, todayInZone } from "@/ui/reservation-extend-dialog";
 import ReservationsScreen from "../../app/(app)/(tabs)/reservations";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -101,6 +102,20 @@ vi.mock("expo-router", async () => {
   return {
     router: navigation,
     Stack: { Screen: () => null },
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child and draws nothing of its own — `NavLink` draws the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href: string;
+      asChild?: boolean;
+      children: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href }, children);
+      return React.cloneElement(children, { href });
+    },
     useLocalSearchParams: () => search.params,
     useFocusEffect: (effect: () => void | (() => void)) => {
       const focused = React.useSyncExternalStore(
@@ -152,6 +167,9 @@ function card(overrides: Partial<ReservationCard> = {}): ReservationCard {
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
     ...overrides,
   };
@@ -159,6 +177,11 @@ function card(overrides: Partial<ReservationCard> = {}): ReservationCard {
 
 function listAnswer(cards: ReservationCard[]) {
   return { ok: true, data: { reservations: cards } };
+}
+
+/** A deadline day still ahead in the holder's zone: «Продлить до…» is offered. */
+function dueSoon(days = 5): string {
+  return addCalendarDays(todayInZone("Europe/Minsk"), days);
 }
 
 /** The session, the list and the one action answer the screen can ask for. */
@@ -212,8 +235,10 @@ function dialogControl(label: string): HTMLElement | undefined {
   return dialog ? controlByText(label, dialog) : undefined;
 }
 
+/** The card button of a card: the ⋮, the switches and the footer are siblings, not it. */
 function cardLink(giftId = "g1"): HTMLElement | null {
-  return container.querySelector<HTMLElement>(`[data-testid="reservation-${giftId}-link"]`);
+  const card = container.querySelector<HTMLElement>(`[data-testid="reservation-${giftId}"]`);
+  return card?.querySelector<HTMLElement>(':scope > [role="button"]') ?? null;
 }
 
 async function mount() {
@@ -253,7 +278,10 @@ describe("экран «Мои брони»", () => {
 
     expect(text()).toContain("Мои брони");
     expect(text()).toContain("Плед");
-    expect(text()).toContain("у @anya");
+    // CLE-129, T4.4: «у @ника» — ссылка на профиль владельца.
+    expect(text()).toContain("у");
+    expect(text()).toContain("@anya");
+    expect(container.querySelector('[role="link"][href="/u/anya"]')).not.toBeNull();
     expect(text()).toContain("Вы берёте · до 01.12");
   });
 
@@ -297,6 +325,42 @@ describe("экран «Мои брони»", () => {
       pathname: "/login",
       params: { next: "/reservations" },
     });
+  });
+
+  it("«Подарил» шлёт одно действие и заменяет карточку ответом (Story 5.7)", async () => {
+    respond(listAnswer([card({ dueAt: dueSoon() })]), {
+      ok: true,
+      data: card({ phase: "GIVEN" }),
+    });
+    await mount();
+
+    await click(control("Подарил"));
+    await settle(20);
+
+    const calls = updateCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]).toEqual({
+      method: "PATCH",
+      body: { action: "given" },
+    });
+    expect(text()).toContain("Подарено");
+    expect(control("Подарил")).toBeUndefined();
+  });
+
+  it("после срока «Продлить до…» нет, «Подарил» и «Снять бронь» на месте", async () => {
+    respond(listAnswer([card({ dueAt: "2020-01-01" })]));
+    await mount();
+
+    expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeDefined();
+    expect(byLabel("Меню: Плед")).toBeDefined();
+  });
+
+  it("до срока «Продлить до…» остаётся", async () => {
+    respond(listAnswer([card({ dueAt: dueSoon() })]));
+    await mount();
+
+    expect(control("Продлить до…")).toBeDefined();
   });
 
   it("«Купил» шлёт одно действие и заменяет карточку ответом", async () => {
@@ -360,16 +424,16 @@ describe("экран «Мои брони»", () => {
     expect(readCalls().length).toBe(before + 1);
   });
 
-  it("переключатели видимости уходят одной парой", async () => {
+  it("переключатель видимости для гостей уходит без флага владельца", async () => {
     respond(listAnswer([card()]), {
       ok: true,
-      data: card({ holderVisibleToOwner: true, holderVisibleToOthers: true }),
+      data: card({ holderVisibleToOthers: false }),
     });
     await mount();
 
-    await click(control("Кто видит, что это я"));
-    await settle(10);
-    await click(byLabel("Показать владельцу, что это я"));
+    expect(text()).not.toContain("Показать владельцу, что это я");
+
+    await click(byLabel("Показывать другим гостям, что дарю я"));
     await settle(20);
 
     const calls = updateCalls();
@@ -378,14 +442,14 @@ describe("экран «Мои брони»", () => {
       method: "PATCH",
       body: {
         action: "visibility",
-        holderVisibleToOwner: true,
-        holderVisibleToOthers: true,
+        holderVisibleToOthers: false,
       },
     });
   });
 
   it("продление: дата вне диапазона остаётся в диалоге с текстом сервера", async () => {
-    respond(listAnswer([card()]), {
+    const due = dueSoon();
+    respond(listAnswer([card({ dueAt: due })]), {
       ok: false,
       code: "VALIDATION",
       message: "Due date out of range",
@@ -401,16 +465,45 @@ describe("экран «Мои брони»", () => {
 
     expect(text()).toContain("Выберите дату не позже 20.12.2026.");
     expect(dialogElement()).not.toBeNull();
-    expect(text()).toContain("до 01.12");
+    expect(text()).toContain(`до ${formatDate(due, "ru", { year: false })}`);
   });
 
-  it("продление: успешный ответ заменяет карточку и порядок по сроку", async () => {
+  /**
+   * CLE-124/S9b-3 (D-12): if the deadline passed between the read and the press,
+   * the server answers `RESERVATION_DUE_PASSED`; the form sentence names it and the
+   * list is reread, so the extension is gone.
+   */
+  it("RESERVATION_DUE_PASSED: «Срок брони прошёл…» и продления больше нет", async () => {
+    respond(listAnswer([card({ dueAt: dueSoon() })]), {
+      ok: false,
+      code: "CONFLICT",
+      message: "The reservation deadline has passed",
+      reason: "RESERVATION_DUE_PASSED",
+    });
+    await mount();
+
+    await click(control("Продлить до…"));
+    await settle(20);
+    await click(dialogControl("Подтвердить"));
+    await settle(20);
+
+    expect(text()).toContain("Срок брони прошёл — продлить уже нельзя.");
+    expect(dialogElement()).toBeNull();
+
+    respond(listAnswer([card({ dueAt: "2020-01-01" })]));
+    await act(async () => focusStore.set(false));
+    await act(async () => focusStore.set(true));
+    await settle(20);
+    expect(control("Продлить до…")).toBeUndefined();
+  });
+
+  it("продление: успешный ответ заменяет карточку и порядок по сроку", async () => {    const due = dueSoon(10);
     respond(
       listAnswer([
-        card(),
-        card({ giftId: "g2", titleSnapshot: "Свитер", dueAt: "2026-12-05" }),
+        card({ dueAt: dueSoon(20) }),
+        card({ giftId: "g2", titleSnapshot: "Свитер", dueAt: due }),
       ]),
-      { ok: true, data: card({ giftId: "g2", titleSnapshot: "Свитер", dueAt: "2026-11-25" }) },
+      { ok: true, data: card({ giftId: "g2", titleSnapshot: "Свитер", dueAt: dueSoon(2) }) },
     );
     await mount();
 
@@ -432,7 +525,7 @@ describe("экран «Мои брони»", () => {
     respond(listAnswer([card()]));
     await mount();
 
-    await click(byLabel("Меню"));
+    await click(byLabel("Меню: Плед"));
     await settle(20);
     await click(dialogControl("Снять бронь"));
     await settle(300);
@@ -471,14 +564,34 @@ describe("экран «Мои брони»", () => {
     });
   });
 
-  it("в GIVEN нет продления, но «Купил» и ⋮ на месте", async () => {
+  /** D-64.7: цена — текущая цена желания; у недоступного желания её нет. */
+  it("цена есть у доступного желания и пропадает при canOpenGift = false", async () => {
+    respond(listAnswer([card({ priceAmount: 250000, priceCurrency: "RUB" })]));
+    await mount();
+
+    expect(text()).toContain(formatPrice(250000, "RUB", "ru"));
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    respond(
+      listAnswer([card({ canOpenGift: false, priceAmount: 250000, priceCurrency: "RUB" })]),
+    );
+    await mount();
+
+    expect(text()).not.toContain(formatPrice(250000, "RUB", "ru"));
+    expect(cardLink()).toBeNull();
+    expect(byLabel("Купил")).toBeDefined();
+  });
+
+  it("в GIVEN нет продления и «Подарил», но «Купил» и ⋮ на месте", async () => {
     respond(listAnswer([card({ phase: "GIVEN" })]));
     await mount();
 
-    expect(text()).toContain("Ждёт подтверждения");
+    expect(text()).toContain("Подарено");
     expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeUndefined();
     expect(byLabel("Купил")).toBeDefined();
-    expect(byLabel("Меню")).toBeDefined();
+    expect(byLabel("Меню: Плед")).toBeDefined();
   });
 
   it("возврат на экран тихо перечитывает список", async () => {
@@ -504,7 +617,9 @@ describe("экран «Мои брони»", () => {
       let answer: (value: unknown) => void = function noop() {};
       api.apiRequest.mockImplementation(function answerWith(path: string) {
         if (path === "/api/v1/me") return Promise.resolve(sessionReady);
-        if (path === "/api/v1/me/reservations") return Promise.resolve(listAnswer([card()]));
+        if (path === "/api/v1/me/reservations") {
+          return Promise.resolve(listAnswer([card({ dueAt: dueSoon() })]));
+        }
         return new Promise((resolve) => {
           answer = resolve;
         });
@@ -523,7 +638,7 @@ describe("экран «Мои брони»", () => {
       expect(updateCalls()).toHaveLength(1);
 
       await click(control("Продлить до…"));
-      await click(byLabel("Меню"));
+      await click(byLabel("Меню: Плед"));
       await settle(10);
       expect(dialogElement()).toBeNull();
       expect(updateCalls()).toHaveLength(1);
@@ -539,7 +654,7 @@ describe("экран «Мои брони»", () => {
       const resolvePending = respondPending();
       await mount();
 
-      await click(byLabel("Меню"));
+      await click(byLabel("Меню: Плед"));
       await settle(20);
       await click(dialogControl("Снять бронь"));
       await settle(300);
@@ -565,5 +680,63 @@ describe("экран «Мои брони»", () => {
       await settle(20);
       expect(text()).toContain("Броней нет");
     });
+  });
+});
+
+/**
+ * Story 6.4 (`DESIGN.md` → «Куда уходит фокус»): the card's ⋮ and «Продлить до…»
+ * take focus back when their layers close, and the ⋮ reports the open menu.
+ */
+describe("фокус после закрытия слоёв", () => {
+  it("⋮ сообщает aria-expanded, пока меню открыто", async () => {
+    respond(listAnswer([card()]));
+    await mount();
+
+    const menu = byLabel("Меню: Плед");
+    expect(menu?.getAttribute("aria-expanded")).toBe("false");
+    await click(menu);
+    await settle(20);
+
+    expect(byLabel("Меню: Плед")?.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("продление: «Отмена» возвращает фокус на «Продлить до…»", async () => {
+    respond(listAnswer([card({ dueAt: dueSoon() })]));
+    await mount();
+
+    const cta = container.querySelector<HTMLElement>('[data-testid="reservation-g1-extend"]');
+    expect(cta).not.toBeNull();
+    cta?.focus();
+    expect(document.activeElement).toBe(cta);
+
+    await click(cta);
+    await settle(20);
+    expect(dialogElement()).not.toBeNull();
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cta);
+  });
+
+  it("снятие брони: «Отмена» возвращает фокус на ⋮ карточки", async () => {
+    respond(listAnswer([card()]));
+    await mount();
+
+    const menu = byLabel("Меню: Плед");
+    expect(menu).not.toBeNull();
+    await click(menu);
+    await settle(20);
+
+    await click(dialogControl("Снять бронь"));
+    await settle(300);
+    expect(dialogElement()?.textContent).toContain("Снять бронь? Желание снова станет открытым.");
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(menu);
   });
 });

@@ -27,6 +27,13 @@ const nextConfig: NextConfig = {
         source: "/i/:path*",
         headers: [...LINK_PAGE_HEADERS],
       },
+      {
+        // CLE-137 (Story 7.2): the unsubscribe page writes and its language comes
+        // from `Accept-Language`; a shared cache must never replay one visitor's
+        // document for another.
+        source: "/unsubscribe/:path*",
+        headers: [...LINK_PAGE_HEADERS],
+      },
     ];
   },
   async rewrites() {

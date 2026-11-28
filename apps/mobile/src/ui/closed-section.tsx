@@ -1,5 +1,6 @@
 import { Heading, Pressable, Text, XStack, YStack } from "@gift-list/ui";
 import type { ReactNode } from "react";
+import { CardGridList } from "@/ui/card-grid-list";
 
 /**
  * Story 5.3 (`DESIGN.md` → Мелкие элементы, `EXPERIENCE.md` → State Patterns):
@@ -45,9 +46,9 @@ export function ClosedSection({
         </XStack>
       </Pressable>
       {expanded ? (
-        <XStack role="list" flexWrap="wrap" gap="$grid-gap" alignItems="flex-start">
+        <CardGridList alignStart>
           {children}
-        </XStack>
+        </CardGridList>
       ) : null}
     </YStack>
   );

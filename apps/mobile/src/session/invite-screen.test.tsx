@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { controlByText, settle } from "@/test/dom";
 import { AuthProvider } from "@/session/auth-context";
-import InviteScreen from "../../app/invite/[token]";
+import InviteScreen from "../../app/(app)/invite/[token]";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const invites = vi.hoisted(() => ({ getInvitePreview: vi.fn(), acceptInvite: vi.fn() }));

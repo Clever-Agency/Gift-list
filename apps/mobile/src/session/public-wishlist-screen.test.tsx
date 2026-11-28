@@ -1,17 +1,19 @@
 // @vitest-environment happy-dom
+import { formatPrice } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { act } from "react";
+import { act, useLayoutEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "@/session/auth-context";
+import { openSessionEvents } from "@/platform/session-events";
+import { AuthProvider, useAuth } from "@/session/auth-context";
 import { controls, dialogElement, settle } from "@/test/dom";
 import { observeContentWidth, type SimulatedContent } from "@/test/layout";
 import { declarationsFor, findByPaint, paintedSpace, paintedValue } from "@/test/tamagui-css";
 import { cardGrid, cardGridForContent, pageGutter } from "@/ui/card-grid";
-import PublicWishlistScreen from "../../app/wishlist/[token]";
+import PublicWishlistScreen from "../../app/(link)/wishlist/[token]";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const store = vi.hoisted(() => ({ clearSessionToken: vi.fn() }));
@@ -43,11 +45,34 @@ vi.mock("expo-localization", () => ({
 }));
 vi.mock("expo-router", async () => {
   const React = await import("react");
+  /** The target as a string: `asChild` hands it to the anchor the child draws. */
+  function hrefOf(href: unknown): string | undefined {
+    return typeof href === "string"
+      ? href
+      : (href as { pathname?: string } | null | undefined)?.pathname;
+  }
   return {
     router: navigation,
     Stack: { Screen: () => null },
-    Link: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, null, children),
+    // An honest `asChild`: the router's `Link` puts `href` and `onPress` onto its
+    // only child and draws nothing of its own — the card itself is the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href?: unknown;
+      asChild?: boolean;
+      children?: React.ReactElement<Record<string, unknown>>;
+    }) {
+      if (!asChild) return React.createElement("a", { href: hrefOf(href) }, children);
+      return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        href: hrefOf(href),
+        onPress: function onPress() {
+          navigation.push(href);
+        },
+      });
+    },
     useLocalSearchParams: () => search.params,
   };
 });
@@ -188,11 +213,12 @@ async function press(label: string) {
   await settle(10);
 }
 
-async function mount() {
+async function mount(children?: ReactNode) {
   await act(async () => {
     root.render(
       <AuthProvider>
         <PublicWishlistScreen />
+        {children}
       </AuthProvider>,
     );
   });
@@ -243,34 +269,45 @@ describe("вишлист по ссылке: вход", () => {
     expect(store.clearSessionToken).toHaveBeenCalled();
   });
 
-  it("протухший токен в чтении списка: выходит и сразу повторяет чтение как гость", async () => {
-    let linkReads = 0;
-    function answer(path: string) {
-      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
-      if (path === "/api/v1/session") {
-        return Promise.resolve({ ok: true, data: { signedOut: true } });
-      }
-      if (String(path).startsWith("/api/v1/l/")) {
-        linkReads += 1;
-        return Promise.resolve(
-          linkReads === 1
-            ? { ok: false, code: "UNAUTHENTICATED", message: "" }
-            : giftsAnswer([gift()]),
-        );
-      }
-      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "" });
-    }
-    api.apiRequest.mockImplementation(answer);
-    await mount();
+  const unauthenticated = { ok: false, code: "UNAUTHENTICATED", message: "" };
 
-    expect(linkReads).toBe(2);
-    expect(store.clearSessionToken).toHaveBeenCalled();
-    expect(text()).toContain("Аня");
-    expect(text()).toContain("Наушники");
-    // The stale session is not a network failure: no network error or toast.
-    expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
-    expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
-  });
+  it.each([
+    {
+      outcome: "показывает список",
+      guestAnswer: giftsAnswer([gift()]),
+      expectedText: "Наушники",
+      retryVisible: false,
+    },
+    {
+      outcome: "показывает общую ошибку с «Повторить» при повторном 401",
+      guestAnswer: unauthenticated,
+      expectedText: "Не получилось загрузить. Попробуйте ещё раз.",
+      retryVisible: true,
+    },
+  ])(
+    "после 401 вошедшего выходит один раз и $outcome",
+    async function rereadsAsGuest({ guestAnswer, expectedText, retryVisible }) {
+      api.apiRequest
+        .mockResolvedValueOnce({ ok: true, data: user })
+        .mockResolvedValueOnce(unauthenticated)
+        .mockResolvedValueOnce({ ok: true, data: { signedOut: true } })
+        .mockResolvedValue(guestAnswer);
+      await mount();
+
+      expect(api.apiRequest.mock.calls).toEqual([
+        ["/api/v1/me"],
+        ["/api/v1/l/tok_1"],
+        ["/api/v1/session", { method: "DELETE" }],
+        ["/api/v1/l/tok_1"],
+      ]);
+      expect(store.clearSessionToken).toHaveBeenCalledTimes(1);
+      expect(navigation.replace).not.toHaveBeenCalled();
+      expect(text()).toContain(expectedText);
+      expect(Boolean(button("Повторить"))).toBe(retryVisible);
+      expect(text()).not.toContain("Не получилось загрузить. Проверьте сеть.");
+      expect(text()).not.toContain("Нет соединения. Попробуйте ещё раз.");
+    },
+  );
 
   it("сетевая ошибка сессии не уводит на вход: список читается как для гостя", async () => {
     respond(giftsAnswer([gift()]), { ok: false, network: true });
@@ -329,7 +366,244 @@ describe("вишлист по ссылке: вход", () => {
   });
 });
 
+describe("вишлист по той же ссылке при смене зрителя", () => {
+  type Auth = ReturnType<typeof useAuth>;
+
+  const friend = { ...user, id: "u-friend", nick: "oleg", hideFromSearch: false };
+  const anotherUser = { ...user, id: "u-other", nick: "masha", hideFromSearch: false };
+  const friendWish = gift({ id: "g-friend", title: "Подарок для друзей", visibility: "FRIENDS" });
+  const publicWish = gift({ id: "g-public", title: "Подарок для всех" });
+
+  function AuthProbe({ onCommit }: { onCommit: (auth: Auth) => void }) {
+    const auth = useAuth();
+    useLayoutEffect(function observeAuthCommit() {
+      onCommit(auth);
+    }, [auth, onCommit]);
+    return null;
+  }
+  AuthProbe.displayName = "AuthProbe";
+
+  async function mountWithAuth() {
+    let commit: { auth: Auth; pageText: string } | undefined;
+
+    function rememberCommit(auth: Auth) {
+      commit = { auth, pageText: text() };
+    }
+
+    await mount(<AuthProbe onCommit={rememberCommit} />);
+
+    return function readCommit() {
+      if (!commit) throw new Error("AuthProbe не получил состояние сессии");
+      return commit;
+    };
+  }
+
+  function respondToViewerReads(...answers: Promise<unknown>[]) {
+    api.apiRequest.mockImplementation(function answer(path: string) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: friend });
+      if (path === "/api/v1/session") {
+        return Promise.resolve({ ok: true, data: { signedOut: true } });
+      }
+      if (path === "/api/v1/l/tok_1") {
+        const answer = answers.shift();
+        if (answer) return answer;
+      }
+      throw new Error(`Неожиданный запрос ${path}`);
+    });
+  }
+
+  it("вкладка без BroadcastChannel перечитывает список по storage-сигналу другой вкладки", async function reloadFromStorageEvent() {
+    vi.stubGlobal("BroadcastChannel", undefined);
+    const storage = window.localStorage;
+    const write = vi.spyOn(storage, "setItem");
+    const remove = vi.spyOn(storage, "removeItem");
+    const onOtherChange = vi.fn();
+    const otherTab = openSessionEvents(onOtherChange);
+    try {
+      const next = Promise.withResolvers<unknown>();
+      api.apiRequest
+        .mockResolvedValueOnce({ ok: true, data: friend })
+        .mockResolvedValueOnce(giftsAnswer([publicWish, friendWish]))
+        .mockReturnValueOnce(next.promise)
+        .mockResolvedValueOnce(giftsAnswer([publicWish]));
+      await mount();
+      expect(text()).toContain(friendWish.title);
+
+      otherTab?.publish();
+      expect(write).toHaveBeenCalledExactlyOnceWith("gift-list.session-change", "");
+      expect(remove).toHaveBeenCalledExactlyOnceWith("gift-list.session-change");
+      const [key, marker] = write.mock.calls[0];
+      expect(storage.getItem(key)).toBeNull();
+      otherTab?.close();
+
+      // happy-dom does not deliver localStorage writes across windows.
+      await act(async function deliverStorageEvents() {
+        window.dispatchEvent(new StorageEvent("storage", { key, oldValue: marker, storageArea: storage }));
+        expect(linkReads()).toBe(1);
+        window.dispatchEvent(new StorageEvent("storage", { key, newValue: marker, storageArea: storage }));
+      });
+      expect(onOtherChange).not.toHaveBeenCalled();
+      expect(text()).not.toContain(friendWish.title);
+      expect(loadingRegion()).not.toBeNull();
+      expect(linkReads()).toBe(1);
+
+      await act(async function receiveGuestSession() {
+        next.resolve({ ok: false, code: "UNAUTHENTICATED", message: "" });
+      });
+      expect(text()).toContain(publicWish.title);
+      expect(text()).not.toContain(friendWish.title);
+      expect(linkReads()).toBe(2);
+      expect(write).toHaveBeenCalledTimes(1);
+    } finally {
+      otherTab?.close();
+      write.mockRestore();
+      remove.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    {
+      transition: "смене аккаунта",
+      expectedState: { status: "ready", user: anotherUser },
+      changeViewer: function switchAccount(auth: Auth) {
+        auth.setUser(anotherUser);
+      },
+    },
+    {
+      transition: "выходе",
+      expectedState: { status: "anonymous" },
+      changeViewer: function signOut(auth: Auth) {
+        return auth.signOut();
+      },
+    },
+  ])(
+    "при $transition скрывает старые карточки до ответа для нового зрителя",
+    async function hidesPreviousCards({ expectedState, changeViewer }) {
+      const next = Promise.withResolvers<ReturnType<typeof giftsAnswer>>();
+      respondToViewerReads(Promise.resolve(giftsAnswer([friendWish])), next.promise);
+      const readCommit = await mountWithAuth();
+
+      expect(readCommit().auth.state).toMatchObject({ status: "ready", user: friend });
+      expect(text()).toContain(friendWish.title);
+      expect(linkReads()).toBe(1);
+
+      await act(async function changeSession() {
+        await changeViewer(readCommit().auth);
+      });
+
+      const { auth, pageText } = readCommit();
+      expect(auth.state).toMatchObject(expectedState);
+      // The first commit for the new viewer runs before passive effects can hide the old list.
+      expect(pageText).not.toContain(friendWish.title);
+      expect(text()).not.toContain(friendWish.title);
+      expect(loadingRegion()).not.toBeNull();
+      expect(linkReads()).toBe(2);
+
+      await act(async function receiveNewList() {
+        next.resolve(giftsAnswer([publicWish]));
+      });
+
+      expect(text()).toContain(publicWish.title);
+      expect(text()).not.toContain(friendWish.title);
+      expect(linkReads()).toBe(2);
+    },
+  );
+
+  it("запоздалый ответ для прежнего аккаунта не заменяет актуальный список", async function ignoresLateAnswer() {
+    const previous = Promise.withResolvers<ReturnType<typeof giftsAnswer>>();
+    respondToViewerReads(previous.promise, Promise.resolve(giftsAnswer([publicWish])));
+    const readCommit = await mountWithAuth();
+
+    expect(linkReads()).toBe(1);
+    expect(loadingRegion()).not.toBeNull();
+
+    await act(async function changeAccount() {
+      readCommit().auth.setUser(anotherUser);
+    });
+
+    expect(text()).toContain(publicWish.title);
+    expect(linkReads()).toBe(2);
+
+    await act(async function receiveOldList() {
+      previous.resolve(giftsAnswer([friendWish]));
+    });
+
+    expect(text()).toContain(publicWish.title);
+    expect(text()).not.toContain(friendWish.title);
+    expect(linkReads()).toBe(2);
+  });
+
+  it.each([
+    {
+      giftAccess: "доступно",
+      newList: [gift({ id: friendWish.id, title: "Новое название подарка" })],
+      expectedParams: { openReserve: "1", title: "Новое название подарка" },
+    },
+    {
+      giftAccess: "недоступно",
+      newList: [publicWish],
+      expectedParams: { title: "" },
+    },
+  ])(
+    "тот же reserve ждёт новую выдачу, даже если желание $giftAccess",
+    async function rechecksReserve({ newList, expectedParams }) {
+      search.params = { token: "tok_1", reserve: friendWish.id };
+      const next = Promise.withResolvers<ReturnType<typeof giftsAnswer>>();
+      respondToViewerReads(Promise.resolve(giftsAnswer([friendWish])), next.promise);
+      const readCommit = await mountWithAuth();
+      const target = { id: friendWish.id, listToken: "tok_1" };
+      expect(navigation.replace).toHaveBeenCalledExactlyOnceWith({
+        pathname: "/gifts/[id]",
+        params: { ...target, openReserve: "1", title: friendWish.title },
+      });
+      navigation.replace.mockClear();
+
+      await act(async function changeAccount() {
+        readCommit().auth.setUser(anotherUser);
+      });
+      expect(navigation.replace).not.toHaveBeenCalled();
+      expect(loadingRegion()).not.toBeNull();
+
+      await act(async function receiveNewList() {
+        next.resolve(giftsAnswer(newList));
+      });
+      expect(navigation.replace).toHaveBeenCalledExactlyOnceWith({
+        pathname: "/gifts/[id]",
+        params: { ...target, ...expectedParams },
+      });
+      expect(linkReads()).toBe(2);
+    },
+  );
+});
+
 describe("вишлист по ссылке: список", () => {
+  it("после смены токена запоздалый ответ по старой ссылке не заменяет новый список", async function ignoresOldLinkAnswer() {
+    const previous = Promise.withResolvers<ReturnType<typeof giftsAnswer>>();
+    api.apiRequest
+      .mockResolvedValueOnce({ ok: true, data: user })
+      .mockReturnValueOnce(previous.promise)
+      .mockResolvedValueOnce(giftsAnswer([gift({ id: "g2", title: "Свитер" })]));
+    await mount();
+    expect(loadingRegion()).not.toBeNull();
+
+    search.params = { token: "tok_2" };
+    await mount();
+    expect(text()).toContain("Свитер");
+
+    await act(async function receiveOldLink() {
+      previous.resolve(giftsAnswer([gift()]));
+    });
+
+    expect(text()).toContain("Свитер");
+    expect(text()).not.toContain("Наушники");
+    expect(api.apiRequest.mock.calls).toEqual([
+      ["/api/v1/me"],
+      ["/api/v1/l/tok_1"],
+      ["/api/v1/l/tok_2"],
+    ]);
+  });
+
   it("рисует имя владельца, ник и все карточки, которые вернул сервер", async () => {
     respond(
       giftsAnswer([
@@ -358,7 +632,7 @@ describe("вишлист по ссылке: список", () => {
     expect(text()).not.toContain("Друзьям");
   });
 
-  it("карточка открывает обновлённые подробности, «Куплю сам» ведёт в бронь", async () => {
+  it("карточка — ссылка на страницу желания, «Куплю сам» ведёт в бронь", async () => {
     const card = gift();
     respond(giftsAnswer([card]));
     api.apiRequest.mockImplementation((path: string) => {
@@ -373,35 +647,114 @@ describe("вишлист по ссылке: список", () => {
     });
     await mount();
 
-    const cardButton = container.querySelector(
-      '[role="listitem"] [role="button"]',
+    // CLE-129, T4.4: the card is a real link to the wish page; no dialog, and the
+    // guest keeps the list token, so the page reads the same public list.
+    const cardLink = container.querySelector(
+      '[role="listitem"] [role="link"]',
     ) as HTMLElement;
+    // CLE-135: the guest card is named by the full `DESIGN.md` phrase, with the
+    // same status the pill shows — not by the title alone.
+    expect(cardLink.getAttribute("aria-label")).toBe(
+      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт`,
+    );
     await act(async () => {
-      cardButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      cardLink.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 
-    const dialog = dialogElement();
-    expect(dialog?.textContent).toContain("Обновлённое описание с сервера.");
-    expect(dialog?.textContent).not.toContain("Всем");
-    expect(navigation.push).not.toHaveBeenCalled();
-
-    const close = document.querySelector("[aria-label='Закрыть']") as HTMLElement;
-    await act(async () => {
-      close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]",
+      params: { id: "g1", listToken: "tok_1", title: "Наушники" },
     });
-    await settle(300);
     expect(dialogElement()).toBeNull();
-    expect(document.activeElement).toBe(cardButton);
 
-    // This file's translator stub only loads `app` and `common`, so the web
-    // catalogue key is what the button renders here.
-    await press("buyMyself");
+    // The «Куплю сам» label lives in `common` (CLE-141/S0-1), so the
+    // translator stub of this file renders it from there.
+    await press("Куплю сам");
     expect(navigation.push).toHaveBeenCalledWith({
       pathname: "/gifts/[id]",
       params: { id: "g1", listToken: "tok_1", title: "Наушники", openReserve: "1" },
     });
     expect(dialogElement()).toBeNull();
+  });
+
+  it("имя дарителя — ссылка на профиль, вне кнопки карточки", async () => {
+    respond(
+      giftsAnswer([
+        gift(),
+        gift({
+          id: "g2",
+          title: "Свитер",
+          status: "RESERVED",
+          reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+        }),
+      ]),
+    );
+    await mount();
+
+    const items = Array.from(
+      container.querySelectorAll<HTMLElement>('[role="list"] [role="listitem"]'),
+    );
+    const reserved = items.find(function withSweater(node) {
+      return (node.textContent ?? "").includes("Свитер");
+    });
+    expect(reserved, "карточка забронированного желания").toBeDefined();
+
+    // The card draws «Берёт Олег»: the name is the link, its target is the profile.
+    expect(reserved?.textContent).toContain("Берёт");
+    const link = reserved?.querySelector<HTMLElement>('[role="link"][href="/u/oleg"]');
+    expect(link?.textContent).toBe("Олег");
+
+    // The line is a sibling of the card link: the profile link is not nested in it.
+    const cardLink = Array.from(
+      reserved?.querySelectorAll<HTMLElement>('[role="link"]') ?? [],
+    ).find(function isCard(node) {
+      return node.getAttribute("href") !== "/u/oleg";
+    });
+    expect(cardLink?.contains(link as Node)).toBe(false);
+  });
+
+  /**
+   * Story 5.7 / «Подписи брони»: other guests see the stage «Подарено» (and
+   * «Куплено» since Story 5.5), even when the holder hid their name. The toggle
+   * still decides only the name, never the stage.
+   */
+  it("другие гости видят этап брони, а имя — только по переключателю", async () => {
+    respond(
+      giftsAnswer([
+        gift({
+          id: "g1",
+          title: "Наушники",
+          status: "RESERVED",
+          reservationLabel: "GIVEN",
+          reservedBy: { id: "u2", nick: "oleg", displayName: "Олег" },
+        }),
+        gift({
+          id: "g2",
+          title: "Свитер",
+          status: "RESERVED",
+          reservationLabel: "BOUGHT",
+          reservedBy: null,
+        }),
+      ]),
+    );
+    await mount();
+
+    const items = Array.from(
+      container.querySelectorAll<HTMLElement>('[role="list"] [role="listitem"]'),
+    );
+    const given = items.find(function withHeadphones(node) {
+      return (node.textContent ?? "").includes("Наушники");
+    });
+    const bought = items.find(function withSweater(node) {
+      return (node.textContent ?? "").includes("Свитер");
+    });
+
+    expect(given?.textContent).toContain("Подарено");
+    expect(given?.textContent).toContain("Берёт");
+    expect(bought?.textContent).toContain("Куплено");
+    expect(bought?.textContent).not.toContain("Берёт");
+    expect(bought?.querySelector('a[href^="/u/"]')).toBeNull();
   });
 
   it("не показывает скрытое желание, которого нет в ответе сервера", async () => {
@@ -703,7 +1056,7 @@ describe("W12.21: вишлист по ссылке на медиа-пропса�
 
   it("экран не импортирует pageGutter: отступ приходит из CSS", () => {
     const source = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../app/wishlist/[token].tsx"),
+      join(dirname(fileURLToPath(import.meta.url)), "../../app/(link)/wishlist/[token].tsx"),
       "utf8",
     );
 

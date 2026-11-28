@@ -6,10 +6,14 @@ import { PublicGiftCard } from "./public-gift-card";
 
 /**
  * The card a link visitor sees (Story 3.3, CLE-84): the same `packages/ui` card,
- * without the visibility chip. The main zone opens the detail dialog. «Куплю сам»
- * does not. The server has already applied
- * `VisibilityPolicy` (AD-7): whatever arrives in `gift` is allowed for this viewer,
- * so the card never inspects `visibility`.
+ * without the visibility chip. The main zone is a link to the wish page
+ * `/gifts/{id}` (CLE-129, T4.4). «Куплю сам» does not follow it. The server has
+ * already applied `VisibilityPolicy` (AD-7): whatever arrives in `gift` is allowed
+ * for this viewer, so the card never inspects `visibility`.
+ *
+ * The press zone is named by the full `DESIGN.md` → Доступность phrase — title,
+ * price, the status pill the visitor sees and all tags (CLE-135); the holder line
+ * is not part of the name.
  */
 const meta = {
   title: "App/PublicGiftCard",
@@ -85,6 +89,40 @@ export const Reserved: Story = {
   },
 };
 
+/** The holder pressed «Подарил»: the visitor reads the stage «Подарено» (Story 5.7). */
+export const Given: Story = {
+  tags: ["!dev"],
+  args: {
+    gift: publicGift({
+      status: "RESERVED",
+      reservationLabel: "GIVEN",
+      reservedBy: { id: "user-2", nick: "masha", displayName: "Маша" },
+    }),
+  },
+  render: function GivenStory(args) {
+    return (
+      <PublicList>
+        <PublicGiftCard {...args} />
+      </PublicList>
+    );
+  },
+};
+
+/** The holder marked «Купил» and hid the name: the stage «Куплено» stays visible. */
+export const BoughtNameHidden: Story = {
+  tags: ["!dev"],
+  args: {
+    gift: publicGift({ status: "RESERVED", reservationLabel: "BOUGHT", reservedBy: null }),
+  },
+  render: function BoughtNameHiddenStory(args) {
+    return (
+      <PublicList>
+        <PublicGiftCard {...args} />
+      </PublicList>
+    );
+  },
+};
+
 /** A received wish stays visible on a public list, muted. */
 export const Received: Story = {
   tags: ["!dev"],
@@ -109,6 +147,29 @@ export const ReservedNameHidden: Story = {
       </PublicList>
     );
   },
+};
+
+/** A long holder name at 360 px: the name link wraps and nothing is cut. */
+export const ReservedLongNameNarrow: Story = {
+  tags: ["!dev"],
+  args: {
+    gift: publicGift({
+      status: "RESERVED",
+      reservedBy: {
+        id: "user-2",
+        nick: "anna-konstantinovna",
+        displayName: "Анна Константиновна Преображенская",
+      },
+    }),
+  },
+  render: function ReservedLongNameNarrowStory(args) {
+    return (
+      <PublicList>
+        <PublicGiftCard {...args} />
+      </PublicList>
+    );
+  },
+  globals: { viewport: { value: "w360" } },
 };
 
 /** More than three tags collapse into «+N», like on the owner's card. */

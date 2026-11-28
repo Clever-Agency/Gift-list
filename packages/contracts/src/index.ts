@@ -11,6 +11,8 @@ import {
   VISIBILITIES,
 } from "./enums";
 import { PROFILE_RELATIONSHIPS, profileInviteCooldownSchema } from "./friendship";
+import { visiblePersonalDateSchema } from "./personal-dates";
+import { profileDetailsSchema, profileFieldsSchema } from "./profile";
 
 export const ERROR_CODES = [
   "UNAUTHENTICATED",
@@ -30,6 +32,32 @@ export const ERROR_REASONS = [
   "NICK_TAKEN",
   "DUE_OUT_OF_RANGE",
   "DATES_LIMIT",
+  /**
+   * An editor tried to publish an editorial collection with no ideas (Story
+   * 10.1, CLE-143). Always rides with `code: "VALIDATION"`; users would get a
+   * blank collection screen, so the server refuses. The client shows
+   * `errors.reason.COLLECTION_EMPTY`.
+   */
+  "COLLECTION_EMPTY",
+  /**
+   * A custom-tag approval asked for a catalog `slug` that already exists (Story
+   * 10.2, AD-27). The slug is the immutable catalog key, so it is never reused
+   * or changed; the moderator picks another one. Always rides with
+   * `code: "CONFLICT"` and `field: "slug"`.
+   */
+  "CUSTOM_TAG_SLUG_TAKEN",
+  /**
+   * A moderation decision already exists for this normalized custom-tag text
+   * (Story 10.2). The queue hides decided texts, so this is a stale screen or a
+   * double submit; the second decision is refused instead of overwriting the
+   * first. Always rides with `code: "CONFLICT"`.
+   */
+  "CUSTOM_TAG_DECIDED",
+  /**
+   * An approval named a catalog tag id that does not exist (Story 10.2). Always
+   * rides with `code: "VALIDATION"` and `field: "tagId"`.
+   */
+  "CATALOG_TAG_MISSING",
   "RESET_LINK_STALE",
   /**
    * A rejected invite is still cooling down (Story 4.2.2, AD-10 step 3, A-16).
@@ -37,6 +65,13 @@ export const ERROR_REASONS = [
    * the generic `RATE_LIMITED` text: the client shows "Можно снова через {hours} ч".
    */
   "INVITE_COOLDOWN",
+  /**
+   * The deadline of a live reservation has already passed, so extending it is
+   * refused (CLE-124/S9b-2, D-12 дополнение 2026-11-25). Always rides with
+   * `code: "CONFLICT"`; the client shows «Срок брони прошёл — продлить уже
+   * нельзя». The wish itself and its reservation stay unchanged.
+   */
+  "RESERVATION_DUE_PASSED",
   /**
    * The owner's own wish is archived (`archivedAt != null`), so it is read-only
    * (AD-8, FR-10 ред. 2026-11-11; CLE-82/S23.2). Always rides with
@@ -170,6 +205,36 @@ export const meSchema = z.strictObject({
 
 export type Me = z.infer<typeof meSchema>;
 
+/**
+ * CLE-129/T8.1 (D-58, AD-29): `GET /api/v1/me/profile` answers the current user
+ * with the profile fields on top of {@link meSchema}. The fields are always
+ * present for the owner — unlike `/u/:nick`, where a non-friend gets none.
+ */
+export const myProfileSchema = z.strictObject({
+  ...meSchema.shape,
+  ...profileFieldsSchema.shape,
+});
+
+export type MyProfile = z.infer<typeof myProfileSchema>;
+
+export {
+  ABOUT_MAX,
+  COUNTRY_CODES,
+  GENDERS,
+  genderSchema,
+  isCountryCode,
+  isValidBirthDate,
+  profileDetailsSchema,
+  profileFieldsSchema,
+  profileUpdateBodySchema,
+  visibleProfileDetailsSchema,
+  type Gender,
+  type ProfileDetails,
+  type ProfileFields,
+  type ProfileUpdateBody,
+  type VisibleProfileDetails,
+} from "./profile";
+
 export {
   CURRENCIES,
   GIFT_STATUSES,
@@ -179,6 +244,30 @@ export {
   RESERVATION_PHASES,
   VISIBILITIES,
 } from "./enums";
+
+export {
+  DATE_VISIBILITIES,
+  DEFAULT_DATE_VISIBILITY,
+  DEFAULT_DATE_YEAR_VISIBILITY,
+  PERSONAL_DATES_MAX,
+  PERSONAL_DATE_MIN_YEAR,
+  PERSONAL_DATE_TITLE_MAX,
+  USER_DATE_KINDS,
+  dateVisibilitySchema,
+  isPersonalDateYearAllowed,
+  isValidPersonalDate,
+  personalDateCreateBodySchema,
+  personalDateSchema,
+  personalDateUpdateBodySchema,
+  userDateKindSchema,
+  visiblePersonalDateSchema,
+  type DateVisibility,
+  type PersonalDate,
+  type PersonalDateCreateBody,
+  type PersonalDateUpdateBody,
+  type UserDateKind,
+  type VisiblePersonalDate,
+} from "./personal-dates";
 
 // Closed set: unknown keys are rejected so nothing extra (e.g. `bought`) leaks to the owner (AD-15).
 export const giftCardSchema = z.strictObject({
@@ -295,6 +384,23 @@ export const listDataSchema = z.strictObject({
    * email or wish field rides along.
    */
   subscribed: z.boolean().optional(),
+  /**
+   * AD-7 ред. 2026-11-26 / AD-29: the owner's profile fields — a birthday pair
+   * without a year, gender, country and «Обо мне». Only `/u/:nick` adds the
+   * block, and only for the owner (with the switch) or an accepted friend of an
+   * owner who opened `profileVisibleToFriends`. Every other viewer gets no key
+   * at all, so neither `/l/:token`, search, notifications nor a stranger's
+   * answer can tell that the fields even exist.
+   */
+  details: profileDetailsSchema.optional(),
+  /**
+   * AD-23 (Story 7.5): the personal dates of the profile as this viewer gets
+   * them — only the visible ones, without the owner's visibility switches and
+   * with `year: null` when the year is hidden or absent. Only `/u/:nick` adds
+   * the key; `/l/:token`, search and `/me` never do, and a profile with no
+   * visible date omits it entirely, like `details`.
+   */
+  dates: z.array(visiblePersonalDateSchema).optional(),
 });
 
 export type ListData = z.infer<typeof listDataSchema>;
@@ -308,8 +414,14 @@ export {
   NICK_PATTERN,
   PASSWORD_MAX,
   PASSWORD_MIN,
+  accountDeletedSchema,
+  accountDeletionBodySchema,
+  emailChangeAcceptedSchema,
+  emailChangeBodySchema,
+  emailChangeCancelledSchema,
   hideFromSearchUpdateBodySchema,
   loginBodySchema,
+  nameUpdateBodySchema,
   newPasswordLengthReason,
   nickIssue,
   nickUpdateBodySchema,
@@ -318,8 +430,14 @@ export {
   registerBodySchema,
   safeNextPath,
   timeZoneBodySchema,
+  type AccountDeleted,
+  type AccountDeletionBody,
+  type EmailChangeAccepted,
+  type EmailChangeBody,
+  type EmailChangeCancelled,
   type HideFromSearchUpdateBody,
   type LoginBody,
+  type NameUpdateBody,
   type NewPasswordLengthReason,
   type NickIssue,
   type NickUpdateBody,
@@ -468,31 +586,53 @@ export {
   GIFT_TITLE_MAX,
   giftInputSchema,
   isCalendarDay,
-  giftReservationWarningSchema,
   giftReserveBodySchema,
   giftRestoreSchema,
   giftTagInputSchema,
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
   giftVisibilityPreviewSchema,
-  keepReservationBodySchema,
   reservationActionBodySchema,
   reservationCardSchema,
   reservationListSchema,
   type GiftInput,
   type GiftInputDraft,
-  type GiftReservationWarning,
   type GiftReserveBody,
   type GiftRestore,
   type GiftTagInput,
   type GiftUpdate,
   type GiftVisibilityPreview,
   type GiftVisibilityPreviewQuery,
-  type KeepReservationBody,
   type ReservationActionBody,
   type ReservationCard,
   type ReservationList,
 } from "./gift";
+
+export {
+  EDITORIAL_DESCRIPTION_MAX,
+  EDITORIAL_LINK_URL_MAX,
+  EDITORIAL_TITLE_MAX,
+  editorialCollectionAdminDetailSchema,
+  editorialCollectionAdminSummarySchema,
+  editorialCollectionDetailSchema,
+  editorialCollectionInputSchema,
+  editorialCollectionListSchema,
+  editorialCollectionSummarySchema,
+  editorialItemAdminSchema,
+  editorialItemInputSchema,
+  editorialItemOrderSchema,
+  editorialItemSchema,
+  type EditorialCollectionAdminDetail,
+  type EditorialCollectionAdminSummary,
+  type EditorialCollectionDetail,
+  type EditorialCollectionInput,
+  type EditorialCollectionList,
+  type EditorialCollectionSummary,
+  type EditorialItem,
+  type EditorialItemAdmin,
+  type EditorialItemInput,
+  type EditorialItemOrder,
+} from "./collection";
 
 export {
   isWishVisibleToEveryone,
@@ -501,30 +641,38 @@ export {
 } from "./visibility";
 
 export {
+  TAG_LABEL_MAX,
+  TAG_SLUG_MAX,
+  customTagApprovalSchema,
+  customTagQueueItemSchema,
+  customTagRejectionSchema,
   tagCatalogItemSchema,
   tagCatalogSchema,
+  tagLabelsSchema,
+  tagSlugSchema,
+  type CustomTagApproval,
+  type CustomTagQueueItem,
+  type CustomTagRejection,
   type TagCatalog,
   type TagCatalogItem,
+  type TagLabels,
 } from "./tag";
 
-export {
-  detailCopy,
-  toDetailFacts,
-  type DetailCopy,
-  type DetailFact,
-  type DetailViewer,
-} from "./detail-fields";
+export { type DetailViewer } from "./detail-viewer";
 
 export {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
   compareForSort,
   formatDate,
+  formatDay,
   formatPrice,
   getMessages,
   negotiateLocale,
   normalizeForSearch,
   notificationChangedFields,
+  notificationDetails,
+  notificationEmailSubject,
   notificationText,
   preferredFromAcceptLanguage,
   type Messages,

@@ -1,10 +1,18 @@
 // @vitest-environment happy-dom
 import { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Pressable } from "./pressable";
 import { createMount, nativeOnlyAttributes, stateValues } from "./test-utils";
 
+/** «Уменьшить движение»: a real `prefers-reduced-motion` is not evaluated by happy-dom. */
+const media = vi.hoisted(() => ({ reduce: false }));
+vi.mock("./use-reduce", () => ({ useReduceMotion: () => media.reduce }));
+
 const mounted = createMount();
+
+beforeEach(function resetMotion() {
+  media.reduce = false;
+});
 
 async function key(node: Element, init: KeyboardEventInit) {
   await act(async () => {
@@ -124,5 +132,55 @@ describe("Pressable: press и disabled", () => {
     await key(node, { key: "Enter" });
     await key(node, { key: " " });
     expect(onPress).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * CLE-129: every live pressable surface answers the pointer with the `$muted`
+ * fill and the change is smooth — the `quick` preset of the CSS driver (160 ms),
+ * the page's `reduce` media turns it off. A blocked surface has neither.
+ */
+describe("Pressable: hover и плавность", () => {
+  it("живая поверхность заливается muted на hover, переход 160 мс по цвету и прозрачности", async () => {
+    const { container, render } = mounted();
+    await render(<Pressable role="button" aria-label="Ещё" onPress={vi.fn()} />);
+    const node = container.querySelector("[role='button']") as HTMLElement;
+
+    expect(stateValues(node, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(node.style.transition).toContain("160ms");
+    for (const property of ["background-color", "border-color", "box-shadow", "opacity"]) {
+      expect(node.style.transition, property).toContain(property);
+    }
+  });
+
+  it("hoverFill=false: поверхность со своими цветами не получает muted", async () => {
+    const { container, render } = mounted();
+    await render(
+      <Pressable role="button" aria-label="Выбрано" onPress={vi.fn()} hoverFill={false} />,
+    );
+    const node = container.querySelector("[role='button']") as HTMLElement;
+
+    expect(stateValues(node, "hover", "background-color")).toEqual([]);
+    // The transition stays: the surface may still change its frame or shadow.
+    expect(node.style.transition).toContain("160ms");
+  });
+
+  it("disabled: ни hover, ни перехода", async () => {
+    const { container, render } = mounted();
+    await render(<Pressable role="button" aria-label="Ещё" onPress={vi.fn()} disabled />);
+    const node = container.querySelector("[role='button']") as HTMLElement;
+
+    expect(stateValues(node, "hover", "background-color")).toEqual([]);
+    expect(node.style.transition).toBe("");
+  });
+
+  it("«уменьшить движение»: hover остаётся, переход выключен", async () => {
+    media.reduce = true;
+    const { container, render } = mounted();
+    await render(<Pressable role="button" aria-label="Ещё" onPress={vi.fn()} />);
+    const node = container.querySelector("[role='button']") as HTMLElement;
+
+    expect(stateValues(node, "hover", "background-color")).toEqual(["var(--muted)"]);
+    expect(node.style.transition).toBe("");
   });
 });

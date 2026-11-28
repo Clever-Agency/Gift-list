@@ -4,7 +4,8 @@ import { cache } from "react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { createTranslator } from "next-intl";
-import { getMessages, type SupportedLocale } from "@gift-list/contracts";
+import { type SupportedLocale } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { getInvitePreview } from "@/actions/invite-link";
 import { auth } from "@/lib/auth";
 import { invitePathForToken } from "@/lib/public-token";
@@ -77,7 +78,7 @@ export const getInvitePage = cache(loadInvitePage);
  * closed `Приглашение не найдено — {brand}` title; Next injects `noindex` itself.
  */
 export function buildInviteMetadata(page: InvitePage, brand: string): Metadata {
-  const messages = getMessages(page.locale);
+  const messages = getWebMessages(page.locale);
   const t = createTranslator({ locale: page.locale, messages, namespace: "web.invite" });
   const web = createTranslator({ locale: page.locale, messages, namespace: "web" });
   const description = web("description");

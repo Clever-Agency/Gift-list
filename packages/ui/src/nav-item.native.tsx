@@ -56,7 +56,7 @@ export function NavItem({
       borderTopWidth={tab ? 3 : undefined}
       borderLeftWidth={tab ? undefined : 3}
       borderColor={active ? "$primary" : "transparent"}
-      backgroundColor={tab ? undefined : active ? "$muted" : "transparent hover:$background"}
+      backgroundColor={!tab && active ? "$muted" : "transparent hover:$muted"}
     >
       {tab ? (
         <>

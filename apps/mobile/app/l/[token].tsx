@@ -7,4 +7,4 @@
  * On the web `/l/*` stays a Next page (`spa-paths.ts`), so this double only runs
  * inside the app.
  */
-export { default } from "../wishlist/[token]";
+export { default } from "../(link)/wishlist/[token]";

@@ -69,7 +69,7 @@ npm run mobile:build:emulator  # 10.0.2.2 разрешён (только эму�
 
 `build:lan` падает без `EXPO_PUBLIC_API_BASE_URL` и на `localhost`/`10.0.2.2`, `build:web` очищает API-origin (same-origin) и падает, если после экспорта в бандле остался `10.0.2.2`. `npm run build` (Next) делает то же для `public/`, поэтому эмуляторный origin не попадает в standalone/LAN-сборку.
 
-Имя на экранах — WishMoon по умолчанию: константа `PRODUCT_NAME` в `packages/contracts/src/brand.ts`, на неё откатываются `getBrandName()` в `apps/mobile/src/config/env.ts` и `apps/web/src/lib/env.ts`, когда `EXPO_PUBLIC_BRAND_NAME` / `BRAND_NAME` пусты. Переменная — осознанное переопределение из одной CI-переменной, не второй источник: `sync-spa` передаёт в сборку SPA то же значение `BRAND_NAME`, что видит сервер. «Написать автору» — ссылка `mailto:` на `AUTHOR_EMAIL` из того же файла, окружением не переопределяется.
+Имя на экранах — WishMoon по умолчанию: константа `PRODUCT_NAME` в `packages/contracts/src/brand.ts`, на неё откатываются `getBrandName()` в `apps/mobile/src/config/env.ts` и `apps/web/src/lib/env.ts`, когда `EXPO_PUBLIC_BRAND_NAME` / `BRAND_NAME` пусты. Переменная — осознанное переопределение из одной CI-переменной, не второй источник: `sync-spa` передаёт в сборку SPA то же значение `BRAND_NAME`, что видит сервер. «Написать в техподдержку» — ссылка `mailto:` на `AUTHOR_EMAIL` из того же файла, окружением не переопределяется.
 
 Публичный адрес для ссылок вишлиста — `EXPO_PUBLIC_WEB_ORIGIN` (пусто → `EXPO_PUBLIC_API_BASE_URL`: сайт и API на одном домене, AD-26). В веб-сборке, если обе переменные пусты, берётся origin страницы, отдавшей SPA: задеплоенному вебу отдельный домен не нужен, но ссылка с preview-деплоя ведёт на его же хост. Для `npm run mobile:web` страница — Metro (:8081), где `/l/*` нет; локально задайте `EXPO_PUBLIC_WEB_ORIGIN=http://localhost:3000`. В native страницы нет — задайте одну из переменных. Неверное значение не подменяется — ссылка просто не собирается.
 
@@ -95,7 +95,13 @@ CI использует выборочный прогон для PR в `staging`
 npm run migrate
 ```
 
-Это алиас для `prisma migrate dev` в `apps/web` (интерактивное создание/применение миграций в development). Для CI/production: `npm exec -w @gift-list/web -- prisma migrate deploy`.
+Это алиас для интерактивного `prisma migrate dev` в `apps/web`. Для выкладки выполните из корня:
+
+```bash
+npm run migrate:deploy -w @gift-list/web
+```
+
+Команда применяет миграции Prisma, затем пересчитывает `User.nameNormalized` через `normalizeForSearch()` в Node. Оба шага используют одно подключение. Среди переменных процесса приоритет у `DIRECT_URL`, затем у `DATABASE_URL`. Если обе отсутствуют, команда ищет их в том же порядке в `apps/web/.env`. После прерывания повторите ту же команду. Пересчёт читает профили порциями и обновляет только отличающиеся поисковые значения.
 
 Стартовый каталог фиксированных тегов (`dream`, `need-now`, `someday`) создаёт data-миграция `20261106120000_fixed_tags_catalog`, поэтому отдельный `prisma db seed` в деплое не нужен. Повторный деплой безопасен: миграция идемпотентна по `slug` и не перезаписывает подписи, изменённые ADMIN. `prisma db seed` остаётся для разработки и ручного ремонта — он добавляет недостающие языковые ключи, не удаляя строки.
 
@@ -111,7 +117,7 @@ PIN: `prisma` и `@prisma/client` — **7.10.0** (не ставьте bare `pris
 
 1. Соберите проект из корня: `npm run build`, не голый `next build`: удаление `.env*` и копирование статики и `public` в standalone делает `apps/web/scripts/copy-standalone-assets.mjs`.
 2. Доставьте на сервер (в образ) каталог `apps/web/.next/standalone`: статика и `public` уже внутри.
-3. Примените миграции до старта сервера: в standalone нет Prisma CLI и миграций, поэтому из полного чекаута или CI выполните `npm exec -w @gift-list/web -- prisma migrate deploy` с `DATABASE_URL` целевой базы.
+3. До старта сервера выполните `npm run migrate:deploy -w @gift-list/web` из полного чекаута с установленными зависимостями и подключением к целевой базе. Дождитесь успешного завершения миграций Prisma и пересчёта поисковых имён.
 4. Запускайте `node apps/web/.next/standalone/apps/web/server.js` из корня репозитория, а не `next start`. Если в образ скопировано только содержимое `standalone`, запускайте `node apps/web/server.js` из этого каталога.
 5. Конфигурация и секреты рантайма — из окружения процесса, список переменных в `apps/web/.env.example`; переменные SPA — в `apps/mobile/.env.example`. Исключение: отображаемое имя — константа `PRODUCT_NAME` в `packages/contracts/src/brand.ts` с необязательным переопределением `BRAND_NAME`; оно вшивается ещё при сборке в страницы, которые Next.js пререндерит (`/`, 404: `apps/web/src/app/layout.tsx` берёт `getBrandName()` в metadata), а `sync-spa` передаёт то же `BRAND_NAME` в сборку SPA как `EXPO_PUBLIC_BRAND_NAME`; остальные `EXPO_PUBLIC_*` — в SPA в `public/` (`sync-spa`). Веб-сборка SPA всегда same-origin: `sync-spa` очищает `EXPO_PUBLIC_API_BASE_URL` и падает, если после экспорта в бандле остался эмуляторный `10.0.2.2`. Для LAN/телефона собирайте отдельно: `npm run mobile:build:lan` с `EXPO_PUBLIC_API_BASE_URL` в окружении процесса (не в `.env`), например `http://192.168.1.20:3000`. `EXPO_PUBLIC_WEB_ORIGIN` в веб-сборке не обязателен (без него ссылка вишлиста берёт origin страницы), а native-сборке нужна эта переменная или `EXPO_PUBLIC_API_BASE_URL`.
 

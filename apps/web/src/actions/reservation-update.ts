@@ -62,6 +62,17 @@ const conflict = {
   message: "The reservation cannot be changed",
 };
 
+/**
+ * CLE-124/S9b-2: the deadline passed, so «Продлить до…» is refused, while the
+ * reservation itself stays and the remaining actions are unaffected.
+ */
+const duePassed = {
+  ok: false as const,
+  code: "CONFLICT" as const,
+  message: "The reservation deadline has passed",
+  reason: "RESERVATION_DUE_PASSED" as const,
+};
+
 function validation(field?: string) {
   return {
     ok: false as const,
@@ -77,12 +88,15 @@ const reservationUpdateSelect = {
   status: true,
   reservedById: true,
   reservationPhase: true,
+  // CLE-124/S9b-2: the extension is allowed only while the deadline is ahead.
+  reservationDueAt: true,
 } satisfies Prisma.GiftSelect;
 
 /**
  * The closed card set plus the four fields `canOpenGift` decides on. Selecting
- * exactly these columns keeps price, tags, description, link, `listToken` and the
- * holder's own name out of the response (AD-7, AD-12).
+ * exactly these columns keeps tags, description, link, `listToken` and the
+ * holder's own name out of the response (AD-7, AD-12); the price reaches the
+ * card only while `canOpenGift` is `true`.
  */
 const reservationCardSelect = {
   id: true,
@@ -97,6 +111,8 @@ const reservationCardSelect = {
   holderVisibleToOthers: true,
   visibility: true,
   archivedAt: true,
+  priceAmount: true,
+  priceCurrency: true,
   reservedById: true,
   list: { select: { ownerId: true, owner: { select: { nick: true } } } },
 } satisfies Prisma.GiftSelect;
@@ -106,7 +122,12 @@ export type ReservationUpdateRow = {
   readonly status: "OPEN" | "RESERVED" | "CLOSED";
   readonly reservedById: string | null;
   readonly reservationPhase: ReservationPhase | null;
+  /** CLE-124/S9b-2: optional for callers that never extend (bought/visibility/given). */
+  readonly reservationDueAt?: Date | null;
 };
+
+/** The one verdict of a `PATCH`; `DUE_PASSED` refuses an extension after the deadline. */
+export type ReservationUpdateVerdict = "ok" | "NOT_FOUND" | "CONFLICT" | "DUE_PASSED";
 
 /**
  * Story 5.5: the one classification of a row for a `PATCH` of the holder.
@@ -115,9 +136,14 @@ export type ReservationUpdateRow = {
  * that already lost its holder — all three stay byte-identical, so the route
  * cannot be used to probe who holds what (AD-7, AD-12). `CONFLICT` is a
  * reservation of this actor that is not live anymore (the owner released or
- * closed the wish), and the same verdict stands for an extension that would leave
- * `GIVEN`, because that phase waits for the owner's confirmation (Story 5.7) and
- * an extension would silently restart its timers.
+ * closed the wish), and the same verdict stands for an extension that would
+ * leave `GIVEN`: the promise is final for the deadline, and an extension would
+ * silently restart its timers.
+ *
+ * CLE-124/S9b-2: an extension after the deadline is refused with its own
+ * `DUE_PASSED` verdict, so the client can say «Срок брони прошёл — продлить уже
+ * нельзя» instead of a generic conflict. The wish and the reservation are not
+ * touched; «Подарил», «Купил» and the release stay available.
  *
  * The same function classifies the result of a lost CAS, so the preflight and the
  * race answer with one vocabulary.
@@ -126,11 +152,16 @@ export function reservationUpdateResult(
   row: ReservationUpdateRow | null,
   actorId: string,
   action: ReservationActionBody["action"],
-): "ok" | "NOT_FOUND" | "CONFLICT" {
+  now: Date = new Date(),
+): ReservationUpdateVerdict {
   if (row === null) return "NOT_FOUND";
   if (row.reservedById !== actorId) return "NOT_FOUND";
   if (!canSetReservationAttributes(row)) return "CONFLICT";
-  if (action === "extend" && !canExtendReservation(row)) return "CONFLICT";
+  if (action === "extend" && !canExtendReservation({ ...row, reservationDueAt: row.reservationDueAt ?? null }, now)) {
+    return row.reservationPhase === null || row.reservationPhase === "GIVEN"
+      ? "CONFLICT"
+      : "DUE_PASSED";
+  }
   return "ok";
 }
 
@@ -166,18 +197,18 @@ function requestLocale(headers: Headers): SupportedLocale {
 
 /**
  * Story 5.5 (FR-25, FR-29…FR-31, AD-7, AD-8, AD-9): one action per request on
- * the holder's own reservation — `extend`, `bought` or `visibility`. Every write
- * goes through `GiftStatusService`, the only writer of the reservation columns,
- * and the answer is the updated reservation card (not `{ id }`): an extension
- * changes the deadline, the phase and its moment at once, so the client replaces
- * the card instead of re-reading the list.
+ * the holder's own reservation — `extend`, `bought`, `visibility` or `given`
+ * (CLE-124/S9b-2). Every write goes through `GiftStatusService`, the only writer
+ * of the reservation columns, and the answer is the updated reservation card
+ * (not `{ id }`): an extension changes the deadline, the phase and its moment at
+ * once, so the client replaces the card instead of re-reading the list.
  *
  * Visibility, friendship and a block are deliberately not checked: after an
  * unfriend or a block the holder keeps control of the reservation (A-14), so the
  * action still passes and only `canOpenGift` on the returned card turns `false`.
  *
  * The status is never touched, so no audit line is written (NFR-6 audits a status
- * transition only; Story 5.5 has none). Notifications are Epic 6.
+ * transition only; Story 5.5 has none).
  */
 export async function updateMyReservation(
   headers: Headers,
@@ -194,16 +225,17 @@ export async function updateMyReservation(
   if (giftId.trim() === "") return notFound;
 
   const actorId = session.user.id;
+  const now = new Date();
   const stored = await prisma.gift.findFirst({
     where: { id: giftId },
     select: reservationUpdateSelect,
   });
 
-  const verdict = reservationUpdateResult(stored, actorId, parsed.data.action);
+  const verdict = reservationUpdateResult(stored, actorId, parsed.data.action, now);
   if (verdict === "NOT_FOUND") return notFound;
+  if (verdict === "DUE_PASSED") return duePassed;
   if (verdict === "CONFLICT") return conflict;
 
-  const now = new Date();
   let outcome: "success" | "lost";
 
   if (parsed.data.action === "extend") {
@@ -239,11 +271,18 @@ export async function updateMyReservation(
     outcome = await runGiftStatusTransaction(function setHolderBought(service) {
       return service.setReservationBought(giftId, actorId, { value });
     });
+  } else if (parsed.data.action === "given") {
+    // CLE-124/S9b-2 (Story 5.7): «Подарил» only moves the phase, so it runs
+    // through the same seam as the attributes. A repeat in `GIVEN` is a success.
+    outcome = await runGiftStatusTransaction(function markGiven(service) {
+      return service.markReservationGiven(giftId, actorId, now);
+    });
   } else {
-    const { holderVisibleToOwner, holderVisibleToOthers } = parsed.data;
+    // CLE-124/D-49: the owner switch is gone; a `holderVisibleToOwner` sent by an
+    // older client is ignored and the store always writes `false`.
+    const { holderVisibleToOthers } = parsed.data;
     outcome = await runGiftStatusTransaction(function setHolderVisibility(service) {
       return service.setReservationVisibility(giftId, actorId, {
-        holderVisibleToOwner,
         holderVisibleToOthers,
       });
     });
@@ -256,9 +295,10 @@ export async function updateMyReservation(
       where: { id: giftId },
       select: reservationUpdateSelect,
     });
-    return reservationUpdateResult(after, actorId, parsed.data.action) === "NOT_FOUND"
-      ? notFound
-      : conflict;
+    const afterVerdict = reservationUpdateResult(after, actorId, parsed.data.action, now);
+    if (afterVerdict === "NOT_FOUND") return notFound;
+    if (afterVerdict === "DUE_PASSED") return duePassed;
+    return conflict;
   }
 
   const fresh = await prisma.gift.findFirst({

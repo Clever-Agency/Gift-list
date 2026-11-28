@@ -1,5 +1,5 @@
 import { formatDate } from "@gift-list/contracts";
-import { BottomSheet, Button, Dialog } from "@gift-list/ui";
+import { BottomSheet, Button, Dialog, Text, YStack } from "@gift-list/ui";
 import { useMedia } from "@tamagui/core";
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
@@ -39,6 +39,23 @@ export function todayInZone(timeZone: string, now = new Date()): string {
     month: "2-digit",
     day: "2-digit",
   }).format(now);
+}
+
+/**
+ * CLE-124/S9b-3 (D-12, §10.2): «Продлить до…» is offered only until the deadline.
+ * The deadline is the exclusive end of `dueAt` in the holder's zone, so the action
+ * lives while that day has not passed (`dueAt >= today`); a phase other than
+ * `ACTIVE` means the deadline is already behind us (`AWAITING_*`) or the
+ * reservation is `GIVEN`. The server checks the same rule and answers
+ * `RESERVATION_DUE_PASSED`.
+ */
+export function canExtendReservation(
+  reservation: { dueAt: string; phase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" },
+  timeZone: string,
+  now = new Date(),
+): boolean {
+  if (reservation.phase !== "ACTIVE") return false;
+  return reservation.dueAt >= todayInZone(timeZone, now);
 }
 
 /**
@@ -114,16 +131,22 @@ export function ReservationExtendDialog({
   }
 
   const body = (
-    <ReserveDateField
-      dueOn={dueOn}
-      minDue={bounds.minDue}
-      maxDue={bounds.maxDue}
-      label={t("extendDateLabel")}
-      hint={t("extend")}
-      caption={t("extendCaption", { max: maxCaption })}
-      dateError={dateError}
-      onChange={setDueOn}
-    />
+    <YStack gap="$1">
+      <ReserveDateField
+        dueOn={dueOn}
+        minDue={bounds.minDue}
+        maxDue={bounds.maxDue}
+        label={t("extendDateLabel")}
+        hint={t("extend")}
+        caption={t("extendCaption", { max: maxCaption })}
+        dateError={dateError}
+        onChange={setDueOn}
+      />
+      {/* CLE-124/S9b-3 (§10.3): the line under the date names the release run-off. */}
+      <Text kind="caption" tone="muted">
+        {t("dueNote")}
+      </Text>
+    </YStack>
   );
 
   const actions = (

@@ -40,7 +40,7 @@ The look of a toast (\`DESIGN.md\` → components \`toast\`, \`toast-error\`): a
 What is not a prop:
 
 - The tone is carried by a small icon and its calm ink (\`info\` primary, \`success\` green, \`warning\` muted terracotta — never yellow, \`error\` coral), while the text stays neutral, so every pair keeps AA contrast.
-- \`error\` and \`warning\` are announced assertively (\`role="alert"\`), \`info\` and \`success\` politely (\`role="status"\`). The overlay lets touches through; only the toast takes them.
+- \`error\` and \`warning\` are announced assertively (\`role="alert"\`), \`info\` and \`success\` politely (\`role="status"\`). On a phone the same tones become an Android live region, and iOS speaks the new text once with \`AccessibilityInfo.announceForAccessibility\` (\`toast-a11y.ts\` / \`toast-a11y.native.ts\`). The overlay lets touches through; only the toast takes them.
 - The action is an object slot \`{ label, onPress }\`: a text button under the message, so a long label wraps with the text. \`actionRef\` hands that button to the screen, which moves focus onto it right after closing a wish (\`DESIGN.md\` → «Куда уходит фокус», пункт «а»). The «есть действие» handle stands «Отменить» in.
 - \`onHoverChange\` and \`onFocusChange\` only feed the host's countdown pause: neither changes the look.
 - The card is always absolutely positioned at the bottom of the screen, above \`offsetBottom\` (a sticky control); the catalog puts it in a phone-sized relative frame. It fades in and out with \`quick\` (160 ms); with «уменьшить движение» the fade is 100 ms and there is no shift.
@@ -243,7 +243,7 @@ export const Info: Story = {
 /** `success`: the green check, polite — the action went through. */
 export const Success: Story = {
   tags: ["!dev"],
-  args: { tone: "success", message: "Куплено — владелец увидит отметку", withAction: false },
+  args: { tone: "success", message: "Куплено — отметка сохранена", withAction: false },
   render: function SuccessStory(args) {
     return <ToastPreview {...args} />;
   },

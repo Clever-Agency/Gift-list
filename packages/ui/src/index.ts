@@ -64,17 +64,12 @@ export {
   Users,
 } from "./icons";
 export { Photo, type PhotoProps } from "./photo";
+// Catalog-only drafts (`PartnerStoreCard`, `PartnerStoreRail`, `FriendsTwoPane`):
+// stories import them by path, so the app barrel stays free of modules no screen
+// uses (web bundle budget, CLE-141/S0-1). `CollectionCard` left that group with
+// the «Подборки» screen of Story 10.1 and is exported here now.
 export { PhotoPlaceholder, type PhotoPlaceholderProps } from "./photo-placeholder";
-export {
-  PartnerStoreCard,
-  type PartnerStoreCardProps,
-} from "./partner-store-card";
-export {
-  PartnerStoreRail,
-  type PartnerStoreRailProps,
-} from "./partner-store-rail";
 export { CollectionCard, type CollectionCardProps } from "./collection-card";
-export { FriendsTwoPane, type FriendsTwoPaneProps } from "./friends-two-pane";
 export { Avatar } from "./avatar";
 export {
   avatarInitials,
@@ -107,14 +102,9 @@ export {
 } from "./tag-chip";
 export { StatusPill, type StatusPillProps, type StatusPillStatus } from "./status-pill";
 export { RelationshipChip, type RelationshipChipProps } from "./relationship-chip";
-export {
-  VisibilityChip,
-  visibilityChipColors,
-  useVisibilityChipColors,
-  type VisibilityChipProps,
-  type VisibilityTone,
-} from "./visibility-chip";
+// `VisibilityChip` is catalog-only as well: the app shows its own rows.
 export { WishCard, type WishCardProps } from "./wish-card";
+export { joinCardName } from "./card-name";
 export { Skeleton, WishCardSkeleton, type WishCardSkeletonProps } from "./skeleton";
 export { LoadingCards, type LoadingCardsProps } from "./loading-cards";
 export {
@@ -132,9 +122,9 @@ export { SegmentTabs, type SegmentTab, type SegmentTabsProps } from "./segment-t
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Toast, type ToastProps, type ToastTone } from "./toast";
 export { Dialog, type DialogProps } from "./dialog";
-export { DetailDialog, type DetailDialogProps, type DetailFactView } from "./detail-dialog";
 export { BottomSheet, type BottomSheetProps } from "./bottom-sheet";
 export { useReduceMotion } from "./use-reduce";
+export { hoverTransition, useHoverTransition } from "./hover";
 export { useThemeColor } from "./theme-color";
 export { focusField, focusInLayer, restoreFocus, type FocusTarget } from "./focus";
 export { pressOnKeyDown } from "./press";

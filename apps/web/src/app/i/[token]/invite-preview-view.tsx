@@ -1,7 +1,8 @@
 "use client";
 
 import { createTranslator } from "next-intl";
-import { getMessages, type SupportedLocale } from "@gift-list/contracts";
+import { type SupportedLocale } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { Button, Column, Heading, Text, XStack, YStack } from "@gift-list/ui";
 import { PublicPageFrame } from "@/components/public-page-frame";
 import type { InviteView } from "./invite-page";
@@ -41,7 +42,7 @@ function initials(displayName: string): string {
  * a `Block` are the real 404 of `not-found.tsx` (CLE-103).
  */
 export function InvitePreviewView({ view, locale, brand }: InvitePreviewViewProps) {
-  const messages = getMessages(locale);
+  const messages = getWebMessages(locale);
   const t = createTranslator({ locale, messages, namespace: "web.invite" });
 
   const signInHref = `/login?next=${view.to}`;

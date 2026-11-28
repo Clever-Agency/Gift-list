@@ -3,9 +3,9 @@ import { YStack } from "@gift-list/ui";
 import { ReservationVisibility, type ReservationVisibilityProps } from "./reservation-visibility";
 
 /**
- * «Кто видит, что это я» (Story 5.5, `DESIGN.md` → ReservationCard): свёрнутый
- * блок двух переключателей держателя. Свёрнутый в дереве не держит ни одного
- * переключателя; включённое «владельцу» показывает подсказку FR-31.
+ * «Показывать другим гостям, что дарю я» (D-57, `DESIGN.md` → ReservationCard):
+ * один переключатель держателя без раскрывашки. CLE-124/D-49: «владельцу»
+ * больше нет, остался только переключатель для других гостей.
  */
 const meta = {
   title: "App/ReservationVisibility",
@@ -22,22 +22,16 @@ type Story = StoryObj<typeof meta>;
 function noop() {}
 
 const base = {
-  expanded: false,
-  onToggle: noop,
-  values: { holderVisibleToOwner: false, holderVisibleToOthers: true },
+  values: { holderVisibleToOthers: true },
   onChange: noop,
 } satisfies ReservationVisibilityProps;
 
-/** The block inside the page column: the catalog frame does not shrink it. */
+/** The switch inside the page column: the catalog frame does not shrink it. */
 function column(args: Partial<ReservationVisibilityProps>) {
   return (
     <YStack padding="$page-gutter" width="100%" maxWidth={343}>
       <ReservationVisibility
-        expanded={args.expanded ?? false}
-        onToggle={args.onToggle ?? noop}
-        values={
-          args.values ?? { holderVisibleToOwner: false, holderVisibleToOthers: true }
-        }
+        values={args.values ?? { holderVisibleToOthers: true }}
         busy={args.busy}
         onChange={args.onChange ?? noop}
       />
@@ -45,32 +39,22 @@ function column(args: Partial<ReservationVisibilityProps>) {
   );
 }
 
-/** Свёрнутый блок — состояние по умолчанию. */
-export const Collapsed: Story = {
+/** Включён — значение по умолчанию при брони. */
+export const Normal: Story = {
   args: base,
   render: column,
 };
 
-/** Раскрытый: два переключателя, имя владельцу скрыто. */
-export const Expanded: Story = {
-  args: { ...base, expanded: true },
-  render: column,
-};
-
-/** Раскрытый с включённым «владельцу»: подсказка «он может уже знать». */
-export const OwnerVisible: Story = {
+/** Выключен: другие гости не видят, что дарит держатель. */
+export const Off: Story = {
   tags: ["!dev"],
-  args: {
-    ...base,
-    expanded: true,
-    values: { holderVisibleToOwner: true, holderVisibleToOthers: true },
-  },
+  args: { ...base, values: { holderVisibleToOthers: false } },
   render: column,
 };
 
-/** Запрос в полёте: значения показаны, менять нельзя. */
+/** Запрос в полёте: значение показано, менять нельзя. */
 export const Busy: Story = {
   tags: ["!dev"],
-  args: { ...base, expanded: true, busy: true },
+  args: { ...base, busy: true },
   render: column,
 };

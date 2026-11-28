@@ -24,18 +24,16 @@ export type OwnerGiftRow = {
   closedAt: Date | null;
   tags: readonly GiftTagRow[];
   status: GiftCard["status"];
-  reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
-  holderVisibleToOwner: boolean;
-  reservedBy: { id: string; nick: string; name: string } | null;
 };
 
 /**
- * Owner gift card (AD-7 read matrix, AD-12): no holder identity unless the holder
- * allowed it, no `bought`, `dueAt` or reservation label; the owner action comes
- * from the reservation phase instead. Tags arrive with Story 2.5: fixed tags are
- * labelled in the request language, custom ones show their own text (AD-27).
- * Closing keeps `reserved*` for audit (AD-8), so a CLOSED gift keeps the holder
- * when the toggle is on and still hides it when off (FR-31).
+ * Owner gift card (AD-7 read matrix, AD-12, D-49): a gift is a surprise, so the
+ * owner's card carries no sign of a reservation at all — a `RESERVED` wish reads
+ * as `OPEN`, `reservedBy`, `ownerAction` and `reservationLabel` are always
+ * `null`, and the mapper does not even read the reservation columns (`bought`,
+ * `dueAt`, phase, toggles). A `CLOSED` wish keeps its own status, but its past
+ * holder stays hidden too. Tags arrive with Story 2.5: fixed tags are labelled in
+ * the request language, custom ones show their own text (AD-27).
  *
  * Story 5.3 (ARCH-A5): the owner card carries `undoUntil`, the server-computed
  * end of the undo window — `null` for a wish that is not closed.
@@ -44,7 +42,6 @@ export function toOwnerGiftCard(
   row: OwnerGiftRow,
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): GiftCard {
-  const holder = row.holderVisibleToOwner ? row.reservedBy : null;
   return {
     id: row.id,
     title: row.title,
@@ -57,25 +54,10 @@ export function toOwnerGiftCard(
     expiresOn: calendarDay(row.expiresOn),
     archivedAt: row.archivedAt?.toISOString() ?? null,
     tags: toGiftTags(row.tags, locale),
-    status: row.status,
-    reservedBy: holder
-      ? { id: holder.id, nick: holder.nick, displayName: holder.name }
-      : null,
+    status: row.status === "RESERVED" ? "OPEN" : row.status,
+    reservedBy: null,
     reservationLabel: null,
-    ownerAction: ownerAction(row),
+    ownerAction: null,
     undoUntil: undoUntil(row)?.toISOString() ?? null,
   };
-}
-
-/** The owner answers a finished reservation only while it is still open (AD-7). */
-function ownerAction(row: OwnerGiftRow): GiftCard["ownerAction"] {
-  if (row.status !== "RESERVED") return null;
-  switch (row.reservationPhase) {
-    case "AWAITING_OWNER":
-      return "EXPIRED_NO_REPLY";
-    case "GIVEN":
-      return "CONFIRM_GIVEN";
-    default:
-      return null;
-  }
 }

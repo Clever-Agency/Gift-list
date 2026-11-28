@@ -4,8 +4,9 @@ import { act, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
-import { controls, settle, typeInto } from "@/test/dom";
+import { controls, dialogElement, settle, typeInto } from "@/test/dom";
 import MyWishlistScreen from "../../app/(app)/(tabs)/index";
+import GiftDetailScreen from "../../app/(app)/gifts/[id]/index";
 import EditGiftScreen from "../../app/(app)/gifts/[id]/edit";
 import NewGiftScreen from "../../app/(app)/gifts/new";
 
@@ -104,7 +105,7 @@ vi.mock("@/api/tags", () => tagApi);
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/session/device-time-zone", () => zone);
 vi.mock("expo-linking", () => ({ openURL: vi.fn() }));
-// The visibility chip draws its icon with `expo-symbols`; it is decorative.
+// The discard dialog draws its close cross with `expo-symbols`; it is decorative.
 vi.mock("expo-symbols", async () => {
   const React = await import("react");
   return {
@@ -158,6 +159,30 @@ vi.mock("expo-router", async () => {
     router: navigation.router,
     Stack: { Screen: () => null },
     useLocalSearchParams: () => navigation.params(),
+    // An honest `asChild`: the router's `Link` hands `href` and `onPress` to its
+    // only child and draws nothing of its own — the wish card is the anchor.
+    Link: function Link({
+      href,
+      asChild,
+      children,
+    }: {
+      href?: unknown;
+      asChild?: boolean;
+      children?: React.ReactElement<Record<string, unknown>>;
+    }) {
+      const target =
+        typeof href === "string"
+          ? href
+          : (href as { pathname?: string } | null | undefined)?.pathname;
+      function onPress() {
+        navigation.router.push(href as { pathname: string; params?: Record<string, string> });
+      }
+      if (!asChild) return React.createElement("a", { href: target, onClick: onPress }, children);
+      return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        href: target,
+        onPress,
+      });
+    },
     // The mounted top route is the focused screen: the effect lives as long as
     // that screen is rendered, like focus/blur around a pushed screen.
     useFocusEffect: (effect: () => void | (() => void)) => {
@@ -240,6 +265,8 @@ function Routes() {
       return <MyWishlistScreen />;
     case "/gifts/new":
       return <NewGiftScreen />;
+    case "/gifts/[id]":
+      return <GiftDetailScreen />;
     case "/gifts/[id]/edit":
       return <EditGiftScreen />;
     default:
@@ -282,9 +309,23 @@ async function press(label: string) {
   await settle(10);
 }
 
-/** The wish card's main zone: its content name starts with the title, not an action. */
+/** A press inside the open layer: the page's own «Изменить» stays behind it. */
+async function pressInDialog(label: string) {
+  const dialog = dialogElement();
+  expect(dialog, `слой для «${label}»`).toBeDefined();
+  const target = controls(dialog as HTMLElement).find((node) =>
+    (node.textContent ?? "").includes(label),
+  );
+  expect(target, `кнопка «${label}» в слое`).toBeDefined();
+  await act(async () => {
+    target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle(10);
+}
+
+/** The wish card's main zone: a link whose accessible name is the content phrase. */
 async function pressCard(title: string) {
-  const target = container.querySelector('[role="listitem"] > [role="button"]');
+  const target = container.querySelector('[role="listitem"] [role="link"]');
   expect(target?.getAttribute("aria-label")).toContain(title);
   await act(async () => {
     target?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -425,11 +466,12 @@ describe("поток: сохранение из шага «Сохранить и
 });
 
 /**
- * Story 2.2, edit flow across screens: the owner card opens the detail dialog
- * (CLE-84), «Изменить желание» opens `/gifts/[id]/edit` with the id, the screen
- * reads that wish and prefills the
- * form, the changed field travels back as `GiftUpdate`, and the list shows
- * «Изменения сохранены.» from `?toast=` over a freshly read list.
+ * Story 2.2, edit flow across screens: the owner card opens the wish page
+ * `/gifts/{id}` (CLE-129, T4.4), «Изменить» there asks the neutral question first
+ * (T4.4a, D-49) and the question's «Изменить» opens `/gifts/[id]/edit` with
+ * the id, the screen reads that wish and prefills the form, the changed field
+ * travels back as `GiftUpdate`, and the list shows «Изменения сохранены.» from
+ * `?toast=` over a freshly read list.
  */
 describe("поток: редактирование желания из списка", () => {
   it("список → карточка → edit с id → fetchGift → правка → updateGift(id, GiftUpdate) → список с «Изменения сохранены.»", async () => {
@@ -449,13 +491,23 @@ describe("поток: редактирование желания из спис�
     await pressCard("Свитер");
     await flush();
 
-    expect(navigation.pathname()).toBe("/");
-    await press("Изменить желание");
+    // CLE-129, T4.4 (D-63): the card opens the wish page; «Изменить» lives there,
+    // and the page reads the owner card through its own route.
+    expect(navigation.pathname()).toBe("/gifts/[id]");
+    expect(navigation.params()).toEqual({ id: "g1" });
+    expect(gifts.fetchGift).toHaveBeenCalledWith("g1");
+    expect(text()).toContain("Свитер");
+    await press("Изменить");
+    await flush();
+
+    // D-49 (T4.4a): the neutral question comes before the form, and its own
+    // «Изменить» is the one that navigates.
+    expect(text()).toContain("Изменить желание?");
+    await pressInDialog("Изменить");
     await flush();
 
     expect(navigation.pathname()).toBe("/gifts/[id]/edit");
     expect(navigation.params()).toEqual({ id: "g1" });
-    expect(gifts.fetchGift).toHaveBeenCalledWith("g1");
 
     // The form is prefilled from the stored AD-12 card.
     expect(text()).toContain("Изменить желание");
@@ -529,6 +581,8 @@ describe("поток: архив из списка", () => {
 
     const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
     expect(menu).not.toBeNull();
+    // Story 6.4: the ⋯ of an archived wish is named after the wish, not «Архив».
+    expect(menu?.getAttribute("aria-label")).toBe("Меню: Старый свитер");
     await act(async () => {
       menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -627,6 +681,44 @@ describe("поток: архив из списка", () => {
 
     expect(gifts.restoreGift).toHaveBeenCalledWith("g-arch", "2020-01-01");
     expect(text()).toContain("Выберите сегодняшнюю дату или более позднюю.");
+    expect(text()).toContain("Архив (1)");
+  });
+
+  it("без сети копирование архивного желания говорит о потере соединения", async () => {
+    signedIn();
+    gifts.fetchMyGifts.mockResolvedValue(listAnswer([gift()], [archived]));
+    gifts.createGift.mockResolvedValue({ ok: false, network: true });
+
+    await mount();
+    await press("Архив (1)");
+    const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
+    await act(async () => {
+      menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+    await pressInDialog("Скопировать");
+
+    expect(gifts.createGift).toHaveBeenCalledOnce();
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
+  });
+
+  it("без сети возврат из архива говорит о потере соединения и оставляет желание в архиве", async () => {
+    signedIn();
+    gifts.fetchMyGifts.mockResolvedValue(listAnswer([gift()], [archived]));
+    gifts.restoreGift.mockResolvedValue({ ok: false, network: true });
+
+    await mount();
+    await press("Архив (1)");
+    const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
+    await act(async () => {
+      menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(10);
+    await pressInDialog("Вернуть в вишлист");
+    await pressInDialog("Сохранить");
+
+    expect(gifts.restoreGift).toHaveBeenCalledWith("g-arch", null);
+    expect(text()).toContain("Нет соединения. Попробуйте ещё раз.");
     expect(text()).toContain("Архив (1)");
   });
 });

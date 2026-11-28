@@ -27,6 +27,12 @@ function run(command, args, cwd) {
       // Same brand as the server-rendered pages: one CI variable feeds both
       // sides (AD-24). Empty means the constant default in `packages/contracts`.
       EXPO_PUBLIC_BRAND_NAME: process.env.BRAND_NAME ?? "",
+      // The install hint of Story 6.5 (UX-DR11): the store links and the iOS
+      // switch are web configuration, so the SPA must see them as `EXPO_PUBLIC_*`.
+      // Empty values hide the link; a non-https address is ignored by the app.
+      EXPO_PUBLIC_ANDROID_STORE_URL: process.env.ANDROID_STORE_URL ?? "",
+      EXPO_PUBLIC_IOS_STORE_URL: process.env.IOS_STORE_URL ?? "",
+      EXPO_PUBLIC_IOS_APP_PUBLISHED: process.env.IOS_APP_PUBLISHED ?? "",
     },
   });
   if (result.error) throw result.error;

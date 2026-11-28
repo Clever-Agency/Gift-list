@@ -1,6 +1,6 @@
 import type { ReservationCard } from "@gift-list/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchReservations, updateReservation } from "@/api/reservations";
+import { fetchReservations, markReservationGiven, updateReservation } from "@/api/reservations";
 
 const rn = vi.hoisted(() => ({ OS: "web" }));
 const store = vi.hoisted(() => ({
@@ -41,6 +41,9 @@ function card(overrides: Partial<ReservationCard> = {}): ReservationCard {
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
     ...overrides,
   };
@@ -159,7 +162,7 @@ describe("updateReservation", () => {
     expect((init.headers as Headers).get("content-type")).toBe("application/json");
   });
 
-  it("sends «Купил» and both switches as their own bodies", async () => {
+  it("sends «Купил» and the guests' switch as their own bodies", async () => {
     fetchMock.mockResolvedValue(respond({ ok: true, data: card({ bought: true }) }));
     await updateReservation("g1", { action: "bought", value: true });
     expect(fetchMock.mock.calls[0]![1].body).toBe(
@@ -169,21 +172,34 @@ describe("updateReservation", () => {
     fetchMock.mockResolvedValue(
       respond({
         ok: true,
-        data: card({ holderVisibleToOwner: true, holderVisibleToOthers: false }),
+        data: card({ holderVisibleToOthers: false }),
       }),
     );
     await updateReservation("g1", {
       action: "visibility",
-      holderVisibleToOwner: true,
       holderVisibleToOthers: false,
     });
     expect(fetchMock.mock.calls[1]![1].body).toBe(
       JSON.stringify({
         action: "visibility",
-        holderVisibleToOwner: true,
         holderVisibleToOthers: false,
       }),
     );
+  });
+
+  /** CLE-124/S9b-3 (Story 5.7): «Подарил» is the same PATCH with a one-key body. */
+  it("sends «Подарил» and keeps the updated card", async () => {
+    fetchMock.mockResolvedValue(respond({ ok: true, data: card({ phase: "GIVEN" }) }));
+
+    await expect(markReservationGiven("g/1")).resolves.toEqual({
+      ok: true,
+      reservation: card({ phase: "GIVEN" }),
+    });
+
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://api.test/api/v1/me/reservations/g%2F1");
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(JSON.stringify({ action: "given" }));
   });
 
   it("refuses a body with two actions, a stray key or an impossible day", async () => {

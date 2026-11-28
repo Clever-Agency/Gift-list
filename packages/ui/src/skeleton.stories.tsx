@@ -21,7 +21,7 @@ A static \`muted\` block with the control radius (8), shaped like the content it
 What is not a prop:
 
 - The colour and the radius come from the theme; the block takes only the size the content will need.
-- \`WishCardSkeleton\` is a ready-made card shape built from these blocks — a 4:5 photo plate, two text lines and the pill footer. It is not a second component of its own.
+- \`WishCardSkeleton\` is a ready-made card shape built from these blocks — a 4:5 photo plate and the two text lines under it. It is not a second component of its own.
 - The loading state itself is \`UI/LoadingCards\`: a named busy region (\`role="status"\`, \`aria-busy\`) around the cards, so assistive technology hears «Загружаем вишлист» instead of anonymous boxes.
         `.trim(),
       },

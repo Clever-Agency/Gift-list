@@ -20,7 +20,6 @@ import { formatMinorToPrice } from "@/ui/gift-price";
 /** The same catalogue the app ships, so the copy is asserted without a copy of it. */
 type AppCatalog = {
   giftForm: {
-    notice: { reserved: string };
     field: {
       title: string;
       titlePlaceholder: string;
@@ -36,7 +35,6 @@ type AppCatalog = {
       visibilityHint: Record<string, string>;
       quantity: string;
       quantityHint: Record<string, string>;
-      quantityLocked: string;
       tags: string;
       tagsLoading: string;
       tagsEmpty: string;
@@ -62,7 +60,6 @@ type AppCatalog = {
       priceInvalid: string;
       linkInvalid: string;
       linkTooLong: string;
-      quantityLocked: string;
       tags: string;
       tagEmpty: string;
       tagTooLong: string;
@@ -103,7 +100,7 @@ const commonCatalog = JSON.parse(
     ),
     "utf8",
   ),
-) as { errors: { reason: Record<string, string> } };
+) as { errors: { reason: Record<string, string>; code: Record<string, string> } };
 
 /** The fixed catalogue the form receives; labels stay verbatim from the server. */
 const catalog = {
@@ -494,7 +491,6 @@ describe("GiftForm: отправка", () => {
         ],
       },
       readOnly: true,
-      quantityLocked: true,
       tagCatalog: catalog,
     });
 
@@ -532,34 +528,26 @@ describe("GiftForm: отправка", () => {
   });
 
   /**
-   * Story 2.5: a wish that is no longer open keeps its stored type, disabled,
-   * with the same kind of explanation as the frozen visibility.
+   * D-49 (CLE-124): a reserved wish edits its type like an open one, and no
+   * quantity-only caption exists any more.
    */
-  it("quantityLocked: строки показывают сохранённое значение, не меняются и подсказка видна", async () => {
+  it("quantity не блокируется статусом и не показывает подсказку", async () => {
     const onSubmit = await mount({
-      initialValues: { title: "Свитер", quantity: "UNLIMITED" },
-      quantityLocked: true,
+      initialValues: { title: "Свитер", quantity: "SINGLE" },
     });
 
-    expect(text()).toContain(form.field.quantityLocked);
     const group = container.querySelector(
       `[role="radiogroup"][aria-label="${form.field.quantity}"]`,
     );
-    const described = document.getElementById(group?.getAttribute("aria-describedby") ?? "");
-    expect(described?.textContent).toBe(form.field.quantityLocked);
-    expect(described?.getAttribute("role")).toBeNull();
-    expect(group?.getAttribute("aria-invalid")).toBeNull();
+    expect(group?.getAttribute("aria-describedby")).toBeNull();
     for (const quantity of QUANTITIES) {
       const option = radio(quantityLabel[quantity]);
       expect(option, quantityLabel[quantity]).toBeDefined();
-      expect(option?.getAttribute("aria-disabled")).toBe("true");
+      expect(option?.getAttribute("aria-disabled")).toBeNull();
     }
-    expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
 
-    await press(quantityLabel.SINGLE);
-
+    await press(quantityLabel.UNLIMITED);
     expect(isChecked(quantityLabel.UNLIMITED)).toBe(true);
-    expect(isChecked(quantityLabel.SINGLE)).toBe(false);
 
     await submit();
     expect(onSubmit).toHaveBeenCalledWith(
@@ -567,17 +555,19 @@ describe("GiftForm: отправка", () => {
     );
   });
 
-  it("serverError quantity показывается под группой типа", async () => {
+  it("serverError quantity показывается под группой типа общим текстом проверки", async () => {
     await mount({ serverError: { field: "quantity" } });
 
     const group = container.querySelector(
       `[role="radiogroup"][aria-label="${form.field.quantity}"]`,
     );
-    expect(group?.parentElement?.textContent).toContain(form.error.quantityLocked);
+    expect(group?.parentElement?.textContent).toContain(
+      commonCatalog.errors.code.VALIDATION,
+    );
     expect(group?.getAttribute("aria-invalid")).toBe("true");
     const errorId = group?.getAttribute("aria-describedby");
     const error = document.getElementById(errorId ?? "");
-    expect(error?.textContent).toBe(form.error.quantityLocked);
+    expect(error?.textContent).toBe(commonCatalog.errors.code.VALIDATION);
     expect(error?.getAttribute("role")).toBe("alert");
     // The inline message is the group's, not the form-level one above the button.
     expect(group?.parentElement?.textContent).not.toContain(form.error.form);
@@ -642,6 +632,8 @@ describe("GiftForm: отправка", () => {
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toBe(message);
     expect(alert?.parentElement).toBe(field(label).parentElement);
+    // An error is `role="alert"`; a live region on top of it would announce twice.
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
   });
 
   it("serverError с неизвестным полем — общая ошибка формы", async () => {
@@ -649,6 +641,7 @@ describe("GiftForm: отправка", () => {
 
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toBe(form.error.form);
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
     expect(text()).not.toContain("Что-то не так");
     expect(fieldText(form.field.title)).not.toContain(form.error.titleRequired);
     expect(fieldText(form.field.price)).not.toContain(form.error.priceInvalid);
@@ -681,47 +674,15 @@ describe("GiftForm: отправка", () => {
 });
 
 /**
- * Story 5.4: a reserved wish carries the caption «Желание забронировано —
- * бронировавший получит уведомление» above the fields. It is plain text under the
- * screen's heading: never a field and never a stop in the Tab order.
+ * D-49 (CLE-124): there is no caption about a reservation on the form; a reserved
+ * wish edits exactly like an open one.
  */
-describe("GiftForm: подсказка забронированного желания", () => {
-  const notice = form.notice.reserved;
-
-  it("с пропом показывает caption до первого поля и не делает его полем", async () => {
-    await mount({ notice, initialValues: { title: "Свитер" } });
-
-    const caption = container.querySelector('[data-testid="gift-form-notice"]');
-    expect(caption, "подсказка").not.toBeNull();
-    expect(caption?.textContent).toBe(notice);
-    // Not a control: no role, no tab stop, no accessible name of its own.
-    expect(caption?.getAttribute("role")).toBeNull();
-    expect(caption?.getAttribute("tabindex")).toBeNull();
-    expect(caption?.getAttribute("aria-label")).toBeNull();
-    // Above the first field, not after the form's fields or actions.
-    const title = field(form.field.title);
-    expect(
-      (caption?.compareDocumentPosition(title) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    // The caption adds no field of its own.
-    expect(["INPUT", "TEXTAREA"]).not.toContain(caption?.tagName);
-  });
-
-  it("без пропа формы как раньше: подсказки нет", async () => {
-    await mount();
+describe("GiftForm: форма без следов брони", () => {
+  it("не показывает подсказку и не блокирует поля", async () => {
+    await mount({ initialValues: { title: "Свитер" } });
 
     expect(container.querySelector('[data-testid="gift-form-notice"]')).toBeNull();
-    expect(text()).not.toContain(notice);
-  });
-
-  it("длинная кириллическая подсказка остаётся одной caption и не ломает отправку", async () => {
-    const long = `${notice}. ${"Очень длинная строка подсказки ".repeat(6)}`.trim();
-    const onSubmit = await mount({ notice: long, initialValues: { title: "Свитер" } });
-
-    expect(container.querySelector('[data-testid="gift-form-notice"]')?.textContent).toBe(long);
-    await submit();
-
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ title: "Свитер" }));
+    expect(text()).not.toContain("забронировано");
   });
 });
 
@@ -944,6 +905,10 @@ describe("GiftForm: теги", () => {
     });
 
     expect(text()).toContain(form.field.tagsError);
+    const catalogAlert = Array.from(container.querySelectorAll('[role="alert"]')).find(
+      (node) => node.textContent === form.field.tagsError,
+    );
+    expect(catalogAlert?.hasAttribute("aria-live")).toBe(false);
     // The catalogue failed, but the stored choice is still visible and removable.
     expect(tagIsSelected("мечта")).toBe(true);
     expect(text()).toContain("своё");
@@ -1481,6 +1446,7 @@ describe("GiftForm: теги", () => {
         (node) => node.textContent === form.error.tags.replace("{max}", "30"),
       ),
     ).toBe(true);
+    expect(alerts.every((node) => !node.hasAttribute("aria-live"))).toBe(true);
     const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
     expect(group?.getAttribute("aria-invalid")).toBe("true");
     expect(group?.getAttribute("aria-describedby")).toBe(

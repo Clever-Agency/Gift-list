@@ -26,9 +26,17 @@ export async function fetchNotificationPreferences() {
   return read(`${path}/preferences`, notificationPreferencesSchema);
 }
 
-export async function saveNotificationPreferences(body: Partial<NotificationPreferences>) {
+export type SaveNotificationPreferencesResult =
+  | { ok: true; data: NotificationPreferences }
+  | { ok: false; network: boolean };
+
+export async function saveNotificationPreferences(
+  body: Partial<NotificationPreferences>,
+): Promise<SaveNotificationPreferencesResult> {
   const response = await apiRequest<unknown>(`${path}/preferences`, { method: "PATCH", body });
-  return response.ok ? notificationPreferencesSchema.safeParse(response.data) : null;
+  if (!response.ok) return { ok: false, network: "network" in response };
+  const parsed = notificationPreferencesSchema.safeParse(response.data);
+  return parsed.success ? { ok: true, data: parsed.data } : { ok: false, network: false };
 }
 
 export function markNotificationRead(id: string) {

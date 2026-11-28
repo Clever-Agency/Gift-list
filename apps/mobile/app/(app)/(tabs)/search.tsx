@@ -42,6 +42,7 @@ import {
 import { SubscriptionActions } from "@/profile/subscription-actions";
 import { prepareUserSearchQuery } from "@/search/search-query";
 import { useAuth } from "@/session/auth-context";
+import { signOutErrorMessage } from "@/session/form-issue";
 import { paramValue } from "@/session/return-path";
 import { SessionErrorScreen } from "@/ui/session-error-screen";
 import { SessionLoadingScreen } from "@/ui/session-loading-screen";
@@ -224,9 +225,9 @@ function SearchScreenContent({
       const signedOut = await auth.signOut();
       if (!signedOut.ok && id === latest.current) {
         onSessionExpired(false);
-        setAnswer({ status: "error", query: value, kind: "network" });
+        setAnswer({ status: "error", query: value, kind: "network" in signedOut ? "network" : "generic" });
         setRetrying(false);
-        setToast({ message: app("form.network"), tone: "error" });
+        setToast({ message: signOutErrorMessage(signedOut, app("form.network"), common), tone: "error" });
       }
       return;
     }
@@ -344,7 +345,7 @@ function SearchScreenContent({
       const signedOut = await auth.signOut();
       if (!signedOut.ok) {
         onSessionExpired(false);
-        setToast({ message: app("form.network"), tone: "error" });
+        setToast({ message: signOutErrorMessage(signedOut, app("form.network"), common), tone: "error" });
       }
       return;
     }
@@ -411,7 +412,7 @@ function SearchScreenContent({
       const signedOut = await auth.signOut();
       if (!signedOut.ok) {
         onSessionExpired(false);
-        setToast({ message: profile("subscription.network"), tone: "error" });
+        setToast({ message: signOutErrorMessage(signedOut, profile("subscription.network"), common), tone: "error" });
       }
       return;
     }
@@ -466,7 +467,7 @@ function SearchScreenContent({
       const signedOut = await auth.signOut();
       if (!signedOut.ok) {
         onSessionExpired(false);
-        setToast({ message: profile("relationship.network"), tone: "error" });
+        setToast({ message: signOutErrorMessage(signedOut, profile("relationship.network"), common), tone: "error" });
       }
       return;
     }
@@ -491,8 +492,9 @@ function SearchScreenContent({
 
   return (
     <Screen>
-      {/* A tab root: the bottom bar holds the home indicator (spec 6.2). */}
-      <SafeArea bottom={false}>
+      {/* The shell decides the bottom edge: the bar holds it, or the frame does
+          on an expanded screen without the bar (AD-30). */}
+      <SafeArea>
         <Stack.Screen options={{ title: search("pageTitle", { brand }) }} />
         <PageScroll testID="search-page" keyboardShouldPersistTaps="handled">
           <PageContainer>

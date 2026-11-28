@@ -8,8 +8,11 @@ import { reservationDueOn } from "./reservation-due";
 import type { OwnerGiftRow } from "./owner-gift-card";
 import { toGiftTags } from "./tag";
 
-/** Plain row the viewer mapper reads; adds the two reservation facts D-13 uses. */
+/** Plain row the viewer mapper reads; adds the reservation facts D-13 uses. */
 export type ViewerGiftRow = OwnerGiftRow & {
+  reservationPhase: "ACTIVE" | "AWAITING_GIVER" | "AWAITING_OWNER" | "GIVEN" | null;
+  holderVisibleToOwner: boolean;
+  reservedBy: { id: string; nick: string; name: string } | null;
   reservationBought: boolean;
   holderVisibleToOthers: boolean;
   reservationDueAt: Date | null;
@@ -64,7 +67,8 @@ function holderReservation(
     dueAt: reservationDueOn(row.reservationDueAt, timeZone),
     phase: row.reservationPhase,
     bought: row.reservationBought,
-    holderVisibleToOwner: row.holderVisibleToOwner,
+    // CLE-124/D-49: the owner never sees the holder, so the flag is always false.
+    holderVisibleToOwner: false,
     holderVisibleToOthers: row.holderVisibleToOthers,
   };
 }

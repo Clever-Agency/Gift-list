@@ -1,6 +1,8 @@
 import { Text as CoreText, styled, type GetProps } from "@tamagui/core";
+import { forwardRef, type ComponentProps, type ComponentRef } from "react";
 import { fontFor } from "./font-style";
 import { focusRing } from "./focus-ring";
+import { useHoverTransition } from "./hover";
 import { typography, type TypographyRole } from "./tokens";
 
 function roleStyle(role: TypographyRole) {
@@ -31,7 +33,11 @@ export const Text = styled(CoreText, {
       default: { color: "$foreground" },
       muted: { color: "$muted-foreground" },
       primary: { color: "$primary" },
-      destructive: { color: "$destructive" },
+      // `$destructive` on the page background is 4.31:1 in the light theme (AA
+      // wants 4.5). Its darker hover value, #B1352D, keeps 5.45:1 on the paper
+      // and passes in the dark theme too; the palette itself is untouched
+      // (design decision, Сергей — see `tokens-contrast.test.ts`).
+      destructive: { color: "$destructive-hover" },
       reserved: { color: "$status-reserved" },
       inverse: { color: "$primary-foreground" },
     },
@@ -57,16 +63,18 @@ Heading.displayName = "Heading";
  * The «Назад» / navigation link text (`DESIGN.md` → button, primary colour, 44 px
  * tall touch zone). Wrap it in the router's link, or give it `onPress`.
  *
- * Hover and keyboard focus are real CSS states: the menu-item background
- * (`nav-item.hover-background`) on hover, the `$ring` ring on `:focus-visible` only
- * (a mouse click must not leave a ring; a phone has no `:focus-visible` and takes
- * `focus`, `focus-ring.native.ts`), and the `opacity: 0.9` press feedback.
+ * Hover and keyboard focus are real CSS states: the `$muted` fill on hover — not
+ * the page `$background`, which is invisible on the page — the `$ring` ring on
+ * `:focus-visible` only (a mouse click must not leave a ring; a phone has no
+ * `:focus-visible` and takes `focus`, `focus-ring.native.ts`), and the
+ * `opacity: 0.9` press feedback. The fill and the opacity change with the
+ * `quick` preset (160 ms, CLE-129), instantly with «уменьшить движение».
  */
-export const LinkText = styled(CoreText, {
+const LinkTextFrame = styled(CoreText, {
   name: "GLLinkText",
   ...roleStyle("button"),
   color: "$primary",
-  backgroundColor: "transparent hover:$background",
+  backgroundColor: "transparent hover:$muted",
   minHeight: "$touch-target",
   minWidth: "$touch-target",
   lineHeight: "$touch-target",
@@ -74,3 +82,20 @@ export const LinkText = styled(CoreText, {
   opacity: "press:0.9",
   ...focusRing,
 });
+
+export type LinkTextProps = ComponentProps<typeof LinkTextFrame>;
+
+/**
+ * The component half takes the `transition` prop, which cannot live in the
+ * `styled()` base: Tamagui reads it from the props of the rendered element, not
+ * from the style layer (`getSplitStyles` → `skipProps`). The hook keeps the
+ * «уменьшить движение» rule of every other hover (`hover.ts`).
+ */
+export const LinkText = forwardRef<ComponentRef<typeof LinkTextFrame>, LinkTextProps>(
+  function LinkText(props, ref) {
+    const transition = useHoverTransition();
+    return <LinkTextFrame ref={ref} transition={transition} {...props} />;
+  },
+);
+
+LinkText.displayName = "LinkText";

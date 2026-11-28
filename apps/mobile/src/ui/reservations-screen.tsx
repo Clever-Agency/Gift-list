@@ -4,12 +4,12 @@ import {
   Column,
   EmptyState,
   Heading,
+  LoadingCards,
   PageContainer,
   PageScroll,
   Pressable,
   SafeArea,
   Screen,
-  Skeleton,
   Text,
   XStack,
   YStack,
@@ -19,10 +19,12 @@ import { Stack } from "expo-router";
 import type { ReactNode } from "react";
 import { useTranslations } from "use-intl";
 import { getBrandName } from "@/config/env";
+import { CardGridList } from "@/ui/card-grid-list";
 import { NotificationBell } from "@/ui/notification-bell";
 import { ReservationCard } from "@/ui/reservation-card";
 import type { ReservationVisibilityValues } from "@/ui/reservation-visibility";
 import { SiteFooter } from "@/ui/site-footer";
+import { useCardGrid } from "@/ui/use-card-grid";
 
 /** The list of «Мои брони»: a skeleton, a retry view, the empty state or the cards. */
 export type ReservationsState =
@@ -32,8 +34,8 @@ export type ReservationsState =
 
 export type ReservationsScreenProps = {
   state: ReservationsState;
-  /** The cards whose «Кто видит, что это я» block is open. */
-  expanded: ReadonlySet<string>;
+  /** The holder's zone: the card counts «срок прошёл» there and offers no extension. */
+  timeZone: string;
   /** The cards with a request in flight; every other card stays usable. */
   busyIds: ReadonlySet<string>;
   onRetry: () => void;
@@ -46,11 +48,16 @@ export type ReservationsScreenProps = {
   onOpenGift: (card: ReservationCardData) => void;
   onMenu: (card: ReservationCardData) => void;
   onExtend: (card: ReservationCardData) => void;
-  onToggleVisibility: (giftId: string) => void;
+  /** «Подарил» (Story 5.7): the card is replaced by the `GIVEN` answer. */
+  onGiven: (card: ReservationCardData) => void;
   onBoughtChange: (card: ReservationCardData, value: boolean) => void;
   onVisibilityChange: (card: ReservationCardData, next: ReservationVisibilityValues) => void;
   /** Registers the ⋮ of a card, so the screen can return focus after its menu closes. */
   menuRefFor?: (giftId: string) => (node: FocusTarget | null) => void;
+  /** Registers «Продлить до…», so the screen can return focus after its dialog closes. */
+  extendRefFor?: (giftId: string) => (node: FocusTarget | null) => void;
+  /** The card whose ⋮ menu is open; its trigger reports `aria-expanded`. */
+  menuOpenId?: string | null;
 };
 
 /**
@@ -64,26 +71,38 @@ export type ReservationsScreenProps = {
  */
 export function ReservationsScreen({
   state,
-  expanded,
+  timeZone,
   busyIds,
   onRetry,
   onBack,
   onOpenGift,
   onMenu,
   onExtend,
-  onToggleVisibility,
+  onGiven,
   onBoughtChange,
   onVisibilityChange,
   menuRefFor,
+  extendRefFor,
+  menuOpenId,
 }: ReservationsScreenProps) {
   const t = useTranslations("app.reservations");
   const tGift = useTranslations("app.gift");
   const common = useTranslations("common");
   const brand = getBrandName();
+  // W12.23: the browser measures the column the cards stand in, so a classic
+  // scrollbar cannot push the right column past the gutter (`DESIGN.md` → Layout).
+  const { cardWidth, attachContainer } = useCardGrid();
 
   let content: ReactNode;
   if (state.status === "loading") {
-    content = <ReservationSkeleton label={t("loading")} />;
+    content = (
+      <LoadingCards
+        testID="reservations-loading"
+        label={t("loading")}
+        width={cardWidth}
+        count={4}
+      />
+    );
   } else if (state.status === "error") {
     content = (
       <YStack width="100%" maxWidth="$max-form" alignSelf="center" paddingVertical="$4" gap="$grid-gap">
@@ -97,7 +116,7 @@ export function ReservationsScreen({
     content = <EmptyState title={t("emptyTitle")} body={t("emptyText")} />;
   } else {
     content = (
-      <YStack role="list" gap="$grid-gap" width="100%" testID="reservations-list">
+      <CardGridList testID="reservations-list">
         {state.reservations.map(function renderReservation(card) {
           const busy = busyIds.has(card.giftId);
           return (
@@ -106,11 +125,11 @@ export function ReservationsScreen({
               testID={`reservation-${card.giftId}`}
               card={card}
               busy={busy}
+              timeZone={timeZone}
+              width={cardWidth}
               menuRef={menuRefFor ? menuRefFor(card.giftId) : undefined}
-              visibilityExpanded={expanded.has(card.giftId)}
-              onToggleVisibility={function toggleVisibility() {
-                onToggleVisibility(card.giftId);
-              }}
+              menuExpanded={menuOpenId === card.giftId}
+              extendRef={extendRefFor ? extendRefFor(card.giftId) : undefined}
               onOpenGift={function openGift() {
                 onOpenGift(card);
               }}
@@ -119,6 +138,9 @@ export function ReservationsScreen({
               }}
               onExtend={function extend() {
                 onExtend(card);
+              }}
+              onGiven={function markGiven() {
+                onGiven(card);
               }}
               onBoughtChange={function changeBought(value) {
                 onBoughtChange(card, value);
@@ -129,14 +151,15 @@ export function ReservationsScreen({
             />
           );
         })}
-      </YStack>
+      </CardGridList>
     );
   }
 
   return (
     <Screen>
-      {/* A tab root (spec 6.2): the bottom bar holds the home indicator. */}
-      <SafeArea bottom={false}>
+      {/* The shell decides the bottom edge: the bar holds it, or the frame does
+          on an expanded screen without the bar (AD-30). */}
+      <SafeArea>
         <Stack.Screen options={{ title: t("pageTitle", { brand }) }} />
         <PageScroll testID="reservations-page">
           <PageContainer>
@@ -172,6 +195,7 @@ export function ReservationsScreen({
               </XStack>
               <YStack
                 testID="reservations-content"
+                ref={attachContainer}
                 paddingTop="$2"
                 paddingBottom="$section-gap"
                 gap="$grid-gap"
@@ -190,34 +214,3 @@ export function ReservationsScreen({
 
 ReservationsScreen.displayName = "ReservationsScreen";
 
-/**
- * «EXPERIENCE.md» → Cold load: the skeleton of the expected layout, not anonymous
- * boxes. Two cards of the same frame and line rhythm as the real one; the region is
- * a named busy area for assistive tech.
- */
-function ReservationSkeleton({ label }: { label: string }) {
-  return (
-    <YStack role="status" aria-busy aria-label={label} gap="$grid-gap" testID="reservations-loading">
-      {[0, 1].map(function skeletonKey(key) {
-        return (
-          <YStack
-            key={key}
-            width="100%"
-            borderWidth={1}
-            borderColor="$border"
-            borderRadius="$md"
-            backgroundColor="$surface"
-            padding="$card-padding"
-            gap="$2"
-          >
-            <Skeleton height={22} width="70%" />
-            <Skeleton height={18} width="40%" />
-            <Skeleton height={18} width="55%" />
-          </YStack>
-        );
-      })}
-    </YStack>
-  );
-}
-
-ReservationSkeleton.displayName = "ReservationSkeleton";

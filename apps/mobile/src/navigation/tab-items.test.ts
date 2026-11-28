@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { TAB_ITEMS, TAB_TRIGGERS, sectionOf } from "./tab-items";
+import { TAB_ITEMS, TAB_TRIGGERS, TABS_NAVIGATOR_OPTIONS, sectionOf } from "./tab-items";
 
 /**
  * The one list of the five sections (Story 6.2, UX-A13): order, addresses, icons,
@@ -92,5 +92,13 @@ describe("tab-items: пять разделов UX-A13", () => {
     expect(sectionOf("/settings")).toBeUndefined();
     expect(sectionOf("/gifts/new")).toBeUndefined();
     expect(sectionOf("/u/anya")).toBeUndefined();
+  });
+
+  it("Android «назад» с корня вкладки ведёт в «Вишлист»: firstRoute и первый маршрут /", () => {
+    // `backBehavior: "firstRoute"` returns to the first route of the navigator;
+    // the first route must stay «Вишлист», or «назад» would lead elsewhere.
+    expect(TABS_NAVIGATOR_OPTIONS.backBehavior).toBe("firstRoute");
+    expect(TABS_NAVIGATOR_OPTIONS.triggers).toBe(TAB_TRIGGERS);
+    expect(TABS_NAVIGATOR_OPTIONS.triggers[0]?.href).toBe("/");
   });
 });

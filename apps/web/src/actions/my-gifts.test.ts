@@ -239,7 +239,11 @@ describe("getMyGifts", () => {
     expect(ensureOwnerList).not.toHaveBeenCalled();
   });
 
-  it("maps an owner card to the AD-12 contract", async () => {
+  /**
+   * D-49: the owner sees a reserved wish as open — no holder, no owner action,
+   * not even the status of the reservation.
+   */
+  it("maps a reserved owner card to the AD-12 contract as an open wish", async () => {
     seedGifts([
       gift({
         id: "g1",
@@ -271,45 +275,21 @@ describe("getMyGifts", () => {
       expiresOn: "2026-12-31",
       archivedAt: null,
       tags: [],
-      status: "RESERVED",
-      reservedBy: { id: "u2", nick: "anna", displayName: "Анна" },
+      status: "OPEN",
+      reservedBy: null,
       reservationLabel: null,
-      ownerAction: "CONFIRM_GIVEN",
+      ownerAction: null,
       undoUntil: null,
     });
-  });
-
-  it("keeps the holder hidden until they allow the owner to see them", async () => {
-    seedGifts([
-      gift({
-        status: "RESERVED",
-        reservationPhase: "ACTIVE",
-        holderVisibleToOwner: false,
-        reservedBy: { id: "u2", nick: "anna", name: "Анна" },
-      }),
-    ]);
-
-    const [card] = giftsOf(await getMyGifts(headers));
-    expect(card?.reservedBy).toBeNull();
-    expect(card?.ownerAction).toBeNull();
-  });
-
-  it("asks the owner to answer an expired reservation", async () => {
-    seedGifts([
-      gift({ status: "RESERVED", reservationPhase: "AWAITING_OWNER" }),
-    ]);
-
-    const [card] = giftsOf(await getMyGifts(headers));
-    expect(card?.ownerAction).toBe("EXPIRED_NO_REPLY");
+    expect(JSON.stringify(card)).not.toContain("Анна");
+    expect(JSON.stringify(card)).not.toContain("anna");
   });
 
   /**
-   * AD-7: only a finished reservation asks the owner for something. While the
-   * reservation is still running (holder keeps it, or the giver has not answered
-   * yet), the shared holder name is shown but there is no owner action.
+   * D-49: no phase and no toggle brings the holder or an owner action back.
    */
-  it.each(["ACTIVE", "AWAITING_GIVER"] as const)(
-    "shows the shared holder but no owner action in the %s phase",
+  it.each(["ACTIVE", "AWAITING_GIVER", "AWAITING_OWNER", "GIVEN"] as const)(
+    "hides the holder and the owner action in the %s phase",
     async (phase) => {
       seedGifts([
         gift({
@@ -321,8 +301,10 @@ describe("getMyGifts", () => {
       ]);
 
       const [card] = giftsOf(await getMyGifts(headers));
+      expect(card?.status).toBe("OPEN");
+      expect(card?.reservedBy).toBeNull();
       expect(card?.ownerAction).toBeNull();
-      expect(card?.reservedBy).toEqual({ id: "u2", nick: "anna", displayName: "Анна" });
+      expect(card?.reservationLabel).toBeNull();
     },
   );
 
@@ -334,7 +316,8 @@ describe("getMyGifts", () => {
     expect(card?.reservedBy).toBeNull();
   });
 
-  it("keeps the holder on a closed gift when they allowed the owner to see them", async () => {
+  /** D-49: a closed wish keeps its status, but its past holder stays hidden. */
+  it("hides the past holder of a closed wish with the toggle on", async () => {
     seedGifts([
       gift({
         status: "CLOSED",
@@ -345,7 +328,8 @@ describe("getMyGifts", () => {
     ]);
 
     const [card] = giftsOf(await getMyGifts(headers));
-    expect(card?.reservedBy).toEqual({ id: "u2", nick: "anna", displayName: "Анна" });
+    expect(card?.status).toBe("CLOSED");
+    expect(card?.reservedBy).toBeNull();
     expect(card?.ownerAction).toBeNull();
   });
 

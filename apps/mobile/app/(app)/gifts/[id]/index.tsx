@@ -1,44 +1,52 @@
-import type {
-  GiftCard,
-  ReservationActionBody,
-  ReservationCard as ReservationCardData,
+import {
+  formatDate,
+  type DetailViewer,
+  type GiftCard,
+  type ReservationActionBody,
+  type ReservationCard as ReservationCardData,
 } from "@gift-list/contracts";
 import {
   Button,
   Column,
-  Heading,
   PageContainer,
   PageScroll,
   SafeArea,
   Screen,
   Switch,
   TagChip,
-  TagChipList,
   Text,
+  XStack,
   YStack,
 } from "@gift-list/ui";
-import { formatDate, formatPrice } from "@gift-list/contracts";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
-import { updateReservation, type ReservationUpdateResult } from "@/api/reservations";
+import {
+  markReservationGiven,
+  updateReservation,
+  type ReservationUpdateResult,
+} from "@/api/reservations";
 import { fetchViewerGift, releaseMyReservation, reserveGift } from "@/api/viewer-gift";
 import { getBrandName } from "@/config/env";
+import { needsSurpriseWarning } from "@/domain/surprise-warning";
 import { useAuth } from "@/session/auth-context";
 import { paramValue } from "@/session/return-path";
 import { mutationErrorMessage } from "@/session/form-issue";
 import { EmptyState } from "@/ui/empty-state";
+import { restoreFocus, type FocusTarget } from "@/ui/focus";
+import { GiftDetail } from "@/ui/gift-detail";
 import { NavLink } from "@/ui/nav-link";
 import { NotFoundScreen } from "@/ui/not-found-screen";
-import { ReservationExtendDialog } from "@/ui/reservation-extend-dialog";
+import { ReservationExtendDialog, canExtendReservation } from "@/ui/reservation-extend-dialog";
 import { ReservationReleaseConfirm } from "@/ui/reservation-release-confirm";
 import {
   ReservationVisibility,
   type ReservationVisibilityValues,
 } from "@/ui/reservation-visibility";
 import { ReserveConfirm } from "@/ui/reserve-confirm";
-import { StatusPill } from "@/ui/status-pill";
+import { SurpriseWarningDialog } from "@/ui/surprise-warning";
 import { ToastHost } from "@/ui/toast";
+import { loadOwnerDetail } from "@/ui/wish-detail-load";
 
 type ScreenState =
   | { status: "loading" }
@@ -51,6 +59,7 @@ export default function GiftDetailScreen() {
   const tPhase = useTranslations("app.gift.detail.phase");
   const tReservations = useTranslations("app.reservations");
   const tForm = useTranslations("app.form");
+  const tWishlist = useTranslations("app.myWishlist");
   const common = useTranslations("common");
   const locale = useLocale();
   const brand = getBrandName();
@@ -68,6 +77,10 @@ export default function GiftDetailScreen() {
   const [state, setState] = useState<ScreenState>(
     id ? { status: "loading" } : { status: "missing" },
   );
+  // D-63 / AD-15 (14): the owner's page is built from the owner card alone
+  // (`GET /api/v1/me/gifts/:id`), which carries no `reservation`, no `reservedBy`
+  // and no `RESERVED` status, so the page cannot tell a booked wish from an open one.
+  const [viewer, setViewer] = useState<DetailViewer>("guest");
   const [attempt, setAttempt] = useState(0);
   const [gift, setGift] = useState<GiftCard | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -75,13 +88,30 @@ export default function GiftDetailScreen() {
   const [dateError, setDateError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const reserveInFlight = useRef(false);
+  // «Куда уходит фокус» (`DESIGN.md`): every layer returns focus to the control
+  // that opened it. The `*FormKey` values start a fresh layer on each opening
+  // without remounting it while it closes — a remount there would swallow
+  // `onClosed`, and the focus would stay on `<body>`.
+  const reserveButtonRef = useRef<FocusTarget>(null);
+  const releaseButtonRef = useRef<FocusTarget>(null);
+  const extendButtonRef = useRef<FocusTarget>(null);
+  const [reserveFormKey, setReserveFormKey] = useState(0);
+  const [extendFormKey, setExtendFormKey] = useState(0);
+  // D-49 (CLE-124): «Изменить» of an open non-secret wish asks the neutral question
+  // first (`EXPERIENCE.md` → Interaction Primitives, «Правка желания»). The question
+  // reads only the owner's own card — no reservation field ever reaches the page
+  // (AD-15 (14)), so it is shown the same with a booking and without one.
+  const [editWarningOpen, setEditWarningOpen] = useState(false);
+  const editButtonRef = useRef<FocusTarget>(null);
+  // A confirmed question leaves for the form, so there is no button to return to.
+  const editAccepted = useRef(false);
   // Story 5.2: the holder's own release — the confirm, its request in flight, and
   // the same one-at-a-time guard the reserve uses.
   const [releaseConfirmOpen, setReleaseConfirmOpen] = useState(false);
   const [releaseBusy, setReleaseBusy] = useState(false);
   const releaseInFlight = useRef(false);
   // Story 5.5: the holder's three actions of «Мои брони» are also here — «Купил»,
-  // «Продлить до…» and «Кто видит, что это я». One action at a time, the same
+  // «Продлить до…» и переключатель видимости. One action at a time, the same
   // guard as the reserve and the release.
   const [actionBusy, setActionBusy] = useState(false);
   const actionInFlight = useRef(false);
@@ -89,7 +119,6 @@ export default function GiftDetailScreen() {
   // are one queue — while any of them is in flight, the rest are blocked and a
   // second request does not leave the screen.
   const holderBusy = actionBusy || releaseBusy;
-  const [visibilityOpen, setVisibilityOpen] = useState(false);
   const [extendOpen, setExtendOpen] = useState(false);
   const [extendError, setExtendError] = useState<string | null>(null);
   const timeZone =
@@ -112,9 +141,26 @@ export default function GiftDetailScreen() {
 
     async function requestGift() {
       if (!id) return;
+      // D-63 / AD-15 (14): the owner's page reads only the owner route, so a
+      // booking never reaches it. A foreign wish answers NOT_FOUND there, and the
+      // screen then asks the viewer route — the same single request a guest had.
+      const owner = await loadOwnerDetail(id);
+      if (cancelled) return;
+      if (owner.ok) {
+        setViewer("owner");
+        setGift(owner.gift);
+        setState({ status: "ready", gift: owner.gift });
+        return;
+      }
+      if (owner.reason === "network") {
+        setState({ status: "error", kind: "network" });
+        return;
+      }
+
       const result = await fetchViewerGift(id, listToken);
       if (cancelled) return;
       if (result.ok) {
+        setViewer("guest");
         setGift(result.gift);
         setState({ status: "ready", gift: result.gift });
         if (
@@ -122,6 +168,7 @@ export default function GiftDetailScreen() {
           result.gift.quantity === "SINGLE" &&
           result.gift.status === "OPEN"
         ) {
+          setReserveFormKey((value) => value + 1);
           setConfirmOpen(true);
         }
         return;
@@ -130,10 +177,10 @@ export default function GiftDetailScreen() {
         setState({ status: "missing" });
         return;
       }
-      if ("code" in result && result.code === "FORBIDDEN") {
-        router.replace({ pathname: "/gifts/[id]/edit", params: { id } });
-        return;
-      }
+      // FORBIDDEN here means the owner route answered the owner, so the earlier
+      // read failed for another reason (and the owner still deserves its own
+      // answer, never a redirect to the edit form). UNAUTHENTICATED is the same
+      // rare tail: the screen already checked the session before the reads.
       setState({ status: "error", kind: "network" in result ? "network" : "generic" });
     }
 
@@ -146,14 +193,18 @@ export default function GiftDetailScreen() {
   if (!id) return <NotFoundScreen />;
 
   const current = gift ?? (state.status === "ready" ? state.gift : null);
+  // The owner never gets a reserve button, a hint or a release: the page is the
+  // wish as an open card, plus «Изменить» (D-49, AD-15 (14)).
+  const isGuest = viewer === "guest";
   const showReserveCta =
-    current?.quantity === "SINGLE" && current?.status === "OPEN";
+    isGuest && current?.quantity === "SINGLE" && current?.status === "OPEN";
   // Story 5.2 (A-14): only the live holder gets `reservation` from the server, so
   // its presence is the holder branch, not a name or a relationship lookup. The
   // release itself is only possible while the wish is `RESERVED`.
-  const showRelease = current?.status === "RESERVED" && current.reservation !== undefined;
+  const showRelease =
+    isGuest && current?.status === "RESERVED" && current.reservation !== undefined;
   const reserveHint =
-    current && !showReserveCta && !showRelease
+    isGuest && current && !showReserveCta && !showRelease
       ? current.quantity === "UNLIMITED"
         ? tGift("reserveNoButton.UNLIMITED")
         : tGift(`reserveNoButton.${current.status}` as "reserveNoButton.RESERVED")
@@ -267,15 +318,26 @@ export default function GiftDetailScreen() {
   }
 
   /** One holder action at a time; a second tap while the answer is missing sends nothing. */
-  async function requestAction(body: ReservationActionBody): Promise<ReservationUpdateResult | null> {
+  async function requestReservation(
+    request: (giftId: string) => Promise<ReservationUpdateResult>,
+  ): Promise<ReservationUpdateResult | null> {
     if (!id || actionInFlight.current || releaseInFlight.current) return null;
     actionInFlight.current = true;
     setActionBusy(true);
     setToast(null);
-    const result = await updateReservation(id, body);
+    const result = await request(id);
     actionInFlight.current = false;
     setActionBusy(false);
     return result;
+  }
+
+  /** The answer of a holder action: a card replaces the facts, an error takes the tail. */
+  function applyAnswer(result: ReservationUpdateResult) {
+    if (result.ok) {
+      applyReservation(result.reservation);
+      return;
+    }
+    reportActionFailure(result);
   }
 
   /**
@@ -301,13 +363,11 @@ export default function GiftDetailScreen() {
   }
 
   async function runAction(body: ReservationActionBody) {
-    const result = await requestAction(body);
+    const result = await requestReservation(function request(giftId) {
+      return updateReservation(giftId, body);
+    });
     if (!result) return;
-    if (result.ok) {
-      applyReservation(result.reservation);
-      return;
-    }
-    reportActionFailure(result);
+    applyAnswer(result);
   }
 
   /** «Купил»: only the flag changes — phase, deadline and switches stay (AD-9). */
@@ -315,22 +375,32 @@ export default function GiftDetailScreen() {
     await runAction({ action: "bought", value });
   }
 
-  /** Both switches travel in one `visibility` action; the answer replaces the card. */
+  /**
+   * «Подарил» (Story 5.7): the reservation moves into `GIVEN`, so the stage under
+   * the deadline reads «Подарено» from the answer. The wish status stays as it was,
+   * and a repeated press is a no-op success on the server.
+   */
+  async function submitGiven() {
+    const result = await requestReservation(markReservationGiven);
+    if (!result) return;
+    applyAnswer(result);
+  }
+
+  /** The visibility switch travels in one `visibility` action; the answer replaces the card. */
   async function submitVisibility(next: ReservationVisibilityValues) {
     await runAction({
       action: "visibility",
-      holderVisibleToOwner: next.holderVisibleToOwner,
       holderVisibleToOthers: next.holderVisibleToOthers,
     });
   }
 
-  function toggleVisibility() {
-    setVisibilityOpen(function flip(current) {
-      return !current;
-    });
+  function openReserveConfirm() {
+    setReserveFormKey((value) => value + 1);
+    setConfirmOpen(true);
   }
 
   function openExtend() {
+    setExtendFormKey((value) => value + 1);
     setExtendError(null);
     setExtendOpen(true);
   }
@@ -341,14 +411,30 @@ export default function GiftDetailScreen() {
     setExtendError(null);
   }
 
+  /** The layers have left the tree: focus goes back to the control that opened them. */
+  function restoreReserveFocus() {
+    restoreFocus(reserveButtonRef.current);
+  }
+
+  function restoreReleaseFocus() {
+    restoreFocus(releaseButtonRef.current);
+  }
+
+  function restoreExtendFocus() {
+    restoreFocus(extendButtonRef.current);
+  }
+
   /**
    * «Подтвердить» of the extension: one `extend` action. A day outside the window
    * keeps the sheet open with «Выберите дату не позже {max}.»; the other failures
-   * close it and follow the shared tail. `GIVEN` never opens the sheet: an
-   * extension there would silently restart the timers of Story 5.7.
+   * close it and follow the shared tail. A passed deadline (`RESERVATION_DUE_PASSED`)
+   * is named by that tail and the wish is reread, so the button disappears with the
+   * refreshed phase.
    */
   async function submitExtend(dueOn: string) {
-    const result = await requestAction({ action: "extend", dueOn });
+    const result = await requestReservation(function request(giftId) {
+      return updateReservation(giftId, { action: "extend", dueOn });
+    });
     if (!result) return;
     if (result.ok) {
       applyReservation(result.reservation);
@@ -367,6 +453,43 @@ export default function GiftDetailScreen() {
     }
     setExtendOpen(false);
     reportActionFailure(result);
+  }
+
+  /**
+   * «Изменить» (T4.4a): an open non-secret wish gets the neutral question first, any
+   * other wish goes straight to the form (`needsSurpriseWarning` reads only the status,
+   * the visibility and the archive — never a reservation).
+   */
+  function startEdit() {
+    if (!current) return;
+    if (needsSurpriseWarning(current)) {
+      editAccepted.current = false;
+      setEditWarningOpen(true);
+      return;
+    }
+    openEditForm();
+  }
+
+  /** The accepted «Изменить»: the question closes and the existing form route opens. */
+  function openEditForm() {
+    if (!id) return;
+    editAccepted.current = true;
+    setEditWarningOpen(false);
+    router.push({ pathname: "/gifts/[id]/edit", params: { id } });
+  }
+
+  /** «Отмена» of the neutral question: stay on the page, the form never opened. */
+  function cancelEditWarning() {
+    setEditWarningOpen(false);
+  }
+
+  /** The question has left the tree: «Изменить» gets focus back unless the form opened. */
+  function restoreEditFocus() {
+    if (editAccepted.current) {
+      editAccepted.current = false;
+      return;
+    }
+    restoreFocus(editButtonRef.current);
   }
 
   return (
@@ -397,28 +520,72 @@ export default function GiftDetailScreen() {
                   }} />
                 </YStack>
               ) : current ? (
-                <YStack gap="$4" flexGrow={1}>
-                  <Heading level={1} kind="display-sm">
-                    {current.title}
-                  </Heading>
-                  {current.description ? <Text kind="body">{current.description}</Text> : null}
-                  {current.priceAmount !== null && current.priceCurrency !== null ? (
-                    <Text kind="label" tone="muted">
-                      {formatPrice(current.priceAmount, current.priceCurrency, locale)}
+                <GiftDetail
+                  gift={current}
+                  viewer={viewer}
+                  actions={
+                    viewer === "owner" && current.status !== "CLOSED" ? (
+                      <Button
+                        ref={editButtonRef as never}
+                        label={tGift("detail.editShort")}
+                        variant="secondary"
+                        onPress={startEdit}
+                        testID="gift-edit"
+                      />
+                    ) : showReserveCta ? (
+                      <Button
+                        ref={reserveButtonRef as never}
+                        label={tGift("reserveCta")}
+                        variant="reserve"
+                        onPress={openReserveConfirm}
+                      />
+                    ) : showRelease ? (
+                      <Button
+                        ref={releaseButtonRef as never}
+                        label={tGift("release.confirm")}
+                        variant="secondary"
+                        disabled={holderBusy}
+                        onPress={function openReleaseConfirm() {
+                          setReleaseConfirmOpen(true);
+                        }}
+                      />
+                    ) : reserveHint ? (
+                      <Text kind="label" tone="muted" accessibilityRole="text">
+                        {reserveHint}
+                      </Text>
+                    ) : undefined
+                  }
+                >
+                  {/* CLE-129, T4.2 / D-55: a guest sees «Берёт {имя}», and the name
+                      opens the holder's profile. The holder already has their own
+                      reservation block below, and the owner never gets a holder:
+                      the viewer gate is the page's second AD-15 check. */}
+                  {/* Story 5.7 / «Подписи брони»: a guest who is not the holder
+                      reads the stage «Подарено» (or «Куплено»), even when the
+                      holder hid their name. The holder reads the phase below. */}
+                  {isGuest && !current.reservation && current.reservationLabel ? (
+                    <Text kind="label" tone="reserved" testID="gift-reservation-stage">
+                      {tGift(
+                        `detail.reservationLabel.${current.reservationLabel}` as "detail.reservationLabel.BOUGHT",
+                      )}
                     </Text>
                   ) : null}
-                  <StatusPill status={current.status} />
-                  {current.tags.length > 0 ? (
-                    <TagChipList
-                      labels={current.tags.map(function tagLabel(tag) {
-                        return tag.label;
-                      })}
-                      moreLabel={function moreTags(count: number) {
-                        return tGift("tagsMore", { count });
-                      }}
-                    />
+                  {isGuest && current.reservedBy && !current.reservation ? (
+                    <XStack
+                      gap="$1"
+                      alignItems="center"
+                      flexWrap="wrap"
+                      testID="gift-reserved-by"
+                    >
+                      <Text kind="label" tone="reserved">
+                        {tWishlist("reservedByPrefix")}
+                      </Text>
+                      <NavLink href={`/u/${encodeURIComponent(current.reservedBy.nick)}`}>
+                        {current.reservedBy.displayName}
+                      </NavLink>
+                    </XStack>
                   ) : null}
-                  {current.reservation ? (
+                  {isGuest && current.reservation ? (
                     <YStack gap="$3" testID="gift-reservation">
                       {/* «Подписи брони» (EXPERIENCE.md) — та же таблица, что у
                           карточки «Моих броней». В детали дата полная. */}
@@ -452,22 +619,32 @@ export default function GiftDetailScreen() {
                         }}
                         testID="gift-bought"
                       />
-                      {/* `GIVEN` ждёт подтверждения (Story 5.7): продление
-                          вернуло бы `ACTIVE` и таймеры, поэтому кнопки нет. */}
-                      {current.reservation.phase === "GIVEN" ? null : (
+                      {/* CLE-124/S9b-3 (D-12, §10.2): продления нет в `GIVEN` и
+                          после Срока — сервер отвечает `RESERVATION_DUE_PASSED`. */}
+                      {canExtendReservation(current.reservation, timeZone) ? (
                         <Button
+                          ref={extendButtonRef as never}
                           label={tReservations("extend")}
                           variant="outline"
                           onPress={openExtend}
                           disabled={holderBusy}
                           testID="gift-extend"
                         />
+                      ) : null}
+                      {/* Story 5.7: «Подарил» — этап «Подарено»; в `GIVEN` кнопки нет. */}
+                      {current.reservation.phase === "GIVEN" ? null : (
+                        <Button
+                          label={tReservations("given")}
+                          variant="secondary"
+                          onPress={function markGiven() {
+                            void submitGiven();
+                          }}
+                          disabled={holderBusy}
+                          testID="gift-given"
+                        />
                       )}
                       <ReservationVisibility
-                        expanded={visibilityOpen}
-                        onToggle={toggleVisibility}
                         values={{
-                          holderVisibleToOwner: current.reservation.holderVisibleToOwner,
                           holderVisibleToOthers: current.reservation.holderVisibleToOthers,
                         }}
                         busy={holderBusy}
@@ -478,38 +655,14 @@ export default function GiftDetailScreen() {
                       />
                     </YStack>
                   ) : null}
-                  <YStack flexGrow={1} />
-                  {showReserveCta ? (
-                    <Button
-                      label={tGift("reserveCta")}
-                      variant="reserve"
-                      onPress={function openConfirm() {
-                        setConfirmOpen(true);
-                      }}
-                    />
-                  ) : showRelease ? (
-                    <Button
-                      label={tGift("release.confirm")}
-                      variant="secondary"
-                      disabled={holderBusy}
-                      onPress={function openReleaseConfirm() {
-                        setReleaseConfirmOpen(true);
-                      }}
-                    />
-                  ) : reserveHint ? (
-                    <Text kind="label" tone="muted" accessibilityRole="text">
-                      {reserveHint}
-                    </Text>
-                  ) : null}
-                  <NavLink href="/">{tGift("backToList")}</NavLink>
-                </YStack>
+                </GiftDetail>
               ) : null}
             </Column>
           </PageContainer>
         </PageScroll>
         {current ? (
           <ReserveConfirm
-            key={confirmOpen ? "open" : "closed"}
+            key={`reserve-${reserveFormKey}`}
             open={confirmOpen}
             title={current.title}
             timeZone={timeZone}
@@ -519,6 +672,7 @@ export default function GiftDetailScreen() {
               setDateError(null);
               setConfirmOpen(false);
             }}
+            onClosed={restoreReserveFocus}
             onConfirm={submitReserve}
           />
         ) : null}
@@ -530,21 +684,36 @@ export default function GiftDetailScreen() {
               if (releaseBusy) return;
               setReleaseConfirmOpen(false);
             }}
+            onClosed={restoreReleaseFocus}
             onConfirm={submitRelease}
           />
         ) : null}
         {current?.reservation ? (
           <ReservationExtendDialog
-            key={extendOpen ? "extend-open" : "extend-closed"}
+            key={`extend-${extendFormKey}`}
             open={extendOpen}
             timeZone={timeZone}
             currentDueOn={current.reservation.dueAt}
             busy={actionBusy}
             dateError={extendError ?? undefined}
             onClose={cancelExtend}
+            onClosed={restoreExtendFocus}
             onConfirm={function confirmExtend(dueOn) {
               void submitExtend(dueOn);
             }}
+          />
+        ) : null}
+        {/* D-49: the neutral question of «Изменить» — the same `ConfirmDialog` as on
+            the form's delete and visibility narrowing, the viewer gate is AD-15's
+            second check (the page itself is built from the owner's card only). */}
+        {current && viewer === "owner" ? (
+          <SurpriseWarningDialog
+            visible={editWarningOpen}
+            kind="edit"
+            title={current.title}
+            onConfirm={openEditForm}
+            onCancel={cancelEditWarning}
+            onClosed={restoreEditFocus}
           />
         ) : null}
         {toast ? (

@@ -1,8 +1,7 @@
 // AD-15 (10): a subscriber reads PUBLIC wishes only. The domain policy already
 // checks this (`domain/visibility.test.ts`, `domain/subscription.test.ts`), but
 // the use-case `readWishlist` — the one gate of both adapters — was not covered.
-// Dates (`UserDate`) are Epic 7 and are deliberately absent from this test: there
-// is nothing to hide yet, see "Отложено" in README.
+// Dates (`UserDate`, AD-23) live in `personal-dates.test.ts` of this suite.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));

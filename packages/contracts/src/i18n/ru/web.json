@@ -1,6 +1,132 @@
 {
   "description": "Персональные вишлисты подарков",
   "skipToContent": "Перейти к содержимому",
+  "admin": {
+    "title": "Админка — {brand}",
+    "close": "Закрыть",
+    "toastClose": "Закрыть уведомление",
+    "nav": {
+      "label": "Разделы админки",
+      "collections": "Подборки",
+      "tags": "Теги"
+    },
+    "collections": {
+      "pageTitle": "Подборки — {brand}",
+      "heading": "Подборки",
+      "empty": "Подборок пока нет",
+      "create": "Создать подборку",
+      "tableCaption": "Подборки",
+      "columns": {
+        "title": "Название",
+        "items": "Элементов",
+        "status": "Статус",
+        "updated": "Изменена",
+        "actions": "Действия"
+      },
+      "status": {
+        "published": "Опубликована",
+        "draft": "Черновик"
+      },
+      "edit": "Изменить",
+      "editLabel": "Изменить подборку «{title}»",
+      "delete": "Удалить",
+      "deleteLabel": "Удалить подборку «{title}»",
+      "deleteTitle": "Удалить подборку?",
+      "deleteBody": "Подборка и её элементы исчезнут. Отменить это нельзя.",
+      "deleteConfirm": "Удалить",
+      "cancel": "Отмена",
+      "formCreateTitle": "Новая подборка",
+      "formEditTitle": "Подборка",
+      "fieldTitle": "Название",
+      "fieldDescription": "Описание",
+      "fieldCover": "Ссылка на обложку",
+      "save": "Сохранить",
+      "publishLabel": "Опубликовать подборку",
+      "publishHint": "Опубликованную подборку видят пользователи приложения.",
+      "publishNeedSave": "Сначала сохраните подборку",
+      "publishEmpty": "Пустую подборку нельзя опубликовать",
+      "itemsHeading": "Элементы",
+      "itemsEmpty": "В подборке пока нет элементов",
+      "itemAdd": "Добавить элемент",
+      "itemSave": "Сохранить элемент",
+      "itemCancel": "Отменить правку",
+      "itemFieldTitle": "Название элемента",
+      "itemFieldDescription": "Описание элемента",
+      "itemFieldLink": "Ссылка",
+      "itemFieldImage": "Ссылка на картинку",
+      "linkHint": "Ссылки блогеров не добавляйте до юридической проверки",
+      "itemUp": "Выше",
+      "itemUpLabel": "Поднять «{title}»",
+      "itemDown": "Ниже",
+      "itemDownLabel": "Опустить «{title}»",
+      "itemEdit": "Изменить",
+      "itemEditLabel": "Изменить элемент «{title}»",
+      "itemDelete": "Удалить",
+      "itemDeleteLabel": "Удалить элемент «{title}»",
+      "error": {
+        "title": "Введите название: от 1 до 120 символов",
+        "description": "Описание — до 2000 символов",
+        "url": "Ссылка — адрес http:// или https:// до 2048 символов",
+        "order": "Порядок элементов изменился. Обновите страницу.",
+        "generic": "Не получилось сохранить. Попробуйте ещё раз."
+      },
+      "toast": {
+        "created": "Подборка создана",
+        "saved": "Изменения сохранены",
+        "deleted": "Подборка удалена",
+        "published": "Подборка опубликована",
+        "unpublished": "Подборка снята с публикации",
+        "itemAdded": "Элемент добавлен",
+        "itemSaved": "Элемент сохранён",
+        "itemDeleted": "Элемент удалён",
+        "reordered": "Порядок сохранён"
+      }
+    },
+    "tags": {
+      "pageTitle": "Теги — {brand}",
+      "heading": "Теги",
+      "empty": "Тегов на модерации нет",
+      "tableCaption": "Свои теги на модерации",
+      "columns": {
+        "text": "Текст",
+        "usage": "Использований",
+        "actions": "Действия"
+      },
+      "usageCount": "{count, plural, one {# желание} few {# желания} many {# желаний} other {# желаний}}",
+      "approve": "Одобрить",
+      "approveLabel": "Одобрить «{text}»",
+      "reject": "Отклонить",
+      "rejectLabel": "Отклонить «{text}»",
+      "approveTitle": "Одобрение тега «{text}»",
+      "modeLabel": "Что сделать с тегом",
+      "newTag": "Новый тег каталога",
+      "existingTag": "Существующий тег",
+      "fieldSlug": "Slug",
+      "fieldSlugHint": "Латиница, цифры и дефис, от 1 до 40 символов. После одобрения slug не меняется.",
+      "fieldLabel": "Подпись",
+      "fieldExisting": "Тег каталога",
+      "fieldExistingPlaceholder": "Выберите тег",
+      "fieldLabelLocale": "Подпись ({locale})",
+      "noCatalogTags": "В каталоге пока нет тегов",
+      "cancel": "Отмена",
+      "save": "Одобрить",
+      "rejectTitle": "Отклонить тег?",
+      "rejectBody": "Текст останется подписью на желаниях, но не попадёт в статистику.",
+      "rejectConfirm": "Отклонить",
+      "error": {
+        "slugTaken": "Такой slug уже занят",
+        "slugInvalid": "Slug — латиница, цифры и дефис, от 1 до 40 символов",
+        "labelEmpty": "Подпись не может быть пустой",
+        "tagMissing": "Такого тега нет в каталоге",
+        "decided": "Этот текст уже решён. Обновите страницу.",
+        "generic": "Не получилось сохранить. Попробуйте ещё раз."
+      },
+      "toast": {
+        "approved": "Тег одобрен",
+        "rejected": "Тег отклонён"
+      }
+    }
+  },
   "wishlist": {
     "pageTitle": "Вишлист {name} — {brand}",
     "notFound": "Список не найден.",
@@ -8,7 +134,11 @@
     "emptyTitle": "Пока нет открытых желаний",
     "nick": "@{nick}",
     "buyMyself": "Куплю сам",
-    "buyMyselfLabel": "Куплю сам: {title}"
+    "buyMyselfLabel": "Куплю сам: {title}",
+    "backToList": "Назад к списку",
+    "wishPageTitle": "{title} — {brand}",
+    "wishNotFound": "Желание не найдено.",
+    "wishNotFoundTitle": "Желание не найдено — {brand}"
   },
   "invite": {
     "pageTitle": "{name} приглашает в друзья — {brand}",
@@ -19,5 +149,14 @@
     "accept": "Принять приглашение",
     "haveAccount": "У меня уже есть аккаунт",
     "signIn": "Войти"
+  },
+  "unsubscribe": {
+    "pageTitle": "Отписка — {brand}",
+    "friendDatesDone": "Вы отписались от напоминаний о днях рождения и датах друзей",
+    "ownListDone": "Вы отписались от напоминания обновить вишлист",
+    "explain": "Вернуть рассылку можно в любой момент.",
+    "restore": "Вернуть",
+    "restored": "Напоминания снова включены",
+    "invalid": "Ссылка недействительна. Управлять письмами можно в настройках приложения."
   }
 }

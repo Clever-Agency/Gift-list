@@ -1,6 +1,7 @@
 import { View } from "@tamagui/core";
 import { useState } from "react";
 import { focusRing } from "./focus-ring";
+import { useHoverTransition } from "./hover";
 import { Text } from "./text";
 
 export type SkipLinkProps = {
@@ -19,6 +20,7 @@ export type SkipLinkProps = {
  */
 export function SkipLink({ label, testID }: SkipLinkProps) {
   const [focused, setFocused] = useState(false);
+  const transition = useHoverTransition();
 
   function handleFocus() {
     setFocused(true);
@@ -41,14 +43,15 @@ export function SkipLink({ label, testID }: SkipLinkProps) {
       pointerEvents={focused ? "auto" : "none"}
       onFocus={handleFocus}
       onBlur={handleBlur}
-      backgroundColor="$surface"
+      backgroundColor="$surface hover:$muted"
       borderWidth={1}
-      borderColor="$border"
+      borderColor="$border hover:$border-strong"
       borderRadius="$md"
       paddingHorizontal="$3"
       paddingVertical="$2"
       cursor="pointer"
       textDecorationLine="none"
+      transition={transition}
       {...focusRing}
     >
       <Text kind="button" tone="primary">

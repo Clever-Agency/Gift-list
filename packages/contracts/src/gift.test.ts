@@ -6,7 +6,6 @@ import {
   GIFT_TAG_TEXT_MAX,
   GIFT_TITLE_MAX,
   giftInputSchema,
-  giftReservationWarningSchema,
   giftRestoreSchema,
   giftUpdateSchema,
   giftVisibilityPreviewQuerySchema,
@@ -583,25 +582,6 @@ describe("giftVisibilityPreview", () => {
   });
 });
 
-/** Story 5.2 / FR-31: the owner's preflight before releasing a reservation. */
-describe("giftReservationWarning", () => {
-  it.each(["BOUGHT", "GIVEN", null] as const)("accepts the %s warning", (warning) => {
-    expect(giftReservationWarningSchema.parse({ warning })).toEqual({ warning });
-  });
-
-  it("rejects an unknown warning value", () => {
-    expect(giftReservationWarningSchema.safeParse({ warning: "RETURNED" }).success).toBe(false);
-  });
-
-  it("rejects a missing warning and any key the preflight does not answer", () => {
-    expect(giftReservationWarningSchema.safeParse({}).success).toBe(false);
-    expect(giftReservationWarningSchema.safeParse({ warning: "BOUGHT", holderId: "u2" }).success).toBe(
-      false,
-    );
-    expect(giftReservationWarningSchema.safeParse({ warning: "BOUGHT", bought: true }).success).toBe(false);
-  });
-});
-
 /**
  * Story 5.5 (FR-25, AD-7/AD-12): the holder's reservation card, the list around
  * it and the one-action body of `PATCH /me/reservations/:giftId`.
@@ -617,6 +597,9 @@ describe("reservation cards and actions", () => {
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
   };
 
@@ -626,10 +609,20 @@ describe("reservation cards and actions", () => {
     expect(reservationListSchema.parse({ reservations: [] })).toEqual({ reservations: [] });
   });
 
-  /** AD-7: the card is a closed set, so no price, tags, visibility or zone leaks in. */
+  /** AD-12 (ред. 2026-11-26): the current price and a future photo are part of the card. */
+  it("accepts the price of an open wish and the photo field", () => {
+    const priced = { ...card, priceAmount: 149.9, priceCurrency: "BYN" };
+
+    expect(reservationCardSchema.parse(priced)).toEqual(priced);
+    expect(reservationCardSchema.parse({ ...priced, photoUrl: "https://cdn.example/p.jpg" }))
+      .toMatchObject({ photoUrl: "https://cdn.example/p.jpg" });
+    expect(reservationCardSchema.safeParse({ ...card, priceCurrency: "GBP" }).success).toBe(false);
+  });
+
+  /** AD-7: the card is a closed set, so no tags, visibility or zone leaks in. */
   it("rejects fields outside the card", () => {
     for (const extra of [
-      { priceAmount: 100 },
+      { description: "Тёплый" },
       { visibility: "PUBLIC" },
       { reservationTimeZone: "UTC" },
       { ownerName: "Анна" },
@@ -665,7 +658,9 @@ describe("reservation cards and actions", () => {
   it.each([
     { action: "extend", dueOn: "2026-12-08" },
     { action: "bought", value: true },
+    { action: "given" },
     { action: "visibility", holderVisibleToOwner: true, holderVisibleToOthers: false },
+    { action: "visibility", holderVisibleToOthers: false },
   ])("accepts the %j action", (body) => {
     expect(reservationActionBodySchema.parse(body)).toEqual(body);
   });
@@ -687,6 +682,7 @@ describe("reservation cards and actions", () => {
         value: true,
       }).success,
     ).toBe(false);
+    expect(reservationActionBodySchema.safeParse({ action: "given", value: true }).success).toBe(false);
   });
 
   it("rejects an empty action, a missing field and an impossible day", () => {
@@ -716,7 +712,7 @@ describe("reservation cards and actions", () => {
     expect(dueOn.success).toBe(false);
     if (!dueOn.success) expect(dueOn.error.issues[0]?.path).toEqual(["dueOn"]);
     expect(holder.success).toBe(false);
-    if (!holder.success) expect(holder.error.issues[0]?.path).toEqual(["holderVisibleToOwner"]);
+    if (!holder.success) expect(holder.error.issues[0]?.path).toEqual(["holderVisibleToOthers"]);
   });
 
   it("tells a missing action apart from a field error", () => {

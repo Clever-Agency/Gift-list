@@ -9,11 +9,17 @@ import {
   newPasswordLengthReason,
   PASSWORD_MAX,
   PASSWORD_MIN,
+  emailChangeBodySchema,
   loginBodySchema,
   nickIssue,
   nickUpdateBodySchema,
+  nameUpdateBodySchema,
   hideFromSearchUpdateBodySchema,
   passwordForgotBodySchema,
+  emailChangeAcceptedSchema,
+  emailChangeCancelledSchema,
+  accountDeletedSchema,
+  accountDeletionBodySchema,
   passwordResetBodySchema,
   registerBodySchema,
   safeNextPath,
@@ -141,6 +147,84 @@ describe("nickUpdateBodySchema", () => {
     expect(NICK_PATTERN.test("a".repeat(NICK_MAX))).toBe(true);
     expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(NICK_MIN) }).success).toBe(true);
     expect(nickUpdateBodySchema.safeParse({ nick: "a".repeat(NICK_MAX) }).success).toBe(true);
+  });
+});
+
+describe("nameUpdateBodySchema", () => {
+  it("trims the name and keeps an inner space", () => {
+    expect(nameUpdateBodySchema.parse({ name: "  Анна Ковалёва  " })).toEqual({
+      name: "Анна Ковалёва",
+    });
+  });
+
+  it("rejects an empty, blank or missing name on the name field", () => {
+    for (const body of [{ name: "" }, { name: "   " }, {}]) {
+      const parsed = nameUpdateBodySchema.safeParse(body);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["name"]);
+    }
+  });
+
+  it("accepts the cap in code points and rejects one more", () => {
+    const atCap = nameUpdateBodySchema.safeParse({ name: "я".repeat(DISPLAY_NAME_MAX) });
+    expect(atCap.success).toBe(true);
+
+    const overCap = nameUpdateBodySchema.safeParse({ name: "я".repeat(DISPLAY_NAME_MAX + 1) });
+    expect(overCap.success).toBe(false);
+    if (!overCap.success) expect(overCap.error.issues[0]?.path).toEqual(["name"]);
+  });
+});
+
+describe("emailChangeBodySchema", () => {
+  it("trims and lower-cases the new address like registration", () => {
+    expect(emailChangeBodySchema.parse({ email: "  New.Address@Example.COM " })).toEqual({
+      email: "new.address@example.com",
+    });
+  });
+
+  it("rejects an invalid or over-long address on the email field", () => {
+    for (const email of ["", "anna", "a@", `${"a".repeat(EMAIL_MAX)}@example.com`]) {
+      const parsed = emailChangeBodySchema.safeParse({ email });
+      expect(parsed.success, JSON.stringify(email)).toBe(false);
+      if (!parsed.success) expect(parsed.error.issues[0]?.path).toEqual(["email"]);
+    }
+    expect(emailChangeBodySchema.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts an address at the cap", () => {
+    expect(emailChangeBodySchema.safeParse({ email: emailOfLength(EMAIL_MAX) }).success).toBe(true);
+  });
+});
+
+describe("email change answers", () => {
+  it("accepts only the neutral «letter sent» answer", () => {
+    expect(emailChangeAcceptedSchema.parse({ accepted: true })).toEqual({ accepted: true });
+    expect(emailChangeAcceptedSchema.safeParse({ accepted: false }).success).toBe(false);
+    expect(emailChangeAcceptedSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts only the «request cancelled» answer", () => {
+    expect(emailChangeCancelledSchema.parse({ cancelled: true })).toEqual({ cancelled: true });
+    expect(emailChangeCancelledSchema.safeParse({ cancelled: false }).success).toBe(false);
+  });
+});
+
+describe("account deletion (Story 6.3)", () => {
+  it("accepts only an explicit confirmation", () => {
+    expect(accountDeletionBodySchema.parse({ confirm: true })).toEqual({ confirm: true });
+    for (const body of [{}, { confirm: false }, { confirm: "true" }, { confirm: 1 }, null]) {
+      const parsed = accountDeletionBodySchema.safeParse(body);
+      expect(parsed.success, JSON.stringify(body)).toBe(false);
+      if (!parsed.success && body !== null && typeof body === "object") {
+        expect(parsed.error.issues[0]?.path).toEqual(["confirm"]);
+      }
+    }
+  });
+
+  it("accepts only the «account deleted» answer", () => {
+    expect(accountDeletedSchema.parse({ deleted: true })).toEqual({ deleted: true });
+    expect(accountDeletedSchema.safeParse({ deleted: false }).success).toBe(false);
+    expect(accountDeletedSchema.safeParse({}).success).toBe(false);
   });
 });
 

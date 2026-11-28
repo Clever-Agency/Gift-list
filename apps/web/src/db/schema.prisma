@@ -11,6 +11,19 @@ datasource db {
 }
 
 // Better Auth core tables (AD-3). Field names follow Better Auth defaults.
+/// AD-29: `null` gender is "not specified"; there is no other value.
+enum Gender {
+  MALE
+  FEMALE
+}
+
+/// AD-22: only an ADMIN opens `/admin` (web only). The role is assigned by hand
+/// in the database; it never travels to the app clients.
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id             String   @id @default(cuid(2))
   name           String // displayName
@@ -22,13 +35,33 @@ model User {
   nick           String
   nickNormalized String   @unique
   hideFromSearch Boolean  @default(false)
+  /// CLE-129/D-58, AD-29: birthday is a day and a month without a year; the
+  /// pair is set together and 29 February is allowed.
+  birthDay       Int?
+  birthMonth     Int?
+  /// AD-29: `null` is "not specified".
+  gender         Gender?
+  /// ISO 3166-1 alpha-2, upper case; the client renders the name (AD-29).
+  country        String?  @db.Char(2)
+  /// «Обо мне», at most 500 characters (CHECK in the migration, AD-29).
+  about          String?  @db.Text
+  /// Friends see the profile fields only while this is true (AD-29).
+  profileVisibleToFriends Boolean @default(true)
+  /// AD-22: `ADMIN` only grants `/admin` on the web; the app ignores the role.
+  role           UserRole @default(USER)
   /// Set once from Accept-Language at registration (AD-27).
   locale         String   @default("ru")
   datesInApp     Boolean  @default(true)
   datesEmail     Boolean  @default(true)
   wishExpiryInApp Boolean @default(true)
   wishExpiryEmail Boolean @default(true)
+  /// CLE-137 (FR-36): reminder type «Дни рождения и даты друзей».
+  remindFriendDates Boolean @default(true)
+  /// CLE-137 (FR-36): reminder type «Напомнить обновить мой список».
+  remindOwnList     Boolean @default(true)
   notifications Notification[]
+  /// Date reminders already sent to this user (AD-23, Story 7.3/7.4).
+  reminderLogs ReminderLog[]
   /// Null until the client reports an IANA zone. A stored value is not overwritten (Story 1.8).
   timeZone       String?
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
@@ -37,6 +70,9 @@ model User {
   sessions Session[]
   accounts Account[]
   lists    List[]
+
+  /// AD-23, Story 7.5: personal dates with their own visibility; at most 10.
+  dates UserDate[]
 
   /// One immutable invite token (AD-21, FR-47, Story 4.7.1); `/i/:token`.
   inviteLink InviteLink?
@@ -202,6 +238,8 @@ model Tag {
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   giftTags GiftTag[]
+  /// Story 10.2: decisions that approved a custom text into this catalog tag.
+  customTagModerations CustomTagModeration[]
 }
 
 // Tag on a wish (Story 2.5, AD-22). A row carries a catalog reference (`tagId`),
@@ -231,6 +269,30 @@ model GiftTag {
   @@unique([giftId, tagId])
   @@unique([giftId, customText])
   /// Aggregate reads group by catalog tag.
+  @@index([tagId])
+}
+
+// ADMIN decision on one normalized custom tag text (Story 10.2, AD-22). The text
+// is the key; the decision keeps no author and no wish. `tagId` is required for
+// APPROVED and forbidden for REJECTED (CHECK in the migration). A rejected text
+// stays on the wishes as their own caption and never enters aggregates.
+enum CustomTagDecision {
+  APPROVED
+  REJECTED
+}
+
+model CustomTagModeration {
+  id             String            @id @default(cuid(2))
+  /// trim, collapsed spaces and lower case; the same key the write path uses.
+  normalizedText String            @unique
+  decision       CustomTagDecision
+  /// Catalog tag an approval created or picked; null for rejection.
+  tagId          String?
+  decidedAt      DateTime          @default(now()) @db.Timestamptz(3)
+
+  /// A decided-into catalog tag cannot be deleted.
+  tag Tag? @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
   @@index([tagId])
 }
 
@@ -378,6 +440,46 @@ model InviteCooldown {
   @@index([userHighId])
 }
 
+/// AD-23, Story 7.5: a personal date is always `CUSTOM` in R1; the birthday
+/// stays on `User.birthDay/birthMonth` and is not a `UserDate`.
+enum UserDateKind {
+  CUSTOM
+}
+
+/// AD-23: who may see a personal date, and separately who may see its year.
+/// `EVERYONE` on the date itself never opens the year (that is `yearVisibility`).
+enum DateVisibility {
+  ONLY_ME
+  FRIENDS
+  EVERYONE
+}
+
+// Personal date of a profile (AD-23, FR-38, FR-43, Story 7.5). A birthday is
+// not stored here (D-58): it is a day and a month on `User` without a year.
+// The day/month pair is always present; the year is optional. Validation of the
+// real calendar day lives in `packages/contracts` and in the migration CHECKs.
+model UserDate {
+  id             String         @id @default(cuid(2))
+  userId         String
+  kind           UserDateKind   @default(CUSTOM)
+  /// At most 40 characters after trimming and never empty.
+  title          String         @db.VarChar(40)
+  day            Int
+  month          Int
+  /// Optional; `null` hides the year in every answer, whoever asks.
+  year           Int?
+  /// Who sees the date itself; «друзья» by default (Story 7.5).
+  visibility     DateVisibility @default(FRIENDS)
+  /// Who sees the year; «только я» by default (AD-23).
+  yearVisibility DateVisibility @default(ONLY_ME)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 enum NotificationKind {
   FRIEND_INVITE
   FRIEND_ACCEPT
@@ -394,6 +496,8 @@ enum NotificationKind {
   GIFT_GIVEN
   DATE_FRIEND
   DATE_OWN
+  /// A Friend's personal date, 14 days ahead (Story 7.6, AD-23).
+  DATE_CUSTOM
   SUGGESTION
   WISH_EXPIRY_SOON
   WISH_EXPIRY
@@ -422,4 +526,75 @@ model Notification {
   @@index([recipientId, createdAt, id])
   @@index([recipientId, readAt, deliverAfter])
   @@index([emailRequired, emailDoneAt, deliverAfter])
+}
+
+/// Kinds of the date reminders of AD-23 (Story 7.3/7.4).
+enum ReminderKind {
+  /// A Friend's birthday, 14 days ahead (`DATE_FRIEND`, FR-34).
+  BIRTHDAY_FRIEND
+  /// The owner's own birthday, 30 days ahead (`DATE_OWN`, FR-35).
+  BIRTHDAY_OWN
+  /// A personal date (`UserDate`), 14 days ahead (Story 7.6, AD-23).
+  DATE_CUSTOM
+}
+
+// One row per date reminder that actually went out (AD-23, FR-34/FR-35). The
+// hourly cron of `api/cron/date-reminders` inserts the row and the notification
+// in one transaction, and only when the row was inserted; the UNIQUE key is
+// what makes a repeated run write nothing. `subjectId` is the `User.id` whose
+// birthday the notice is about (personal dates will add `UserDate.id` under
+// the same key); `year` is the year of the birthday occurrence, so a December
+// reminder about a 1 January birthday does not collide with the next December.
+model ReminderLog {
+  id          String       @id @default(cuid(2))
+  recipientId String
+  recipient   User         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  subjectId   String
+  year        Int
+  kind        ReminderKind
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@unique([recipientId, subjectId, year, kind])
+}
+
+// Editorial collection of gift ideas (AD-22, FR-49, D-32, Story 10.1). The
+// editor fills it by hand in `/admin`; there is no AI and no recommendation
+// source. `publishedAt = null` is a draft: the app never sees it. Publishing an
+// empty collection is refused by the server (a blank screen for users).
+model EditorialCollection {
+  id            String    @id @default(cuid(2))
+  /// At most 120 characters after trimming (CHECK in the migration).
+  title         String    @db.VarChar(120)
+  description   String?   @db.Text
+  /// Cover is a URL only: the admin panel uploads no files (Story 10.1).
+  coverImageUrl String?
+  /// `null` while the collection is a draft; the app reads only published rows.
+  publishedAt   DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  items EditorialItem[]
+
+  /// The app reads the published collections newest first (Story 10.1).
+  @@index([publishedAt])
+}
+
+// One idea inside an editorial collection (AD-22, Story 10.1). `position` is
+// the manual order the editor sets; every field is optional except the title.
+model EditorialItem {
+  id           String   @id @default(cuid(2))
+  collectionId String
+  /// At most 120 characters after trimming (CHECK in the migration).
+  title        String   @db.VarChar(120)
+  description  String?  @db.Text
+  linkUrl      String?
+  imageUrl     String?
+  /// Sort key inside one collection; the read orders by it.
+  position     Int
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  collection EditorialCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId, position])
 }

@@ -216,6 +216,8 @@ const holderWishes: Row[] = [
     // End of the picked day: 2026-12-10 00:00 UTC is the day 2026-12-09.
     reservationDueAt: new Date("2026-12-10T00:00:00.000Z"),
     reservationTimeZone: "UTC",
+    priceAmount: 320,
+    priceCurrency: "BYN",
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
     reservedById: HOLDER,
@@ -270,6 +272,9 @@ const RESERVATION_CARD_KEYS = [
   "holderVisibleToOwner",
   "ownerNick",
   "phase",
+  "photoUrl",
+  "priceAmount",
+  "priceCurrency",
   "status",
   "titleSnapshot",
 ];
@@ -342,6 +347,9 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
         bought: false,
         holderVisibleToOwner: false,
         holderVisibleToOthers: true,
+        priceAmount: null,
+        priceCurrency: null,
+        photoUrl: null,
         canOpenGift: false,
       },
     ]);
@@ -359,6 +367,10 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
     for (const forbidden of ["publicToken", "listToken", "visibility", "reservationTimeZone"]) {
       expect(body).not.toContain(forbidden);
     }
+    // AD-12 (ред. 2026-11-26): the closed card answers `null`/`null`, so the
+    // stored price of the wish never reaches a holder who lost the detail.
+    expect(body).not.toContain("320");
+    expect(body).not.toContain("BYN");
   });
 
   it("при Block вишлист закрыт как неизвестный, а карточка жива без ссылки на детали", async () => {
@@ -383,6 +395,8 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
       titleSnapshot: "Плед",
       status: "RESERVED",
       phase: "ACTIVE",
+      priceAmount: null,
+      priceCurrency: null,
       canOpenGift: false,
     });
     expectReservationCardKeys(card);
@@ -403,6 +417,65 @@ describe("AD-15 (4) — unfriend при активной брони", () => {
     for (const forbidden of ["publicToken", "listToken", "visibility", "reservationTimeZone"]) {
       expect(body).not.toContain(forbidden);
     }
+    // A-14: a block closes the price with the detail.
+    expect(body).not.toContain("320");
+    expect(body).not.toContain("BYN");
+  });
+});
+
+describe("AD-15 (5) — ник держателя у гостя только по переключателю", () => {
+  function reservedRow(visibleToOthers: boolean): Row {
+    return gift({
+      id: "g-reserved",
+      title: "Плед",
+      visibility: "PUBLIC",
+      status: "RESERVED",
+      reservationPhase: "ACTIVE",
+      reservationDueAt: new Date("2026-12-10T00:00:00.000Z"),
+      reservationTimeZone: "UTC",
+      holderVisibleToOthers: visibleToOthers,
+      reservedById: HOLDER,
+      reservedBy: HOLDER_PERSON,
+    });
+  }
+
+  beforeEach(() => {
+    // A subscriber passes the PUBLIC filter of AD-7 without a friendship, so the
+    // card comes through the viewer branch with the holder facts on it.
+    state.actor = "guest";
+    state.list = LIST;
+    state.relations = { blocked: false, friend: false, subscriber: true, contactMatch: false };
+  });
+
+  it("отдаёт гостю nick и displayName только при holderVisibleToOthers (D-55)", async () => {
+    state.gifts = [reservedRow(true)];
+    const shown = await readWishlist({ viewer: { id: "guest" }, target: { ownerId: OWNER } });
+    const [shownCard] = shown?.gifts ?? [];
+    expect(shownCard?.reservedBy).toEqual({
+      id: HOLDER,
+      nick: "daria",
+      displayName: "Дарья",
+    });
+
+    state.gifts = [reservedRow(false)];
+    const hidden = await readWishlist({ viewer: { id: "guest" }, target: { ownerId: OWNER } });
+    const [hiddenCard] = hidden?.gifts ?? [];
+    expect(hiddenCard?.reservedBy).toBeNull();
+    expect(JSON.stringify(hiddenCard)).not.toContain("daria");
+    expect(JSON.stringify(hiddenCard)).not.toContain("Дарья");
+  });
+
+  it("не отдаёт владельцу ни имени, ни ника держателя", async () => {
+    state.actor = OWNER;
+    state.gifts = [reservedRow(true)];
+
+    const wishlist = await readWishlist({ viewer: { id: OWNER }, target: { ownerId: OWNER } });
+    const [card] = wishlist?.gifts ?? [];
+    expect(card?.reservedBy).toBeNull();
+
+    const body = JSON.stringify(wishlist);
+    expect(body).not.toContain("daria");
+    expect(body).not.toContain("Дарья");
   });
 });
 
@@ -413,9 +486,9 @@ describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () 
     state.gifts = [ownerRow];
   });
 
-  it("не отдаёт владельцу держателя, bought и dueAt при выключенном переключателе", async () => {
-    // The row really has a holder and a purchase fact; the card just never
-    // carries them.
+  it("не отдаёт владельцу ни одного признака брони", async () => {
+    // The row really has a holder, a purchase fact and a running phase; the card
+    // just looks exactly like the same wish without a reservation (D-49).
     expect(ownerRow).toMatchObject({
       status: "RESERVED",
       reservationPhase: "ACTIVE",
@@ -430,8 +503,8 @@ describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () 
     const [card] = result.data.gifts;
     if (card === undefined) throw new Error("expected the owner card");
 
-    // AD-15 (5) / FR-31: the toggle is off, so the holder is absent and the
-    // phase asks nothing of the owner while the reservation is still running.
+    // AD-15 (5) / D-49: the wish is a surprise, so the owner sees an open wish.
+    expect(card.status).toBe("OPEN");
     expect(card.reservedBy).toBeNull();
     expect(card.reservationLabel).toBeNull();
     expect(card.ownerAction).toBeNull();
@@ -440,8 +513,19 @@ describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () 
     expect(card).not.toHaveProperty("dueAt");
 
     // The rest is the shared owner-card contract, field for field, built by the
-    // same mapper.
+    // same mapper — and it equals the card of the same wish without them.
+    const openTwin: Row = {
+      ...ownerRow,
+      status: "OPEN",
+      reservationPhase: null,
+      reservationBought: false,
+      holderVisibleToOwner: false,
+      reservedById: null,
+      reservedBy: null,
+      titleSnapshotOnReserve: null,
+    };
     expect(card).toEqual(toOwnerGiftCard(ownerRow));
+    expect(card).toEqual(toOwnerGiftCard(openTwin));
     expect(giftCardSchema.safeParse(card).success).toBe(true);
     expect(Object.keys(card).sort()).toEqual(OWNER_CARD_KEYS);
 
@@ -454,5 +538,6 @@ describe("AD-15 (5) — владелец при holderVisibleToOwner=false", () 
     expect(body).not.toContain("daria");
     expect(body).not.toContain('"bought"');
     expect(body).not.toContain('"dueAt"');
+    expect(body).not.toContain("RESERVED");
   });
 });

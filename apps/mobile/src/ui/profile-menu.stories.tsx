@@ -3,9 +3,10 @@ import { XStack } from "@gift-list/ui";
 import { ProfileMenu } from "./profile-menu";
 
 /**
- * «Профиль» (Story 6.2): строки «Мой профиль», «Настройки», «Написать автору» и
- * «Выйти». Меню презентационное: переходы и выход передаёт экран, каталог
- * подставляет пустые обработчики. «Подборки» появятся со Story 10.1.
+ * «Профиль» (Story 6.2, CLE-129; Story 10.1): строки «Мой профиль» с подписью
+ * «Как меня видят другие», «Подборки», «Настройки», «Написать в техподдержку»
+ * и «Выйти». Меню презентационное: переходы и выход передаёт экран, каталог
+ * подставляет пустые обработчики.
  */
 const meta = {
   title: "App/ProfileMenu",
@@ -20,10 +21,11 @@ type Story = StoryObj<typeof meta>;
 
 function noop() {}
 
-/** Телефон 360 px: все четыре строки, высота строки 56, зона касания больше 44. */
+/** Телефон 360 px: все пять строк, высота строки 56, зона касания больше 44. */
 export const Compact: Story = {
   args: {
     onOpenProfile: noop,
+    onOpenCollections: noop,
     onOpenSettings: noop,
     onSignOut: noop,
   },
@@ -41,6 +43,7 @@ export const Wide: Story = {
   tags: ["!dev"],
   args: {
     onOpenProfile: noop,
+    onOpenCollections: noop,
     onOpenSettings: noop,
     onSignOut: noop,
   },
@@ -58,6 +61,7 @@ export const Wide: Story = {
 export const SigningOut: Story = {
   args: {
     onOpenProfile: noop,
+    onOpenCollections: noop,
     onOpenSettings: noop,
     onSignOut: noop,
     signingOut: true,
@@ -80,6 +84,7 @@ export const Narrow: Story = {
   tags: ["!dev"],
   args: {
     onOpenProfile: noop,
+    onOpenCollections: noop,
     onOpenSettings: noop,
     onSignOut: noop,
   },

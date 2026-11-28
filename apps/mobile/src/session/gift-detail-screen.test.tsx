@@ -1,11 +1,15 @@
 // @vitest-environment happy-dom
-import type { GiftCard, ReservationCard as ReservationCardData } from "@gift-list/contracts";
+import {
+  formatDate,
+  type GiftCard,
+  type ReservationCard as ReservationCardData,
+} from "@gift-list/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "@/session/auth-context";
 import { click, dialogElement, settle, typeInto } from "@/test/dom";
-import { todayInZone } from "@/ui/reservation-extend-dialog";
+import { addCalendarDays, todayInZone } from "@/ui/reservation-extend-dialog";
 import GiftDetailScreen from "../../app/(app)/gifts/[id]/index";
 
 const api = vi.hoisted(() => ({ apiRequest: vi.fn() }));
@@ -67,8 +71,10 @@ vi.mock("expo-router", async () => {
   const React = await import("react");
   return {
     router: navigation,
-    Link: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, null, children),
+    // The real `Link asChild` hands its `href` to the child; the stub keeps the
+    // target visible as `data-href` so a test can assert where a link leads.
+    Link: ({ href, children }: { href?: string; children?: React.ReactNode }) =>
+      React.createElement("span", { "data-href": String(href) }, children),
     Stack: { Screen: () => null },
     useLocalSearchParams: () => search.params,
   };
@@ -92,6 +98,14 @@ const user = {
   timeZone: "Europe/Minsk",
 };
 
+/**
+ * The deadline day of the fixtures: still ahead in the holder's zone, so «Продлить
+ * до…» is offered. A fixed day would turn the card into a passed deadline on that
+ * calendar day and hide the very button these tests press.
+ */
+const DUE_ON = addCalendarDays(todayInZone("Europe/Minsk"), 5);
+const DUE_TEXT = formatDate(DUE_ON, "ru");
+
 function gift(overrides: Partial<GiftCard> = {}): GiftCard {
   return {
     id: "g1",
@@ -110,7 +124,7 @@ function gift(overrides: Partial<GiftCard> = {}): GiftCard {
     reservationLabel: null,
     ownerAction: null,
     reservation: {
-      dueAt: "2026-12-01",
+      dueAt: DUE_ON,
       phase: "ACTIVE",
       bought: false,
       holderVisibleToOwner: false,
@@ -189,11 +203,14 @@ function reservationCard(overrides: Partial<ReservationCardData> = {}): Reservat
     titleSnapshot: "Наушники",
     status: "RESERVED",
     ownerNick: "anya",
-    dueAt: "2026-12-01",
+    dueAt: DUE_ON,
     phase: "ACTIVE",
     bought: false,
     holderVisibleToOwner: false,
     holderVisibleToOthers: true,
+    priceAmount: null,
+    priceCurrency: null,
+    photoUrl: null,
     canOpenGift: true,
     ...overrides,
   };
@@ -210,6 +227,11 @@ function respond(
 ) {
   api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
     if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+    // D-63: the owner route comes first; a foreign wish is NOT_FOUND there, so
+    // the page then asks the viewer route exactly as before.
+    if (path === "/api/v1/me/gifts/g1") {
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+    }
     if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
       return Promise.resolve({ ok: true, data: card });
     }
@@ -340,7 +362,8 @@ describe("деталь желания: снятие своей брони", () =
 /**
  * Story 5.5 (`EXPERIENCE.md` → «Подписи брони», `DESIGN.md` → ReservationCard):
  * у держателя в детали те же действия, что в «Моих бронях», — подпись фазы,
- * «Продлить до…», «Купил» и «Кто видит, что это я». Снятие — из 5.2, одно.
+ * «Продлить до…», «Купил» и переключатель «Показывать другим гостям, что дарю я».
+ * Снятие — из 5.2, одно.
  */
 describe("деталь желания: действия держателя", () => {
   it("держатель видит фазу, продление, «Купил» и переключатели", async () => {
@@ -348,10 +371,13 @@ describe("деталь желания: действия держателя", () 
     await mount();
 
     // ACTIVE уже содержит полную дату детали, отдельной строки нет.
-    expect(text()).toContain("Вы берёте · до 01.12.2026");
+    expect(text()).toContain(`Вы берёте · до ${DUE_TEXT}`);
     expect(control("Продлить до…")).toBeDefined();
+    expect(control("Подарил")).toBeDefined();
     expect(switchNamed("Купил")?.getAttribute("aria-checked")).toBe("false");
-    expect(control("Кто видит, что это я")).toBeDefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeDefined();
+    // The holder has their own reservation block and gets no «Берёт …» line.
+    expect(text()).not.toContain("Берёт");
     // Снятие из 5.2 не продублировано рядом с новыми действиями.
     const releases = Array.from(
       document.querySelectorAll<HTMLElement>('button, [role="button"]'),
@@ -369,9 +395,54 @@ describe("деталь желания: действия держателя", () 
     await mount();
 
     expect(text()).toContain("Уже забронирован");
+    // CLE-129, T4.2 / D-55: the guest sees «Берёт Петя», and the name is a link
+    // to the holder's profile `/u/petya`.
+    expect(text()).toContain("Берёт");
+    const holderLink = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="link"]'),
+    ).find(function namedPeter(node) {
+      return node.textContent === "Петя";
+    });
+    expect(holderLink).toBeDefined();
+    expect(holderLink?.closest('[data-href="/u/petya"]')).not.toBeNull();
     expect(control("Продлить до…")).toBeUndefined();
-    expect(control("Кто видит, что это я")).toBeUndefined();
+    expect(control("Подарил")).toBeUndefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeUndefined();
     expect(switchNamed("Купил")).toBeUndefined();
+  });
+
+  /** Story 5.7: «Подарил» переводит бронь в `GIVEN`; этап читается «Подарено». */
+  it("«Подарил» шлёт одно действие и показывает этап «Подарено»", async () => {
+    respond(gift(), undefined, { ok: true, data: reservationCard({ phase: "GIVEN" }) });
+    await mount();
+
+    await click(control("Подарил"));
+    await settle();
+
+    const calls = actionCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![1]).toEqual({
+      method: "PATCH",
+      body: { action: "given" },
+    });
+    expect(text()).toContain("Подарено");
+    expect(control("Подарил")).toBeUndefined();
+    expect(control("Продлить до…")).toBeUndefined();
+    expect(switchNamed("Купил")).toBeDefined();
+  });
+
+  /**
+   * Story 5.7 / «Подписи брони»: the guest who is not the holder reads the stage
+   * «Подарено» (or «Куплено»), even when the holder hid their name. The holder's
+   * own phase stays in the reservation block above.
+   */
+  it("гость видит этап «Подарено» без имени, даже когда даритель его скрыл", async () => {
+    respond(gift({ reservation: undefined, reservedBy: null, reservationLabel: "GIVEN" }));
+    await mount();
+
+    expect(text()).toContain("Подарено");
+    expect(text()).not.toContain("Берёт");
+    expect(control("Подарил")).toBeUndefined();
   });
 
   it("«Купил» шлёт одно действие и берёт карточку из ответа", async () => {
@@ -395,6 +466,9 @@ describe("деталь желания: действия держателя", () 
     let answer: (value: unknown) => void = function noop() {};
     api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
       if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
         return Promise.resolve({ ok: true, data: gift() });
       }
@@ -487,19 +561,19 @@ describe("деталь желания: действия держателя", () 
 
     expect(text()).toContain("Выберите дату не позже 20.12.2026.");
     expect(dialogElement()).not.toBeNull();
-    expect(text()).toContain("Вы берёте · до 01.12.2026");
+    expect(text()).toContain(`Вы берёте · до ${DUE_TEXT}`);
   });
 
-  it("переключатели видимости уходят одной парой", async () => {
+  it("переключатель видимости для гостей уходит без флага владельца", async () => {
     respond(gift(), undefined, {
       ok: true,
-      data: reservationCard({ holderVisibleToOwner: true, holderVisibleToOthers: true }),
+      data: reservationCard({ holderVisibleToOthers: false }),
     });
     await mount();
 
-    await click(control("Кто видит, что это я"));
-    await settle();
-    await click(switchNamed("Показать владельцу, что это я"));
+    expect(text()).not.toContain("Показать владельцу, что это я");
+
+    await click(switchNamed("Показывать другим гостям, что дарю я"));
     await settle();
 
     const calls = actionCalls();
@@ -508,21 +582,19 @@ describe("деталь желания: действия держателя", () 
       method: "PATCH",
       body: {
         action: "visibility",
-        holderVisibleToOwner: true,
-        holderVisibleToOthers: true,
+        holderVisibleToOthers: false,
       },
     });
-    expect(switchNamed("Показать владельцу, что это я")?.getAttribute("aria-checked")).toBe(
-      "true",
+    expect(switchNamed("Показывать другим гостям, что дарю я")?.getAttribute("aria-checked")).toBe(
+      "false",
     );
-    expect(text()).toContain("он может уже знать");
   });
 
-  it("в GIVEN подпись «Ждёт подтверждения», продления нет, остальное на месте", async () => {
+  it("в GIVEN подпись «Подарено», продления и «Подарил» нет, остальное на месте", async () => {
     respond(
       gift({
         reservation: {
-          dueAt: "2026-12-01",
+          dueAt: DUE_ON,
           phase: "GIVEN",
           bought: false,
           holderVisibleToOwner: false,
@@ -532,19 +604,24 @@ describe("деталь желания: действия держателя", () 
     );
     await mount();
 
-    expect(text()).toContain("до 01.12.2026");
-    expect(text()).toContain("Ждёт подтверждения");
+    expect(text()).toContain(`до ${DUE_TEXT}`);
+    expect(text()).toContain("Подарено");
     expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeUndefined();
     expect(switchNamed("Купил")).toBeDefined();
-    expect(control("Кто видит, что это я")).toBeDefined();
+    expect(switchNamed("Показывать другим гостям, что дарю я")).toBeDefined();
     expect(control("Снять бронь")).toBeDefined();
   });
 
-  it("фазы AWAITING_* подписаны и продление остаётся", async () => {
+  /**
+   * CLE-124/S9b-3 (§10.6, D-12): `AWAITING_*` — это «Срок истёк», владельца больше
+   * ни о чём не спрашивают, а продление после Срока не предлагается.
+   */
+  it("фазы AWAITING_* подписаны «Срок истёк», продления нет, «Подарил» остаётся", async () => {
     respond(
       gift({
         reservation: {
-          dueAt: "2026-12-01",
+          dueAt: DUE_ON,
           phase: "AWAITING_OWNER",
           bought: true,
           holderVisibleToOwner: false,
@@ -554,9 +631,56 @@ describe("деталь желания: действия держателя", () 
     );
     await mount();
 
-    expect(text()).toContain("Срок истёк · ждём ответа владельца");
-    expect(control("Продлить до…")).toBeDefined();
+    expect(text()).toContain("Срок истёк");
+    expect(text()).not.toContain("ждём ответа владельца");
+    expect(control("Продлить до…")).toBeUndefined();
+    expect(control("Подарил")).toBeDefined();
     expect(text()).toContain("Куплено");
+  });
+
+  /** D-12: сервер отказал в продлении — фраза из каталога и перечитанное желание. */
+  it("RESERVATION_DUE_PASSED: текст «Срок брони прошёл» и продления больше нет", async () => {
+    let reads = 0;
+    api.apiRequest.mockImplementation(function answer(path: string, init?: { method?: string }) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
+      if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
+        reads += 1;
+        if (reads === 1) return Promise.resolve({ ok: true, data: gift() });
+        // The server has already moved the reservation past its deadline.
+        return Promise.resolve({
+          ok: true,
+          data: gift({
+            reservation: {
+              dueAt: DUE_ON,
+              phase: "AWAITING_OWNER",
+              bought: false,
+              holderVisibleToOwner: false,
+              holderVisibleToOthers: true,
+            },
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        code: "CONFLICT",
+        message: "The reservation deadline has passed",
+        reason: "RESERVATION_DUE_PASSED",
+      });
+    });
+    await mount();
+
+    await click(control("Продлить до…"));
+    await settle();
+    await click(dialogControl("Подтвердить"));
+    await settle();
+
+    expect(text()).toContain("Срок брони прошёл — продлить уже нельзя.");
+    expect(dialogElement()).toBeNull();
+    expect(giftReads()).toBe(2);
+    expect(control("Продлить до…")).toBeUndefined();
   });
 });
 
@@ -571,6 +695,9 @@ describe("деталь желания: одно действие за раз", (
     let answer: (value: unknown) => void = function noop() {};
     api.apiRequest.mockImplementation(function answerWith(path: string, init?: { method?: string }) {
       if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") {
+        return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+      }
       if (path === "/api/v1/gifts/g1" && (init?.method ?? "GET") === "GET") {
         return Promise.resolve({ ok: true, data: gift() });
       }
@@ -626,5 +753,264 @@ describe("деталь желания: одно действие за раз", (
     });
     await settle();
     expect(control("Снять бронь")).toBeUndefined();
+  });
+});
+
+/**
+ * AD-15 (14) / D-63: the owner opens `/gifts/{id}` and reads the page from
+ * `GET /api/v1/me/gifts/:id` only. There is no redirect to the form any more, the
+ * guest route is never asked, and not one word about a reservation appears —
+ * even if a broken payload carries a holder. «Изменить» asks the neutral question
+ * (T4.4a) and then leads to the edit screen.
+ */
+describe("страница владельца: своё желание", () => {
+  function ownerCard(overrides: Partial<GiftCard> = {}): GiftCard {
+    return gift({
+      status: "OPEN",
+      reservedBy: null,
+      reservation: undefined,
+      visibility: "FRIENDS",
+      linkUrl: "https://shop.example/pled",
+      ...overrides,
+    });
+  }
+
+  function respondOwner(card: GiftCard = ownerCard()) {
+    api.apiRequest.mockImplementation(function answer(path: string) {
+      if (path === "/api/v1/me") return Promise.resolve({ ok: true, data: user });
+      if (path === "/api/v1/me/gifts/g1") return Promise.resolve({ ok: true, data: card });
+      // The guest route answers a reserved card: the page must never ask it.
+      if (path === "/api/v1/gifts/g1") return Promise.resolve({ ok: true, data: gift() });
+      return Promise.resolve({ ok: false, code: "NOT_FOUND", message: "Not found" });
+    });
+  }
+
+  function ownerReads(): number {
+    return api.apiRequest.mock.calls.filter(([path]) => path === "/api/v1/me/gifts/g1").length;
+  }
+
+  it("видит поля, видимость и «Изменить», без «Куплю сам» и брони", async () => {
+    respondOwner();
+    await mount();
+
+    expect(text()).toContain("Наушники");
+    expect(text()).toContain("https://shop.example/pled");
+    expect(text()).toContain("Кто видит");
+    expect(text()).toContain("Друзьям");
+    expect(control("Изменить")).toBeDefined();
+    expect(control("Куплю сам")).toBeUndefined();
+    expect(control("Снять бронь")).toBeUndefined();
+    expect(text()).not.toContain("Бронь");
+    expect(text()).not.toContain("Берёт");
+    expect(text()).not.toContain("Забронирован");
+    // AD-15 (14): only the owner route was read, and nothing redirected.
+    expect(ownerReads()).toBe(1);
+    expect(giftReads()).toBe(0);
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  /**
+   * D-49 / T4.4a: «Изменить» of an open non-secret wish asks the neutral question
+   * first — the same `ConfirmDialog` the details layer used to show — and only its
+   * «Изменить» opens the form (`EXPERIENCE.md` → «Правка желания»).
+   */
+  it("«Изменить» сначала спрашивает, и «Изменить» в вопросе открывает форму с его id", async () => {
+    respondOwner();
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(dialogElement()?.textContent).toContain("Изменить желание?");
+    expect(dialogElement()?.textContent).toContain(
+      "Кто-то мог уже забронировать или купить этот подарок. Если вы измените желание, даритель получит уведомление.",
+    );
+
+    await click(dialogControl("Изменить"));
+    await settle();
+
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
+    expect(dialogElement()).toBeNull();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("«Отмена» вопроса оставляет на странице, форма не открывается", async () => {
+    respondOwner();
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+    await click(dialogControl("Отмена"));
+    await settle();
+
+    expect(dialogElement()).toBeNull();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(text()).toContain("Наушники");
+    expect(control("Изменить")).toBeDefined();
+  });
+
+  /**
+   * AD-15 (14): the page is built from the owner's card, so the question is the same
+   * for a booked wish and for an open one — the broken payload below carries a holder
+   * that never reaches a single word of the layer.
+   */
+  it("вопрос одинаков для подложенного забронированного желания и без брони", async () => {
+    respondOwner();
+    await mount();
+    await click(control("Изменить"));
+    await settle();
+    const openQuestion = dialogElement()?.textContent ?? "";
+    await click(dialogControl("Отмена"));
+    await settle();
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    respondOwner(
+      ownerCard({
+        status: "RESERVED",
+        reservedBy: { id: "u3", nick: "daria", displayName: "Дарья" },
+        reservation: {
+          dueAt: DUE_ON,
+          phase: "ACTIVE",
+          bought: true,
+          holderVisibleToOwner: true,
+          holderVisibleToOthers: true,
+        },
+      }),
+    );
+    await mount();
+    await click(control("Изменить"));
+    await settle();
+
+    expect(dialogElement()?.textContent).toBe(openQuestion);
+    expect(openQuestion).toContain("Изменить желание?");
+    expect(openQuestion).not.toContain("Дарья");
+    expect(openQuestion).not.toContain("Берёт");
+    expect(openQuestion).not.toContain("Куплено");
+  });
+
+  /** D-49: a secret wish cannot have been reserved, so it goes straight to the form. */
+  it("у секретного желания вопроса нет — сразу форма", async () => {
+    respondOwner(ownerCard({ visibility: "SECRET" }));
+    await mount();
+
+    await click(control("Изменить"));
+    await settle();
+
+    expect(dialogElement()).toBeNull();
+    expect(navigation.push).toHaveBeenCalledWith({
+      pathname: "/gifts/[id]/edit",
+      params: { id: "g1" },
+    });
+  });
+
+  /**
+   * Story 5.3: a closed wish has no edit. The dialog that served the list gated the
+   * button the same way; the page keeps the rule now that the dialog is gone
+   * (CLE-129, T4.4).
+   */
+  it("у закрытого желания «Изменить» нет", async () => {
+    respondOwner(ownerCard({ status: "CLOSED" }));
+    await mount();
+
+    expect(text()).toContain("Наушники");
+    expect(control("Изменить")).toBeUndefined();
+  });
+
+  it("AD-15: подброшенная бронь в ответе не появляется на странице владельца", async () => {
+    // A broken payload: the owner route answers a reserved card with a live
+    // holder. The page still reads as an open wish — no pill, no name, no
+    // holder's actions (the same second gate the page card keeps).
+    respondOwner(
+      ownerCard({
+        status: "RESERVED",
+        reservedBy: { id: "u3", nick: "daria", displayName: "Дарья" },
+        reservation: {
+          dueAt: DUE_ON,
+          phase: "ACTIVE",
+          bought: true,
+          holderVisibleToOwner: true,
+          holderVisibleToOthers: true,
+        },
+      }),
+    );
+    await mount();
+
+    expect(text()).toContain("Открыт");
+    expect(text()).not.toContain("Забронирован");
+    expect(text()).not.toContain("Дарья");
+    expect(text()).not.toContain("Берёт");
+    expect(text()).not.toContain("Куплено");
+    expect(control("Снять бронь")).toBeUndefined();
+    expect(switchNamed("Купил")).toBeUndefined();
+    expect(control("Куплю сам")).toBeUndefined();
+    expect(control("Изменить")).toBeDefined();
+  });
+});
+
+/**
+ * Story 6.4 (`DESIGN.md` → «Куда уходит фокус»): a closed layer returns focus to
+ * the control that opened it. The screens pass `onClosed` and a ref of the CTA;
+ * the layer must stay mounted while it closes for that callback to run.
+ */
+describe("фокус после закрытия слоёв", () => {
+  function opener(label: string): HTMLElement {
+    const node = control(label);
+    expect(node, `кнопка «${label}»`).toBeDefined();
+    node?.focus();
+    expect(document.activeElement).toBe(node);
+    return node as HTMLElement;
+  }
+
+  it("бронь: «Отмена» возвращает фокус на «Куплю сам»", async () => {
+    respond(gift({ status: "OPEN", reservation: undefined, reservedBy: null }));
+    await mount();
+
+    const cta = opener("Куплю сам");
+    await click(cta);
+    await settle();
+    expect(dialogElement()).not.toBeNull();
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cta);
+  });
+
+  it("снятие брони: «Отмена» возвращает фокус на «Снять бронь»", async () => {
+    respond(gift());
+    await mount();
+
+    const cta = opener("Снять бронь");
+    await click(cta);
+    await settle();
+    expect(dialogElement()).not.toBeNull();
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cta);
+  });
+
+  it("продление: «Отмена» возвращает фокус на «Продлить до…»", async () => {
+    respond(gift());
+    await mount();
+
+    const cta = opener("Продлить до…");
+    await click(cta);
+    await settle();
+    expect(dialogElement()).not.toBeNull();
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cta);
   });
 });

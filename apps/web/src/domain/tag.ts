@@ -4,6 +4,7 @@
 
 import {
   DEFAULT_LOCALE,
+  type CustomTagQueueItem,
   type GiftCard,
   type SupportedLocale,
   type TagCatalogItem,
@@ -193,5 +194,122 @@ function compareCardTags(
     right.tag.catalogId ?? right.tag.label,
   );
   return byIdentity !== 0 ? byIdentity : left.index - right.index;
+}
+
+/**
+ * Story 10.2: the key of a custom tag text in moderation. The write path only
+ * trims (Story 2.5.4), so the queue and the decisions invent one more step here:
+ * NFC, trim, collapse any whitespace run to one space, lower case per the `ru`
+ * locale. "Айфон", " айфон " and "Айфон  Pro" therefore group as "айфон" and
+ * "айфон pro". The stored `customText` is never rewritten — user data stays as
+ * typed, and the decision table keeps only the key.
+ */
+export function normalizeCustomTagText(text: string): string {
+  return text.normalize("NFC").trim().replace(/\s+/gu, " ").toLocaleLowerCase("ru");
+}
+
+/** A `GiftTag` row the queue groups: only the wish id and the text. */
+export type CustomTagQueueRow = {
+  readonly giftId: string;
+  readonly customText: string | null;
+};
+
+/**
+ * The most frequent spelling as typed. Ties break on the text in Unicode code
+ * units, so the sample is deterministic (no insertion-order dependence).
+ */
+function pickSampleText(spellings: ReadonlyMap<string, number>): string {
+  let best = "";
+  let bestCount = -1;
+  spellings.forEach(function consider(count, text) {
+    if (
+      count > bestCount ||
+      (count === bestCount && compareCodeUnits(text, best) < 0)
+    ) {
+      best = text;
+      bestCount = count;
+    }
+  });
+  return best;
+}
+
+/**
+ * Story 10.2: the moderation queue — one line per normalized text, with the
+ * number of distinct wishes and the most frequent spelling. Rows already decided
+ * are left out. `usageCount` counts wishes, not rows: two case variants on one
+ * wish are one use, even though they are two `GiftTag` rows.
+ *
+ * Order: most used first, then `normalizedText` in Unicode code units.
+ */
+export function groupCustomTagQueue(
+  rows: readonly CustomTagQueueRow[],
+  decidedTexts: Iterable<string> = [],
+): CustomTagQueueItem[] {
+  const decided = new Set(decidedTexts);
+  const groups = new Map<
+    string,
+    { readonly giftIds: Set<string>; readonly spellings: Map<string, number> }
+  >();
+
+  rows.forEach(function collectRow(row) {
+    if (row.customText === null) return;
+    const key = normalizeCustomTagText(row.customText);
+    if (key === "" || decided.has(key)) return;
+
+    let group = groups.get(key);
+    if (group === undefined) {
+      group = { giftIds: new Set(), spellings: new Map() };
+      groups.set(key, group);
+    }
+    group.giftIds.add(row.giftId);
+    group.spellings.set(row.customText, (group.spellings.get(row.customText) ?? 0) + 1);
+  });
+
+  return Array.from(groups, function toQueueItem([normalizedText, group]) {
+    return {
+      normalizedText,
+      sampleText: pickSampleText(group.spellings),
+      usageCount: group.giftIds.size,
+    };
+  }).sort(function compareQueueItems(left, right) {
+    if (left.usageCount !== right.usageCount) return right.usageCount - left.usageCount;
+    return compareCodeUnits(left.normalizedText, right.normalizedText);
+  });
+}
+
+/** A custom `GiftTag` row an approval may link to a catalog tag. */
+export type CustomTagLinkRow = {
+  readonly id: string;
+  readonly giftId: string;
+  readonly customText: string | null;
+};
+
+/**
+ * Story 10.2: ids of the rows an approval links to the catalog tag.
+ *
+ * All rows carry the normalized text and have no catalog tag yet. Two limits
+ * come from the database, not from taste:
+ * - `(giftId, tagId)` is unique, so a wish that already has this catalog tag is
+ *   skipped: its custom row stays untouched (user data is never deleted);
+ * - a wish can hold two case variants of one text (they are different
+ *   `customText` values), so at most one of them is linked per wish.
+ */
+export function customTagRowIdsToLink(
+  rows: readonly CustomTagLinkRow[],
+  normalizedText: string,
+  giftIdsWithTag: ReadonlySet<string>,
+): string[] {
+  const linkedGifts = new Set(giftIdsWithTag);
+  const ids: string[] = [];
+
+  rows.forEach(function considerRow(row) {
+    if (row.customText === null) return;
+    if (normalizeCustomTagText(row.customText) !== normalizedText) return;
+    if (linkedGifts.has(row.giftId)) return;
+    linkedGifts.add(row.giftId);
+    ids.push(row.id);
+  });
+
+  return ids;
 }
 

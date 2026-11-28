@@ -34,6 +34,8 @@ describe("ChoiceList: ошибка и описание группы", () => {
     const error = byId(errorId);
     expect(error?.textContent).toBe("Выберите видимость");
     expect(error?.getAttribute("role")).toBe("alert");
+    // The alert role is already assertive; a polite live region contradicts it.
+    expect(error?.getAttribute("aria-live")).toBeNull();
     // UI5: the invalid group also has the visible red outline.
     expect(getComputedStyle(radiogroup).borderColor).toBe("#C4473D");
   });

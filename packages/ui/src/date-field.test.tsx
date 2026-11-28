@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { DateField } from "./date-field";
-import { createMount } from "./test-utils";
+import { createMount, declarationsFor, stateOf } from "./test-utils";
 
 const mounted = createMount();
 
@@ -60,5 +60,83 @@ describe("DateField (web): доступность", () => {
     );
     expect(errorNode?.textContent).toBe("Дата в прошлом");
     expect(errorNode?.getAttribute("role")).toBe("alert");
+    // The alert role is already assertive: no polite live region next to it.
+    expect(errorNode?.getAttribute("aria-live")).toBeNull();
+
+    await render(
+      <DateField
+        label="Срок желания"
+        value=""
+        onChange={noop}
+        clearLabel="Сбросить"
+        hint="После этого дня желание уйдёт в архив"
+      />,
+    );
+    const hintNode = container.querySelector(
+      `[id="${input(container).getAttribute("aria-describedby")}"]`,
+    );
+    expect(hintNode?.getAttribute("role")).toBeNull();
+    expect(hintNode?.getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("видимый фокус — кольцо $ring 2 px с отступом 2, как у полей", async () => {
+    const { container, render } = mounted();
+    await render(<DateField label="Подарю до" value="" onChange={noop} clearLabel="Убрать" />);
+
+    const field = input(container);
+    const ring = declarationsFor(field)
+      .filter((one) => one.property.startsWith("outline") && stateOf(one) === "focus-visible")
+      .map((one) => `${one.property}:${one.value}`)
+      .sort();
+    expect(ring).toEqual(
+      ["outline-color:var(--ring)", "outline-style:solid", "outline-width:2px"].sort(),
+    );
+    expect(declarationsFor(field, "outline-offset").map((one) => one.value)).toEqual(["2px"]);
+  });
+});
+
+describe("DateField (web): границы и кнопка очистки", () => {
+  it("переносит min и max в поле ввода", async () => {
+    const { container, render } = mounted();
+    await render(
+      <DateField
+        label="Подарю до"
+        value="2026-12-10"
+        onChange={noop}
+        clearLabel="Убрать дату"
+        min="2026-11-26"
+        max="2026-12-26"
+      />,
+    );
+
+    const field = input(container);
+    expect(field.getAttribute("type")).toBe("date");
+    expect(field.getAttribute("min")).toBe("2026-11-26");
+    expect(field.getAttribute("max")).toBe("2026-12-26");
+  });
+
+  it("clearable={false} прячет кнопку очистки у заполненного поля", async () => {
+    const { container, render } = mounted();
+    await render(
+      <DateField
+        label="Подарю до"
+        value="2026-12-10"
+        onChange={noop}
+        clearable={false}
+      />,
+    );
+
+    expect(container.querySelector('[role="button"]')).toBeNull();
+  });
+
+  it("по умолчанию кнопка очистки есть, пока выбрана дата", async () => {
+    const { container, render } = mounted();
+    await render(
+      <DateField label="Подарю до" value="2026-12-10" onChange={noop} clearLabel="Убрать дату" />,
+    );
+
+    const clear = container.querySelector('[role="button"]');
+    expect(clear?.getAttribute("aria-label")).toBe("Убрать дату");
+    expect(clear?.textContent).toBe("Убрать дату");
   });
 });

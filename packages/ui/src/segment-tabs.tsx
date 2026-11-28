@@ -113,6 +113,7 @@ export function SegmentTabs({ label, tabs, value, onChange, testID }: SegmentTab
             gap="$1"
             minHeight="$touch-target"
             paddingHorizontal="$1"
+            borderRadius="$md"
             borderBottomWidth={selected ? 2 : 0}
             borderBottomColor="$primary"
           >

@@ -5,6 +5,7 @@ import { forwardRef, useId, useState, type ComponentProps, type ComponentRef } f
 import { a11yHintProps } from "./a11y-hint";
 import { focusRing } from "./focus-ring";
 import { fontFor } from "./font-style";
+import { useHoverTransition } from "./hover";
 import { Close, Eye, EyeOff, Search } from "./icons";
 import { passwordToggleA11yProps } from "./password-toggle-a11y";
 import { Pressable } from "./pressable";
@@ -119,8 +120,11 @@ function FieldShell({ id, label, error, hint, children }: FieldShellProps) {
           id={`${id}-description`}
           kind="caption"
           tone={error ? "destructive" : "muted"}
+          // An error is an alert: it is assertive on its own, so a `polite`
+          // live region next to it would contradict the role. A hint is not a
+          // message to interrupt; it stays polite.
           role={error ? "alert" : undefined}
-          aria-live="polite"
+          aria-live={error ? undefined : "polite"}
         >
           {described}
         </Text>
@@ -144,12 +148,15 @@ export const TextField = forwardRef<FieldInputRef, TextFieldProps>(function Text
   const id = useId();
   const described = error || hint;
   const Control = multiline ? TextAreaFrame : InputFrame;
+  // The frame colour changes on hover with the `quick` preset (CLE-129).
+  const transition = useHoverTransition();
   return (
     <FieldShell id={id} label={label} error={error} hint={hint}>
       <Control
         {...(withEnterKeyHint(input) as object)}
         ref={ref as never}
         id={id}
+        transition={transition}
         value={value}
         onChangeText={onChangeText}
         invalid={Boolean(error)}
@@ -188,6 +195,7 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
     const id = useId();
     const [visible, setVisible] = useState(false);
     const described = error || hint;
+    const transition = useHoverTransition();
 
     function handleToggleVisibility() {
       setVisible((current) => !current);
@@ -211,6 +219,7 @@ export const PasswordField = forwardRef<FieldInputRef, PasswordFieldProps>(
             onChangeText={onChangeText}
             secureTextEntry={!visible}
             type={visible ? "text" : "password"}
+            transition={transition}
             // The text never runs under the toggle: its width is the field's right inset.
             paddingRight={spacing["touch-target"]}
             invalid={Boolean(error)}
@@ -276,6 +285,7 @@ export const SearchField = forwardRef<FieldInputRef, SearchFieldProps>(function 
   const canClear = value.length > 0;
   const mutedIcon = useThemeColor("muted-foreground");
   const clearIcon = useThemeColor("foreground");
+  const transition = useHoverTransition();
 
   function clear() {
     onChangeText("");
@@ -299,6 +309,7 @@ export const SearchField = forwardRef<FieldInputRef, SearchFieldProps>(function 
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
+          transition={transition}
           // The icons own the field's edges: the text starts after the magnifier
           // and ends before the clear button.
           paddingLeft={spacing["touch-target"]}

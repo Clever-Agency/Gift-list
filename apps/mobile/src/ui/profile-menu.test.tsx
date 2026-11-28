@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileMenu } from "./profile-menu";
 
 /**
- * «Профиль» (Story 6.2): четыре строки — «Мой профиль», «Настройки», «Написать
- * автору», «Выйти». «Подборок» (Story 10.1) нет. Меню ничего не читает: экран
- * передаёт переходы и выход, поэтому тест проверяет строки и нажатия.
+ * «Профиль» (Story 6.2, Story 10.1): пять строк — «Мой профиль», «Подборки»,
+ * «Настройки», «Написать в техподдержку», «Выйти». Меню ничего не читает:
+ * экран передаёт переходы и выход, поэтому тест проверяет строки и нажатия.
  */
 vi.mock("expo-linking", () => ({ openURL: vi.fn(() => Promise.resolve()) }));
 
@@ -54,6 +54,7 @@ vi.mock("use-intl", async () => {
 
 const handlers = {
   profile: vi.fn(),
+  collections: vi.fn(),
   settings: vi.fn(),
   signOut: vi.fn(),
 };
@@ -66,6 +67,7 @@ async function mount(signingOut = false) {
     root.render(
       <ProfileMenu
         onOpenProfile={handlers.profile}
+        onOpenCollections={handlers.collections}
         onOpenSettings={handlers.settings}
         onSignOut={handlers.signOut}
         signingOut={signingOut}
@@ -98,19 +100,35 @@ afterEach(async () => {
 });
 
 describe("ProfileMenu", () => {
-  it("четыре строки по порядку: мой профиль, настройки, автор, выход", async () => {
+  it("пять строк по порядку: мой профиль, подборки, настройки, техподдержка, выход", async () => {
     await mount();
 
     const rows = Array.from(
       container.querySelectorAll<HTMLElement>('[role="button"], [role="link"]'),
     ).map((node) => node.textContent);
-    expect(rows).toEqual(["Мой профиль", "Настройки", "Написать автору", "Выйти"]);
+    expect(rows).toEqual([
+      "Мой профильКак меня видят другие",
+      "Подборки",
+      "Настройки",
+      "Написать в техподдержку",
+      "Выйти",
+    ]);
   });
 
-  it("«Подборок» нет (Story 10.1)", async () => {
+  it("«Мой профиль» подписан «Как меня видят другие» (D-59)", async () => {
     await mount();
-    expect(container.textContent).not.toContain("Подборк");
-    expect(container.textContent).not.toContain("Коллекц");
+
+    const row = container.querySelector<HTMLElement>('[data-testid="profile-menu-my-profile"]');
+    expect(row?.textContent).toContain("Мой профиль");
+    expect(row?.textContent).toContain("Как меня видят другие");
+  });
+
+  it("«Подборки» ведут на экран подборок (Story 10.1)", async () => {
+    await mount();
+
+    expect(row("profile-menu-collections")?.textContent).toBe("Подборки");
+    await press(row("profile-menu-collections"));
+    expect(handlers.collections).toHaveBeenCalledTimes(1);
   });
 
   it("«Мой профиль» и «Настройки» зовут переданные переходы", async () => {
@@ -141,11 +159,11 @@ describe("ProfileMenu", () => {
     expect(handlers.signOut).not.toHaveBeenCalled();
   });
 
-  it("«Написать автору» — та же ссылка `mailto:`, что в футере", async () => {
+  it("«Написать в техподдержку» — та же ссылка `mailto:`, что в футере анонима", async () => {
     await mount();
 
-    const author = row("profile-menu-author");
-    expect(author?.textContent).toContain("Написать автору");
+    const support = row("profile-menu-support");
+    expect(support?.textContent).toContain("Написать в техподдержку");
   });
 
   it("displayName совпадает с именем компонента", () => {

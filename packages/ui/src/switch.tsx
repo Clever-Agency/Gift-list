@@ -3,6 +3,7 @@ import { YStack } from "@tamagui/stacks";
 import { useId } from "react";
 import { a11yHintProps } from "./a11y-hint";
 import { Pressable } from "./pressable";
+import { switchA11yProps } from "./switch-a11y";
 import { Text } from "./text";
 
 /** `DESIGN.md` → Мелкие элементы: track 52×32, thumb 28. */
@@ -24,9 +25,11 @@ export type SwitchProps = {
 };
 
 /**
- * Story 3.5: the shared on/off switch of the settings rows (`role="switch"`,
- * `aria-checked`). The whole row is one press surface — the label, the hint and
- * the track — at least `$row-height` tall, so the touch target is never smaller
+ * Story 3.5: the shared on/off switch of the settings rows (`role="switch"`). The
+ * state is `aria-checked` on the web and an explicit `accessibilityState` on the
+ * phone (`switch-a11y.ts` / `switch-a11y.native.ts`). The whole row is one press
+ * surface — the label, the hint and the track — at least `$row-height` tall, so
+ * the touch target is never smaller
  * than `44` (`DESIGN.md` → Мелкие элементы). The browser toggles it with Space
  * (and Enter, through `Pressable`); a phone gets the same press through React
  * Native. Colors follow `components.switch`: `$primary` on, `$border-strong`
@@ -38,7 +41,7 @@ export function Switch({ label, hint, checked, disabled, onChange, testID }: Swi
     <Pressable
       role="switch"
       aria-label={label}
-      aria-checked={checked}
+      {...switchA11yProps({ checked, disabled })}
       {...a11yHintProps({ hint, describedBy: hint ? hintId : undefined })}
       disabled={disabled}
       onPress={function toggle() {
@@ -50,6 +53,7 @@ export function Switch({ label, hint, checked, disabled, onChange, testID }: Swi
       gap="$3"
       minHeight="$row-height"
       paddingVertical="$2"
+      borderRadius="$md"
     >
       <View
         testID="switch-track"

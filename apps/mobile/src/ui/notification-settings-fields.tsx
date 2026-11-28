@@ -7,6 +7,9 @@ const categories = [
   { label: "wishExpiry", inApp: "wishExpiryInApp", email: "wishExpiryEmail" },
 ] as const;
 
+/** Story 7.2 (FR-36): two reminder types, both on by default. */
+const reminders = ["remindFriendDates", "remindOwnList"] as const;
+
 export function NotificationSettingsFields({
   preferences, disabled, onChange,
 }: {
@@ -17,6 +20,16 @@ export function NotificationSettingsFields({
   const t = useTranslations("notifications");
   return (
     <YStack gap="$3">
+      <YStack>
+        <Heading level={3}>{t("reminders")}</Heading>
+        {reminders.map(function reminder(key) {
+          return (
+            <Switch key={key} label={t(key)} checked={preferences[key]} disabled={disabled}
+              onChange={function change(checked) { onChange(key, checked); }}
+            />
+          );
+        })}
+      </YStack>
       {categories.map(function category({ label, inApp, email }) {
         return (
           <YStack key={label}>

@@ -11,6 +11,7 @@ const {
   txFindFirst,
   update,
   transaction,
+  moderationFindMany,
   PrismaClientKnownRequestError,
 } = vi.hoisted(() => {
   class PrismaClientKnownRequestError extends Error {
@@ -31,6 +32,7 @@ const {
     txFindFirst: vi.fn(),
     update: vi.fn(),
     transaction: vi.fn(),
+    moderationFindMany: vi.fn(),
     PrismaClientKnownRequestError,
   };
 });
@@ -40,6 +42,7 @@ vi.mock("@/db/client", () => ({
   prisma: {
     list: { findUnique, findMany },
     gift: { create, findFirst, update, findMany },
+    customTagModeration: { findMany: moderationFindMany },
     $transaction: transaction,
   },
 }));
@@ -120,6 +123,7 @@ beforeEach(() => {
   txFindFirst.mockReset();
   update.mockReset();
   transaction.mockReset();
+  moderationFindMany.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1" });
   findMany.mockResolvedValue([]);
@@ -127,6 +131,7 @@ beforeEach(() => {
   txFindFirst.mockResolvedValue(giftRow());
   create.mockResolvedValue(giftRow());
   update.mockResolvedValue({ id: "g1" });
+  moderationFindMany.mockResolvedValue([]);
   transaction.mockImplementation(
     async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({ gift: { findFirst: txFindFirst, update } }),
@@ -254,6 +259,7 @@ describe("PATCH /api/v1/me/gifts/[id] with a stored value above a cap", () => { 
         quantity: "SINGLE",
         archivedAt: null,
         reservedById: null,
+        updatedAt: new Date("2026-11-01T00:00:00.000Z"),
       })
       .mockResolvedValueOnce(giftRow({ title: "я".repeat(5000), visibility: "SECRET" }));
 
@@ -262,7 +268,7 @@ describe("PATCH /api/v1/me/gifts/[id] with a stored value above a cap", () => { 
 
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
-      where: { id: "g1", archivedAt: null, status: "OPEN", reservedById: null },
+      where: { id: "g1", archivedAt: null, updatedAt: new Date("2026-11-01T00:00:00.000Z") },
       data: { visibility: "SECRET" },
       select: { id: true },
     });

@@ -25,6 +25,7 @@ vi.mock("@/api/client", () => api);
 vi.mock("@/session/auth-context", () => ({
   useAuth: () => ({
     state: { status: "anonymous" as const },
+    getSessionRevision: vi.fn(() => 0),
     setUser: vi.fn(),
     signOut: vi.fn(async () => ({ ok: true as const })),
   }),
@@ -181,6 +182,22 @@ describe("почта: 254 только на регистрации", () => {
       "/api/v1/session",
       expect.objectContaining({ body: expect.objectContaining({ email: LEGACY_EMAIL }) }),
     );
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe("Неверный email или пароль.");
+    // An error is `role="alert"`; a live region on top of it would announce twice.
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
+  });
+
+  it("сброс пароля: ошибка сети без поля — alert без aria-live", async () => {
+    api.apiRequest.mockResolvedValue({ ok: false, network: true });
+    await mount("forgot");
+    await fill("Email", "a@b.test");
+
+    await press("Отправить ссылку");
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe("Нет соединения. Попробуйте ещё раз.");
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
   });
 
   it("сброс пароля принимает legacy-адрес длиннее 254 и отправляет его целиком", async () => {

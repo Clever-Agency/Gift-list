@@ -23,6 +23,7 @@ vi.mock("@/api/client", () => api);
 vi.mock("@/session/auth-context", () => ({
   useAuth: () => ({
     state: { status: "anonymous" as const },
+    getSessionRevision: vi.fn(() => 0),
     setUser: vi.fn(),
     signOut: vi.fn(async () => ({ ok: true as const })),
   }),
@@ -434,5 +435,55 @@ describe("первый невалидный (UI5)", () => {
     const password = container.querySelector<HTMLInputElement>('input[aria-label="Пароль"]');
     expect(document.activeElement).toBe(password);
     expect(scrollIntoView.mock.instances[0]).toBe(password);
+  });
+});
+
+describe("ошибка формы: alert без aria-live", () => {
+  it("регистрация: отказ сервера без поля объявляется один раз", async () => {
+    api.apiRequest.mockResolvedValue({
+      ok: false,
+      code: "RATE_LIMITED",
+      message: "Too many register attempts",
+      params: { unit: "minute", count: 15 },
+    });
+    await mount("register");
+    await fill("Email", "a@b.test");
+    await fill("Пароль", "password1234");
+    await fill("Повторите пароль", "password1234");
+    await fill("Имя", "Анна");
+    await fill("Ник", "anna");
+
+    await press("Зарегистрироваться");
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Слишком много попыток");
+    // An error is `role="alert"`; a live region on top of it would announce twice.
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
+  });
+
+  it("сброс пароля: ошибка сети без поля объявляется один раз", async () => {
+    api.apiRequest.mockResolvedValue({ ok: false, network: true });
+    await mount("reset");
+    await fill("Пароль", "password1234");
+    await fill("Повторите пароль", "password1234");
+
+    await press("Сохранить пароль");
+
+    const alert = Array.from(container.querySelectorAll('[role="alert"]')).find(
+      (node) => node.textContent === "Нет соединения. Попробуйте ещё раз.",
+    );
+    expect(alert, "ошибка сети").toBeDefined();
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
+  });
+
+  it("сброс без ссылки: устаревшая ссылка объявляется один раз", async () => {
+    route.params = {};
+    await act(async () => {
+      root.render(<ResetScreen />);
+    });
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe("Ссылка устарела. Запросите новую.");
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
   });
 });

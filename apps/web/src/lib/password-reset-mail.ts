@@ -2,7 +2,8 @@ import "server-only";
 
 import { createTranslator } from "next-intl";
 import { Resend } from "resend";
-import { getMessages, negotiateLocale } from "@gift-list/contracts";
+import { negotiateLocale } from "@gift-list/contracts";
+import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { getBrandName, getEnv } from "@/lib/env";
 
 /** Loopback and `*.localhost`: a local `http:` auth URL stays `http` in the email. */
@@ -47,7 +48,7 @@ export function buildPasswordResetMessage(locale: string | null, token: string, 
   const resolved = negotiateLocale(locale ? [locale] : []);
   const t = createTranslator({
     locale: resolved,
-    messages: getMessages(resolved),
+    messages: getWebMessages(resolved),
     namespace: "email",
   });
   const brand = getBrandName();

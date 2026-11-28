@@ -1,6 +1,7 @@
 import "server-only";
 
 import { betterAuth } from "better-auth";
+import { createAuthMiddleware } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { expo } from "@better-auth/expo";
 import { nextCookies } from "better-auth/next-js";
@@ -10,8 +11,14 @@ import { PASSWORD_MAX, PASSWORD_MIN } from "@gift-list/contracts";
 import { prisma } from "@/db/client";
 import { haveIBeenPwnedPlugin } from "@/lib/hibp-password";
 import { getEnv } from "@/lib/env";
+import { sendEmailChangeEmail } from "@/lib/email-change-mail";
+import {
+  EMAIL_CHANGE_LINK_TTL_SECONDS,
+  notifyPreviousEmailAfterChange,
+} from "@/lib/email-change-pending";
 import { sendPasswordResetEmail } from "@/lib/password-reset-mail";
 import { invalidateOutstandingPasswordResets } from "@/lib/password-reset-tokens";
+import { guardEmailChangeVerification } from "@/lib/email-change-verify";
 
 function createAuth() {
   const env = getEnv();
@@ -61,6 +68,51 @@ function createAuth() {
         locale: { type: "string", required: false, input: false, defaultValue: "ru" },
         timeZone: { type: "string", required: false, input: false },
       },
+      // FR-56 (D-58, AD-3): a new address is confirmed by a one-time link to that
+      // address; `User.email` changes only when the link is opened. Sessions,
+      // nick, friendships and profile fields are not touched by the change.
+      changeEmail: {
+        enabled: true,
+      },
+    },
+    emailVerification: {
+      // One hour, the lifetime `email-change-pending` records in the same unit.
+      expiresIn: EMAIL_CHANGE_LINK_TTL_SECONDS,
+      // Only the change-email flow calls this in the product: the link is sent
+      // to the **new** address, and the raw `/send-verification-email` path is
+      // closed below, so it cannot be used to spam an address.
+      sendVerificationEmail: async function sendVerificationEmail({ user, url }) {
+        const locale = "locale" in user && typeof user.locale === "string" ? user.locale : null;
+        await sendEmailChangeEmail({ to: user.email, locale, url });
+      },
+    },
+    // FR-56, T9.2a: a change-email link that was cancelled or superseded must
+    // not move the account. The pending row is the source of truth, so the
+    // guard refuses such a link with `?error=INVALID_TOKEN` before Better Auth's
+    // `/verify-email` writes anything.
+    hooks: {
+      before: createAuthMiddleware(async function beforeVerifyEmail(ctx) {
+        await guardEmailChangeVerification(ctx);
+      }),
+    },
+    // FR-56: Better Auth applies the change inside `/verify-email`; this hook
+    // runs after that write commits. It reads the address the account left and
+    // sends the «Email изменён» notice there, never before the change.
+    databaseHooks: {
+      user: {
+        update: {
+          after: async function afterUserUpdate(user) {
+            if (!user || typeof user.id !== "string" || typeof user.email !== "string") return;
+            // Runs after the commit, so a failure here must not turn a committed
+            // change into an error answer; the notice is best-effort.
+            try {
+              await notifyPreviousEmailAfterChange({ id: user.id, email: user.email });
+            } catch (error) {
+              console.error("Email change notification hook failed", error);
+            }
+          },
+        },
+      },
     },
     // `giftlist://` — схема приложения (AD-3). Dev-origins (`exp://` для Expo Go,
     // `exp+giftlist://` для dev client) добавляются только через AUTH_DEV_TRUSTED_ORIGINS:
@@ -71,13 +123,18 @@ function createAuth() {
     // `/sign-in/email`, `/sign-up/email` и `/request-password-reset` обошли бы
     // счётчики Postgres и упёрлись бы только в лимитер Better Auth в памяти
     // процесса. `/update-user` пишет `name` и `image` мимо `nameNormalized`
-    // (CLE-109): поиск читает нормализованное имя. `disabledPaths` отвечает
-    // 404 до лимитера и до обработчика; `auth.api.*` не затрагивается.
+    // (CLE-109): поиск читает нормализованное имя. `/change-email` обошёл бы
+    // лимит смены email и не оставил бы адрес, на который уходит уведомление
+    // (FR-56); `/send-verification-email` рассылал бы письма по открытому
+    // запросу. `disabledPaths` отвечает 404 до лимитера и до обработчика;
+    // `auth.api.*` не затрагивается.
     disabledPaths: [
       "/sign-in/email",
       "/sign-up/email",
       "/request-password-reset",
       "/update-user",
+      "/change-email",
+      "/send-verification-email",
     ],
     // bearer() accepts `Authorization: Bearer` and adds `set-auth-token` to cookie-setting
     // responses; the /api/auth route strips that header for non-native requests.

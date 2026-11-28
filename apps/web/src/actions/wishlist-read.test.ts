@@ -155,6 +155,31 @@ describe("readWishlist", () => {
     });
   });
 
+  /**
+   * D-49: the owner's wishlist — `/me` and the owner's own `/u/:nick` share this
+   * read — shows a reserved wish as an ordinary open one.
+   */
+  it("maps a reserved wish to the open card for the owner", async () => {
+    const result = await readWishlist(
+      { viewer: { id: "u1" }, target: { ownerId: "u1" } },
+      reader().deps,
+    );
+
+    const card = giftsOf(result).find((item) => item.id === "g-reserved");
+    expect(card).toMatchObject({ status: "OPEN", reservedBy: null, ownerAction: null });
+    expect(JSON.stringify(card)).not.toContain("Анна");
+  });
+
+  /** D-49 touches only the owner: a guest still sees the reservation as before. */
+  it("still shows the reservation status to a guest", async () => {
+    const result = await readWishlist(
+      { viewer: { id: "u9" }, target: { ownerId: "u1" } },
+      reader({ friend: true }).deps,
+    );
+
+    expect(giftsOf(result).find((card) => card.id === "g-reserved")?.status).toBe("RESERVED");
+  });
+
   it("caps the owner's archive at 100 newest and reports the full count", async () => {
     count.mockResolvedValue(130);
 

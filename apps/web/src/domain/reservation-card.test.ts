@@ -39,6 +39,8 @@ function row(overrides: Partial<ReservationCardRow> = {}): ReservationCardRow {
     holderVisibleToOthers: true,
     visibility: "FRIENDS",
     archivedAt: null,
+    priceAmount: 199,
+    priceCurrency: "BYN",
     reservedById: HOLDER_ID,
     list: { ownerId: OWNER_ID, owner: { nick: "anna" } },
     ...overrides,
@@ -56,6 +58,9 @@ describe("toReservationCard", () => {
     "bought",
     "holderVisibleToOwner",
     "holderVisibleToOthers",
+    "priceAmount",
+    "priceCurrency",
+    "photoUrl",
     "canOpenGift",
   ];
 
@@ -68,15 +73,13 @@ describe("toReservationCard", () => {
     expect(card.giftId).toBe("g1");
   });
 
-  /** A-14/AD-7: no price, tags, description, link, owner name or visibility on the card. */
+  /** A-14/AD-7: no tags, description, link, owner name or visibility on the card. */
   it("carries no field outside the AD-7 card set", () => {
     const card = toReservationCard(row({ title: "Наушники Sony", visibility: "SECRET" }), STRANGER);
 
     for (const forbidden of [
       "title",
       "description",
-      "priceAmount",
-      "priceCurrency",
       "linkUrl",
       "visibility",
       "tags",
@@ -139,7 +142,7 @@ describe("toReservationCard", () => {
     expect(utc.dueAt).toBe("2026-12-08");
   });
 
-  it("passes the phase, the mark and both toggles through unchanged", () => {
+  it("passes the phase, the mark and the guests' toggle through, and always hides the owner flag", () => {
     const card = toReservationCard(
       row({
         reservationPhase: "AWAITING_OWNER",
@@ -153,9 +156,48 @@ describe("toReservationCard", () => {
     expect(card).toMatchObject({
       phase: "AWAITING_OWNER",
       bought: true,
-      holderVisibleToOwner: true,
+      holderVisibleToOwner: false,
       holderVisibleToOthers: false,
     });
+  });
+
+  /** AD-12 (ред. 2026-11-26): the current price of the wish, not a snapshot. */
+  it("carries the current price while the detail is open", () => {
+    const card = toReservationCard(
+      row({ priceAmount: 250, priceCurrency: "RUB" }),
+      FRIEND,
+    );
+
+    expect(card).toMatchObject({ priceAmount: 250, priceCurrency: "RUB" });
+  });
+
+  /** A-14: a closed card answers `null`/`null` even when the row has a price. */
+  it("drops the price once the detail is closed", () => {
+    const unfriended = toReservationCard(row(), STRANGER);
+    const blocked = toReservationCard(row(), BLOCKED);
+
+    for (const card of [unfriended, blocked]) {
+      expect(card).toMatchObject({
+        canOpenGift: false,
+        priceAmount: null,
+        priceCurrency: null,
+      });
+    }
+  });
+
+  it("keeps both price fields null for a wish without a price", () => {
+    const card = toReservationCard(
+      row({ priceAmount: null, priceCurrency: null }),
+      FRIEND,
+    );
+
+    expect(card).toMatchObject({ priceAmount: null, priceCurrency: null });
+  });
+
+  /** ARCH-A18: wishes have no photos yet, so the field is always `null`. */
+  it("always answers a null photo", () => {
+    expect(toReservationCard(row(), FRIEND).photoUrl).toBeNull();
+    expect(toReservationCard(row(), STRANGER).photoUrl).toBeNull();
   });
 });
 

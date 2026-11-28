@@ -4,10 +4,15 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "use-intl";
 import type { ClientResult } from "@/api/client";
-import { fetchReservations, updateReservation } from "@/api/reservations";
+import {
+  fetchReservations,
+  markReservationGiven,
+  updateReservation,
+  type ReservationUpdateResult,
+} from "@/api/reservations";
 import { releaseMyReservation } from "@/api/viewer-gift";
 import { useAuth } from "@/session/auth-context";
-import { mutationErrorMessage } from "@/session/form-issue";
+import { mutationErrorMessage, signOutErrorMessage } from "@/session/form-issue";
 import { GiftCardMenu, type GiftCardMenuAction } from "@/ui/gift-card-menu";
 import { ReservationExtendDialog } from "@/ui/reservation-extend-dialog";
 import { ReservationReleaseConfirm } from "@/ui/reservation-release-confirm";
@@ -92,11 +97,6 @@ function ReservationsContent({
   const [attempt, setAttempt] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
 
-  // The open «Кто видит, что это я» blocks, by gift id. The screen owns them, so the
-  // card stays a plain presentation of the stored values.
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(function noneOpen() {
-    return new Set<string>();
-  });
   // The cards with a request in flight: the other cards stay usable, and a second
   // tap on the same card sends nothing.
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(function noneBusy() {
@@ -111,15 +111,23 @@ function ReservationsContent({
   const menuReturn = useRef<string | null>(null);
   const menuNodes = useRef(new Map<string, FocusTarget | null>());
 
-  // The release of one's own reservation keeps the confirm of Story 5.2.
+  // The release of one's own reservation keeps the confirm of Story 5.2. Its
+  // opener is the ⋮ of the card (the menu item itself leaves the tree), so the
+  // closed confirm returns focus there.
   const [releaseFor, setReleaseFor] = useState<ReservationCard | null>(null);
   const [releaseBusy, setReleaseBusy] = useState(false);
+  const [releaseReturnId, setReleaseReturnId] = useState<string | null>(null);
 
   // The extension: the card it belongs to, its request in flight and the sentence of
-  // a rejected day («Выберите дату не позже {max}.»).
+  // a rejected day («Выберите дату не позже {max}.»). `extendFormKey` is raised on
+  // every opening, so the day starts fresh without remounting the layer while it
+  // closes — that remount would swallow `onClosed` and the return of focus.
   const [extendFor, setExtendFor] = useState<ReservationCard | null>(null);
   const [extendBusy, setExtendBusy] = useState(false);
   const [extendError, setExtendError] = useState<string | undefined>(undefined);
+  const [extendFormKey, setExtendFormKey] = useState(0);
+  const extendReturn = useRef<string | null>(null);
+  const extendNodes = useRef(new Map<string, FocusTarget | null>());
 
   // A refocus refresh is silent (only «Повторить» shows the skeleton) and its answer
   // is dropped if the screen blurred before it arrived.
@@ -150,7 +158,7 @@ function ReservationsContent({
     const signedOut = await auth.signOut();
     if (!signedOut.ok) {
       onSessionExpired(false);
-      setToast({ message: app("form.network"), tone: "error" });
+      setToast({ message: signOutErrorMessage(signedOut, app("form.network"), common), tone: "error" });
     }
     return signedOut.ok;
   }
@@ -291,8 +299,21 @@ function ReservationsContent({
   }
 
   async function sendAction(card: ReservationCard, body: ReservationActionBody): Promise<boolean> {
+    return send(card, function request() {
+      return updateReservation(card.giftId, body);
+    });
+  }
+
+  /**
+   * One request of one card inside the shared busy/in-flight frame: whichever action
+   * runs, a second tap of the same card waits for this answer.
+   */
+  async function send(
+    card: ReservationCard,
+    request: () => Promise<ReservationUpdateResult>,
+  ): Promise<boolean> {
     if (!startCard(card)) return false;
-    const result = await updateReservation(card.giftId, body).finally(function release() {
+    const result = await request().finally(function release() {
       finishCard(card);
     });
     if (result.ok) {
@@ -308,21 +329,23 @@ function ReservationsContent({
     await sendAction(card, { action: "bought", value });
   }
 
-  /** Both switches travel in one `visibility` action; the answer replaces the card. */
-  async function changeVisibility(card: ReservationCard, next: ReservationVisibilityValues) {
-    await sendAction(card, {
-      action: "visibility",
-      holderVisibleToOwner: next.holderVisibleToOwner,
-      holderVisibleToOthers: next.holderVisibleToOthers,
+  /**
+   * «Подарил» (Story 5.7): the server moves the reservation into `GIVEN` and answers
+   * the updated card, so the phase under the deadline reads «Подарено» at once.
+   * A repeated press is a no-op success on the server; the card sends one request
+   * at a time, so a double tap never leaves twice.
+   */
+  async function markGiven(card: ReservationCard) {
+    await send(card, function request() {
+      return markReservationGiven(card.giftId);
     });
   }
 
-  function toggleVisibility(giftId: string) {
-    setExpanded(function flip(current) {
-      const next = new Set(current);
-      if (next.has(giftId)) next.delete(giftId);
-      else next.add(giftId);
-      return next;
+  /** The visibility switch travels in one `visibility` action; the answer replaces the card. */
+  async function changeVisibility(card: ReservationCard, next: ReservationVisibilityValues) {
+    await sendAction(card, {
+      action: "visibility",
+      holderVisibleToOthers: next.holderVisibleToOthers,
     });
   }
 
@@ -330,6 +353,8 @@ function ReservationsContent({
     // R1 (CLE-119): one request at a time per card — a dialog is not opened over
     // an action that is already in flight.
     if (inFlight.current.has(card.giftId)) return;
+    extendReturn.current = card.giftId;
+    setExtendFormKey((value) => value + 1);
     setExtendError(undefined);
     setExtendFor(card);
   }
@@ -384,6 +409,19 @@ function ReservationsContent({
     setExtendError(undefined);
   }
 
+  function extendNodeFor(giftId: string) {
+    return function rememberExtendNode(node: FocusTarget | null) {
+      extendNodes.current.set(giftId, node);
+    };
+  }
+
+  /** The extend dialog has left the tree: focus goes back to its «Продлить до…». */
+  function extendClosed() {
+    const giftId = extendReturn.current;
+    extendReturn.current = null;
+    if (giftId !== null) restoreFocus(extendNodes.current.get(giftId));
+  }
+
   /**
    * «Снять бронь» of the ⋮: the existing release of Story 5.2. The card is removed
    * on success; a lost race or a vanished reservation rereads the list; a broken
@@ -418,6 +456,11 @@ function ReservationsContent({
     setMenuFor(card);
   }
 
+  /** The release confirm has left the tree: focus goes back to the ⋮ of the card. */
+  function releaseClosed() {
+    if (releaseReturnId !== null) restoreFocus(menuNodes.current.get(releaseReturnId));
+  }
+
   function menuNodeFor(giftId: string) {
     return function rememberMenuNode(node: FocusTarget | null) {
       menuNodes.current.set(giftId, node);
@@ -443,6 +486,16 @@ function ReservationsContent({
     setMenuFor(null);
   }
 
+  /**
+   * Remembers the ⋮ whose menu asked for the release, so the closed confirm returns
+   * there. This is state, not a ref: the value is written when the menu item is
+   * pressed and read by the `onClosed` callback of the confirm.
+   */
+  function askRelease(card: ReservationCard) {
+    setReleaseReturnId(card.giftId);
+    setReleaseFor(card);
+  }
+
   function menuActions(card: ReservationCard): GiftCardMenuAction[] {
     return [
       {
@@ -451,8 +504,8 @@ function ReservationsContent({
         // menu item is not coral — `destructive` stays for the owner's release of
         // someone else's reservation (`DESIGN.md` → Colors → Destructive).
         label: t("release"),
-        onPress: function askRelease() {
-          setReleaseFor(card);
+        onPress: function askReleaseOfCard() {
+          askRelease(card);
         },
       },
     ];
@@ -472,13 +525,15 @@ function ReservationsContent({
     <>
       <ReservationsView
         state={state}
-        expanded={expanded}
+        timeZone={timeZone}
         busyIds={busyIds}
         onRetry={retry}
         onOpenGift={openGift}
         onMenu={openMenu}
         onExtend={openExtend}
-        onToggleVisibility={toggleVisibility}
+        onGiven={function givenOf(card) {
+          void markGiven(card);
+        }}
         onBoughtChange={function changeBoughtOf(card, value) {
           void changeBought(card, value);
         }}
@@ -486,6 +541,8 @@ function ReservationsContent({
           void changeVisibility(card, next);
         }}
         menuRefFor={menuNodeFor}
+        extendRefFor={extendNodeFor}
+        menuOpenId={menuFor?.giftId ?? null}
       />
       <GiftCardMenu
         open={menuFor !== null}
@@ -503,18 +560,20 @@ function ReservationsContent({
         open={releaseFor !== null}
         busy={releaseBusy}
         onClose={cancelRelease}
+        onClosed={releaseClosed}
         onConfirm={function confirmRelease() {
           void submitRelease();
         }}
       />
       <ReservationExtendDialog
-        key={extendFor === null ? "closed" : `open-${extendFor.giftId}`}
+        key={`extend-${extendFormKey}`}
         open={extendFor !== null}
         timeZone={timeZone}
         currentDueOn={extendFor?.dueAt}
         busy={extendBusy}
         dateError={extendError}
         onClose={cancelExtend}
+        onClosed={extendClosed}
         onConfirm={function confirmExtend(dueOn) {
           void submitExtend(dueOn);
         }}

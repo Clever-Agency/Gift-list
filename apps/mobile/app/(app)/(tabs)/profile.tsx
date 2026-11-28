@@ -930,7 +930,7 @@ function AboutFields({
           />
         </XStack>
         {errors.birthday ? (
-          <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
+          <Text kind="caption" tone="destructive" role="alert">
             {errors.birthday}
           </Text>
         ) : null}

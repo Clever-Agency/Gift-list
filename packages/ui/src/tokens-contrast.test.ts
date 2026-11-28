@@ -48,6 +48,7 @@ const TEXT_PAIRS: readonly Pair[] = [
   ["status-open", "surface"],
   ["status-open", "background"],
   ["status-reserved", "surface"],
+  ["status-reserved", "background"],
   ["status-reserved", "status-reserved-bg"],
   ["status-closed", "surface"],
   ["warning", "surface"],

@@ -744,6 +744,11 @@ describe("профиль: смена email", () => {
     expect(text()).toContain("Слишком много попыток. Попробуйте через");
     expect(text()).toContain("Мы отправили письмо на new@example.com.");
     expect(button("Отправить ещё раз")).toBeDefined();
+    const alert = Array.from(container.querySelectorAll('[role="alert"]')).find((node) =>
+      node.textContent?.includes("Слишком много попыток"),
+    );
+    expect(alert, "ошибка повторной отправки").toBeDefined();
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
   });
 
   it("«Отправить ещё раз» шлёт тот же адрес и снова ждёт", async () => {
@@ -907,6 +912,21 @@ describe("профиль: «О себе»", () => {
     expect(options).not.toContain("30");
   });
 
+  it("день без месяца: ошибка пары — alert без aria-live", async () => {
+    respond({ ok: true, data: user });
+    await mount();
+
+    await pickOption("День рождения, месяц", monthName(2));
+    await pressLabel("Сохранить «О себе»");
+
+    const alert = Array.from(container.querySelectorAll('[role="alert"]')).find(
+      (node) => node.textContent === "Выберите день и месяц вместе.",
+    );
+    expect(alert, "ошибка дня рождения").toBeDefined();
+    // An error is `role="alert"`; a live region on top of it would announce twice.
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
+  });
+
   it("счётчик «Обо мне» считает знаки и не пускает больше 500", async () => {
     respond({ ok: true, data: user });
     await mount();
@@ -979,6 +999,11 @@ describe("профиль: «О себе»", () => {
 
     expect(text()).toContain("Выберите страну из списка.");
     expect(text()).not.toContain("Данные сохранены.");
+    const alert = Array.from(container.querySelectorAll('[role="alert"]')).find(
+      (node) => node.textContent === "Выберите страну из списка.",
+    );
+    expect(alert, "ошибка страны").toBeDefined();
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
   });
 
   it("если «О себе» не загрузилось, есть «Повторить»", async () => {

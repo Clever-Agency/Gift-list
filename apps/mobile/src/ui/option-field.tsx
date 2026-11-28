@@ -94,7 +94,7 @@ export function OptionField({
         onPress={openLayer}
       />
       {error ? (
-        <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
+        <Text kind="caption" tone="destructive" role="alert">
           {error}
         </Text>
       ) : null}

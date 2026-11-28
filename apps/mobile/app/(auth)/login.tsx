@@ -151,7 +151,7 @@ export default function LoginScreen() {
           <Text kind="body">{t("login.forReserve", { title: reserveTitle })}</Text>
         ) : null}
         {issue && !issue.field ? (
-          <Text role="alert" aria-live="polite">
+          <Text role="alert">
             {issue.text}
           </Text>
         ) : null}

@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./a11y-hint", async () => await import("./a11y-hint.native"));
 
 import { a11yHintProps } from "./a11y-hint.native";
+import { Button } from "./button";
 import { Choice, ChoiceList } from "./choice";
 import { TagChip } from "./tag-chip";
 import { createMount } from "./test-utils";
@@ -62,6 +63,12 @@ describe("a11y-hint (native): компоненты по-прежнему отд�
             onPress={noop}
             error={{ id: "tags-error", message: "Проверьте теги" }}
           />
+          <Button
+            label="Скопировать ссылку"
+            hint="Список ещё не опубликован"
+            ariaDescribedBy="copy-reason"
+            onPress={noop}
+          />
         </>,
       );
 
@@ -73,6 +80,10 @@ describe("a11y-hint (native): компоненты по-прежнему отд�
       expect(radio.getAttribute("accessibilityhint")).toBe("Видно всем. Выберите видимость");
       const chip = container.querySelector('[role="checkbox"]') as HTMLElement;
       expect(chip.getAttribute("accessibilityhint")).toBe("Проверьте теги");
+      // The disabled copy button of the wishlist: its reason is the hint.
+      const button = container.querySelector("button") as HTMLElement;
+      expect(button.getAttribute("accessibilityhint")).toBe("Список ещё не опубликован");
+      expect(button.getAttribute("aria-describedby")).toBeNull();
       // Связка через id — только веб-канал: на телефоне её нет.
       expect(container.querySelectorAll("[aria-describedby]")).toHaveLength(0);
     } finally {

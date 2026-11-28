@@ -65,6 +65,26 @@ describe("Button", () => {
     expect(button.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("ariaDescribedBy — это aria-describedby, а hint остаётся подсказкой телефона", async () => {
+    const { container, render } = mounted();
+    await render(
+      <>
+        <p id="copy-reason">Список ещё не опубликован</p>
+        <Button
+          label="Скопировать ссылку"
+          ariaDescribedBy="copy-reason"
+          hint="Список ещё не опубликован"
+          onPress={vi.fn()}
+        />
+      </>,
+    );
+
+    const button = container.querySelector("button") as HTMLElement;
+    expect(button.getAttribute("aria-describedby")).toBe("copy-reason");
+    // `accessibilityHint` has no DOM equivalent: it must not leak as an attribute.
+    expect(nativeOnlyAttributes(container)).toEqual([]);
+  });
+
   it("нажатие вызывает onPress", async () => {
     const onPress = vi.fn();
     const { container, render } = mounted();

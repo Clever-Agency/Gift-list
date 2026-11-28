@@ -2,6 +2,7 @@ import { ButtonFrame as BehaviorFrame, ButtonText as BehaviorText } from "@tamag
 import { View, styled } from "@tamagui/core";
 import { XStack } from "@tamagui/stacks";
 import { forwardRef, type ComponentRef, type ReactNode } from "react";
+import { a11yHintProps } from "./a11y-hint";
 import { fontFor } from "./font-style";
 import { focusRing } from "./focus-ring";
 import { hoverTransition } from "./hover";
@@ -334,6 +335,13 @@ export type ButtonProps = {
    * the web DOM as `aria-describedby`.
    */
   ariaDescribedBy?: string;
+  /**
+   * The same explanation for a phone screen reader: it reaches React Native as
+   * `accessibilityHint`, which has no DOM equivalent. The web keeps reading the
+   * visible text through `ariaDescribedBy`; the two are passed together, one per
+   * platform (`a11y-hint.ts` / `a11y-hint.native.ts`).
+   */
+  hint?: string;
   /** Called on a live press only — never while `disabled` or `busy`. */
   onPress?: () => void;
   /**
@@ -410,6 +418,7 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
     shape = "square",
     ariaLabel,
     ariaDescribedBy,
+    hint,
     onPress,
     variant = "primary",
     disabled = false,
@@ -474,7 +483,7 @@ export const Button = forwardRef<ComponentRef<typeof Frame>, ButtonProps>(functi
       role={link ? "link" : "button"}
       tabIndex={native ? -1 : 0}
       aria-label={ariaLabel ?? label}
-      aria-describedby={ariaDescribedBy}
+      {...a11yHintProps({ hint, describedBy: ariaDescribedBy })}
       aria-disabled={blocked}
       aria-busy={busy || undefined}
       data-testid={testID}

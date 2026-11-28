@@ -33,7 +33,11 @@ export const Text = styled(CoreText, {
       default: { color: "$foreground" },
       muted: { color: "$muted-foreground" },
       primary: { color: "$primary" },
-      destructive: { color: "$destructive" },
+      // `$destructive` on the page background is 4.31:1 in the light theme (AA
+      // wants 4.5). Its darker hover value, #B1352D, keeps 5.45:1 on the paper
+      // and passes in the dark theme too; the palette itself is untouched
+      // (design decision, Сергей — see `tokens-contrast.test.ts`).
+      destructive: { color: "$destructive-hover" },
       reserved: { color: "$status-reserved" },
       inverse: { color: "$primary-foreground" },
     },

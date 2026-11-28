@@ -25,6 +25,9 @@ describe("TextField", () => {
     const error = document.getElementById(describedBy as string);
     expect(error?.textContent).toBe("Введите адрес");
     expect(error?.getAttribute("role")).toBe("alert");
+    // `role="alert"` is assertive on its own: a `polite` live region next to it
+    // contradicts the role (CLE-135).
+    expect(error?.getAttribute("aria-live")).toBeNull();
   });
 
   it("подсказка показывается, пока нет ошибки, и не объявляется как alert", async () => {
@@ -38,6 +41,8 @@ describe("TextField", () => {
     const hint = document.getElementById(input.getAttribute("aria-describedby") as string);
     expect(hint?.textContent).toBe("До 80 символов");
     expect(hint?.getAttribute("role")).toBeNull();
+    // A hint waits its turn: no alert role, only the polite live region.
+    expect(hint?.getAttribute("aria-live")).toBe("polite");
   });
 
   it("ввод вызывает onChangeText со строкой", async () => {

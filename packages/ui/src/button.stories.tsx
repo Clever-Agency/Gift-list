@@ -103,6 +103,12 @@ The rules of each prop are in the table below. What is not a prop:
       type: "string",
       control: "text",
     }),
+    hint: propDoc({
+      description:
+        "The same explanation for a phone screen reader: reaches React Native as `accessibilityHint` (the web has no such attribute and keeps reading `ariaDescribedBy`). Pass both together, one per platform.",
+      type: "string",
+      control: "text",
+    }),
     onPress: propDoc({
       description: "Called on a live press only — never while `disabled` or `busy`.",
       type: "() => void",

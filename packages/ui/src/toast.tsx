@@ -8,6 +8,7 @@ import { Pressable } from "./pressable";
 import { Spinner } from "./spinner";
 import { Text } from "./text";
 import { useThemeColor } from "./theme-color";
+import { toastA11yProps, useToastAnnouncement } from "./toast-a11y";
 import { spacing, type ColorToken } from "./tokens";
 import { useReduceMotion } from "./use-reduce";
 
@@ -82,7 +83,9 @@ export type ToastProps = {
  * frame and the card elevation (the dark theme takes its highlight from the theme);
  * the tone is carried by a small icon and its calm ink, the text stays neutral, so
  * every pair keeps AA contrast. `error` and `warning` are announced assertively
- * (`role="alert"`), `info` and `success` politely (`role="status"`). The overlay lets
+ * (`role="alert"`), `info` and `success` politely (`role="status"`); the phone gets
+ * the same tones as a live region plus a one-off VoiceOver announcement
+ * (`toast-a11y.ts` / `toast-a11y.native.ts`). The overlay lets
  * touches through; only the toast itself takes them. `actionRef` hands the action
  * button to the screen, which moves focus onto it when the toast appears
  * (`DESIGN.md` → «Куда уходит фокус», пункт «а»).
@@ -111,6 +114,8 @@ export function Toast({
   const closeInk = useThemeColor("muted-foreground");
   const Icon = TONE_ICONS[tone];
   const reduce = useReduceMotion();
+  // VoiceOver reads the whole card: the title, when there is one, is part of it.
+  useToastAnnouncement(title ? `${title}. ${message}` : message);
 
   function handlePointerEnter() {
     onHoverChange?.(true);
@@ -151,7 +156,7 @@ export function Toast({
     >
       <XStack
         role={assertive ? "alert" : "status"}
-        aria-live={assertive ? "assertive" : "polite"}
+        {...toastA11yProps(assertive)}
         aria-busy={loading || undefined}
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}

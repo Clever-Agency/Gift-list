@@ -2,6 +2,7 @@ import { styled } from "@tamagui/core";
 import { Input as BehaviorInput } from "@tamagui/input";
 import { XStack, YStack } from "@tamagui/stacks";
 import { forwardRef, useId, type ComponentRef } from "react";
+import { focusRing } from "./focus-ring";
 import { fontFor } from "./font-style";
 import { Pressable } from "./pressable";
 import { Text } from "./text";
@@ -18,7 +19,9 @@ const DateInput = styled(BehaviorInput, {
   borderRadius: "$sm",
   minHeight: "$control-height",
   paddingHorizontal: "$3",
-  outlineWidth: 0,
+  // The same 2 px `$ring` with a 2 px offset as every other field and control
+  // (`DESIGN.md` → «Кольцо фокуса»); the 1 px border still turns `$ring` too.
+  ...focusRing,
   variants: {
     invalid: {
       true: { borderColor: "$destructive focus:$destructive" },
@@ -109,8 +112,10 @@ export const DateField = forwardRef<ComponentRef<typeof DateInput>, DateFieldPro
             id={`${id}-description`}
             kind="caption"
             tone={error ? "destructive" : "muted"}
+            // The error is an alert (assertive by itself); only the hint is a
+            // polite live region. Both at once contradict each other.
             role={error ? "alert" : undefined}
-            aria-live="polite"
+            aria-live={error ? undefined : "polite"}
           >
             {described}
           </Text>

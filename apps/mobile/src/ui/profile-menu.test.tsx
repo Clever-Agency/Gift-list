@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileMenu } from "./profile-menu";
 
 /**
- * «Профиль» (Story 6.2): четыре строки — «Мой профиль», «Настройки», «Написать
- * в техподдержку», «Выйти». «Подборок» (Story 10.1) нет. Меню ничего не читает:
+ * «Профиль» (Story 6.2, Story 10.1): пять строк — «Мой профиль», «Подборки»,
+ * «Настройки», «Написать в техподдержку», «Выйти». Меню ничего не читает:
  * экран передаёт переходы и выход, поэтому тест проверяет строки и нажатия.
  */
 vi.mock("expo-linking", () => ({ openURL: vi.fn(() => Promise.resolve()) }));
@@ -54,6 +54,7 @@ vi.mock("use-intl", async () => {
 
 const handlers = {
   profile: vi.fn(),
+  collections: vi.fn(),
   settings: vi.fn(),
   signOut: vi.fn(),
 };
@@ -66,6 +67,7 @@ async function mount(signingOut = false) {
     root.render(
       <ProfileMenu
         onOpenProfile={handlers.profile}
+        onOpenCollections={handlers.collections}
         onOpenSettings={handlers.settings}
         onSignOut={handlers.signOut}
         signingOut={signingOut}
@@ -98,7 +100,7 @@ afterEach(async () => {
 });
 
 describe("ProfileMenu", () => {
-  it("четыре строки по порядку: мой профиль, настройки, техподдержка, выход", async () => {
+  it("пять строк по порядку: мой профиль, подборки, настройки, техподдержка, выход", async () => {
     await mount();
 
     const rows = Array.from(
@@ -106,6 +108,7 @@ describe("ProfileMenu", () => {
     ).map((node) => node.textContent);
     expect(rows).toEqual([
       "Мой профильКак меня видят другие",
+      "Подборки",
       "Настройки",
       "Написать в техподдержку",
       "Выйти",
@@ -120,10 +123,12 @@ describe("ProfileMenu", () => {
     expect(row?.textContent).toContain("Как меня видят другие");
   });
 
-  it("«Подборок» нет (Story 10.1)", async () => {
+  it("«Подборки» ведут на экран подборок (Story 10.1)", async () => {
     await mount();
-    expect(container.textContent).not.toContain("Подборк");
-    expect(container.textContent).not.toContain("Коллекц");
+
+    expect(row("profile-menu-collections")?.textContent).toBe("Подборки");
+    await press(row("profile-menu-collections"));
+    expect(handlers.collections).toHaveBeenCalledTimes(1);
   });
 
   it("«Мой профиль» и «Настройки» зовут переданные переходы", async () => {

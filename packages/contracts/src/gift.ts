@@ -92,6 +92,16 @@ const linkUrlFieldSchema = z.preprocess(
 const visibilityFieldSchema = z.enum(VISIBILITIES);
 const quantityFieldSchema = z.enum(QUANTITIES);
 
+/**
+ * The per-field rules of a wish, exported for the editorial collections of
+ * Story 10.1 (CLE-143): a collection title, description and URL are capped
+ * exactly like a wish, so the numbers and the trimming are not copied a second
+ * time. `giftLinkUrlSchema` also carries the optional `http(s)` rule.
+ */
+export const giftTitleSchema = titleFieldSchema;
+export const giftDescriptionSchema = descriptionFieldSchema;
+export const giftLinkUrlSchema = linkUrlFieldSchema;
+
 const CALENDAR_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** A real Gregorian day (`YYYY-MM-DD`), not `2026-02-31` and not a datetime. */

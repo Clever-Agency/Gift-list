@@ -8,6 +8,7 @@ export type ProfileMenuProps = {
    * stays a plain list of rows (stories and tests hand in their own callbacks).
    */
   onOpenProfile: () => void;
+  onOpenCollections: () => void;
   onOpenSettings: () => void;
   onSignOut: () => void;
   /** The sign-out request is in flight: a second tap sends nothing. */
@@ -68,9 +69,10 @@ ProfileRow.displayName = "ProfileRow";
 
 /**
  * «Профиль» (Story 6.2, CLE-129): the sections of the signed-in person in one
- * place — «Мой профиль» with the «Как меня видят другие» line, «Настройки»,
- * «Написать в техподдержку» and «Выйти». «Подборки» appear with Story 10.1 and
- * are not listed yet; the full user menu of the side bar is Story 6.3.
+ * place — «Мой профиль» with the «Как меня видят другие» line, «Подборки»,
+ * «Настройки», «Написать в техподдержку» and «Выйти». «Подборки» joined the
+ * menu with Story 10.1 (`DESIGN.md` → «Профиль»); the full user menu of the side
+ * bar is Story 6.3.
  *
  * The rows are the same actions the old temporary footer of «Мой вишлист» carried
  * (`EXPERIENCE.md` → Доступность: «Написать в техподдержку» у вошедшего — в
@@ -79,12 +81,14 @@ ProfileRow.displayName = "ProfileRow";
  */
 export function ProfileMenu({
   onOpenProfile,
+  onOpenCollections,
   onOpenSettings,
   onSignOut,
   signingOut = false,
   testID = "profile-menu",
 }: ProfileMenuProps) {
   const nav = useTranslations("app.nav");
+  const collections = useTranslations("app.collections");
   const settings = useTranslations("app.settings");
   const profile = useTranslations("app.profile");
   const wishlist = useTranslations("app.myWishlist");
@@ -106,6 +110,11 @@ export function ProfileMenu({
         hint={profile("myProfileHint")}
         onPress={onOpenProfile}
         testID={`${testID}-my-profile`}
+      />
+      <ProfileRow
+        label={collections("title")}
+        onPress={onOpenCollections}
+        testID={`${testID}-collections`}
       />
       <ProfileRow
         label={settings("title")}

@@ -64,10 +64,12 @@ export {
   Users,
 } from "./icons";
 export { Photo, type PhotoProps } from "./photo";
-// Catalog-only drafts (`CollectionCard`, `PartnerStoreCard`, `PartnerStoreRail`,
-// `FriendsTwoPane`): stories import them by path, so the app barrel stays free
-// of modules no screen uses (web bundle budget, CLE-141/S0-1).
+// Catalog-only drafts (`PartnerStoreCard`, `PartnerStoreRail`, `FriendsTwoPane`):
+// stories import them by path, so the app barrel stays free of modules no screen
+// uses (web bundle budget, CLE-141/S0-1). `CollectionCard` left that group with
+// the «Подборки» screen of Story 10.1 and is exported here now.
 export { PhotoPlaceholder, type PhotoPlaceholderProps } from "./photo-placeholder";
+export { CollectionCard, type CollectionCardProps } from "./collection-card";
 export { Avatar } from "./avatar";
 export {
   avatarInitials,

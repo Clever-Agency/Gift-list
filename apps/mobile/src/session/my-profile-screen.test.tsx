@@ -440,12 +440,15 @@ describe("профиль: мои данные", () => {
     ).toHaveLength(1);
   });
 
-  it("«Подборок» и уведомлений нет", async () => {
+  it("«Подборки» есть в меню (Story 10.1), уведомлений нет", async () => {
     respond({ ok: true, data: user });
     await mount();
 
-    expect(text()).not.toContain("Подборк");
+    expect(text()).toContain("Подборки");
     expect(text()).not.toContain("Уведомлен");
+
+    await press("Подборки");
+    expect(navigation.push).toHaveBeenCalledWith("/collections");
   });
 });
 

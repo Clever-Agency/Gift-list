@@ -111,6 +111,7 @@ const COPY_LINK_REASON_ID = "wishlist-copy-link-reason";
 export default function MyWishlistScreen() {
   const t = useTranslations("app");
   const wishlist = useTranslations("app.myWishlist");
+  const collections = useTranslations("app.collections");
   const locale = useLocale();
   const invite = useTranslations("app.invite");
   const giftForm = useTranslations("app.giftForm");
@@ -383,6 +384,11 @@ export default function MyWishlistScreen() {
   function openComposer() {
     // NOTE FOR UX: маршрут формы желания появляется со Story 2.2.
     router.push("/gifts/new");
+  }
+
+  /** Story 10.1: the ghost CTA of the empty wishlist (`EXPERIENCE.md` → «Мой вишлист / Пока пусто»). */
+  function openCollections() {
+    router.push("/collections");
   }
 
   /**
@@ -933,7 +939,17 @@ export default function MyWishlistScreen() {
                       <EmptyState
                         title={wishlist("emptyTitle")}
                         body={wishlist("emptyText")}
-                        action={<Button label={wishlist("addWish")} onPress={openComposer} />}
+                        action={
+                          <YStack gap="$2" alignItems="center">
+                            <Button label={wishlist("addWish")} onPress={openComposer} />
+                            <Button
+                              label={collections("viewCollections")}
+                              variant="ghost"
+                              onPress={openCollections}
+                              testID="wishlist-open-collections"
+                            />
+                          </YStack>
+                        }
                       />
                     ) : null}
                     {activeGifts.length > 0 ? (

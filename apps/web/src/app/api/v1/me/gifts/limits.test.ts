@@ -11,6 +11,7 @@ const {
   txFindFirst,
   update,
   transaction,
+  moderationFindMany,
   PrismaClientKnownRequestError,
 } = vi.hoisted(() => {
   class PrismaClientKnownRequestError extends Error {
@@ -31,6 +32,7 @@ const {
     txFindFirst: vi.fn(),
     update: vi.fn(),
     transaction: vi.fn(),
+    moderationFindMany: vi.fn(),
     PrismaClientKnownRequestError,
   };
 });
@@ -40,6 +42,7 @@ vi.mock("@/db/client", () => ({
   prisma: {
     list: { findUnique, findMany },
     gift: { create, findFirst, update, findMany },
+    customTagModeration: { findMany: moderationFindMany },
     $transaction: transaction,
   },
 }));
@@ -120,6 +123,7 @@ beforeEach(() => {
   txFindFirst.mockReset();
   update.mockReset();
   transaction.mockReset();
+  moderationFindMany.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1" });
   findMany.mockResolvedValue([]);
@@ -127,6 +131,7 @@ beforeEach(() => {
   txFindFirst.mockResolvedValue(giftRow());
   create.mockResolvedValue(giftRow());
   update.mockResolvedValue({ id: "g1" });
+  moderationFindMany.mockResolvedValue([]);
   transaction.mockImplementation(
     async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({ gift: { findFirst: txFindFirst, update } }),

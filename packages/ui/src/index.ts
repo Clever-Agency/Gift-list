@@ -104,6 +104,7 @@ export { StatusPill, type StatusPillProps, type StatusPillStatus } from "./statu
 export { RelationshipChip, type RelationshipChipProps } from "./relationship-chip";
 // `VisibilityChip` is catalog-only as well: the app shows its own rows.
 export { WishCard, type WishCardProps } from "./wish-card";
+export { joinCardName } from "./card-name";
 export { Skeleton, WishCardSkeleton, type WishCardSkeletonProps } from "./skeleton";
 export { LoadingCards, type LoadingCardsProps } from "./loading-cards";
 export {

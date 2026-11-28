@@ -77,7 +77,11 @@ describe("app/l/[token]/[giftId]/page.tsx", () => {
     expect(html).toContain("Плед");
     expect(html).toContain('href="/l/tok-1"');
     expect(html).toContain("Перейти к содержимому");
+    expect(html.match(/aria-level="1"/g) ?? []).toHaveLength(1);
+    expect(html.indexOf('href="#main-content"')).toBeLessThan(html.indexOf("<main"));
     expect(html.match(/<main/g)).toHaveLength(1);
+    expect(html).toContain('id="main-content"');
+    expect(html).toContain('tabindex="-1"');
     expect(notFound).not.toHaveBeenCalled();
   });
 

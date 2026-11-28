@@ -5,6 +5,7 @@ import {
 } from "@gift-list/contracts";
 import {
   Button,
+  joinCardName,
   Pressable,
   Switch,
   TagChip,
@@ -51,15 +52,6 @@ export type ReservationCardProps = {
   width?: number | string;
   testID?: string;
 };
-
-/** The comma-separated accessible name, without empty parts (`DESIGN.md` → Доступность). */
-function joinCardName(parts: readonly (string | null)[]): string {
-  return parts
-    .filter(function hasText(part): part is string {
-      return part !== null && part.trim() !== "";
-    })
-    .join(", ");
-}
 
 /**
  * Карточка одной брони держателя (Story 5.5, D-56, `DESIGN.md` → ReservationCard,

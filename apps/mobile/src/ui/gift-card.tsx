@@ -1,17 +1,8 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
 import { forwardRef, type ComponentRef, type ReactNode } from "react";
-import { TagChipList, WishCard as UiWishCard } from "@gift-list/ui";
+import { joinCardName, TagChipList, WishCard as UiWishCard } from "@gift-list/ui";
 import { useLocale, useTranslations } from "use-intl";
 import { StatusPill } from "@/ui/status-pill";
-
-/** The comma-separated card name of `DESIGN.md` → Доступность, without empty parts. */
-function joinCardName(parts: readonly (string | null)[]): string {
-  return parts
-    .filter(function hasText(part): part is string {
-      return part !== null && part.trim() !== "";
-    })
-    .join(", ");
-}
 
 /**
  * Gift card from AD-12 (`DESIGN.md` → WishCard). The shape comes from

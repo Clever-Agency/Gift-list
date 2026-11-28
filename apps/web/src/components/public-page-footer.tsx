@@ -1,5 +1,6 @@
 import { AUTHOR_MAILTO, getMessages, type SupportedLocale } from "@gift-list/contracts";
 import { LinkText, PageFooter } from "@gift-list/ui";
+import styles from "./public-page-frame.module.css";
 
 export type PublicPageFooterProps = {
   locale: SupportedLocale;
@@ -20,7 +21,7 @@ export function PublicPageFooter({ locale }: PublicPageFooterProps) {
 
   return (
     <PageFooter tagline={messages.common.footerTagline}>
-      <a href={AUTHOR_MAILTO} style={{ textDecoration: "none" }}>
+      <a className={styles.link} href={AUTHOR_MAILTO} style={{ textDecoration: "none" }}>
         <LinkText>{messages.common.writeToSupport}</LinkText>
       </a>
     </PageFooter>

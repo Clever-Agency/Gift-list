@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { readFileSync } from "node:fs";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { getWebMessages } from "@gift-list/contracts/web-messages";
@@ -70,5 +71,22 @@ describe("PublicPageFrame: общий каркас /l и /i", () => {
     expect(html).toContain("Сделано с любовью командой cleverAgency");
     expect(html).toContain('role="contentinfo"');
     expect(html).toContain("<style");
+  });
+
+  /**
+   * CLE-135 (Story 6.4): the Tab stop of a raw `<a>` around `LinkText` is the
+   * anchor itself, so the ring of `LinkText` inside never paints. The shell CSS
+   * gives that anchor the same `DESIGN.md` → «Кольцо фокуса» state — `$ring`,
+   * 2 px, offset 2 px, keyboard only (`:focus-visible`).
+   */
+  it("даёт сырой ссылке кольцо фокуса из общего стиля каркаса", () => {
+    const css = readFileSync(
+      new URL("./public-page-frame.module.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(css).toMatch(
+      /\.link:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--c-ring\);[^}]*outline-offset:\s*2px;/,
+    );
   });
 });

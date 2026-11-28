@@ -1,7 +1,8 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
-import { AUTHOR_MAILTO, type GiftCard } from "@gift-list/contracts";
+import { AUTHOR_MAILTO, formatPrice, type GiftCard } from "@gift-list/contracts";
+import styles from "@/components/public-page-frame.module.css";
 import { PublicWishlistView, type PublicWishlistData } from "./public-wishlist-view";
 
 const config = createGiftListConfig({
@@ -50,6 +51,13 @@ const owner = { displayName: "Анна", nick: "anna" };
 /** L8: a page has exactly one level-1 heading. */
 function levelOneHeadings(html: string): number {
   return html.match(/aria-level="1"/g)?.length ?? 0;
+}
+
+/** The opening tag of the first anchor with `needle` in its attributes. */
+function anchorOf(html: string, needle: string): string {
+  const at = html.indexOf(needle);
+  expect(at, needle).toBeGreaterThan(-1);
+  return html.slice(html.lastIndexOf("<a", at), html.indexOf(">", at) + 1);
 }
 
 describe("PublicWishlistView: link page HTML", () => {
@@ -110,6 +118,8 @@ describe("PublicWishlistView: link page HTML", () => {
     expect(html).toContain("Берёт");
     expect(html).toContain('href="/u/oleg"');
     expect(html).toContain("Олег");
+    // CLE-135: the raw `<a>` around `LinkText` takes the shared keyboard focus ring.
+    expect(anchorOf(html, 'href="/u/oleg"')).toContain(styles.link);
     // Story 5.5/5.7: the guest also sees the stage «Куплено» of the reservation.
     expect(html).toContain("Куплено");
     // The name link is a sibling of the card link, never its content: the card
@@ -134,10 +144,35 @@ describe("PublicWishlistView: link page HTML", () => {
 
     expect(html).toContain('href="/l/tok-1/g-open"');
     expect(html).toContain('href="/l/tok-1/g-two"');
-    expect(html).toContain('aria-label="Плед"');
+    expect(html).toContain('aria-label="Плед, Открыт"');
     // T4.5 / D-63: no detail dialog button stays on the link page.
     expect(html).not.toContain('role="button"');
     expect(html).not.toContain("public-wish-detail");
+  });
+
+  it("называет карточку полной фразой: название, цена, статус и все теги (CLE-135)", () => {
+    const html = render({
+      kind: "gifts",
+      owner,
+      gifts: [
+        card({
+          id: "g-open",
+          title: "Плед",
+          priceAmount: 250000,
+          priceCurrency: "RUB",
+          tags: [
+            { catalogId: "t1", label: "мечта" },
+            { catalogId: "t2", label: "для дома" },
+          ],
+        }),
+        card({ id: "g-reserved", title: "Свитер", status: "RESERVED" }),
+      ],
+    });
+
+    expect(html).toContain(
+      `aria-label="Плед, ${formatPrice(250000, "RUB", "ru")}, Открыт, мечта, для дома"`,
+    );
+    expect(html).toContain('aria-label="Свитер, Забронирован"');
   });
 
   it("не показывает имени дарителя, когда сервер его не прислал", () => {
@@ -189,6 +224,8 @@ describe("PublicWishlistView: link page HTML", () => {
       'href="/wishlist/tok-1?reserve=g-open&amp;title=%D0%9F%D0%BB%D0%B5%D0%B4"',
     );
     expect(html).toContain('aria-label="Куплю сам: Плед"');
+    // CLE-135: «Куплю сам» is a raw `<a>` and gets the shared focus ring as well.
+    expect(anchorOf(html, 'href="/wishlist/tok-1?reserve=g-open')).toContain(styles.link);
     expect(html).not.toContain("Куплю сам: Свитер");
     expect(html).not.toContain("Куплю сам: Наушники");
     expect(html).not.toContain('href="http');

@@ -19,6 +19,7 @@ import {
   YStack,
 } from "@gift-list/ui";
 import { PublicPageFrame } from "@/components/public-page-frame";
+import styles from "@/components/public-page-frame.module.css";
 
 export type PublicWishData = {
   owner: { displayName: string; nick: string };
@@ -88,6 +89,7 @@ export function PublicWishView({ view, locale, listPath, wishlistPath }: PublicW
               {tWishlist("reservedByPrefix")}
             </Text>
             <a
+              className={styles.link}
               href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}
               style={{ textDecoration: "none" }}
             >
@@ -117,7 +119,11 @@ export function PublicWishView({ view, locale, listPath, wishlistPath }: PublicW
     <PublicPageFrame locale={locale}>
       <Column size="content" flexGrow={1} paddingVertical="$section-gap" gap="$section-gap">
         {listPath ? (
-          <a href={listPath} style={{ textDecoration: "none", alignSelf: "flex-start" }}>
+          <a
+            className={styles.link}
+            href={listPath}
+            style={{ textDecoration: "none", alignSelf: "flex-start" }}
+          >
             <LinkText>{t("backToList")}</LinkText>
           </a>
         ) : null}
@@ -166,6 +172,7 @@ export function PublicWishView({ view, locale, listPath, wishlistPath }: PublicW
           {reservation}
           {buyHref ? (
             <a
+              className={styles.link}
               href={buyHref}
               aria-label={t("buyMyselfLabel", { title: gift.title })}
               style={{ textDecoration: "none", alignSelf: "flex-start" }}

@@ -836,7 +836,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         ) : null}
         {tagCatalog.status === "error" ? (
           <YStack gap="$2">
-            <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
+            <Text kind="caption" tone="destructive" role="alert">
               {t("field.tagsError")}
             </Text>
             {onRetryTagCatalog ? (
@@ -975,7 +975,6 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
             kind="caption"
             tone="destructive"
             role="alert"
-            aria-live="polite"
           >
             {tagServerError}
           </Text>
@@ -1008,7 +1007,7 @@ export const GiftForm = forwardRef<GiftFormHandle, GiftFormProps>(function GiftF
         </Text>
       ) : null}
       {formError ? (
-        <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
+        <Text kind="caption" tone="destructive" role="alert">
           {formError}
         </Text>
       ) : null}

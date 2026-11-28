@@ -2,7 +2,7 @@
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Toast } from "./toast";
-import { createMount, settle, stateValues } from "./test-utils";
+import { createMount, nativeOnlyAttributes, settle, stateValues } from "./test-utils";
 
 const mounted = createMount();
 
@@ -124,6 +124,21 @@ describe("Toast: тоны", () => {
     expect(shapes.success).not.toBe(shapes.warning);
     expect(shapes.warning).not.toBe(shapes.error);
     expect(shapes.success).not.toBe(shapes.error);
+  });
+});
+
+describe("Toast: платформы", () => {
+  it("на вебе нет React Native пропов: объявляет live-регион карточки", async () => {
+    const { container, render } = mounted();
+    await render(
+      <Toast testID="toast" tone="error" message="Нет сети" closeLabel="Закрыть" onClose={noop} />,
+    );
+
+    const card = container.querySelector<HTMLElement>("[role='alert']");
+    expect(card?.getAttribute("aria-live")).toBe("assertive");
+    // `accessibilityLiveRegion` and the announcement are phone-only: the web
+    // module must not paint stray `accessibility…` attributes in the DOM.
+    expect(nativeOnlyAttributes(container)).toEqual([]);
   });
 });
 

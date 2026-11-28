@@ -235,7 +235,7 @@ describe("ReservationCard", () => {
     expect(control("Подарил")).toBeUndefined();
     expect(byLabel("Купил")).not.toBeNull();
     expect(byLabel("Показывать другим гостям, что дарю я")).not.toBeNull();
-    expect(byLabel("Меню")).not.toBeNull();
+    expect(byLabel("Меню: Плед из шерсти мериноса")).not.toBeNull();
   });
 
   it("в ACTIVE «Продлить до…» открывает диалог через колбэк", async () => {
@@ -436,10 +436,27 @@ describe("ReservationCard", () => {
       />,
     );
 
-    const menu = byLabel("Меню");
+    const menu = byLabel("Меню: Плед из шерсти мериноса");
     expect(menu?.getAttribute("aria-haspopup")).toBe("dialog");
+    // The screen owns the menu state; the ⋮ reports it when the card is told.
+    expect(menu?.getAttribute("aria-expanded")).toBeNull();
     await click(menu);
     expect(onMenu).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      host.render(
+        <ReservationCard
+          card={card()}
+          onMenu={onMenu}
+          menuExpanded
+          onBoughtChange={noop}
+          onVisibilityChange={noop}
+        />,
+      );
+    });
+    expect(byLabel("Меню: Плед из шерсти мериноса")?.getAttribute("aria-expanded")).toBe(
+      "true",
+    );
   });
 
   it("переключатель «Показывать другим гостям, что дарю я» стоит прямо в карточке", async () => {
@@ -479,7 +496,7 @@ describe("ReservationCard", () => {
     );
 
     await click(byLabel("Купил"));
-    await click(byLabel("Меню"));
+    await click(byLabel("Меню: Плед из шерсти мериноса"));
     await click(control("Продлить до…"));
     expect(onBoughtChange).not.toHaveBeenCalled();
     expect(onMenu).not.toHaveBeenCalled();

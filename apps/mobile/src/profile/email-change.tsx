@@ -133,7 +133,7 @@ export function EmailChangeBlock({
             {profile("emailChange.sent", { email: sentTo ?? "" })}
           </Text>
           {error ? (
-            <Text kind="caption" tone="destructive" role="alert" aria-live="polite">
+            <Text kind="caption" tone="destructive" role="alert">
               {error}
             </Text>
           ) : null}

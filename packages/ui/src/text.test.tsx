@@ -43,6 +43,24 @@ function linkText() {
   return <LinkText {...anchorProps}>Войти</LinkText>;
 }
 
+describe("Text: цвет ошибки читается на бумаге (NFR-5)", () => {
+  /**
+   * CLE-135: `$destructive` on the page background is 4.31:1 (AA wants 4.5),
+   * while its darker hover value keeps 5.45:1 and passes in both themes; the
+   * pair itself is checked in `tokens-contrast.test.ts`.
+   */
+  it("tone destructive рисует $destructive-hover, а не $destructive", async () => {
+    const { container, render } = mounted();
+    await render(<Text tone="destructive">Название не может быть пустым</Text>);
+
+    const node = container.querySelector<HTMLElement>("[name='GLText']");
+    expect(node).not.toBeNull();
+    const lines = styleLines(node as Element);
+    expect(lines.some((line) => line.includes("color:var(--destructive-hover)"))).toBe(true);
+    expect(lines.some((line) => line.includes("color:var(--destructive);"))).toBe(false);
+  });
+});
+
 describe("LinkText: кольцо фокуса, hover и press", () => {
   it("на вебе это настоящая <a> с текстом, ролью ссылки и href от роутера", async () => {
     const { container, render } = mounted();

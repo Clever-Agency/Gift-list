@@ -35,6 +35,18 @@
   outline-offset: 2px;
 }
 
+/**
+ * A raw `<a>` that only wraps `LinkText` (a profile name, «Куплю сам», the way
+ * back, the support address). The Tab stop is the anchor itself, so the ring of
+ * `LinkText` inside never appears; this rule gives the anchor the same
+ * `DESIGN.md` → «Кольцо фокуса» state: `$ring`, 2 px, offset 2 px, keyboard only
+ * (`:focus-visible`, a mouse click leaves no ring). CLE-135.
+ */
+.link:focus-visible {
+  outline: 2px solid var(--c-ring);
+  outline-offset: 2px;
+}
+
 /** The `main` landmark keeps the `YStack` box it replaced: `flexGrow={1}`. */
 .main {
   display: flex;

@@ -5,8 +5,9 @@ import { NavLink } from "./nav-link";
 import { PasswordField, TextField } from "./text-field";
 
 /**
- * The frame of the anonymous screens: the brand heading, the footer and the page
- * scroll around whatever the screen passes. The brand comes from `PRODUCT_NAME`
+ * The frame of the anonymous screens: the skip link, the `main` landmark, the
+ * screen title as the one `h1`, the brand line, the footer and the page scroll
+ * around whatever the screen passes. The brand comes from `PRODUCT_NAME`
  * in `packages/contracts` (AD-24); the catalog mocks the app config module and
  * shows «WishMoon».
  */

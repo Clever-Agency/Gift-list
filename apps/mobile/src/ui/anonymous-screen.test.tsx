@@ -161,7 +161,25 @@ describe("W12.12: отступ анонимного экрана из медиа
 
     expect(container.textContent).toContain(PRODUCT_NAME);
     expect(container.textContent).toContain("Вход");
-    expect(container.querySelector('[role="heading"]')?.textContent).toBe(PRODUCT_NAME);
+    expect(container.querySelector('[role="heading"]')?.textContent).toBe("Вход");
     expect(container.querySelector('[data-testid="page-footer"]')).not.toBeNull();
+  });
+
+  /**
+   * Story 6.4 (UX-DR8): the anonymous screens keep the same landmark and skip
+   * link as the signed-in ones, and the screen title is the only `h1` — the
+   * brand is a decorated line, not a heading.
+   */
+  it("skip-link и main#main-content, единственный h1 — название экрана", async () => {
+    await mount();
+
+    const skip = document.querySelector<HTMLElement>('a[href="#main-content"]');
+    expect(skip?.textContent).toBe("Перейти к содержимому");
+    expect(container.querySelectorAll("main#main-content")).toHaveLength(1);
+
+    const headings = container.querySelectorAll('[role="heading"]');
+    expect(headings).toHaveLength(1);
+    expect(headings[0]?.getAttribute("aria-level")).toBe("1");
+    expect(headings[0]?.textContent).toBe("Вход");
   });
 });

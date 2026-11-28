@@ -88,6 +88,15 @@ export default function GiftDetailScreen() {
   const [dateError, setDateError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const reserveInFlight = useRef(false);
+  // «Куда уходит фокус» (`DESIGN.md`): every layer returns focus to the control
+  // that opened it. The `*FormKey` values start a fresh layer on each opening
+  // without remounting it while it closes — a remount there would swallow
+  // `onClosed`, and the focus would stay on `<body>`.
+  const reserveButtonRef = useRef<FocusTarget>(null);
+  const releaseButtonRef = useRef<FocusTarget>(null);
+  const extendButtonRef = useRef<FocusTarget>(null);
+  const [reserveFormKey, setReserveFormKey] = useState(0);
+  const [extendFormKey, setExtendFormKey] = useState(0);
   // D-49 (CLE-124): «Изменить» of an open non-secret wish asks the neutral question
   // first (`EXPERIENCE.md` → Interaction Primitives, «Правка желания»). The question
   // reads only the owner's own card — no reservation field ever reaches the page
@@ -159,6 +168,7 @@ export default function GiftDetailScreen() {
           result.gift.quantity === "SINGLE" &&
           result.gift.status === "OPEN"
         ) {
+          setReserveFormKey((value) => value + 1);
           setConfirmOpen(true);
         }
         return;
@@ -384,7 +394,13 @@ export default function GiftDetailScreen() {
     });
   }
 
+  function openReserveConfirm() {
+    setReserveFormKey((value) => value + 1);
+    setConfirmOpen(true);
+  }
+
   function openExtend() {
+    setExtendFormKey((value) => value + 1);
     setExtendError(null);
     setExtendOpen(true);
   }
@@ -393,6 +409,19 @@ export default function GiftDetailScreen() {
     if (holderBusy) return;
     setExtendOpen(false);
     setExtendError(null);
+  }
+
+  /** The layers have left the tree: focus goes back to the control that opened them. */
+  function restoreReserveFocus() {
+    restoreFocus(reserveButtonRef.current);
+  }
+
+  function restoreReleaseFocus() {
+    restoreFocus(releaseButtonRef.current);
+  }
+
+  function restoreExtendFocus() {
+    restoreFocus(extendButtonRef.current);
   }
 
   /**
@@ -505,14 +534,14 @@ export default function GiftDetailScreen() {
                       />
                     ) : showReserveCta ? (
                       <Button
+                        ref={reserveButtonRef as never}
                         label={tGift("reserveCta")}
                         variant="reserve"
-                        onPress={function openConfirm() {
-                          setConfirmOpen(true);
-                        }}
+                        onPress={openReserveConfirm}
                       />
                     ) : showRelease ? (
                       <Button
+                        ref={releaseButtonRef as never}
                         label={tGift("release.confirm")}
                         variant="secondary"
                         disabled={holderBusy}
@@ -594,6 +623,7 @@ export default function GiftDetailScreen() {
                           после Срока — сервер отвечает `RESERVATION_DUE_PASSED`. */}
                       {canExtendReservation(current.reservation, timeZone) ? (
                         <Button
+                          ref={extendButtonRef as never}
                           label={tReservations("extend")}
                           variant="outline"
                           onPress={openExtend}
@@ -632,7 +662,7 @@ export default function GiftDetailScreen() {
         </PageScroll>
         {current ? (
           <ReserveConfirm
-            key={confirmOpen ? "open" : "closed"}
+            key={`reserve-${reserveFormKey}`}
             open={confirmOpen}
             title={current.title}
             timeZone={timeZone}
@@ -642,6 +672,7 @@ export default function GiftDetailScreen() {
               setDateError(null);
               setConfirmOpen(false);
             }}
+            onClosed={restoreReserveFocus}
             onConfirm={submitReserve}
           />
         ) : null}
@@ -653,18 +684,20 @@ export default function GiftDetailScreen() {
               if (releaseBusy) return;
               setReleaseConfirmOpen(false);
             }}
+            onClosed={restoreReleaseFocus}
             onConfirm={submitRelease}
           />
         ) : null}
         {current?.reservation ? (
           <ReservationExtendDialog
-            key={extendOpen ? "extend-open" : "extend-closed"}
+            key={`extend-${extendFormKey}`}
             open={extendOpen}
             timeZone={timeZone}
             currentDueOn={current.reservation.dueAt}
             busy={actionBusy}
             dateError={extendError ?? undefined}
             onClose={cancelExtend}
+            onClosed={restoreExtendFocus}
             onConfirm={function confirmExtend(dueOn) {
               void submitExtend(dueOn);
             }}

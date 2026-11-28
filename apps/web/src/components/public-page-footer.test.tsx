@@ -6,6 +6,7 @@ import { getWebMessages } from "@gift-list/contracts/web-messages";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { InvitePreviewView } from "@/app/i/[token]/invite-preview-view";
 import { PublicWishlistView } from "@/app/l/[token]/public-wishlist-view";
+import styles from "./public-page-frame.module.css";
 import { PublicNotFound } from "./public-not-found";
 import { PublicPageFooter } from "./public-page-footer";
 
@@ -85,6 +86,8 @@ describe("PublicPageFooter", () => {
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
     expect(html).toContain(messages.common.writeToSupport);
     expect(html).toContain(messages.common.footerTagline);
+    // CLE-135: the support link is a raw `<a>` and takes the shared focus ring.
+    expect(html).toContain(`class="${styles.link}"`);
     // One real link, not a button or a client-only control.
     expect(html.match(/<a /g)?.length).toBe(1);
   });

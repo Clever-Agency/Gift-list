@@ -5,6 +5,7 @@ import {
 } from "@gift-list/contracts";
 import {
   Button,
+  joinCardName,
   Pressable,
   Switch,
   TagChip,
@@ -43,19 +44,14 @@ export type ReservationCardProps = {
   onVisibilityChange: (next: ReservationVisibilityValues) => void;
   /** The ⋮, so the screen's menu can return focus to it. */
   menuRef?: (node: FocusTarget | null) => void;
+  /** Whether this card's ⋮ menu is open: the trigger then reports `aria-expanded`. */
+  menuExpanded?: boolean;
+  /** «Продлить до…», so the screen's dialog can return focus to it. */
+  extendRef?: (node: FocusTarget | null) => void;
   /** The card width: the «Мои брони» grid passes the measured column (`useCardGrid`). */
   width?: number | string;
   testID?: string;
 };
-
-/** The comma-separated accessible name, without empty parts (`DESIGN.md` → Доступность). */
-function joinCardName(parts: readonly (string | null)[]): string {
-  return parts
-    .filter(function hasText(part): part is string {
-      return part !== null && part.trim() !== "";
-    })
-    .join(", ");
-}
 
 /**
  * Карточка одной брони держателя (Story 5.5, D-56, `DESIGN.md` → ReservationCard,
@@ -93,6 +89,8 @@ export function ReservationCard({
   onBoughtChange,
   onVisibilityChange,
   menuRef,
+  menuExpanded,
+  extendRef,
   width,
   testID,
 }: ReservationCardProps) {
@@ -147,8 +145,9 @@ export function ReservationCard({
     <Pressable
       ref={menuRef}
       role="button"
-      aria-label={tGift("closed.menuLabel")}
+      aria-label={tGift("closed.menuLabel", { title: card.titleSnapshot })}
       aria-haspopup="dialog"
+      aria-expanded={menuExpanded}
       onPress={onMenu}
       disabled={busy}
       width="$touch-target"
@@ -174,6 +173,7 @@ export function ReservationCard({
       />
       {extend ? (
         <Button
+          ref={extendRef as never}
           variant="outline"
           label={t("extend")}
           onPress={extend}

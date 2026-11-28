@@ -102,7 +102,7 @@ export default function ForgotScreen() {
           <Text aria-live="polite">{t("forgot.sent")}</Text>
         ) : null}
         {issue && !issue.field ? (
-          <Text role="alert" aria-live="polite">
+          <Text role="alert">
             {issue.text}
           </Text>
         ) : null}

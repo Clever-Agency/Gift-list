@@ -289,6 +289,32 @@ describe("WishCard", () => {
     expect(line?.textContent).toBe("Берёт Анна");
   });
 
+  /**
+   * CLE-135: on the screen «⋯» stands above the reservation line, so Tab and
+   * TalkBack must meet it first too (2.4.3). The menu is absolutely positioned
+   * inside the photo area, so the order in the DOM does not move it.
+   */
+  it("«⋯» идёт до строки брони — порядок фокуса совпадает с видом", async () => {
+    const { container, render } = mounted();
+    await render(
+      <WishCard
+        testID="card"
+        title="Плед"
+        status={<StatusPill status="reserved" label="Забронирован" />}
+        onPress={vi.fn()}
+        pressLabel="Плед, Забронирован"
+        menu={<button type="button" aria-label="Меню">⋯</button>}
+        reservation="Забронировал Аня"
+      />,
+    );
+
+    const menu = container.querySelector<HTMLElement>("[aria-label='Меню']") as HTMLElement;
+    const line = container.querySelector<HTMLElement>("[data-testid='card-reservation']") as HTMLElement;
+    expect(menu).not.toBeNull();
+    expect(line).not.toBeNull();
+    expect(menu.compareDocumentPosition(line)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("теги идут между статусом и бронью — до трёх и «+N», без лишних кнопок", async () => {    const { container, render } = mounted();
     await render(
       <WishCard

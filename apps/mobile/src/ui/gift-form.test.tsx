@@ -632,6 +632,8 @@ describe("GiftForm: отправка", () => {
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toBe(message);
     expect(alert?.parentElement).toBe(field(label).parentElement);
+    // An error is `role="alert"`; a live region on top of it would announce twice.
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
   });
 
   it("serverError с неизвестным полем — общая ошибка формы", async () => {
@@ -639,6 +641,7 @@ describe("GiftForm: отправка", () => {
 
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toBe(form.error.form);
+    expect(alert?.hasAttribute("aria-live")).toBe(false);
     expect(text()).not.toContain("Что-то не так");
     expect(fieldText(form.field.title)).not.toContain(form.error.titleRequired);
     expect(fieldText(form.field.price)).not.toContain(form.error.priceInvalid);
@@ -902,6 +905,10 @@ describe("GiftForm: теги", () => {
     });
 
     expect(text()).toContain(form.field.tagsError);
+    const catalogAlert = Array.from(container.querySelectorAll('[role="alert"]')).find(
+      (node) => node.textContent === form.field.tagsError,
+    );
+    expect(catalogAlert?.hasAttribute("aria-live")).toBe(false);
     // The catalogue failed, but the stored choice is still visible and removable.
     expect(tagIsSelected("мечта")).toBe(true);
     expect(text()).toContain("своё");
@@ -1439,6 +1446,7 @@ describe("GiftForm: теги", () => {
         (node) => node.textContent === form.error.tags.replace("{max}", "30"),
       ),
     ).toBe(true);
+    expect(alerts.every((node) => !node.hasAttribute("aria-live"))).toBe(true);
     const group = container.querySelector('[role="group"][aria-label="Теги (необязательно)"]');
     expect(group?.getAttribute("aria-invalid")).toBe("true");
     expect(group?.getAttribute("aria-describedby")).toBe(

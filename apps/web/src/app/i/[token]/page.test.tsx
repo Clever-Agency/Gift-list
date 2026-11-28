@@ -71,11 +71,13 @@ describe("app/i/[token]/page.tsx", () => {
     const html = renderToString(<GiftListProvider config={config}>{element}</GiftListProvider>);
 
     expect(html).toContain("Перейти к содержимому");
+    expect(html.match(/aria-level="1"/g) ?? []).toHaveLength(1);
     expect(html.indexOf('href="#main-content"')).toBeLessThan(
       html.indexOf('href="/login?next=/invite/tok-1"'),
     );
     expect(html.indexOf('href="#main-content"')).toBeLessThan(html.indexOf("<main"));
     expect(html.match(/<main/g)).toHaveLength(1);
     expect(html).toContain('id="main-content"');
+    expect(html).toContain('tabindex="-1"');
   });
 });

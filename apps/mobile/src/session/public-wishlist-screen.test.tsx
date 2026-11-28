@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { formatPrice } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -651,7 +652,11 @@ describe("вишлист по ссылке: список", () => {
     const cardLink = container.querySelector(
       '[role="listitem"] [role="link"]',
     ) as HTMLElement;
-    expect(cardLink.getAttribute("aria-label")).toBe("Наушники");
+    // CLE-135: the guest card is named by the full `DESIGN.md` phrase, with the
+    // same status the pill shows — not by the title alone.
+    expect(cardLink.getAttribute("aria-label")).toBe(
+      `Наушники, ${formatPrice(250000, "RUB", "ru")}, Открыт`,
+    );
     await act(async () => {
       cardLink.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });

@@ -11,6 +11,7 @@ import {
   Column,
   EmptyState,
   Heading,
+  joinCardName,
   LinkText,
   StatusPill,
   TagChipList,
@@ -20,6 +21,7 @@ import {
   YStack,
 } from "@gift-list/ui";
 import { PublicPageFrame } from "@/components/public-page-frame";
+import styles from "@/components/public-page-frame.module.css";
 import type { LinkView } from "./link-page";
 
 export type PublicWishlistData = Extract<LinkView, { kind: "gifts" }>;
@@ -87,6 +89,16 @@ export function PublicWishlistView({
     const tagLabels = gift.tags.map(function labelOfTag(tag) {
       return tag.label;
     });
+    // `DESIGN.md` → Доступность: the pressable zone of the card is named by one
+    // phrase — title, price, status and all tags, built by the shared helper of
+    // `@gift-list/ui` (CLE-135). The status is the pill the guest already sees;
+    // the reservation line stays out of the name and adds no new disclosure.
+    const pressLabel = joinCardName([
+      gift.title,
+      price,
+      messages.app.gift.status[gift.status],
+      tagLabels.length > 0 ? tagLabels.join(", ") : null,
+    ]);
     // Story 5.7 / «Подписи брони»: the guest sees the stage «Подарено» (and
     // «Куплено» since Story 5.5) by `reservationLabel`; the shared holder name is
     // a separate line and follows the «Показывать другим гостям, что дарю я» toggle.
@@ -107,6 +119,7 @@ export function PublicWishlistView({
                 {tWishlist("reservedByPrefix")}
               </Text>
               <a
+                className={styles.link}
                 href={`/u/${encodeURIComponent(gift.reservedBy.nick)}`}
                 style={{ textDecoration: "none" }}
               >
@@ -155,11 +168,12 @@ export function PublicWishlistView({
           }
           reservation={reservation}
           width="100%"
-          pressLabel={gift.title}
+          pressLabel={pressLabel}
           href={cardHref}
         />
         {href ? (
           <a
+            className={styles.link}
             href={href}
             aria-label={t("buyMyselfLabel", { title: gift.title })}
             style={{ textDecoration: "none", alignSelf: "flex-start" }}

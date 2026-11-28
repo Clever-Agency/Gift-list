@@ -40,7 +40,7 @@ What is not a prop:
 - \`clearable={false}\` hides the clear button of a date that cannot be empty, e.g. a reservation deadline.
 - \`placeholder\`, \`displayValue\` and \`doneLabel\` are the phone half's copy (the empty button, the chosen day, the sheet's done action); the browser input has its own empty state, so the catalog does not turn them.
 - The error is one string: rendered once under the field, announced as an alert and linked with \`aria-describedby\` and \`aria-invalid\`. The «есть ошибка» handle stands a ready-made message in.
-- Hover and focus are CSS states, not props: hover the field, open the picker or press Tab.
+- Hover and focus are CSS states, not props: hover the field, open the picker or press Tab. The keyboard ring is the shared \`$ring\` 2 px ring with a 2 px offset, the same one every field and button draws (CLE-135); the 1 px frame turns \`$ring\` too.
         `.trim(),
       },
     },

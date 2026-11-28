@@ -209,30 +209,13 @@ export const WishCard = forwardRef<ComponentRef<typeof Pressable>, WishCardProps
         ) : (
           <View>{content}</View>
         )}
-        {reservation ? (
-          // The reservation line is a sibling of the card button, not its content:
-          // the holder's name may be a link to the profile, and a link inside a
-          // button would be invalid and unreachable by Tab (CLE-129, T4.2).
-          <YStack
-            paddingTop="$1"
-            paddingHorizontal="$1"
-            paddingRight={menu ? "$touch-target" : "$1"}
-            testID={testID ? `${testID}-reservation` : undefined}
-          >
-            {typeof reservation === "string" ? (
-              <Text kind="label" tone="reserved">
-                {reservation}
-              </Text>
-            ) : (
-              reservation
-            )}
-          </YStack>
-        ) : null}
         {menu ? (
           // The owner menu sits next to the title, under the photo (product decision
           // t477u). It stays a sibling of the card button, never nested in it: an
           // invisible 4:5 spacer of the photo's size pushes it below the plate, and
           // `box-none` lets presses outside the menu reach the card underneath.
+          // It stands before the reservation line in the DOM as well as on the
+          // screen: Tab and TalkBack meet «⋯» above the booking (CLE-135).
           <View
             position="absolute"
             top={0}
@@ -251,6 +234,25 @@ export const WishCard = forwardRef<ComponentRef<typeof Pressable>, WishCardProps
               {menu}
             </View>
           </View>
+        ) : null}
+        {reservation ? (
+          // The reservation line is a sibling of the card button, not its content:
+          // the holder's name may be a link to the profile, and a link inside a
+          // button would be invalid and unreachable by Tab (CLE-129, T4.2).
+          <YStack
+            paddingTop="$1"
+            paddingHorizontal="$1"
+            paddingRight={menu ? "$touch-target" : "$1"}
+            testID={testID ? `${testID}-reservation` : undefined}
+          >
+            {typeof reservation === "string" ? (
+              <Text kind="label" tone="reserved">
+                {reservation}
+              </Text>
+            ) : (
+              reservation
+            )}
+          </YStack>
         ) : null}
         {footer ? (
           // The actions of the card, never inside the card button: Tab goes card,

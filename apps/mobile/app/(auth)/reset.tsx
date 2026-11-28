@@ -124,12 +124,12 @@ export default function ResetScreen() {
           <Text aria-live="polite">{t("reset.done")}</Text>
         ) : null}
         {stale ? (
-          <Text role="alert" aria-live="polite">
+          <Text role="alert">
             {common("errors.reason.RESET_LINK_STALE")}
           </Text>
         ) : null}
         {!saved && !stale && issue && !issue.field ? (
-          <Text role="alert" aria-live="polite">
+          <Text role="alert">
             {issue.text}
           </Text>
         ) : null}

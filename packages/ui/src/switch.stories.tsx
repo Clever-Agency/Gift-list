@@ -24,6 +24,7 @@ The on/off switch of the settings rows (\`role="switch"\`, \`aria-checked\`). Th
 What is not a prop:
 
 - The colours follow \`components.switch\`: \`$primary\` on, \`$border-strong\` off, a \`$surface\` thumb in both themes.
+- The state is \`aria-checked\` for a browser and an explicit \`accessibilityState\` (\`checked\`, \`disabled\`) for TalkBack/VoiceOver: it is not mapped from a library attribute on a phone (\`switch-a11y.ts\` / \`switch-a11y.native.ts\`).
 - Keyboard: Space toggles it on the web (and Enter, through \`Pressable\`); a phone gets the same press through React Native.
 - The requested next state arrives through \`onChange\`, so the caller owns the request and its rollback. In the sandbox the switch keeps the state locally.
         `.trim(),

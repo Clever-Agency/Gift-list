@@ -1,6 +1,7 @@
 import { formatPrice, type GiftCard as GiftCardData } from "@gift-list/contracts";
 import {
   Button,
+  joinCardName,
   TagChipList,
   Text,
   WishCard as UiWishCard,
@@ -72,6 +73,16 @@ export function PublicGiftCard({
   const tagLabels = gift.tags.map(function labelOfTag(tag) {
     return tag.label;
   });
+  // `DESIGN.md` → Доступность: the pressable zone reads as one phrase — title,
+  // price, status and all tags. The guest sees exactly this status pill on the
+  // card, and the reservation line stays out of the name (CLE-135): the phrase
+  // adds nothing that the eyes do not already show.
+  const pressLabel = joinCardName([
+    gift.title,
+    price,
+    tGift(`status.${gift.status}` as "status.OPEN"),
+    tagLabels.length > 0 ? tagLabels.join(", ") : null,
+  ]);
 
   function moreTagLabel(hiddenCount: number): string {
     return tGift("tagsMore", { count: hiddenCount });
@@ -125,7 +136,7 @@ export function PublicGiftCard({
           }
           reservation={reservation}
           width={width}
-          pressLabel={gift.title}
+          pressLabel={pressLabel}
         />
       </Link>
       {showReserve ? (

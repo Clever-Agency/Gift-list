@@ -120,8 +120,11 @@ function FieldShell({ id, label, error, hint, children }: FieldShellProps) {
           id={`${id}-description`}
           kind="caption"
           tone={error ? "destructive" : "muted"}
+          // An error is an alert: it is assertive on its own, so a `polite`
+          // live region next to it would contradict the role. A hint is not a
+          // message to interrupt; it stays polite.
           role={error ? "alert" : undefined}
-          aria-live="polite"
+          aria-live={error ? undefined : "polite"}
         >
           {described}
         </Text>

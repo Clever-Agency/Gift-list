@@ -10,6 +10,10 @@ import { PublicGiftCard } from "./public-gift-card";
  * `/gifts/{id}` (CLE-129, T4.4). «Куплю сам» does not follow it. The server has
  * already applied `VisibilityPolicy` (AD-7): whatever arrives in `gift` is allowed
  * for this viewer, so the card never inspects `visibility`.
+ *
+ * The press zone is named by the full `DESIGN.md` → Доступность phrase — title,
+ * price, the status pill the visitor sees and all tags (CLE-135); the holder line
+ * is not part of the name.
  */
 const meta = {
   title: "App/PublicGiftCard",

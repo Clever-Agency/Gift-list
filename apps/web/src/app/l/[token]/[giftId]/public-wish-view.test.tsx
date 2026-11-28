@@ -2,6 +2,7 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createGiftListConfig, GiftListProvider } from "@gift-list/ui";
 import { AUTHOR_MAILTO, formatPrice, type GiftCard } from "@gift-list/contracts";
+import styles from "@/components/public-page-frame.module.css";
 import { PublicWishView, type PublicWishData } from "./public-wish-view";
 
 const config = createGiftListConfig({
@@ -63,6 +64,13 @@ function render(
   );
 }
 
+/** The opening tag of the first anchor with `needle` in its attributes. */
+function anchorOf(html: string, needle: string): string {
+  const at = html.indexOf(needle);
+  expect(at, needle).toBeGreaterThan(-1);
+  return html.slice(html.lastIndexOf("<a", at), html.indexOf(">", at) + 1);
+}
+
 describe("PublicWishView: страница желания по ссылке", () => {
   it("показывает разрешённые поля, владельца и одну «Назад к списку»", () => {
     const html = render(view());
@@ -80,8 +88,12 @@ describe("PublicWishView: страница желания по ссылке", ()
     expect(html).toContain("Назад к списку");
     // The shared public shell, as on /l: one main landmark and the full footer.
     expect(html.match(/<main/g)).toHaveLength(1);
+    expect(html).toContain('href="#main-content"');
+    expect(html.indexOf('href="#main-content"')).toBeLessThan(html.indexOf("<main"));
     expect(html).toContain(`href="${AUTHOR_MAILTO}"`);
     expect(html).toContain("Написать в техподдержку");
+    // CLE-135: the back link is a raw `<a>` and takes the shared focus ring.
+    expect(anchorOf(html, 'href="/l/tok-1"')).toContain(styles.link);
   });
 
   it("ведёт «Куплю сам» в приложение с возвратом к списку, только для единичного открытого", () => {
@@ -91,6 +103,8 @@ describe("PublicWishView: страница желания по ссылке", ()
       'href="/wishlist/tok-1?reserve=g-open&amp;title=%D0%9F%D0%BB%D0%B5%D0%B4"',
     );
     expect(html).toContain('aria-label="Куплю сам: Плед"');
+    // CLE-135: the raw `<a>` wrapper of «Куплю сам» takes the focus ring too.
+    expect(anchorOf(html, 'href="/wishlist/tok-1?reserve=g-open')).toContain(styles.link);
   });
 
   it("не даёт «Куплю сам» подаренному, забронированному и безграничному желанию", () => {
@@ -117,6 +131,8 @@ describe("PublicWishView: страница желания по ссылке", ()
     expect(html).toContain("Берёт");
     expect(html).toContain('href="/u/oleg"');
     expect(html).toContain("Олег");
+    // CLE-135: the holder's raw `<a>` gets the shared focus ring.
+    expect(anchorOf(html, 'href="/u/oleg"')).toContain(styles.link);
     expect(html).toContain("Забронирован");
     // Story 5.5/5.7: the page also names the stage «Куплено» of the reservation.
     expect(html).toContain("Куплено");

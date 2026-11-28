@@ -345,7 +345,7 @@
       "delete": "Удалить",
       "sectionOwner": "Получено ({count})",
       "sectionViewer": "Уже подарено",
-      "menuLabel": "Меню"
+      "menuLabel": "Меню: {title}"
     },
     "detail": {
       "pageTitle": "Желание — {brand}",

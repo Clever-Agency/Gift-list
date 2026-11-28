@@ -87,6 +87,7 @@ What is not a prop:
 - The app builds the status pill, the tag row and the menu; they arrive as slots. The «есть теги», «есть меню» and «есть действия» handles stand ready-made samples in.
 - With \`onPress\` or \`href\` the whole card is one target and the plate's shadow lifts on hover of any part of it, while the title is underlined — the card is the Tamagui group. With \`href\` the target is a real \`<a>\` (CLE-129, T4.4).
 - \`footer\` adds an action block — the buttons and the switch of a reservation card. It is a sibling of the card button too: nothing is nested, and Tab goes card first, actions next.
+- The focus order follows the screen: card button, then «⋯» (it stands above the booking line), then the reservation line, then the footer. The menu is absolutely positioned inside the photo area, so its place in the DOM does not move it (CLE-135).
 - D-54: the card has no visibility chip and no «who sees» control: visibility changes only in the wish form.
 - \`listItem={false}\` is for an owner strip next to the card: the wrapper of the cell then carries the \`listitem\` role.
 - Hover, press and focus are CSS states, not props: hover any part of the card, hold it, press Tab.

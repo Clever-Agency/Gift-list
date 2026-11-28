@@ -951,3 +951,66 @@ describe("страница владельца: своё желание", () => {
     expect(control("Изменить")).toBeDefined();
   });
 });
+
+/**
+ * Story 6.4 (`DESIGN.md` → «Куда уходит фокус»): a closed layer returns focus to
+ * the control that opened it. The screens pass `onClosed` and a ref of the CTA;
+ * the layer must stay mounted while it closes for that callback to run.
+ */
+describe("фокус после закрытия слоёв", () => {
+  function opener(label: string): HTMLElement {
+    const node = control(label);
+    expect(node, `кнопка «${label}»`).toBeDefined();
+    node?.focus();
+    expect(document.activeElement).toBe(node);
+    return node as HTMLElement;
+  }
+
+  it("бронь: «Отмена» возвращает фокус на «Куплю сам»", async () => {
+    respond(gift({ status: "OPEN", reservation: undefined, reservedBy: null }));
+    await mount();
+
+    const cta = opener("Куплю сам");
+    await click(cta);
+    await settle();
+    expect(dialogElement()).not.toBeNull();
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cta);
+  });
+
+  it("снятие брони: «Отмена» возвращает фокус на «Снять бронь»", async () => {
+    respond(gift());
+    await mount();
+
+    const cta = opener("Снять бронь");
+    await click(cta);
+    await settle();
+    expect(dialogElement()).not.toBeNull();
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cta);
+  });
+
+  it("продление: «Отмена» возвращает фокус на «Продлить до…»", async () => {
+    respond(gift());
+    await mount();
+
+    const cta = opener("Продлить до…");
+    await click(cta);
+    await settle();
+    expect(dialogElement()).not.toBeNull();
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cta);
+  });
+});

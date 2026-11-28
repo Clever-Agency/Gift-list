@@ -248,7 +248,7 @@ export default function RegisterScreen() {
           <Text kind="body">{t("register.forReserve", { title: reserveTitle })}</Text>
         ) : null}
         {issue && !issue.field ? (
-          <Text role="alert" aria-live="polite">
+          <Text role="alert">
             {issue.text}
           </Text>
         ) : null}

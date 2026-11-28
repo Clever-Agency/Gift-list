@@ -168,7 +168,7 @@ export function ChoiceList({
         </Frame>
       </ChoiceListHintContext.Provider>
       {error ? (
-        <Text id={errorId} kind="caption" tone="destructive" role="alert" aria-live="polite">
+        <Text id={errorId} kind="caption" tone="destructive" role="alert">
           {error}
         </Text>
       ) : null}

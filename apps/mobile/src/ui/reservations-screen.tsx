@@ -54,6 +54,10 @@ export type ReservationsScreenProps = {
   onVisibilityChange: (card: ReservationCardData, next: ReservationVisibilityValues) => void;
   /** Registers the ⋮ of a card, so the screen can return focus after its menu closes. */
   menuRefFor?: (giftId: string) => (node: FocusTarget | null) => void;
+  /** Registers «Продлить до…», so the screen can return focus after its dialog closes. */
+  extendRefFor?: (giftId: string) => (node: FocusTarget | null) => void;
+  /** The card whose ⋮ menu is open; its trigger reports `aria-expanded`. */
+  menuOpenId?: string | null;
 };
 
 /**
@@ -78,6 +82,8 @@ export function ReservationsScreen({
   onBoughtChange,
   onVisibilityChange,
   menuRefFor,
+  extendRefFor,
+  menuOpenId,
 }: ReservationsScreenProps) {
   const t = useTranslations("app.reservations");
   const tGift = useTranslations("app.gift");
@@ -122,6 +128,8 @@ export function ReservationsScreen({
               timeZone={timeZone}
               width={cardWidth}
               menuRef={menuRefFor ? menuRefFor(card.giftId) : undefined}
+              menuExpanded={menuOpenId === card.giftId}
+              extendRef={extendRefFor ? extendRefFor(card.giftId) : undefined}
               onOpenGift={function openGift() {
                 onOpenGift(card);
               }}

@@ -106,6 +106,8 @@
       "fieldLabel": "Подпись",
       "fieldExisting": "Тег каталога",
       "fieldExistingPlaceholder": "Выберите тег",
+      "fieldLabelLocale": "Подпись ({locale})",
+      "noCatalogTags": "В каталоге пока нет тегов",
       "cancel": "Отмена",
       "save": "Одобрить",
       "rejectTitle": "Отклонить тег?",

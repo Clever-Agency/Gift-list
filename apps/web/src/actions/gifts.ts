@@ -23,9 +23,11 @@ import {
   type GiftStatusEvent,
 } from "@/domain/gift-status";
 import { toOwnerGiftCard } from "@/domain/owner-gift-card";
+import { normalizeCustomTagText } from "@/domain/tag";
 import { NO_RELATIONS, VisibilityPolicy } from "@/domain/visibility";
 import { firstIssueField } from "@/lib/api-v1";
 import { auth } from "@/lib/auth";
+import { readCustomTagDecisions } from "@/lib/custom-tag-store";
 import { giftStatusTransaction, recordGiftEvent } from "@/lib/gift-status-store";
 import { enqueueGiftNotification, notificationGiftSnapshot } from "@/lib/notification-store";
 import { relationshipReader } from "@/lib/relationships";
@@ -180,19 +182,63 @@ export function requestLocale(headers: Headers): SupportedLocale {
 
 /**
  * A `GiftTag` row a writer may create. Fixed tags are aggregate-eligible right
- * away; custom text stays out until ADMIN approval (AD-22, Story 10.2). The
- * client cannot influence either flag — the input schema has no such field.
+ * away; custom text stays out until ADMIN approval (AD-22, Story 10.2), unless
+ * the same text was already approved — then the row carries both the catalog
+ * link and the original text and is eligible. The client cannot influence
+ * either flag — the input schema has no such field.
  */
 type GiftTagCreate =
   | { tagId: string; aggregateEligible: true }
+  | { tagId: string; customText: string; aggregateEligible: true }
   | { customText: string; aggregateEligible: false };
 
-function toTagRows(tags: readonly GiftTagInput[]): GiftTagCreate[] {
-  return tags.map(function toTagRow(tag) {
-    return "catalogId" in tag
-      ? { tagId: tag.catalogId, aggregateEligible: true as const }
-      : { customText: tag.text, aggregateEligible: false as const };
+/**
+ * Story 10.2: a new or edited wish respects earlier moderation decisions. A
+ * custom text approved earlier is written already linked to the catalog tag
+ * (`tagId`, `aggregateEligible = true`) and keeps its text; a rejected text is
+ * written as an ordinary custom tag. An unmoderated text stays out of aggregates.
+ *
+ * The moderation read runs only when the body carries custom text, so a wish
+ * with fixed tags does not pay for it. When a body lists both a catalog tag and
+ * a custom text that was approved into that same tag, the custom row is dropped:
+ * the wish already carries the tag, and two rows would violate
+ * `(giftId, tagId)`.
+ */
+async function toTagRows(
+  db: Prisma.TransactionClient,
+  tags: readonly GiftTagInput[],
+): Promise<GiftTagCreate[]> {
+  const customTexts = tags.flatMap(function customTextOf(tag) {
+    return "text" in tag ? [tag.text] : [];
   });
+  const decisions = await readCustomTagDecisions(db, customTexts);
+  const catalogIds = new Set(
+    tags.flatMap(function catalogIdOf(tag) {
+      return "catalogId" in tag ? [tag.catalogId] : [];
+    }),
+  );
+
+  const rows: GiftTagCreate[] = [];
+  for (const tag of tags) {
+    if ("catalogId" in tag) {
+      rows.push({ tagId: tag.catalogId, aggregateEligible: true });
+      continue;
+    }
+
+    const decision = decisions.get(normalizeCustomTagText(tag.text));
+    const approvedTagId =
+      decision?.decision === "APPROVED" && decision.tagId !== null ? decision.tagId : null;
+    if (approvedTagId === null) {
+      rows.push({ customText: tag.text, aggregateEligible: false });
+      continue;
+    }
+
+    if (catalogIds.has(approvedTagId)) continue;
+    catalogIds.add(approvedTagId);
+    rows.push({ tagId: approvedTagId, customText: tag.text, aggregateEligible: true });
+  }
+
+  return rows;
 }
 
 /**
@@ -423,7 +469,7 @@ export async function createGift(headers: Headers, body: unknown): Promise<Actio
   const missingTagIndex = await firstMissingFixedTagIndex(prisma, tags);
   if (missingTagIndex !== null) return validation(catalogTagField(missingTagIndex));
 
-  const tagRows = toTagRows(tags);
+  const tagRows = await toTagRows(prisma, tags);
   try {
     const row = await prisma.gift.create({
       data: {
@@ -691,8 +737,10 @@ export async function updateGift(
 
         // Story 2.5: the tag set is replaced atomically with the field write.
         if (tags !== undefined) {
+          // Story 10.2: read the decisions before deleting anything, so the write
+          // orders (`tagId`, `customText`) follow the moderation state.
+          const tagRows = await toTagRows(tx, tags);
           await tx.giftTag.deleteMany({ where: { giftId: updated.id } });
-          const tagRows = toTagRows(tags);
           if (tagRows.length > 0) {
             await tx.giftTag.createMany({
               data: tagRows.map(function withGiftId(tag) {

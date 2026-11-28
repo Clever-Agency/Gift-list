@@ -238,6 +238,8 @@ model Tag {
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   giftTags GiftTag[]
+  /// Story 10.2: decisions that approved a custom text into this catalog tag.
+  customTagModerations CustomTagModeration[]
 }
 
 // Tag on a wish (Story 2.5, AD-22). A row carries a catalog reference (`tagId`),
@@ -267,6 +269,30 @@ model GiftTag {
   @@unique([giftId, tagId])
   @@unique([giftId, customText])
   /// Aggregate reads group by catalog tag.
+  @@index([tagId])
+}
+
+// ADMIN decision on one normalized custom tag text (Story 10.2, AD-22). The text
+// is the key; the decision keeps no author and no wish. `tagId` is required for
+// APPROVED and forbidden for REJECTED (CHECK in the migration). A rejected text
+// stays on the wishes as their own caption and never enters aggregates.
+enum CustomTagDecision {
+  APPROVED
+  REJECTED
+}
+
+model CustomTagModeration {
+  id             String            @id @default(cuid(2))
+  /// trim, collapsed spaces and lower case; the same key the write path uses.
+  normalizedText String            @unique
+  decision       CustomTagDecision
+  /// Catalog tag an approval created or picked; null for rejection.
+  tagId          String?
+  decidedAt      DateTime          @default(now()) @db.Timestamptz(3)
+
+  /// A decided-into catalog tag cannot be deleted.
+  tag Tag? @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
   @@index([tagId])
 }
 

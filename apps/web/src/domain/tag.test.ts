@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { toGiftTag, toGiftTags, isGiftTagApprovedForAggregates } from "./tag";
+import {
+  customTagRowIdsToLink,
+  groupCustomTagQueue,
+  normalizeCustomTagText,
+  toGiftTag,
+  toGiftTags,
+  isGiftTagApprovedForAggregates,
+} from "./tag";
 
 describe("isGiftTagApprovedForAggregates", () => {
   it("includes a fixed catalog tag", () => {
@@ -139,5 +146,102 @@ describe("toGiftTag", () => {
         "ru",
       ),
     ).toEqual([{ catalogId: "tag_dream", label: "мечта" }]);
+  });
+});
+
+describe("normalizeCustomTagText", () => {
+  it("trims, collapses spaces and lower-cases per the ru locale", () => {
+    expect(normalizeCustomTagText("  Айфон   Pro ")).toBe("айфон pro");
+    expect(normalizeCustomTagText("АЙФОН")).toBe("айфон");
+    expect(normalizeCustomTagText("Ёлка")).toBe("ёлка");
+  });
+
+  it("uses NFC so a decomposed spelling matches its composed form", () => {
+    expect(normalizeCustomTagText("й".normalize("NFD"))).toBe("й");
+  });
+
+  it("returns an empty key for blank text", () => {
+    expect(normalizeCustomTagText("   ")).toBe("");
+  });
+});
+
+describe("groupCustomTagQueue", () => {
+  it("groups by the normalized text and counts distinct wishes", () => {
+    expect(
+      groupCustomTagQueue([
+        { giftId: "g1", customText: "Айфон" },
+        { giftId: "g1", customText: "айфон" },
+        { giftId: "g2", customText: "Айфон" },
+        { giftId: "g3", customText: "Ноутбук" },
+      ]),
+    ).toEqual([
+      { normalizedText: "айфон", sampleText: "Айфон", usageCount: 2 },
+      { normalizedText: "ноутбук", sampleText: "Ноутбук", usageCount: 1 },
+    ]);
+  });
+
+  it("leaves out texts that already have a decision", () => {
+    expect(
+      groupCustomTagQueue(
+        [
+          { giftId: "g1", customText: "Айфон" },
+          { giftId: "g2", customText: "Ноутбук" },
+        ],
+        ["айфон"],
+      ),
+    ).toEqual([{ normalizedText: "ноутбук", sampleText: "Ноутбук", usageCount: 1 }]);
+  });
+
+  it("orders by usage descending, then by the normalized text", () => {
+    expect(
+      groupCustomTagQueue([
+        { giftId: "g1", customText: "яблоко" },
+        { giftId: "g2", customText: "банан" },
+        { giftId: "g3", customText: "банан" },
+        { giftId: "g4", customText: "арбуз" },
+        { giftId: "g5", customText: "арбуз" },
+      ]).map((line) => line.normalizedText),
+    ).toEqual(["арбуз", "банан", "яблоко"]);
+  });
+
+  it("never leaks a wish id or an author into a line", () => {
+    const line = groupCustomTagQueue([{ giftId: "g1", customText: "Айфон" }])[0]!;
+    expect(Object.keys(line).sort()).toEqual(["normalizedText", "sampleText", "usageCount"]);
+  });
+
+  it("ignores null and blank texts", () => {
+    expect(
+      groupCustomTagQueue([
+        { giftId: "g1", customText: null },
+        { giftId: "g2", customText: "   " },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("customTagRowIdsToLink", () => {
+  const rows = [
+    { id: "t1", giftId: "g1", customText: "Айфон" },
+    { id: "t2", giftId: "g1", customText: "айфон" },
+    { id: "t3", giftId: "g2", customText: "Айфон" },
+    { id: "t4", giftId: "g3", customText: "Ноутбук" },
+    { id: "t5", giftId: "g4", customText: null },
+  ];
+
+  it("takes every row of the normalized text, one per wish", () => {
+    // g1 has two case variants: only the first is linked, so (giftId, tagId) holds.
+    expect(customTagRowIdsToLink(rows, "айфон", new Set())).toEqual(["t1", "t3"]);
+  });
+
+  it("skips a wish that already has the catalog tag", () => {
+    expect(customTagRowIdsToLink(rows, "айфон", new Set(["g2"]))).toEqual(["t1"]);
+  });
+
+  it("ignores other texts and null rows", () => {
+    expect(customTagRowIdsToLink(rows, "ноутбук", new Set())).toEqual(["t4"]);
+  });
+
+  it("returns no ids when nothing matches", () => {
+    expect(customTagRowIdsToLink(rows, "кошка", new Set())).toEqual([]);
   });
 });

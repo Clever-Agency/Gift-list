@@ -13,6 +13,7 @@ const {
   tagFindMany,
   tagDeleteMany,
   tagCreateMany,
+  moderationFindMany,
   transaction,
   PrismaClientKnownRequestError,
 } = vi.hoisted(() => {
@@ -38,6 +39,7 @@ const {
     tagFindMany: vi.fn(),
     tagDeleteMany: vi.fn(),
     tagCreateMany: vi.fn(),
+    moderationFindMany: vi.fn(),
     transaction: vi.fn(),
     PrismaClientKnownRequestError,
   };
@@ -50,6 +52,7 @@ vi.mock("@/db/client", () => ({
     gift: { create, findFirst, update, updateMany: releaseMany },
     tag: { findMany: tagFindMany },
     giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
+    customTagModeration: { findMany: moderationFindMany },
     $transaction: transaction,
   },
 }));
@@ -132,6 +135,7 @@ beforeEach(() => {
   tagFindMany.mockReset();
   tagDeleteMany.mockReset();
   tagCreateMany.mockReset();
+  moderationFindMany.mockReset();
   transaction.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
   findUnique.mockResolvedValue({ id: "l1" });
@@ -143,12 +147,14 @@ beforeEach(() => {
   tagFindMany.mockResolvedValue([]);
   tagDeleteMany.mockResolvedValue({ count: 0 });
   tagCreateMany.mockResolvedValue({ count: 0 });
+  moderationFindMany.mockResolvedValue([]);
   transaction.mockImplementation(
     async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
         gift: { findFirst: txFindFirst, update, updateMany: releaseMany },
         tag: { findMany: tagFindMany },
         giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
+        customTagModeration: { findMany: moderationFindMany },
       }),
   );
 });

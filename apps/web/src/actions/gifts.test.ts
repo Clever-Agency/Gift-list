@@ -17,6 +17,7 @@ const {
   tagFindMany,
   tagDeleteMany,
   tagCreateMany,
+  moderationFindMany,
   transaction,
   relationsBetween,
   PrismaClientKnownRequestError,
@@ -47,6 +48,7 @@ const {
       tagFindMany: vi.fn(),
       tagDeleteMany: vi.fn(),
       tagCreateMany: vi.fn(),
+      moderationFindMany: vi.fn(),
       transaction: vi.fn(),
       relationsBetween: vi.fn(),
       PrismaClientKnownRequestError,
@@ -61,6 +63,7 @@ vi.mock("@/db/client", () => ({
     notification: { createMany: notificationCreateMany },
     tag: { findMany: tagFindMany },
     giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
+    customTagModeration: { findMany: moderationFindMany },
     $transaction: transaction,
   },
 }));
@@ -236,6 +239,7 @@ beforeEach(() => {
   tagFindMany.mockReset();
   tagDeleteMany.mockReset();
   tagCreateMany.mockReset();
+  moderationFindMany.mockReset();
   transaction.mockReset();
   relationsBetween.mockReset();
   getSession.mockResolvedValue({ user: { id: "u1" }, session: { token: "t" } });
@@ -253,6 +257,7 @@ beforeEach(() => {
   tagFindMany.mockResolvedValue([]);
   tagDeleteMany.mockResolvedValue({ count: 0 });
   tagCreateMany.mockResolvedValue({ count: 0 });
+  moderationFindMany.mockResolvedValue([]);
   relationsBetween.mockResolvedValue(holderRelations());
   // A stand-in for an interactive transaction: it runs the callback with the
   // same mocked delegates, so the test sees the order of the writes.
@@ -263,6 +268,7 @@ beforeEach(() => {
         notification: { createMany: notificationCreateMany },
         tag: { findMany: tagFindMany },
         giftTag: { deleteMany: tagDeleteMany, createMany: tagCreateMany },
+        customTagModeration: { findMany: moderationFindMany },
       }),
   );
 });
@@ -1741,6 +1747,93 @@ describe("gift tags", () => {
   };
   const customRow = { tagId: null, customText: "своё", tag: null };
 
+  /**
+   * Story 10.2: a text approved earlier is written already linked to the catalog
+   * tag, so a new wish does not wait for moderation again.
+   */
+  it("links an already approved custom text to its catalog tag on create", async () => {
+    moderationFindMany.mockResolvedValue([
+      { normalizedText: "айфон", decision: "APPROVED", tagId: "tag_phone" },
+    ]);
+    create.mockResolvedValue(
+      giftRow({
+        tags: [
+          {
+            tagId: "tag_phone",
+            customText: "Айфон",
+            tag: { slug: "iphone", labels: { ru: "айфон" } },
+          },
+        ],
+      }),
+    );
+
+    const card = okData(
+      await createGift(headers, { title: "Книга", tags: [{ text: "Айфон" }] }),
+    );
+
+    expect(moderationFindMany).toHaveBeenCalledWith({
+      where: { normalizedText: { in: ["айфон"] } },
+      select: { normalizedText: true, decision: true, tagId: true },
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tags: {
+            create: [{ tagId: "tag_phone", customText: "Айфон", aggregateEligible: true }],
+          },
+        }),
+      }),
+    );
+    expect(card.tags).toEqual([{ catalogId: "tag_phone", label: "айфон" }]);
+  });
+
+  /** A rejected text is an ordinary custom tag: on the wish, out of aggregates. */
+  it("keeps a rejected custom text as an unapproved custom tag", async () => {
+    moderationFindMany.mockResolvedValue([
+      { normalizedText: "айфон", decision: "REJECTED", tagId: null },
+    ]);
+    create.mockResolvedValue(
+      giftRow({ tags: [{ tagId: null, customText: "Айфон", tag: null }] }),
+    );
+
+    const card = okData(
+      await createGift(headers, { title: "Книга", tags: [{ text: "Айфон" }] }),
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tags: { create: [{ customText: "Айфон", aggregateEligible: false }] },
+        }),
+      }),
+    );
+    expect(card.tags).toEqual([{ catalogId: null, label: "Айфон" }]);
+  });
+
+  /**
+   * `(giftId, tagId)` is unique: a body that lists the catalog tag and a text
+   * approved into it creates one row, not a failed write.
+   */
+  it("does not write the same catalog tag twice on create", async () => {
+    tagFindMany.mockResolvedValue([{ id: "tag_phone" }]);
+    moderationFindMany.mockResolvedValue([
+      { normalizedText: "айфон", decision: "APPROVED", tagId: "tag_phone" },
+    ]);
+
+    await createGift(headers, {
+      title: "Книга",
+      tags: [{ catalogId: "tag_phone" }, { text: "Айфон" }],
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tags: { create: [{ tagId: "tag_phone", aggregateEligible: true }] },
+        }),
+      }),
+    );
+  });
+
   it("creates fixed and custom tags with server-side eligibility", async () => {
     tagFindMany.mockResolvedValue([{ id: "tag_dream" }]);
     create.mockResolvedValue(giftRow({ tags: [dreamRow, customRow] }));
@@ -2029,6 +2122,36 @@ describe("gift tags", () => {
       { catalogId: null, label: "своё" },
       { catalogId: "tag_dream", label: "мечта" },
     ]);
+  });
+
+  /**
+   * Story 10.2: an edit that re-sends an approved custom text links it right
+   * away; the old rows were replaced, so the new row carries the catalog tag.
+   */
+  it("links an already approved text when an edit replaces the tags", async () => {
+    moderationFindMany.mockResolvedValue([
+      { normalizedText: "айфон", decision: "APPROVED", tagId: "tag_phone" },
+    ]);
+    txFindFirst
+      .mockResolvedValueOnce(stored())
+      .mockResolvedValueOnce(
+        giftRow({
+          tags: [
+            {
+              tagId: "tag_phone",
+              customText: "Айфон",
+              tag: { slug: "iphone", labels: { ru: "айфон" } },
+            },
+          ],
+        }),
+      );
+
+    const card = okData(await updateGift(headers, "g1", { tags: [{ text: "Айфон" }] }));
+
+    expect(tagCreateMany).toHaveBeenCalledWith({
+      data: [{ tagId: "tag_phone", customText: "Айфон", aggregateEligible: true, giftId: "g1" }],
+    });
+    expect(card.tags).toEqual([{ catalogId: "tag_phone", label: "айфон" }]);
   });
 
   /** Q-10/F4: the catalog row disappeared after the in-transaction check. */

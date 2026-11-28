@@ -81,6 +81,48 @@
         "itemDeleted": "Элемент удалён",
         "reordered": "Порядок сохранён"
       }
+    },
+    "tags": {
+      "pageTitle": "Теги — {brand}",
+      "heading": "Теги",
+      "empty": "Тегов на модерации нет",
+      "tableCaption": "Свои теги на модерации",
+      "columns": {
+        "text": "Текст",
+        "usage": "Использований",
+        "actions": "Действия"
+      },
+      "usageCount": "{count, plural, one {# желание} few {# желания} many {# желаний} other {# желаний}}",
+      "approve": "Одобрить",
+      "approveLabel": "Одобрить «{text}»",
+      "reject": "Отклонить",
+      "rejectLabel": "Отклонить «{text}»",
+      "approveTitle": "Одобрение тега «{text}»",
+      "modeLabel": "Что сделать с тегом",
+      "newTag": "Новый тег каталога",
+      "existingTag": "Существующий тег",
+      "fieldSlug": "Slug",
+      "fieldSlugHint": "Латиница, цифры и дефис, от 1 до 40 символов. После одобрения slug не меняется.",
+      "fieldLabel": "Подпись",
+      "fieldExisting": "Тег каталога",
+      "fieldExistingPlaceholder": "Выберите тег",
+      "cancel": "Отмена",
+      "save": "Одобрить",
+      "rejectTitle": "Отклонить тег?",
+      "rejectBody": "Текст останется подписью на желаниях, но не попадёт в статистику.",
+      "rejectConfirm": "Отклонить",
+      "error": {
+        "slugTaken": "Такой slug уже занят",
+        "slugInvalid": "Slug — латиница, цифры и дефис, от 1 до 40 символов",
+        "labelEmpty": "Подпись не может быть пустой",
+        "tagMissing": "Такого тега нет в каталоге",
+        "decided": "Этот текст уже решён. Обновите страницу.",
+        "generic": "Не получилось сохранить. Попробуйте ещё раз."
+      },
+      "toast": {
+        "approved": "Тег одобрен",
+        "rejected": "Тег отклонён"
+      }
     }
   },
   "wishlist": {

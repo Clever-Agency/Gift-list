@@ -39,6 +39,25 @@ export const ERROR_REASONS = [
    * `errors.reason.COLLECTION_EMPTY`.
    */
   "COLLECTION_EMPTY",
+  /**
+   * A custom-tag approval asked for a catalog `slug` that already exists (Story
+   * 10.2, AD-27). The slug is the immutable catalog key, so it is never reused
+   * or changed; the moderator picks another one. Always rides with
+   * `code: "CONFLICT"` and `field: "slug"`.
+   */
+  "CUSTOM_TAG_SLUG_TAKEN",
+  /**
+   * A moderation decision already exists for this normalized custom-tag text
+   * (Story 10.2). The queue hides decided texts, so this is a stale screen or a
+   * double submit; the second decision is refused instead of overwriting the
+   * first. Always rides with `code: "CONFLICT"`.
+   */
+  "CUSTOM_TAG_DECIDED",
+  /**
+   * An approval named a catalog tag id that does not exist (Story 10.2). Always
+   * rides with `code: "VALIDATION"` and `field: "tagId"`.
+   */
+  "CATALOG_TAG_MISSING",
   "RESET_LINK_STALE",
   /**
    * A rejected invite is still cooling down (Story 4.2.2, AD-10 step 3, A-16).
@@ -622,10 +641,21 @@ export {
 } from "./visibility";
 
 export {
+  TAG_LABEL_MAX,
+  TAG_SLUG_MAX,
+  customTagApprovalSchema,
+  customTagQueueItemSchema,
+  customTagRejectionSchema,
   tagCatalogItemSchema,
   tagCatalogSchema,
+  tagLabelsSchema,
+  tagSlugSchema,
+  type CustomTagApproval,
+  type CustomTagQueueItem,
+  type CustomTagRejection,
   type TagCatalog,
   type TagCatalogItem,
+  type TagLabels,
 } from "./tag";
 
 export { type DetailViewer } from "./detail-viewer";

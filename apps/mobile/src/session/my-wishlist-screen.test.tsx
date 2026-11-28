@@ -2139,6 +2139,10 @@ describe("мой вишлист: закрытие желания", () => {
 
     await pressTestId("wishlist-card-menu-g1");
     await settle();
+    // Story 6.4: the ⋯ says its dialog is open, and its name carries the wish.
+    const menu = container.querySelector<HTMLElement>('[data-testid="wishlist-card-menu-g1"]');
+    expect(menu?.getAttribute("aria-expanded")).toBe("true");
+    expect(menu?.getAttribute("aria-label")).toBe("Меню: Наушники");
     expect(dialogElement()?.textContent).toContain("Отметить полученным");
     await pressInDialog("Отметить полученным");
     // The menu leaves the tree first, then the confirmation opens.

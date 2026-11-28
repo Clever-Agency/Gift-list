@@ -581,6 +581,8 @@ describe("поток: архив из списка", () => {
 
     const menu = document.querySelector('[data-testid="wishlist-archive-menu-g-arch"]');
     expect(menu).not.toBeNull();
+    // Story 6.4: the ⋯ of an archived wish is named after the wish, not «Архив».
+    expect(menu?.getAttribute("aria-label")).toBe("Меню: Старый свитер");
     await act(async () => {
       menu?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });

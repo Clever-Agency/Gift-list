@@ -111,15 +111,23 @@ function ReservationsContent({
   const menuReturn = useRef<string | null>(null);
   const menuNodes = useRef(new Map<string, FocusTarget | null>());
 
-  // The release of one's own reservation keeps the confirm of Story 5.2.
+  // The release of one's own reservation keeps the confirm of Story 5.2. Its
+  // opener is the ⋮ of the card (the menu item itself leaves the tree), so the
+  // closed confirm returns focus there.
   const [releaseFor, setReleaseFor] = useState<ReservationCard | null>(null);
   const [releaseBusy, setReleaseBusy] = useState(false);
+  const [releaseReturnId, setReleaseReturnId] = useState<string | null>(null);
 
   // The extension: the card it belongs to, its request in flight and the sentence of
-  // a rejected day («Выберите дату не позже {max}.»).
+  // a rejected day («Выберите дату не позже {max}.»). `extendFormKey` is raised on
+  // every opening, so the day starts fresh without remounting the layer while it
+  // closes — that remount would swallow `onClosed` and the return of focus.
   const [extendFor, setExtendFor] = useState<ReservationCard | null>(null);
   const [extendBusy, setExtendBusy] = useState(false);
   const [extendError, setExtendError] = useState<string | undefined>(undefined);
+  const [extendFormKey, setExtendFormKey] = useState(0);
+  const extendReturn = useRef<string | null>(null);
+  const extendNodes = useRef(new Map<string, FocusTarget | null>());
 
   // A refocus refresh is silent (only «Повторить» shows the skeleton) and its answer
   // is dropped if the screen blurred before it arrived.
@@ -345,6 +353,8 @@ function ReservationsContent({
     // R1 (CLE-119): one request at a time per card — a dialog is not opened over
     // an action that is already in flight.
     if (inFlight.current.has(card.giftId)) return;
+    extendReturn.current = card.giftId;
+    setExtendFormKey((value) => value + 1);
     setExtendError(undefined);
     setExtendFor(card);
   }
@@ -399,6 +409,19 @@ function ReservationsContent({
     setExtendError(undefined);
   }
 
+  function extendNodeFor(giftId: string) {
+    return function rememberExtendNode(node: FocusTarget | null) {
+      extendNodes.current.set(giftId, node);
+    };
+  }
+
+  /** The extend dialog has left the tree: focus goes back to its «Продлить до…». */
+  function extendClosed() {
+    const giftId = extendReturn.current;
+    extendReturn.current = null;
+    if (giftId !== null) restoreFocus(extendNodes.current.get(giftId));
+  }
+
   /**
    * «Снять бронь» of the ⋮: the existing release of Story 5.2. The card is removed
    * on success; a lost race or a vanished reservation rereads the list; a broken
@@ -433,6 +456,11 @@ function ReservationsContent({
     setMenuFor(card);
   }
 
+  /** The release confirm has left the tree: focus goes back to the ⋮ of the card. */
+  function releaseClosed() {
+    if (releaseReturnId !== null) restoreFocus(menuNodes.current.get(releaseReturnId));
+  }
+
   function menuNodeFor(giftId: string) {
     return function rememberMenuNode(node: FocusTarget | null) {
       menuNodes.current.set(giftId, node);
@@ -458,6 +486,16 @@ function ReservationsContent({
     setMenuFor(null);
   }
 
+  /**
+   * Remembers the ⋮ whose menu asked for the release, so the closed confirm returns
+   * there. This is state, not a ref: the value is written when the menu item is
+   * pressed and read by the `onClosed` callback of the confirm.
+   */
+  function askRelease(card: ReservationCard) {
+    setReleaseReturnId(card.giftId);
+    setReleaseFor(card);
+  }
+
   function menuActions(card: ReservationCard): GiftCardMenuAction[] {
     return [
       {
@@ -466,8 +504,8 @@ function ReservationsContent({
         // menu item is not coral — `destructive` stays for the owner's release of
         // someone else's reservation (`DESIGN.md` → Colors → Destructive).
         label: t("release"),
-        onPress: function askRelease() {
-          setReleaseFor(card);
+        onPress: function askReleaseOfCard() {
+          askRelease(card);
         },
       },
     ];
@@ -503,6 +541,8 @@ function ReservationsContent({
           void changeVisibility(card, next);
         }}
         menuRefFor={menuNodeFor}
+        extendRefFor={extendNodeFor}
+        menuOpenId={menuFor?.giftId ?? null}
       />
       <GiftCardMenu
         open={menuFor !== null}
@@ -520,18 +560,20 @@ function ReservationsContent({
         open={releaseFor !== null}
         busy={releaseBusy}
         onClose={cancelRelease}
+        onClosed={releaseClosed}
         onConfirm={function confirmRelease() {
           void submitRelease();
         }}
       />
       <ReservationExtendDialog
-        key={extendFor === null ? "closed" : `open-${extendFor.giftId}`}
+        key={`extend-${extendFormKey}`}
         open={extendFor !== null}
         timeZone={timeZone}
         currentDueOn={extendFor?.dueAt}
         busy={extendBusy}
         dateError={extendError}
         onClose={cancelExtend}
+        onClosed={extendClosed}
         onConfirm={function confirmExtend(dueOn) {
           void submitExtend(dueOn);
         }}

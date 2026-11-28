@@ -345,7 +345,8 @@ describe("closing copy", () => {
     expect(closed.delete).toBe("Удалить");
     expect(closed.sectionOwner).toBe("Получено ({count})");
     expect(closed.sectionViewer).toBe("Уже подарено");
-    expect(closed.menuLabel).toBe("Меню");
+    // Story 6.4: the ⋯ of a card is named after its wish, not just «Меню».
+    expect(closed.menuLabel).toBe("Меню: {title}");
 
     expect(toast.closed).toBe("Отмечено полученным");
     expect(toast.undo).toBe("Отменить");
@@ -365,6 +366,9 @@ describe("closing copy", () => {
     );
     expect(app.gift.closed.undoWithTime.replace("{minutes}", "7")).toBe(
       "Вернуть в открытые · ещё 7 мин",
+    );
+    expect(app.gift.closed.menuLabel.replace("{title}", "Наушники")).toBe(
+      "Меню: Наушники",
     );
   });
 

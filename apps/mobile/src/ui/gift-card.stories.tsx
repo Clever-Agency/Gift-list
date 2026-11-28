@@ -174,7 +174,7 @@ function menuTrigger(): ReactNode {
   return (
     <Pressable
       role="button"
-      aria-label="Меню"
+      aria-label="Меню: Плед из шерсти мериноса"
       onPress={noop}
       width="$touch-target"
       height="$touch-target"

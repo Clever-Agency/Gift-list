@@ -1,7 +1,7 @@
 import { Button, Text, YStack } from "@gift-list/ui";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useState } from "react";
-import { Platform } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { AccessibilityInfo, Platform } from "react-native";
 import type { ReserveDateFieldProps } from "@/reserve/reserve-date-field";
 
 function ymdToDate(ymd: string): Date {
@@ -20,16 +20,34 @@ export function ReserveDateField({
   minDue,
   maxDue,
   label,
+  hint,
   caption,
   dateError,
   onChange,
 }: ReserveDateFieldProps) {
   const [showPicker, setShowPicker] = useState(false);
+  // The error under the date is a plain line for the browser; the phone has no
+  // live region around it, so a new sentence is spoken once (`gift-form.tsx` does
+  // the same with its first submit error).
+  const announcedError = useRef<string | null>(null);
+  useEffect(
+    function announceDateError() {
+      if (!dateError) {
+        announcedError.current = null;
+        return;
+      }
+      if (announcedError.current === dateError) return;
+      announcedError.current = dateError;
+      AccessibilityInfo.announceForAccessibility(dateError);
+    },
+    [dateError],
+  );
 
   return (
     <YStack gap="$1">
       <Button
         label={label}
+        hint={hint}
         variant="ghost"
         onPress={function openPicker() {
           setShowPicker(true);

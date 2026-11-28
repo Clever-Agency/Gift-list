@@ -767,8 +767,9 @@ export default function MyWishlistScreen() {
       <Pressable
         ref={menuNodeFor(gift)}
         role="button"
-        aria-label={t("gift.closed.menuLabel")}
+        aria-label={t("gift.closed.menuLabel", { title: gift.title })}
         aria-haspopup="dialog"
+        aria-expanded={cardMenu?.id === gift.id}
         onPress={handlePress}
         width="$touch-target"
         height="$touch-target"
@@ -873,6 +874,7 @@ export default function MyWishlistScreen() {
                           testID="wishlist-copy-link"
                           label={wishlist("copyLink")}
                           ariaDescribedBy={canShare ? undefined : COPY_LINK_REASON_ID}
+                          hint={canShare ? undefined : wishlist("copyLinkDisabledReason")}
                           onPress={copyLink}
                           disabled={!canShare}
                           focusableWhenDisabled
@@ -980,7 +982,6 @@ export default function MyWishlistScreen() {
                         onToggle={toggleArchive}
                         gifts={state.archived}
                         cardWidth={cardWidth}
-                        menuLabel={wishlist("archiveMenu")}
                         onOpenMenu={openArchiveMenu}
                       />
                     ) : null}
@@ -1140,7 +1141,6 @@ function ArchiveSection({
   onToggle,
   gifts,
   cardWidth,
-  menuLabel,
   onOpenMenu,
 }: {
   label: string;
@@ -1148,9 +1148,9 @@ function ArchiveSection({
   onToggle: () => void;
   gifts: readonly GiftCard[];
   cardWidth: number;
-  menuLabel: string;
   onOpenMenu: (gift: GiftCard) => void;
 }) {
+  const t = useTranslations("app");
   return (
     <ClosedSection
       label={label}
@@ -1172,7 +1172,7 @@ function ArchiveSection({
             closed
             menu={
               <Pressable
-                aria-label={menuLabel}
+                aria-label={t("gift.closed.menuLabel", { title: gift.title })}
                 onPress={openMenu}
                 width="$touch-target"
                 height="$touch-target"

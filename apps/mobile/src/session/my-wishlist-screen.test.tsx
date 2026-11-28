@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { PRODUCT_NAME, formatDate, formatPrice, type GiftCard } from "@gift-list/contracts";
 import { breakpoints, spacing } from "@gift-list/ui";
-import { act, type ReactNode } from "react";
+import { act, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/session/auth-context";
@@ -26,6 +26,11 @@ const navigation = vi.hoisted(() => ({
  * over in `?toast=`, and `setParams` is where the list drops it again.
  */
 const search = vi.hoisted(() => ({ params: {} as Record<string, string | undefined> }));
+/**
+ * The `hint` of every `Button`: the phone reads it as `accessibilityHint`, which
+ * react-native-web correctly drops from the DOM, so the prop is captured here.
+ */
+const copyHints = vi.hoisted(() => ({ values: [] as (string | undefined)[] }));
 
 /**
  * `useFocusEffect` stand-in: expo-router runs the callback while the screen is focused
@@ -55,6 +60,15 @@ const focusStore = vi.hoisted(() => {
 });
 
 vi.mock("@/api/client", () => api);
+vi.mock("@gift-list/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gift-list/ui")>();
+  function ButtonWithHint(props: ComponentProps<typeof actual.Button>) {
+    copyHints.values.push(props.hint);
+    return <actual.Button {...props} />;
+  }
+  ButtonWithHint.displayName = "ButtonWithHint";
+  return { ...actual, Button: ButtonWithHint };
+});
 vi.mock("@/platform/session-token", () => store);
 vi.mock("@/platform/clipboard", () => clipboard);
 vi.mock("@/invite/copy-link", () => copier);
@@ -375,6 +389,7 @@ beforeEach(() => {
   copier.copyMyInviteLink.mockResolvedValue("copied");
   focusStore.reset();
   search.params = {};
+  copyHints.values.length = 0;
   zone.deviceTimeZone.mockReturnValue("Europe/Minsk");
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -662,6 +677,10 @@ describe("мой вишлист: список", () => {
     expect(items[0]?.querySelectorAll('[role="link"]')).toHaveLength(1);
     expect(items[0]?.querySelectorAll('[role="button"]')).toHaveLength(1);
     expect(items[0]?.querySelector("[aria-label^='Видимость:']")).toBeNull();
+    // Story 6.4: the ⋯ is named after its wish, and the closed menu says so.
+    const menu = items[0]?.querySelector('[role="button"]') as HTMLElement | null;
+    expect(menu?.getAttribute("aria-label")).toBe("Меню: Наушники");
+    expect(menu?.getAttribute("aria-expanded")).toBe("false");
 
     await act(async () => {
       card?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -889,6 +908,11 @@ describe("мой вишлист: копирование ссылки", () => {
     expect(copy?.tabIndex).toBe(0);
     copy?.focus();
     expect(document.activeElement).toBe(copy);
+    // The phone has no `aria-describedby`: the same reason goes to `hint` and
+    // reaches the phone as `accessibilityHint` (react-native-web drops it from DOM).
+    expect(copyHints.values).toContain(
+      "Нет желаний, открытых для всех: приватные и архивные не показываются.",
+    );
     expect(container.querySelector("#wishlist-copy-link-reason")?.textContent).toContain(
       "Нет желаний, открытых для всех: приватные и архивные не показываются.",
     );

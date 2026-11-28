@@ -353,7 +353,7 @@ describe("экран «Мои брони»", () => {
 
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeDefined();
-    expect(byLabel("Меню")).toBeDefined();
+    expect(byLabel("Меню: Плед")).toBeDefined();
   });
 
   it("до срока «Продлить до…» остаётся", async () => {
@@ -525,7 +525,7 @@ describe("экран «Мои брони»", () => {
     respond(listAnswer([card()]));
     await mount();
 
-    await click(byLabel("Меню"));
+    await click(byLabel("Меню: Плед"));
     await settle(20);
     await click(dialogControl("Снять бронь"));
     await settle(300);
@@ -591,7 +591,7 @@ describe("экран «Мои брони»", () => {
     expect(control("Продлить до…")).toBeUndefined();
     expect(control("Подарил")).toBeUndefined();
     expect(byLabel("Купил")).toBeDefined();
-    expect(byLabel("Меню")).toBeDefined();
+    expect(byLabel("Меню: Плед")).toBeDefined();
   });
 
   it("возврат на экран тихо перечитывает список", async () => {
@@ -638,7 +638,7 @@ describe("экран «Мои брони»", () => {
       expect(updateCalls()).toHaveLength(1);
 
       await click(control("Продлить до…"));
-      await click(byLabel("Меню"));
+      await click(byLabel("Меню: Плед"));
       await settle(10);
       expect(dialogElement()).toBeNull();
       expect(updateCalls()).toHaveLength(1);
@@ -654,7 +654,7 @@ describe("экран «Мои брони»", () => {
       const resolvePending = respondPending();
       await mount();
 
-      await click(byLabel("Меню"));
+      await click(byLabel("Меню: Плед"));
       await settle(20);
       await click(dialogControl("Снять бронь"));
       await settle(300);
@@ -680,5 +680,63 @@ describe("экран «Мои брони»", () => {
       await settle(20);
       expect(text()).toContain("Броней нет");
     });
+  });
+});
+
+/**
+ * Story 6.4 (`DESIGN.md` → «Куда уходит фокус»): the card's ⋮ and «Продлить до…»
+ * take focus back when their layers close, and the ⋮ reports the open menu.
+ */
+describe("фокус после закрытия слоёв", () => {
+  it("⋮ сообщает aria-expanded, пока меню открыто", async () => {
+    respond(listAnswer([card()]));
+    await mount();
+
+    const menu = byLabel("Меню: Плед");
+    expect(menu?.getAttribute("aria-expanded")).toBe("false");
+    await click(menu);
+    await settle(20);
+
+    expect(byLabel("Меню: Плед")?.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("продление: «Отмена» возвращает фокус на «Продлить до…»", async () => {
+    respond(listAnswer([card({ dueAt: dueSoon() })]));
+    await mount();
+
+    const cta = container.querySelector<HTMLElement>('[data-testid="reservation-g1-extend"]');
+    expect(cta).not.toBeNull();
+    cta?.focus();
+    expect(document.activeElement).toBe(cta);
+
+    await click(cta);
+    await settle(20);
+    expect(dialogElement()).not.toBeNull();
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(cta);
+  });
+
+  it("снятие брони: «Отмена» возвращает фокус на ⋮ карточки", async () => {
+    respond(listAnswer([card()]));
+    await mount();
+
+    const menu = byLabel("Меню: Плед");
+    expect(menu).not.toBeNull();
+    await click(menu);
+    await settle(20);
+
+    await click(dialogControl("Снять бронь"));
+    await settle(300);
+    expect(dialogElement()?.textContent).toContain("Снять бронь? Желание снова станет открытым.");
+
+    await click(dialogControl("Отмена"));
+    await settle(300);
+
+    expect(dialogElement()).toBeNull();
+    expect(document.activeElement).toBe(menu);
   });
 });
